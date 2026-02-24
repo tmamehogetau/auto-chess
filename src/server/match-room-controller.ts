@@ -614,8 +614,13 @@ export class MatchRoomController {
     if (benchToBoardCell) {
       const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
       const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+      const currentBoardUnitCount = this.resolveUnitCount(playerId);
 
       if (!benchUnits[benchToBoardCell.benchIndex]) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      if (currentBoardUnitCount >= 8) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
 
@@ -849,7 +854,7 @@ export class MatchRoomController {
     const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
     const unitType = benchUnits[benchIndex];
 
-    if (!unitType) {
+    if (!unitType || boardPlacements.length >= 8) {
       return;
     }
 

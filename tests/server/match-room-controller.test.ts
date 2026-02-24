@@ -506,6 +506,37 @@ describe("MatchRoomController", () => {
     expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
   });
 
+  test("boardUnitCountが8のときbenchToBoardCellはINVALID_PAYLOAD", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      shopBuySlotIndex: 0,
+    });
+    const setBoardFullResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      boardUnitCount: 8,
+    });
+    const deployResult = controller.submitPrepCommand("p1", 3, 3_200, {
+      benchToBoardCell: {
+        benchIndex: 0,
+        cell: 7,
+      },
+    });
+
+    expect(buyResult).toEqual({ accepted: true });
+    expect(setBoardFullResult).toEqual({ accepted: true });
+    expect(deployResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+  });
+
   test("Eliminationで生存者1人ならEndへ遷移する", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

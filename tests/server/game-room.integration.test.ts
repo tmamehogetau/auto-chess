@@ -757,6 +757,61 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.boardUnitCount).toBe(1);
   });
 
+  test("benchToBoardCellが既存cellと競合するとINVALID_PAYLOADでstate不変", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      shopBuySlotIndex: 0,
+    });
+    expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: true,
+    });
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 2,
+      boardPlacements: [{ cell: 2, unitType: "vanguard" }],
+    });
+    expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: true,
+    });
+
+    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeBench = beforePlayer?.benchUnits.length ?? 0;
+    const beforeBoardCount = beforePlayer?.boardUnitCount ?? 0;
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 3,
+      benchToBoardCell: {
+        benchIndex: 0,
+        cell: 2,
+      },
+    });
+
+    const rejectResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(rejectResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(afterPlayer?.benchUnits.length).toBe(beforeBench);
+    expect(afterPlayer?.boardUnitCount).toBe(beforeBoardCount);
+  });
+
   test("benchSellIndexでbench売却するとgold+1がstateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([

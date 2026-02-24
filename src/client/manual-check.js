@@ -1,20 +1,43 @@
+import { parsePlacementsSpec } from "./manual-check-utils.js";
+
 const VALID_SET_IDS = new Set(["set1", "set2"]);
 const DEFAULT_ROOM_NAME = "game";
+
+const CLIENT_MESSAGE_TYPES = {
+  READY: "ready",
+  PREP_COMMAND: "prep_command",
+};
+
+const SERVER_MESSAGE_TYPES = {
+  COMMAND_RESULT: "command_result",
+  ROUND_STATE: "round_state",
+};
 
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
 const setIdSelect = document.querySelector("[data-setid-select]");
 const connectButton = document.querySelector("[data-connect-button]");
 const leaveButton = document.querySelector("[data-leave-button]");
+const readyCheckbox = document.querySelector("[data-ready-checkbox]");
+const readyButton = document.querySelector("[data-ready-button]");
+const cmdSeqInput = document.querySelector("[data-cmdseq-input]");
+const placementsInput = document.querySelector("[data-placements-input]");
+const prepButton = document.querySelector("[data-prep-button]");
+
 const statusElement = document.querySelector("[data-connection-status]");
 const errorElement = document.querySelector("[data-connection-error]");
 const setIdElement = document.querySelector("[data-set-id-display]");
+const phaseElement = document.querySelector("[data-phase-value]");
+const roundElement = document.querySelector("[data-round-value]");
+const selfStatusElement = document.querySelector("[data-self-status]");
+const commandResultElement = document.querySelector("[data-command-result]");
 
 let activeRoom = null;
 let connecting = false;
+let currentPhase = null;
 
 initializeDefaults();
-updateButtons();
+syncButtonAvailability();
 
 connectButton?.addEventListener("click", () => {
   void connect();
@@ -22,6 +45,14 @@ connectButton?.addEventListener("click", () => {
 
 leaveButton?.addEventListener("click", () => {
   void leave();
+});
+
+readyButton?.addEventListener("click", () => {
+  sendReady();
+});
+
+prepButton?.addEventListener("click", () => {
+  sendPrepCommand();
 });
 
 window.addEventListener("beforeunload", () => {
@@ -34,7 +65,7 @@ async function connect() {
   }
 
   connecting = true;
-  updateButtons();
+  syncButtonAvailability();
   setStatus("connecting");
   setError("");
 
@@ -46,26 +77,50 @@ async function connect() {
     const room = await client.joinOrCreate(roomName, roomOptions);
 
     activeRoom = room;
+    currentPhase = readPhase(room.state?.phase);
+
     setStatus("connected");
     setCurrentSet(room.state?.setId);
+    syncRoundFromState(room.state);
+    syncSelfStatusFromState(room.state, room.sessionId);
+    syncNextCmdSeq(room.state, room.sessionId);
+    setCommandResult("-");
 
     room.onStateChange((state) => {
       setCurrentSet(state?.setId);
+      syncRoundFromState(state);
+      syncSelfStatusFromState(state, room.sessionId);
+      syncNextCmdSeq(state, room.sessionId);
+      currentPhase = readPhase(state?.phase);
+      syncButtonAvailability();
+    });
+
+    room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
+      currentPhase = readPhase(message?.phase);
+      setPhase(currentPhase);
+      setRound(message?.roundIndex);
+      syncButtonAvailability();
+    });
+
+    room.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (result) => {
+      setCommandResultFromResult(result);
     });
 
     room.onLeave(() => {
       activeRoom = null;
+      currentPhase = null;
       setStatus("disconnected");
-      updateButtons();
+      syncButtonAvailability();
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
+    currentPhase = null;
     setStatus("error");
     setError(message);
   } finally {
     connecting = false;
-    updateButtons();
+    syncButtonAvailability();
   }
 }
 
@@ -77,8 +132,9 @@ async function leave() {
   const room = activeRoom;
 
   activeRoom = null;
+  currentPhase = null;
   setStatus("disconnecting");
-  updateButtons();
+  syncButtonAvailability();
 
   try {
     if (typeof room.removeAllListeners === "function") {
@@ -90,7 +146,63 @@ async function leave() {
     }
   } finally {
     setStatus("disconnected");
-    updateButtons();
+    syncButtonAvailability();
+  }
+}
+
+function sendReady() {
+  if (!activeRoom) {
+    setError("not connected");
+    return;
+  }
+
+  const ready = Boolean(readyCheckbox?.checked);
+
+  activeRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready });
+  setError("");
+  setCommandResult(`ready sent: ${ready}`);
+}
+
+function sendPrepCommand() {
+  if (!activeRoom) {
+    setError("not connected");
+    return;
+  }
+
+  if (currentPhase !== "Prep") {
+    setError("phase is not Prep");
+    return;
+  }
+
+  const cmdSeq = Number.parseInt(cmdSeqInput?.value ?? "", 10);
+
+  if (!Number.isInteger(cmdSeq) || cmdSeq < 1) {
+    setError("cmdSeq must be >= 1");
+    return;
+  }
+
+  try {
+    const boardPlacements = parsePlacementsSpec(placementsInput?.value ?? "");
+
+    if (boardPlacements.length === 0) {
+      setError("placements are required");
+      return;
+    }
+
+    activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq,
+      boardPlacements,
+    });
+
+    setError("");
+    setCommandResult(`prep sent: cmdSeq=${cmdSeq}`);
+
+    if (cmdSeqInput) {
+      cmdSeqInput.value = String(cmdSeq + 1);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setError(message);
   }
 }
 
@@ -111,6 +223,19 @@ function initializeDefaults() {
     setIdSelect.value = setId ?? "";
   }
 
+  if (cmdSeqInput && !cmdSeqInput.value) {
+    cmdSeqInput.value = "1";
+  }
+
+  if (readyCheckbox) {
+    readyCheckbox.checked = true;
+  }
+
+  setPhase("-");
+  setRound("-");
+  setSelfStatus("-");
+  setCommandResult("-");
+
   if (searchParams().get("autoconnect") === "1") {
     void connect();
   }
@@ -122,7 +247,9 @@ function readConfig() {
   const selectedSetId = setIdSelect?.value?.trim() ?? "";
 
   return {
-    endpoint: endpointValue || `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:2567`,
+    endpoint:
+      endpointValue ||
+      `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:2567`,
     roomName: roomValue || DEFAULT_ROOM_NAME,
     setId: normalizeSetId(selectedSetId),
   };
@@ -140,14 +267,105 @@ function searchParams() {
   return new URLSearchParams(location.search);
 }
 
-function updateButtons() {
+function syncButtonAvailability() {
+  const connected = Boolean(activeRoom);
+  const prepPhase = currentPhase === "Prep";
+
   if (connectButton) {
-    connectButton.disabled = connecting || Boolean(activeRoom);
+    connectButton.disabled = connecting || connected;
   }
 
   if (leaveButton) {
-    leaveButton.disabled = connecting || !activeRoom;
+    leaveButton.disabled = connecting || !connected;
   }
+
+  if (readyButton) {
+    readyButton.disabled = connecting || !connected;
+  }
+
+  if (prepButton) {
+    prepButton.disabled = connecting || !connected || !prepPhase;
+  }
+
+  if (cmdSeqInput) {
+    cmdSeqInput.disabled = connecting || !connected;
+  }
+
+  if (placementsInput) {
+    placementsInput.disabled = connecting || !connected;
+  }
+}
+
+function syncRoundFromState(state) {
+  setPhase(readPhase(state?.phase) ?? "-");
+
+  if (typeof state?.roundIndex === "number") {
+    setRound(state.roundIndex);
+    return;
+  }
+
+  setRound("-");
+}
+
+function syncSelfStatusFromState(state, sessionId) {
+  const player = state?.players?.get?.(sessionId);
+
+  if (!player) {
+    setSelfStatus("-");
+    return;
+  }
+
+  setSelfStatus(
+    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} seq=${Number(player.lastCmdSeq)}`,
+  );
+}
+
+function syncNextCmdSeq(state, sessionId) {
+  if (!cmdSeqInput) {
+    return;
+  }
+
+  const player = state?.players?.get?.(sessionId);
+
+  if (!player || typeof player.lastCmdSeq !== "number") {
+    return;
+  }
+
+  const nextSeq = player.lastCmdSeq + 1;
+  const currentSeq = Number.parseInt(cmdSeqInput.value, 10);
+
+  if (!Number.isInteger(currentSeq) || currentSeq < nextSeq) {
+    cmdSeqInput.value = String(nextSeq);
+  }
+}
+
+function setCommandResultFromResult(result) {
+  if (result?.accepted === true) {
+    setCommandResult("accepted");
+    return;
+  }
+
+  if (result?.accepted === false && typeof result.code === "string") {
+    setCommandResult(`rejected: ${result.code}`);
+    return;
+  }
+
+  setCommandResult("unknown result");
+}
+
+function readPhase(value) {
+  if (
+    value === "Waiting" ||
+    value === "Prep" ||
+    value === "Battle" ||
+    value === "Settle" ||
+    value === "Elimination" ||
+    value === "End"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function setStatus(status) {
@@ -155,7 +373,39 @@ function setStatus(status) {
     return;
   }
 
-  statusElement.textContent = status;
+  statusElement.textContent = String(status);
+}
+
+function setPhase(phase) {
+  if (!phaseElement) {
+    return;
+  }
+
+  phaseElement.textContent = String(phase);
+}
+
+function setRound(round) {
+  if (!roundElement) {
+    return;
+  }
+
+  roundElement.textContent = String(round);
+}
+
+function setSelfStatus(text) {
+  if (!selfStatusElement) {
+    return;
+  }
+
+  selfStatusElement.textContent = String(text);
+}
+
+function setCommandResult(text) {
+  if (!commandResultElement) {
+    return;
+  }
+
+  commandResultElement.textContent = String(text);
 }
 
 function setError(message) {
@@ -163,7 +413,7 @@ function setError(message) {
     return;
   }
 
-  errorElement.textContent = message;
+  errorElement.textContent = String(message);
 }
 
 function setCurrentSet(setId) {

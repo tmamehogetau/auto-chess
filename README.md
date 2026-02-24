@@ -73,7 +73,8 @@ await binding?.leave();
 
 - Start local static server: `npm run client:check`
 - Open `src/client/index.html` from the local server (do not use `file://`).
-- `src/client/manual-check.js` provides `Connect` / `Leave` controls for smoke checks.
+- `src/client/manual-check.js` provides `Connect` / `Leave` / `Ready` / `Prep Command` controls.
+- Placements format: `cell:unitType,cell:unitType` (example: `0:vanguard,1:assassin,4:ranger,5:ranger`).
 - Optional query params: `endpoint`, `roomName`, `setId`, `autoconnect=1`.
 
 Example:

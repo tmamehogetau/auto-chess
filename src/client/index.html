@@ -13,7 +13,7 @@
       }
 
       .panel {
-        max-width: 420px;
+        max-width: 640px;
         margin: 48px auto;
         padding: 20px;
         border: 1px solid #ddd;
@@ -34,7 +34,7 @@
       .row {
         display: grid;
         gap: 8px;
-        grid-template-columns: 96px 1fr;
+        grid-template-columns: 112px 1fr;
         align-items: center;
       }
 
@@ -48,9 +48,24 @@
         background: #fff;
       }
 
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+      }
+
       .actions {
         display: flex;
         gap: 8px;
+      }
+
+      .actions button {
+        min-width: 120px;
+      }
+
+      .hint {
+        color: #666;
+        margin: 0;
+        font-size: 13px;
       }
 
       .status {
@@ -66,6 +81,11 @@
       [data-set-id-display] {
         font-family: monospace;
         font-size: 15px;
+      }
+
+      [data-command-result],
+      [data-self-status] {
+        font-family: monospace;
       }
     </style>
   </head>
@@ -93,9 +113,48 @@
           <button data-connect-button type="button">Connect</button>
           <button data-leave-button type="button" disabled>Leave</button>
         </div>
+        <label class="row">
+          <span class="label">Ready</span>
+          <input data-ready-checkbox type="checkbox" checked />
+        </label>
+        <div class="actions">
+          <button data-ready-button type="button" disabled>Send Ready</button>
+        </div>
+        <label class="row">
+          <span class="label">CmdSeq</span>
+          <input data-cmdseq-input type="number" min="1" step="1" value="1" />
+        </label>
+        <label class="row">
+          <span class="label">Placements</span>
+          <input
+            data-placements-input
+            type="text"
+            value="0:vanguard,1:assassin,4:ranger,5:ranger"
+          />
+        </label>
+        <p class="hint">
+          format: cell:unitType,cell:unitType (unitType: vanguard/ranger/mage/assassin)
+        </p>
+        <div class="actions">
+          <button data-prep-button type="button" disabled>Send Prep Command</button>
+        </div>
         <p class="status">
           <span class="label">Status:</span>
           <strong data-connection-status>idle</strong>
+        </p>
+        <p class="status">
+          <span class="label">Phase:</span>
+          <strong data-phase-value>-</strong>
+          <span class="label">Round:</span>
+          <strong data-round-value>-</strong>
+        </p>
+        <p class="status">
+          <span class="label">Self:</span>
+          <strong data-self-status>-</strong>
+        </p>
+        <p class="status">
+          <span class="label">Command:</span>
+          <strong data-command-result>-</strong>
         </p>
         <p class="error" data-connection-error></p>
       </section>

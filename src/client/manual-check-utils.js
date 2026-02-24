@@ -2,6 +2,8 @@ const VALID_UNIT_TYPES = new Set(["vanguard", "ranger", "mage", "assassin"]);
 const MAX_BOARD_UNITS = 8;
 const MIN_CELL_INDEX = 0;
 const MAX_CELL_INDEX = 7;
+const DEFAULT_AUTO_DELAY_MS = 300;
+const MAX_AUTO_DELAY_MS = 30_000;
 
 export function parsePlacementsSpec(spec) {
   const trimmedSpec = String(spec ?? "").trim();
@@ -52,4 +54,32 @@ export function parsePlacementsSpec(spec) {
   placements.sort((left, right) => left.cell - right.cell);
 
   return placements;
+}
+
+export function parseAutoFlag(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return normalized === "1" || normalized === "true";
+}
+
+export function parseAutoDelayMs(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return DEFAULT_AUTO_DELAY_MS;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return DEFAULT_AUTO_DELAY_MS;
+  }
+
+  if (parsed > MAX_AUTO_DELAY_MS) {
+    return MAX_AUTO_DELAY_MS;
+  }
+
+  return parsed;
 }

@@ -1,4 +1,8 @@
-import { parsePlacementsSpec } from "./manual-check-utils.js";
+import {
+  parseAutoDelayMs,
+  parseAutoFlag,
+  parsePlacementsSpec,
+} from "./manual-check-utils.js";
 
 const VALID_SET_IDS = new Set(["set1", "set2"]);
 const DEFAULT_ROOM_NAME = "game";
@@ -35,6 +39,17 @@ const commandResultElement = document.querySelector("[data-command-result]");
 let activeRoom = null;
 let connecting = false;
 let currentPhase = null;
+let pendingAutoReadyTimeout = null;
+let pendingAutoPrepTimeout = null;
+let autoReadyCompleted = false;
+let autoPrepCompleted = false;
+
+const autoConfig = {
+  autoConnect: false,
+  autoReady: false,
+  autoPrep: false,
+  autoDelayMs: 300,
+};
 
 initializeDefaults();
 syncButtonAvailability();
@@ -93,6 +108,7 @@ async function connect() {
       syncNextCmdSeq(state, room.sessionId);
       currentPhase = readPhase(state?.phase);
       syncButtonAvailability();
+      maybeScheduleAutoPrep();
     });
 
     room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
@@ -100,6 +116,7 @@ async function connect() {
       setPhase(currentPhase);
       setRound(message?.roundIndex);
       syncButtonAvailability();
+      maybeScheduleAutoPrep();
     });
 
     room.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (result) => {
@@ -107,11 +124,15 @@ async function connect() {
     });
 
     room.onLeave(() => {
+      clearPendingAutoActions();
       activeRoom = null;
       currentPhase = null;
       setStatus("disconnected");
       syncButtonAvailability();
     });
+
+    maybeScheduleAutoReady();
+    maybeScheduleAutoPrep();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -131,6 +152,7 @@ async function leave() {
 
   const room = activeRoom;
 
+  clearPendingAutoActions();
   activeRoom = null;
   currentPhase = null;
   setStatus("disconnecting");
@@ -207,24 +229,45 @@ function sendPrepCommand() {
 }
 
 function initializeDefaults() {
+  const params = searchParams();
+
+  autoConfig.autoConnect = parseAutoFlag(params.get("autoconnect"));
+  autoConfig.autoReady = parseAutoFlag(params.get("autoReady"));
+  autoConfig.autoPrep = parseAutoFlag(params.get("autoPrep"));
+  autoConfig.autoDelayMs = parseAutoDelayMs(params.get("autoDelayMs"));
+
   if (endpointInput) {
     endpointInput.value =
-      searchParams().get("endpoint") ??
+      params.get("endpoint") ??
       `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:2567`;
   }
 
   if (roomInput) {
-    roomInput.value = searchParams().get("roomName") ?? DEFAULT_ROOM_NAME;
+    roomInput.value = params.get("roomName") ?? DEFAULT_ROOM_NAME;
   }
 
   if (setIdSelect) {
-    const setId = normalizeSetId(searchParams().get("setId"));
+    const setId = normalizeSetId(params.get("setId"));
 
     setIdSelect.value = setId ?? "";
   }
 
-  if (cmdSeqInput && !cmdSeqInput.value) {
-    cmdSeqInput.value = "1";
+  if (cmdSeqInput) {
+    const cmdSeqFromQuery = Number.parseInt(params.get("cmdSeq") ?? "", 10);
+
+    if (Number.isInteger(cmdSeqFromQuery) && cmdSeqFromQuery > 0) {
+      cmdSeqInput.value = String(cmdSeqFromQuery);
+    } else if (!cmdSeqInput.value) {
+      cmdSeqInput.value = "1";
+    }
+  }
+
+  if (placementsInput) {
+    const placementsFromQuery = params.get("placements");
+
+    if (typeof placementsFromQuery === "string" && placementsFromQuery.trim()) {
+      placementsInput.value = placementsFromQuery;
+    }
   }
 
   if (readyCheckbox) {
@@ -236,7 +279,7 @@ function initializeDefaults() {
   setSelfStatus("-");
   setCommandResult("-");
 
-  if (searchParams().get("autoconnect") === "1") {
+  if (autoConfig.autoConnect) {
     void connect();
   }
 }
@@ -422,4 +465,62 @@ function setCurrentSet(setId) {
   }
 
   setIdElement.textContent = normalizeSetId(setId) ?? "-";
+}
+
+function maybeScheduleAutoReady() {
+  if (!autoConfig.autoReady || autoReadyCompleted || pendingAutoReadyTimeout !== null) {
+    return;
+  }
+
+  if (!activeRoom || connecting) {
+    return;
+  }
+
+  pendingAutoReadyTimeout = setTimeout(() => {
+    pendingAutoReadyTimeout = null;
+
+    if (!activeRoom) {
+      return;
+    }
+
+    sendReady();
+    autoReadyCompleted = true;
+    maybeScheduleAutoPrep();
+  }, autoConfig.autoDelayMs);
+}
+
+function maybeScheduleAutoPrep() {
+  if (!autoConfig.autoPrep || autoPrepCompleted || pendingAutoPrepTimeout !== null) {
+    return;
+  }
+
+  if (!activeRoom || connecting || currentPhase !== "Prep") {
+    return;
+  }
+
+  pendingAutoPrepTimeout = setTimeout(() => {
+    pendingAutoPrepTimeout = null;
+
+    if (!activeRoom || currentPhase !== "Prep") {
+      return;
+    }
+
+    sendPrepCommand();
+    autoPrepCompleted = true;
+  }, autoConfig.autoDelayMs);
+}
+
+function clearPendingAutoActions() {
+  if (pendingAutoReadyTimeout !== null) {
+    clearTimeout(pendingAutoReadyTimeout);
+    pendingAutoReadyTimeout = null;
+  }
+
+  if (pendingAutoPrepTimeout !== null) {
+    clearTimeout(pendingAutoPrepTimeout);
+    pendingAutoPrepTimeout = null;
+  }
+
+  autoReadyCompleted = false;
+  autoPrepCompleted = false;
 }

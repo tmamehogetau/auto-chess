@@ -75,10 +75,16 @@ await binding?.leave();
 - Open `src/client/index.html` from the local server (do not use `file://`).
 - `src/client/manual-check.js` provides `Connect` / `Leave` / `Ready` / `Prep Command` controls.
 - Placements format: `cell:unitType,cell:unitType` (example: `0:vanguard,1:assassin,4:ranger,5:ranger`).
-- Optional query params: `endpoint`, `roomName`, `setId`, `autoconnect=1`.
+- Optional query params: `endpoint`, `roomName`, `setId`, `autoconnect=1`, `autoReady=1`, `autoPrep=1`, `autoDelayMs`, `cmdSeq`, `placements`.
 
 Example:
 
 ```text
 http://localhost:8080/src/client/index.html?endpoint=ws://localhost:2567&roomName=game&setId=set2&autoconnect=1
+```
+
+Auto run example:
+
+```text
+http://localhost:8080/src/client/index.html?endpoint=ws://localhost:2567&roomName=game&setId=set2&autoconnect=1&autoReady=1&autoPrep=1&autoDelayMs=400&cmdSeq=1&placements=0:vanguard,1:assassin,4:ranger,5:ranger
 ```

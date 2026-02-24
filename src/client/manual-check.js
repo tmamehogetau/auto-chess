@@ -44,6 +44,7 @@ const setIdElement = document.querySelector("[data-set-id-display]");
 const phaseElement = document.querySelector("[data-phase-value]");
 const roundElement = document.querySelector("[data-round-value]");
 const selfStatusElement = document.querySelector("[data-self-status]");
+const benchListElement = document.querySelector("[data-bench-list]");
 const commandResultElement = document.querySelector("[data-command-result]");
 
 let activeRoom = null;
@@ -378,6 +379,7 @@ function initializeDefaults() {
   setPhase("-");
   setRound("-");
   setSelfStatus("-");
+  setBenchList("-");
   setCommandResult("-");
   setAutoFillStatus();
 
@@ -493,12 +495,16 @@ function syncSelfStatusFromState(state, sessionId) {
 
   if (!player) {
     setSelfStatus("-");
+    setBenchList("-");
     return;
   }
 
+  const benchUnits = normalizeBenchUnits(player.benchUnits);
+
   setSelfStatus(
-    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${Array.isArray(player.benchUnits) ? player.benchUnits.length : Number(player.benchUnits?.length ?? 0)} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
+    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${benchUnits.length} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
   );
+  setBenchList(benchUnits.length > 0 ? benchUnits.join(",") : "(empty)");
 }
 
 function syncNextCmdSeq(state, sessionId) {
@@ -579,6 +585,14 @@ function setSelfStatus(text) {
   }
 
   selfStatusElement.textContent = String(text);
+}
+
+function setBenchList(text) {
+  if (!benchListElement) {
+    return;
+  }
+
+  benchListElement.textContent = String(text);
 }
 
 function setCommandResult(text) {
@@ -744,4 +758,20 @@ function parseOptionalBoolean(rawValue) {
   }
 
   return null;
+}
+
+function normalizeBenchUnits(rawBenchUnits) {
+  if (!rawBenchUnits) {
+    return [];
+  }
+
+  if (Array.isArray(rawBenchUnits)) {
+    return rawBenchUnits.map((unitType) => String(unitType));
+  }
+
+  try {
+    return Array.from(rawBenchUnits).map((unitType) => String(unitType));
+  } catch {
+    return [];
+  }
 }

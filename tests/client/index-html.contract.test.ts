@@ -33,6 +33,7 @@ describe("index.html contract", () => {
       "data-phase-value",
       "data-round-value",
       "data-self-status",
+      "data-bench-list",
       "data-command-result",
       "data-connection-error",
       "data-set-id-display",

@@ -7,7 +7,8 @@
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "client:check": "node scripts/serve-client-check.mjs"
   },
   "keywords": [],
   "author": "",

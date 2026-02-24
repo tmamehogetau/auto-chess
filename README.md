@@ -68,3 +68,16 @@ await binding?.leave();
 
 - `startSetIdDisplayBootstrap(options)` in `src/client/bootstrap.ts` wraps connect + attach with optional `setId` forwarding.
 - `src/client/index.html` has a minimal `[data-set-id-display]` template for manual checks.
+
+## Manual browser check
+
+- Start local static server: `npm run client:check`
+- Open `src/client/index.html` from the local server (do not use `file://`).
+- `src/client/manual-check.js` provides `Connect` / `Leave` controls for smoke checks.
+- Optional query params: `endpoint`, `roomName`, `setId`, `autoconnect=1`.
+
+Example:
+
+```text
+http://localhost:8080/src/client/index.html?endpoint=ws://localhost:2567&roomName=game&setId=set2&autoconnect=1
+```

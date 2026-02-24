@@ -812,7 +812,7 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.boardUnitCount).toBe(beforeBoardCount);
   });
 
-  test("benchSellIndexでbench売却するとgold+1がstateへ同期される", async () => {
+  test("benchSellIndexでbench売却すると購入時のコスト分goldがstateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([
       testServer.connectTo(serverRoom),
@@ -829,6 +829,8 @@ describe("GameRoom integration", () => {
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const targetClient = clients[0];
+    const beforeBuyPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeBuyGold = Number(beforeBuyPlayer?.gold ?? 0);
 
     targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
@@ -838,8 +840,11 @@ describe("GameRoom integration", () => {
     const buyResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
     expect(buyResult).toEqual({ accepted: true });
 
-    const beforeSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
-    const beforeSellGold = Number(beforeSellPlayer?.gold ?? 0);
+    const afterBuyPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const afterBuyGold = Number(afterBuyPlayer?.gold ?? 0);
+    const unitCost = beforeBuyGold - afterBuyGold;
+
+    const beforeSellGold = afterBuyGold;
 
     targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 2,
@@ -854,7 +859,7 @@ describe("GameRoom integration", () => {
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(0);
-    expect(afterPlayer?.gold).toBe(beforeSellGold + 1);
+    expect(afterPlayer?.gold).toBe(beforeSellGold + unitCost);
   });
 
   test("set2ルームではrangerスキル条件の差分が戦闘結果に反映される", async () => {

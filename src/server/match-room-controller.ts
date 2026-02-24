@@ -43,7 +43,6 @@ const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
 const MAX_BENCH_SIZE = 9;
-const BENCH_SELL_GOLD_GAIN = 1;
 const MIN_BOARD_CELL_INDEX = 0;
 const MAX_BOARD_CELL_INDEX = 7;
 const MAX_LEVEL = 6;
@@ -68,6 +67,11 @@ interface OwnedUnits {
   ranger: number;
   mage: number;
   assassin: number;
+}
+
+interface BenchUnit {
+  unitType: BoardUnitType;
+  cost: number;
 }
 
 type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
@@ -119,7 +123,7 @@ export class MatchRoomController {
 
   private readonly shopLockedByPlayer: Map<string, boolean>;
 
-  private readonly benchUnitsByPlayer: Map<string, BoardUnitType[]>;
+  private readonly benchUnitsByPlayer: Map<string, BenchUnit[]>;
 
   private readonly ownedUnitsByPlayer: Map<string, OwnedUnits>;
 
@@ -178,7 +182,7 @@ export class MatchRoomController {
     this.shopRefreshCountByPlayer = new Map<string, number>();
     this.shopPurchaseCountByPlayer = new Map<string, number>();
     this.shopLockedByPlayer = new Map<string, boolean>();
-    this.benchUnitsByPlayer = new Map<string, BoardUnitType[]>();
+    this.benchUnitsByPlayer = new Map<string, BenchUnit[]>();
     this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
@@ -350,6 +354,7 @@ export class MatchRoomController {
   } {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
+    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
 
     return {
       hp: state.getPlayerHp(playerId),
@@ -360,7 +365,7 @@ export class MatchRoomController {
       level: this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
       shopOffers: [...(this.shopOffersByPlayer.get(playerId) ?? [])],
       shopLocked: this.shopLockedByPlayer.get(playerId) ?? false,
-      benchUnits: [...(this.benchUnitsByPlayer.get(playerId) ?? [])],
+      benchUnits: benchUnits.map((benchUnit) => benchUnit.unitType),
       ownedUnits: {
         vanguard: ownedUnits?.vanguard ?? 0,
         ranger: ownedUnits?.ranger ?? 0,
@@ -835,7 +840,7 @@ export class MatchRoomController {
 
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
 
-    benchUnits.push(boughtOffer.unitType);
+    benchUnits.push({ unitType: boughtOffer.unitType, cost: boughtOffer.cost });
     this.benchUnitsByPlayer.set(playerId, benchUnits);
 
     const nextOwnedUnits: OwnedUnits = {
@@ -852,14 +857,14 @@ export class MatchRoomController {
   private deployBenchUnitToBoard(playerId: string, benchIndex: number, cell: number): void {
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
     const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
-    const unitType = benchUnits[benchIndex];
+    const benchUnit = benchUnits[benchIndex];
 
-    if (!unitType || boardPlacements.length >= 8) {
+    if (!benchUnit || boardPlacements.length >= 8) {
       return;
     }
 
     benchUnits.splice(benchIndex, 1);
-    boardPlacements.push({ cell, unitType });
+    boardPlacements.push({ cell, unitType: benchUnit.unitType });
     boardPlacements.sort((left, right) => left.cell - right.cell);
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);
@@ -869,11 +874,11 @@ export class MatchRoomController {
 
   private sellBenchUnit(playerId: string, benchIndex: number): void {
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
-    const unitType = benchUnits[benchIndex];
+    const benchUnit = benchUnits[benchIndex];
     const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
 
-    if (!unitType || !ownedUnits) {
+    if (!benchUnit || !ownedUnits) {
       return;
     }
 
@@ -886,11 +891,11 @@ export class MatchRoomController {
       assassin: ownedUnits.assassin,
     };
 
-    nextOwnedUnits[unitType] = Math.max(0, nextOwnedUnits[unitType] - 1);
+    nextOwnedUnits[benchUnit.unitType] = Math.max(0, nextOwnedUnits[benchUnit.unitType] - 1);
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
-    this.goldByPlayer.set(playerId, currentGold + BENCH_SELL_GOLD_GAIN);
+    this.goldByPlayer.set(playerId, currentGold + benchUnit.cost);
   }
 
   private buildShopOffers(

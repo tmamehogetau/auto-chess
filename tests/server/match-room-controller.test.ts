@@ -442,7 +442,7 @@ describe("MatchRoomController", () => {
     expect(status.boardUnitCount).toBe(1);
   });
 
-  test("benchSellIndexでベンチ売却するとgoldが1増える", () => {
+  test("benchSellIndexでベンチ売却すると購入時のコスト分goldが増える", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -455,10 +455,12 @@ describe("MatchRoomController", () => {
     controller.setReady("p4", true);
     controller.startIfReady(2_000);
 
+    const beforeBuyGold = controller.getPlayerStatus("p1").gold;
     const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
       shopBuySlotIndex: 0,
     });
-    const beforeSellGold = controller.getPlayerStatus("p1").gold;
+    const afterBuyGold = controller.getPlayerStatus("p1").gold;
+    const unitCost = beforeBuyGold - afterBuyGold;
     const beforeSellOwned = controller.getPlayerStatus("p1").ownedUnits;
     const soldUnitType = controller.getPlayerStatus("p1").benchUnits[0];
 
@@ -466,6 +468,7 @@ describe("MatchRoomController", () => {
       throw new Error("expected bench unit to sell");
     }
 
+    const beforeSellGold = controller.getPlayerStatus("p1").gold;
     const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
       benchSellIndex: 0,
     });
@@ -473,7 +476,7 @@ describe("MatchRoomController", () => {
 
     expect(buyResult).toEqual({ accepted: true });
     expect(sellResult).toEqual({ accepted: true });
-    expect(status.gold).toBe(beforeSellGold + 1);
+    expect(status.gold).toBe(beforeSellGold + unitCost);
     expect(status.benchUnits.length).toBe(0);
     expect(status.ownedUnits[soldUnitType]).toBe(beforeSellOwned[soldUnitType] - 1);
   });

@@ -504,7 +504,7 @@ function syncSelfStatusFromState(state, sessionId) {
   setSelfStatus(
     `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${benchUnits.length} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
   );
-  setBenchList(benchUnits.length > 0 ? benchUnits.join(",") : "(empty)");
+  setBenchList(formatBenchUnitsWithIndex(benchUnits));
 }
 
 function syncNextCmdSeq(state, sessionId) {
@@ -533,11 +533,81 @@ function setCommandResultFromResult(result) {
   }
 
   if (result?.accepted === false && typeof result.code === "string") {
-    setCommandResult(`rejected: ${result.code}`);
+    const code = result.code;
+    const hint = buildRejectHint(code);
+    setCommandResult(`rejected: ${code}${hint ? ` (${hint})` : ""}`);
     return;
   }
 
   setCommandResult("unknown result");
+}
+
+function buildRejectHint(code) {
+  switch (code) {
+    case "INVALID_PAYLOAD": {
+      const hints = [];
+
+      const cmdSeq = Number.parseInt(cmdSeqInput?.value ?? "", 10);
+      if (!Number.isInteger(cmdSeq) || cmdSeq < 1) {
+        hints.push("CmdSeq must be >= 1");
+      }
+
+      const xpPurchase = Number.parseInt(xpPurchaseInput?.value ?? "0", 10);
+      if (xpPurchaseInput?.value && (!Number.isInteger(xpPurchase) || xpPurchase < 0 || xpPurchase > 10)) {
+        hints.push("XP Buy must be 0-10");
+      }
+
+      const shopRefresh = Number.parseInt(shopRefreshInput?.value ?? "0", 10);
+      if (shopRefreshInput?.value && (!Number.isInteger(shopRefresh) || shopRefresh < 0 || shopRefresh > 5)) {
+        hints.push("Shop Refresh must be 0-5");
+      }
+
+      const shopBuySlot = Number.parseInt(shopBuySlotInput?.value ?? "", 10);
+      if (shopBuySlotInput?.value && (!Number.isInteger(shopBuySlot) || shopBuySlot < 0 || shopBuySlot > 4)) {
+        hints.push("Shop Buy Slot must be 0-4");
+      }
+
+      const benchDeployIndex = Number.parseInt(benchDeployIndexInput?.value ?? "", 10);
+      if (benchDeployIndexInput?.value && (!Number.isInteger(benchDeployIndex) || benchDeployIndex < 0 || benchDeployIndex > 8)) {
+        hints.push("Bench Deploy Index must be 0-8");
+      }
+
+      const benchDeployCell = Number.parseInt(benchDeployCellInput?.value ?? "", 10);
+      if (benchDeployCellInput?.value && (!Number.isInteger(benchDeployCell) || benchDeployCell < 0 || benchDeployCell > 7)) {
+        hints.push("Bench Deploy Cell must be 0-7");
+      }
+
+      const benchSell = Number.parseInt(benchSellIndexInput?.value ?? "", 10);
+      if (benchSellIndexInput?.value && (!Number.isInteger(benchSell) || benchSell < 0 || benchSell > 8)) {
+        hints.push("Bench Sell Index must be 0-8");
+      }
+
+      const shopLockValue = shopLockInput?.value?.trim();
+      if (shopLockValue && shopLockValue !== "skip" && shopLockValue !== "true" && shopLockValue !== "false") {
+        hints.push("Shop Lock must be skip/true/false");
+      }
+
+      if (hints.length > 0) {
+        return hints.join("; ");
+      }
+
+      return "check conflicting operations or empty bench/cell";
+    }
+    case "INSUFFICIENT_GOLD":
+      return "not enough gold for XP/Shop operations (sell bench units to get purchase cost back)";
+    case "BENCH_FULL":
+      return "bench is full (9/9)";
+    case "PHASE_MISMATCH":
+      return "not in Prep phase";
+    case "LATE_INPUT":
+      return "prep deadline passed";
+    case "DUPLICATE_CMD":
+      return "cmdSeq must increase";
+    case "UNKNOWN_PLAYER":
+      return "player not found";
+    default:
+      return "";
+  }
 }
 
 function readPhase(value) {
@@ -774,4 +844,12 @@ function normalizeBenchUnits(rawBenchUnits) {
   } catch {
     return [];
   }
+}
+
+function formatBenchUnitsWithIndex(benchUnits) {
+  if (benchUnits.length === 0) {
+    return "(empty)";
+  }
+
+  return benchUnits.map((unitType, index) => `${index}:${unitType}`).join(",");
 }

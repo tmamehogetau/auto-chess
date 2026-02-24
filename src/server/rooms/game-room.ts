@@ -223,9 +223,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       player.xp = latestStatus.xp;
       player.level = latestStatus.level;
       player.shopLocked = latestStatus.shopLocked;
+      player.ownedVanguard = latestStatus.ownedUnits.vanguard;
+      player.ownedRanger = latestStatus.ownedUnits.ranger;
+      player.ownedMage = latestStatus.ownedUnits.mage;
+      player.ownedAssassin = latestStatus.ownedUnits.assassin;
 
       while (player.shopOffers.length > 0) {
         player.shopOffers.pop();
+      }
+
+      while (player.benchUnits.length > 0) {
+        player.benchUnits.pop();
       }
 
       for (const offer of latestStatus.shopOffers) {
@@ -235,6 +243,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         nextOffer.cost = offer.cost;
         nextOffer.rarity = offer.rarity;
         player.shopOffers.push(nextOffer);
+      }
+
+      for (const benchUnit of latestStatus.benchUnits) {
+        player.benchUnits.push(benchUnit);
       }
     }
 
@@ -292,9 +304,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       playerState.xp = status.xp;
       playerState.level = status.level;
       playerState.shopLocked = status.shopLocked;
+      playerState.ownedVanguard = status.ownedUnits.vanguard;
+      playerState.ownedRanger = status.ownedUnits.ranger;
+      playerState.ownedMage = status.ownedUnits.mage;
+      playerState.ownedAssassin = status.ownedUnits.assassin;
 
       while (playerState.shopOffers.length > 0) {
         playerState.shopOffers.pop();
+      }
+
+      while (playerState.benchUnits.length > 0) {
+        playerState.benchUnits.pop();
       }
 
       for (const offer of status.shopOffers) {
@@ -304,6 +324,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         nextOffer.cost = offer.cost;
         nextOffer.rarity = offer.rarity;
         playerState.shopOffers.push(nextOffer);
+      }
+
+      for (const benchUnit of status.benchUnits) {
+        playerState.benchUnits.push(benchUnit);
       }
     }
 

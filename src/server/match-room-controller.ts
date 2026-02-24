@@ -42,6 +42,7 @@ const SHOP_REFRESH_COST = 2;
 const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
+const MAX_BENCH_SIZE = 9;
 const MAX_LEVEL = 6;
 const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   1: 2,
@@ -57,6 +58,13 @@ interface ShopOffer {
   unitType: BoardUnitType;
   rarity: UnitRarity;
   cost: number;
+}
+
+interface OwnedUnits {
+  vanguard: number;
+  ranger: number;
+  mage: number;
+  assassin: number;
 }
 
 type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
@@ -107,6 +115,10 @@ export class MatchRoomController {
   private readonly shopPurchaseCountByPlayer: Map<string, number>;
 
   private readonly shopLockedByPlayer: Map<string, boolean>;
+
+  private readonly benchUnitsByPlayer: Map<string, BoardUnitType[]>;
+
+  private readonly ownedUnitsByPlayer: Map<string, OwnedUnits>;
 
   private readonly readyDeadlineAtMs: number;
 
@@ -163,6 +175,8 @@ export class MatchRoomController {
     this.shopRefreshCountByPlayer = new Map<string, number>();
     this.shopPurchaseCountByPlayer = new Map<string, number>();
     this.shopLockedByPlayer = new Map<string, boolean>();
+    this.benchUnitsByPlayer = new Map<string, BoardUnitType[]>();
+    this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
@@ -192,6 +206,13 @@ export class MatchRoomController {
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
       this.shopLockedByPlayer.set(playerId, false);
+      this.benchUnitsByPlayer.set(playerId, []);
+      this.ownedUnitsByPlayer.set(playerId, {
+        vanguard: 0,
+        ranger: 0,
+        mage: 0,
+        assassin: 0,
+      });
     }
   }
 
@@ -321,8 +342,11 @@ export class MatchRoomController {
     level: number;
     shopOffers: ShopOffer[];
     shopLocked: boolean;
+    benchUnits: BoardUnitType[];
+    ownedUnits: OwnedUnits;
   } {
     const state = this.ensureStarted();
+    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
 
     return {
       hp: state.getPlayerHp(playerId),
@@ -333,6 +357,13 @@ export class MatchRoomController {
       level: this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
       shopOffers: [...(this.shopOffersByPlayer.get(playerId) ?? [])],
       shopLocked: this.shopLockedByPlayer.get(playerId) ?? false,
+      benchUnits: [...(this.benchUnitsByPlayer.get(playerId) ?? [])],
+      ownedUnits: {
+        vanguard: ownedUnits?.vanguard ?? 0,
+        ranger: ownedUnits?.ranger ?? 0,
+        mage: ownedUnits?.mage ?? 0,
+        assassin: ownedUnits?.assassin ?? 0,
+      },
     };
   }
 
@@ -534,9 +565,14 @@ export class MatchRoomController {
     if (shopBuySlotIndex !== null) {
       const offers = this.shopOffersByPlayer.get(playerId) ?? [];
       const targetOffer = offers[shopBuySlotIndex];
+      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
 
       if (!targetOffer) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      if (benchUnits.length >= MAX_BENCH_SIZE) {
+        return { accepted: false, code: "BENCH_FULL" };
       }
 
       shopBuyCost = targetOffer.cost;
@@ -683,8 +719,15 @@ export class MatchRoomController {
     const offers = [...(this.shopOffersByPlayer.get(playerId) ?? [])];
     const refreshCount = this.shopRefreshCountByPlayer.get(playerId) ?? 0;
     const purchaseCount = (this.shopPurchaseCountByPlayer.get(playerId) ?? 0) + 1;
+    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
 
     if (!offers[slotIndex]) {
+      return;
+    }
+
+    const boughtOffer = offers[slotIndex];
+
+    if (!boughtOffer || !ownedUnits) {
       return;
     }
 
@@ -700,6 +743,21 @@ export class MatchRoomController {
 
     this.shopPurchaseCountByPlayer.set(playerId, purchaseCount);
     this.shopOffersByPlayer.set(playerId, offers);
+
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+
+    benchUnits.push(boughtOffer.unitType);
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+
+    const nextOwnedUnits: OwnedUnits = {
+      vanguard: ownedUnits.vanguard,
+      ranger: ownedUnits.ranger,
+      mage: ownedUnits.mage,
+      assassin: ownedUnits.assassin,
+    };
+
+    nextOwnedUnits[boughtOffer.unitType] += 1;
+    this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
   }
 
   private buildShopOffers(

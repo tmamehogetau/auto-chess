@@ -623,6 +623,7 @@ describe("GameRoom integration", () => {
     const targetClient = clients[0];
     const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
     const firstOfferCost = beforePlayer?.shopOffers[0]?.cost ?? 0;
+    const firstOfferUnitType = beforePlayer?.shopOffers[0]?.unitType;
     const beforeOffers =
       beforePlayer?.shopOffers
         .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
@@ -645,6 +646,22 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.gold).toBe(15 - firstOfferCost);
     expect(afterPlayer?.shopOffers.length).toBe(5);
     expect(afterOffers).not.toBe(beforeOffers);
+    expect(afterPlayer?.benchUnits.length).toBe(1);
+
+    if (!firstOfferUnitType) {
+      throw new Error("Expected first offer unit type");
+    }
+
+    expect(afterPlayer?.benchUnits[0]).toBe(firstOfferUnitType);
+
+    const ownedCountByUnitType: Record<string, number> = {
+      vanguard: Number(afterPlayer?.ownedVanguard ?? 0),
+      ranger: Number(afterPlayer?.ownedRanger ?? 0),
+      mage: Number(afterPlayer?.ownedMage ?? 0),
+      assassin: Number(afterPlayer?.ownedAssassin ?? 0),
+    };
+
+    expect(ownedCountByUnitType[firstOfferUnitType]).toBe(1);
   });
 
   test("shopLock=trueで次ラウンドPrepでもshopOffersが維持される", async () => {

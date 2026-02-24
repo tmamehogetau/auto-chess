@@ -45,7 +45,8 @@ export type CommandRejectCode =
   | "DUPLICATE_CMD"
   | "UNKNOWN_PLAYER"
   | "INVALID_PAYLOAD"
-  | "INSUFFICIENT_GOLD";
+  | "INSUFFICIENT_GOLD"
+  | "BENCH_FULL";
 
 export type CommandResult =
   | { accepted: true }

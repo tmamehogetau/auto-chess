@@ -38,6 +38,16 @@ export class PlayerPresenceState extends Schema {
 
   declare public level: number;
 
+  declare public benchUnits: ArraySchema<string>;
+
+  declare public ownedVanguard: number;
+
+  declare public ownedRanger: number;
+
+  declare public ownedMage: number;
+
+  declare public ownedAssassin: number;
+
   declare public lastCmdSeq: number;
 
   public constructor() {
@@ -52,6 +62,11 @@ export class PlayerPresenceState extends Schema {
     this.gold = 15;
     this.xp = 0;
     this.level = 1;
+    this.benchUnits = new ArraySchema<string>();
+    this.ownedVanguard = 0;
+    this.ownedRanger = 0;
+    this.ownedMage = 0;
+    this.ownedAssassin = 0;
     this.lastCmdSeq = 0;
   }
 }
@@ -100,6 +115,11 @@ defineTypes(PlayerPresenceState, {
   gold: "number",
   xp: "number",
   level: "number",
+  benchUnits: ["string"],
+  ownedVanguard: "number",
+  ownedRanger: "number",
+  ownedMage: "number",
+  ownedAssassin: "number",
   lastCmdSeq: "number",
 });
 

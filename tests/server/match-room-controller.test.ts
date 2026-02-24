@@ -80,6 +80,13 @@ describe("MatchRoomController", () => {
       gold: 15,
       xp: 0,
       level: 1,
+      benchUnits: [],
+      ownedUnits: {
+        vanguard: 0,
+        ranger: 0,
+        mage: 0,
+        assassin: 0,
+      },
     });
   });
 
@@ -336,6 +343,73 @@ describe("MatchRoomController", () => {
 
     expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
     expect(controller.getPlayerStatus("p1").gold).toBe(15);
+  });
+
+  test("shopBuySlotIndexでベンチと所持ユニットが増える", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const beforeStatus = controller.getPlayerStatus("p1");
+    const firstUnitType = beforeStatus.shopOffers[0]?.unitType;
+    const result = controller.submitPrepCommand("p1", 1, 3_000, {
+      shopBuySlotIndex: 0,
+    });
+    const afterStatus = controller.getPlayerStatus("p1");
+
+    expect(result).toEqual({ accepted: true });
+    expect(afterStatus.benchUnits.length).toBe(1);
+    expect(firstUnitType).toBeDefined();
+    expect(afterStatus.benchUnits[0]).toBe(firstUnitType);
+
+    if (!firstUnitType) {
+      throw new Error("expected first shop unit type");
+    }
+
+    expect(afterStatus.ownedUnits[firstUnitType]).toBe(1);
+  });
+
+  test("ベンチ満杯でshopBuySlotIndexはBENCH_FULLで却下される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const internalBenchMap = (controller as unknown as {
+      benchUnitsByPlayer: Map<string, ("vanguard" | "ranger" | "mage" | "assassin")[]>;
+    }).benchUnitsByPlayer;
+    internalBenchMap.set("p1", [
+      "vanguard",
+      "vanguard",
+      "vanguard",
+      "vanguard",
+      "vanguard",
+      "vanguard",
+      "vanguard",
+      "vanguard",
+      "vanguard",
+    ]);
+
+    const result = controller.submitPrepCommand("p1", 1, 3_000, {
+      shopBuySlotIndex: 0,
+    });
+
+    expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
   });
 
   test("Eliminationで生存者1人ならEndへ遷移する", () => {

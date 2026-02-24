@@ -412,6 +412,100 @@ describe("MatchRoomController", () => {
     expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
   });
 
+  test("benchToBoardCellでベンチユニットを盤面に配置できる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      shopBuySlotIndex: 0,
+    });
+    const deployResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      benchToBoardCell: {
+        benchIndex: 0,
+        cell: 3,
+      },
+    });
+    const status = controller.getPlayerStatus("p1");
+
+    expect(buyResult).toEqual({ accepted: true });
+    expect(deployResult).toEqual({ accepted: true });
+    expect(status.benchUnits.length).toBe(0);
+    expect(status.boardUnitCount).toBe(1);
+  });
+
+  test("benchSellIndexでベンチ売却するとgoldが1増える", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      shopBuySlotIndex: 0,
+    });
+    const beforeSellGold = controller.getPlayerStatus("p1").gold;
+    const beforeSellOwned = controller.getPlayerStatus("p1").ownedUnits;
+    const soldUnitType = controller.getPlayerStatus("p1").benchUnits[0];
+
+    if (!soldUnitType) {
+      throw new Error("expected bench unit to sell");
+    }
+
+    const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      benchSellIndex: 0,
+    });
+    const status = controller.getPlayerStatus("p1");
+
+    expect(buyResult).toEqual({ accepted: true });
+    expect(sellResult).toEqual({ accepted: true });
+    expect(status.gold).toBe(beforeSellGold + 1);
+    expect(status.benchUnits.length).toBe(0);
+    expect(status.ownedUnits[soldUnitType]).toBe(beforeSellOwned[soldUnitType] - 1);
+  });
+
+  test("benchToBoardCellとbenchSellIndexを同時指定するとINVALID_PAYLOAD", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    controller.submitPrepCommand("p1", 1, 3_000, {
+      shopBuySlotIndex: 0,
+    });
+
+    const result = controller.submitPrepCommand("p1", 2, 3_100, {
+      benchToBoardCell: {
+        benchIndex: 0,
+        cell: 1,
+      },
+      benchSellIndex: 0,
+    });
+
+    expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+  });
+
   test("Eliminationで生存者1人ならEndへ遷移する", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

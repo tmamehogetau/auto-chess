@@ -43,6 +43,9 @@ const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
 const MAX_BENCH_SIZE = 9;
+const BENCH_SELL_GOLD_GAIN = 1;
+const MIN_BOARD_CELL_INDEX = 0;
+const MAX_BOARD_CELL_INDEX = 7;
 const MAX_LEVEL = 6;
 const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   1: 2,
@@ -472,6 +475,11 @@ export class MatchRoomController {
       shopRefreshCount?: number;
       shopBuySlotIndex?: number;
       shopLock?: boolean;
+      benchToBoardCell?: {
+        benchIndex: number;
+        cell: number;
+      };
+      benchSellIndex?: number;
     },
   ): CommandResult {
     if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
@@ -519,6 +527,13 @@ export class MatchRoomController {
     let xpPurchaseCount = 0;
     let shopRefreshCount = 0;
     let shopBuySlotIndex: number | null = null;
+    let benchToBoardCell:
+      | {
+          benchIndex: number;
+          cell: number;
+        }
+      | null = null;
+    let benchSellIndex: number | null = null;
 
     if (commandPayload?.xpPurchaseCount !== undefined) {
       xpPurchaseCount = commandPayload.xpPurchaseCount;
@@ -558,6 +573,67 @@ export class MatchRoomController {
 
     if (shopBuySlotIndex !== null && shopRefreshCount > 0) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (commandPayload?.benchToBoardCell !== undefined) {
+      const benchIndex = commandPayload.benchToBoardCell.benchIndex;
+      const cell = commandPayload.benchToBoardCell.cell;
+
+      if (
+        !Number.isInteger(benchIndex) ||
+        benchIndex < 0 ||
+        !Number.isInteger(cell) ||
+        cell < MIN_BOARD_CELL_INDEX ||
+        cell > MAX_BOARD_CELL_INDEX
+      ) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      benchToBoardCell = {
+        benchIndex,
+        cell,
+      };
+    }
+
+    if (commandPayload?.benchSellIndex !== undefined) {
+      benchSellIndex = commandPayload.benchSellIndex;
+
+      if (!Number.isInteger(benchSellIndex) || benchSellIndex < 0) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
+    if (benchToBoardCell && benchSellIndex !== null) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (benchSellIndex !== null && shopBuySlotIndex !== null) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (benchToBoardCell) {
+      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+      const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+
+      if (!benchUnits[benchToBoardCell.benchIndex]) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      const duplicatedCell = boardPlacements.some(
+        (placement) => placement.cell === benchToBoardCell?.cell,
+      );
+
+      if (duplicatedCell) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
+    if (benchSellIndex !== null) {
+      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+
+      if (!benchUnits[benchSellIndex]) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
     }
 
     let shopBuyCost = 0;
@@ -606,6 +682,14 @@ export class MatchRoomController {
 
     if (commandPayload?.shopLock !== undefined) {
       this.shopLockedByPlayer.set(playerId, commandPayload.shopLock);
+    }
+
+    if (benchToBoardCell) {
+      this.deployBenchUnitToBoard(playerId, benchToBoardCell.benchIndex, benchToBoardCell.cell);
+    }
+
+    if (benchSellIndex !== null) {
+      this.sellBenchUnit(playerId, benchSellIndex);
     }
 
     this.lastCmdSeqByPlayer.set(playerId, cmdSeq);
@@ -758,6 +842,50 @@ export class MatchRoomController {
 
     nextOwnedUnits[boughtOffer.unitType] += 1;
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
+  }
+
+  private deployBenchUnitToBoard(playerId: string, benchIndex: number, cell: number): void {
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const unitType = benchUnits[benchIndex];
+
+    if (!unitType) {
+      return;
+    }
+
+    benchUnits.splice(benchIndex, 1);
+    boardPlacements.push({ cell, unitType });
+    boardPlacements.sort((left, right) => left.cell - right.cell);
+
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+  }
+
+  private sellBenchUnit(playerId: string, benchIndex: number): void {
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const unitType = benchUnits[benchIndex];
+    const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
+    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
+
+    if (!unitType || !ownedUnits) {
+      return;
+    }
+
+    benchUnits.splice(benchIndex, 1);
+
+    const nextOwnedUnits: OwnedUnits = {
+      vanguard: ownedUnits.vanguard,
+      ranger: ownedUnits.ranger,
+      mage: ownedUnits.mage,
+      assassin: ownedUnits.assassin,
+    };
+
+    nextOwnedUnits[unitType] = Math.max(0, nextOwnedUnits[unitType] - 1);
+
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
+    this.goldByPlayer.set(playerId, currentGold + BENCH_SELL_GOLD_GAIN);
   }
 
   private buildShopOffers(

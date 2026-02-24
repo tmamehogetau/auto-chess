@@ -28,6 +28,11 @@ export interface PrepCommandMessage {
   shopRefreshCount?: number;
   shopBuySlotIndex?: number;
   shopLock?: boolean;
+  benchToBoardCell?: {
+    benchIndex: number;
+    cell: number;
+  };
+  benchSellIndex?: number;
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";

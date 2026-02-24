@@ -168,6 +168,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           shopRefreshCount?: number;
           shopBuySlotIndex?: number;
           shopLock?: boolean;
+          benchToBoardCell?: {
+            benchIndex: number;
+            cell: number;
+          };
+          benchSellIndex?: number;
         }
       | undefined;
 
@@ -177,7 +182,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       message.xpPurchaseCount !== undefined ||
       message.shopRefreshCount !== undefined ||
       message.shopBuySlotIndex !== undefined ||
-      message.shopLock !== undefined
+      message.shopLock !== undefined ||
+      message.benchToBoardCell !== undefined ||
+      message.benchSellIndex !== undefined
     ) {
       commandPayload = {};
 
@@ -203,6 +210,14 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       if (message.shopLock !== undefined) {
         commandPayload.shopLock = message.shopLock;
+      }
+
+      if (message.benchToBoardCell !== undefined) {
+        commandPayload.benchToBoardCell = message.benchToBoardCell;
+      }
+
+      if (message.benchSellIndex !== undefined) {
+        commandPayload.benchSellIndex = message.benchSellIndex;
       }
     }
 

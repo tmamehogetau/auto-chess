@@ -31,6 +31,9 @@ const xpPurchaseInput = document.querySelector("[data-xp-purchase-input]");
 const shopRefreshInput = document.querySelector("[data-shop-refresh-input]");
 const shopBuySlotInput = document.querySelector("[data-shop-buy-slot-input]");
 const shopLockInput = document.querySelector("[data-shop-lock-input]");
+const benchDeployIndexInput = document.querySelector("[data-bench-deploy-index-input]");
+const benchDeployCellInput = document.querySelector("[data-bench-deploy-cell-input]");
+const benchSellIndexInput = document.querySelector("[data-bench-sell-index-input]");
 const placementsInput = document.querySelector("[data-placements-input]");
 const prepButton = document.querySelector("[data-prep-button]");
 
@@ -241,6 +244,24 @@ function sendPrepCommand() {
       "shopBuySlotIndex must be between 0 and 4",
     );
     const shopLock = parseOptionalBoolean(shopLockInput?.value);
+    const benchDeployIndex = parseOptionalIntegerInRange(
+      benchDeployIndexInput?.value,
+      0,
+      8,
+      "benchDeployIndex must be between 0 and 8",
+    );
+    const benchDeployCell = parseOptionalIntegerInRange(
+      benchDeployCellInput?.value,
+      0,
+      7,
+      "benchDeployCell must be between 0 and 7",
+    );
+    const benchSellIndex = parseOptionalIntegerInRange(
+      benchSellIndexInput?.value,
+      0,
+      8,
+      "benchSellIndex must be between 0 and 8",
+    );
 
     if (boardPlacements.length > 0) {
       payload.boardPlacements = boardPlacements;
@@ -260,6 +281,22 @@ function sendPrepCommand() {
 
     if (shopLock !== null) {
       payload.shopLock = shopLock;
+    }
+
+    if (benchDeployIndex !== null || benchDeployCell !== null) {
+      if (benchDeployIndex === null || benchDeployCell === null) {
+        setError("bench deploy needs both index and cell");
+        return;
+      }
+
+      payload.benchToBoardCell = {
+        benchIndex: benchDeployIndex,
+        cell: benchDeployCell,
+      };
+    }
+
+    if (benchSellIndex !== null) {
+      payload.benchSellIndex = benchSellIndex;
     }
 
     if (Object.keys(payload).length <= 1) {
@@ -421,6 +458,18 @@ function syncButtonAvailability() {
 
   if (shopLockInput) {
     shopLockInput.disabled = connecting || !connected;
+  }
+
+  if (benchDeployIndexInput) {
+    benchDeployIndexInput.disabled = connecting || !connected;
+  }
+
+  if (benchDeployCellInput) {
+    benchDeployCellInput.disabled = connecting || !connected;
+  }
+
+  if (benchSellIndexInput) {
+    benchSellIndexInput.disabled = connecting || !connected;
   }
 
   if (autoFillInput) {

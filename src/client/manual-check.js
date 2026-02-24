@@ -27,6 +27,10 @@ const leaveButton = document.querySelector("[data-leave-button]");
 const readyCheckbox = document.querySelector("[data-ready-checkbox]");
 const readyButton = document.querySelector("[data-ready-button]");
 const cmdSeqInput = document.querySelector("[data-cmdseq-input]");
+const xpPurchaseInput = document.querySelector("[data-xp-purchase-input]");
+const shopRefreshInput = document.querySelector("[data-shop-refresh-input]");
+const shopBuySlotInput = document.querySelector("[data-shop-buy-slot-input]");
+const shopLockInput = document.querySelector("[data-shop-lock-input]");
 const placementsInput = document.querySelector("[data-placements-input]");
 const prepButton = document.querySelector("[data-prep-button]");
 
@@ -216,17 +220,54 @@ function sendPrepCommand() {
   }
 
   try {
+    const payload = { cmdSeq };
     const boardPlacements = parsePlacementsSpec(placementsInput?.value ?? "");
+    const xpPurchaseCount = parseOptionalIntegerInRange(
+      xpPurchaseInput?.value,
+      0,
+      10,
+      "xpPurchaseCount must be between 0 and 10",
+    );
+    const shopRefreshCount = parseOptionalIntegerInRange(
+      shopRefreshInput?.value,
+      0,
+      5,
+      "shopRefreshCount must be between 0 and 5",
+    );
+    const shopBuySlotIndex = parseOptionalIntegerInRange(
+      shopBuySlotInput?.value,
+      0,
+      4,
+      "shopBuySlotIndex must be between 0 and 4",
+    );
+    const shopLock = parseOptionalBoolean(shopLockInput?.value);
 
-    if (boardPlacements.length === 0) {
-      setError("placements are required");
+    if (boardPlacements.length > 0) {
+      payload.boardPlacements = boardPlacements;
+    }
+
+    if (xpPurchaseCount !== null && xpPurchaseCount > 0) {
+      payload.xpPurchaseCount = xpPurchaseCount;
+    }
+
+    if (shopRefreshCount !== null && shopRefreshCount > 0) {
+      payload.shopRefreshCount = shopRefreshCount;
+    }
+
+    if (shopBuySlotIndex !== null) {
+      payload.shopBuySlotIndex = shopBuySlotIndex;
+    }
+
+    if (shopLock !== null) {
+      payload.shopLock = shopLock;
+    }
+
+    if (Object.keys(payload).length <= 1) {
+      setError("prep payload is empty");
       return;
     }
 
-    activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq,
-      boardPlacements,
-    });
+    activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, payload);
 
     setError("");
     setCommandResult(`prep sent: cmdSeq=${cmdSeq}`);
@@ -366,6 +407,22 @@ function syncButtonAvailability() {
     placementsInput.disabled = connecting || !connected;
   }
 
+  if (xpPurchaseInput) {
+    xpPurchaseInput.disabled = connecting || !connected;
+  }
+
+  if (shopRefreshInput) {
+    shopRefreshInput.disabled = connecting || !connected;
+  }
+
+  if (shopBuySlotInput) {
+    shopBuySlotInput.disabled = connecting || !connected;
+  }
+
+  if (shopLockInput) {
+    shopLockInput.disabled = connecting || !connected;
+  }
+
   if (autoFillInput) {
     autoFillInput.disabled = connecting || connected;
   }
@@ -391,7 +448,7 @@ function syncSelfStatusFromState(state, sessionId) {
   }
 
   setSelfStatus(
-    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} seq=${Number(player.lastCmdSeq)}`,
+    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${Array.isArray(player.benchUnits) ? player.benchUnits.length : Number(player.benchUnits?.length ?? 0)} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
   );
 }
 
@@ -610,4 +667,32 @@ function clearPendingAutoActions() {
 
   autoReadyCompleted = false;
   autoPrepCompleted = false;
+}
+
+function parseOptionalIntegerInRange(rawValue, minValue, maxValue, errorMessage) {
+  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(rawValue), 10);
+
+  if (!Number.isInteger(parsed) || parsed < minValue || parsed > maxValue) {
+    throw new Error(errorMessage);
+  }
+
+  return parsed;
+}
+
+function parseOptionalBoolean(rawValue) {
+  const normalized = String(rawValue ?? "skip").trim().toLowerCase();
+
+  if (normalized === "true") {
+    return true;
+  }
+
+  if (normalized === "false") {
+    return false;
+  }
+
+  return null;
 }

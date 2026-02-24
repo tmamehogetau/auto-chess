@@ -129,6 +129,26 @@
           <input data-cmdseq-input type="number" min="1" step="1" value="1" />
         </label>
         <label class="row">
+          <span class="label">XP Buy</span>
+          <input data-xp-purchase-input type="number" min="0" max="10" step="1" value="0" />
+        </label>
+        <label class="row">
+          <span class="label">Shop Refresh</span>
+          <input data-shop-refresh-input type="number" min="0" max="5" step="1" value="0" />
+        </label>
+        <label class="row">
+          <span class="label">Shop Buy Slot</span>
+          <input data-shop-buy-slot-input type="number" min="0" max="4" step="1" placeholder="skip" />
+        </label>
+        <label class="row">
+          <span class="label">Shop Lock</span>
+          <select data-shop-lock-input>
+            <option value="skip">skip</option>
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        </label>
+        <label class="row">
           <span class="label">Placements</span>
           <input
             data-placements-input

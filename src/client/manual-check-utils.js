@@ -4,6 +4,8 @@ const MIN_CELL_INDEX = 0;
 const MAX_CELL_INDEX = 7;
 const DEFAULT_AUTO_DELAY_MS = 300;
 const MAX_AUTO_DELAY_MS = 30_000;
+const MIN_AUTO_FILL_BOTS = 0;
+const MAX_AUTO_FILL_BOTS = 3;
 
 export function parsePlacementsSpec(spec) {
   const trimmedSpec = String(spec ?? "").trim();
@@ -79,6 +81,24 @@ export function parseAutoDelayMs(value) {
 
   if (parsed > MAX_AUTO_DELAY_MS) {
     return MAX_AUTO_DELAY_MS;
+  }
+
+  return parsed;
+}
+
+export function parseAutoFillBots(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return MIN_AUTO_FILL_BOTS;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed < MIN_AUTO_FILL_BOTS) {
+    return MIN_AUTO_FILL_BOTS;
+  }
+
+  if (parsed > MAX_AUTO_FILL_BOTS) {
+    return MAX_AUTO_FILL_BOTS;
   }
 
   return parsed;

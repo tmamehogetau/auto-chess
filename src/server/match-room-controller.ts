@@ -1,5 +1,6 @@
 import { GameLoopState, type Phase } from "../domain/game-loop-state";
 import type {
+  BoardUnitType,
   BoardUnitPlacement,
   CommandResult,
 } from "../shared/room-messages";
@@ -30,6 +31,51 @@ interface BattlePairing {
   ghostSourcePlayerId: string | null;
 }
 
+const INITIAL_GOLD = 15;
+const INITIAL_XP = 0;
+const INITIAL_LEVEL = 1;
+const PREP_BASE_INCOME = 5;
+const XP_PURCHASE_COST = 4;
+const XP_PURCHASE_GAIN = 4;
+const MAX_XP_PURCHASE_COUNT = 10;
+const SHOP_REFRESH_COST = 2;
+const MAX_SHOP_REFRESH_COUNT = 5;
+const SHOP_SIZE = 5;
+const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
+const MAX_LEVEL = 6;
+const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
+  1: 2,
+  2: 2,
+  3: 6,
+  4: 10,
+  5: 20,
+};
+
+type UnitRarity = 1 | 2 | 3;
+
+interface ShopOffer {
+  unitType: BoardUnitType;
+  rarity: UnitRarity;
+  cost: number;
+}
+
+type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
+
+const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<UnitRarity, readonly BoardUnitType[]>> = {
+  1: ["vanguard", "ranger"],
+  2: ["mage", "assassin"],
+  3: ["assassin", "mage"],
+};
+
+const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, number]>> = {
+  1: [1, 0, 0],
+  2: [0.8, 0.2, 0],
+  3: [0.6, 0.35, 0.05],
+  4: [0.45, 0.4, 0.15],
+  5: [0.3, 0.45, 0.25],
+  6: [0.2, 0.45, 0.35],
+};
+
 interface MatchupOutcome {
   winnerId: string;
   loserId: string;
@@ -47,6 +93,20 @@ export class MatchRoomController {
   private readonly boardUnitCountByPlayer: Map<string, number>;
 
   private readonly boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+
+  private readonly goldByPlayer: Map<string, number>;
+
+  private readonly xpByPlayer: Map<string, number>;
+
+  private readonly levelByPlayer: Map<string, number>;
+
+  private readonly shopOffersByPlayer: Map<string, ShopOffer[]>;
+
+  private readonly shopRefreshCountByPlayer: Map<string, number>;
+
+  private readonly shopPurchaseCountByPlayer: Map<string, number>;
+
+  private readonly shopLockedByPlayer: Map<string, boolean>;
 
   private readonly readyDeadlineAtMs: number;
 
@@ -96,6 +156,13 @@ export class MatchRoomController {
     this.lastCmdSeqByPlayer = new Map<string, number>();
     this.boardUnitCountByPlayer = new Map<string, number>();
     this.boardPlacementsByPlayer = new Map<string, BoardUnitPlacement[]>();
+    this.goldByPlayer = new Map<string, number>();
+    this.xpByPlayer = new Map<string, number>();
+    this.levelByPlayer = new Map<string, number>();
+    this.shopOffersByPlayer = new Map<string, ShopOffer[]>();
+    this.shopRefreshCountByPlayer = new Map<string, number>();
+    this.shopPurchaseCountByPlayer = new Map<string, number>();
+    this.shopLockedByPlayer = new Map<string, boolean>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
@@ -118,6 +185,13 @@ export class MatchRoomController {
       this.lastCmdSeqByPlayer.set(playerId, 0);
       this.boardUnitCountByPlayer.set(playerId, 4);
       this.boardPlacementsByPlayer.set(playerId, []);
+      this.goldByPlayer.set(playerId, INITIAL_GOLD);
+      this.xpByPlayer.set(playerId, INITIAL_XP);
+      this.levelByPlayer.set(playerId, INITIAL_LEVEL);
+      this.shopOffersByPlayer.set(playerId, []);
+      this.shopRefreshCountByPlayer.set(playerId, 0);
+      this.shopPurchaseCountByPlayer.set(playerId, 0);
+      this.shopLockedByPlayer.set(playerId, false);
     }
   }
 
@@ -201,6 +275,7 @@ export class MatchRoomController {
     }
 
     this.gameLoopState = new GameLoopState(this.playerIds);
+    this.initializeShopsForPrep();
     this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
     this.battleDeadlineAtMs = null;
     this.settleDeadlineAtMs = null;
@@ -241,6 +316,11 @@ export class MatchRoomController {
     hp: number;
     eliminated: boolean;
     boardUnitCount: number;
+    gold: number;
+    xp: number;
+    level: number;
+    shopOffers: ShopOffer[];
+    shopLocked: boolean;
   } {
     const state = this.ensureStarted();
 
@@ -248,6 +328,11 @@ export class MatchRoomController {
       hp: state.getPlayerHp(playerId),
       eliminated: state.isPlayerEliminated(playerId),
       boardUnitCount: this.boardUnitCountByPlayer.get(playerId) ?? 4,
+      gold: this.goldByPlayer.get(playerId) ?? INITIAL_GOLD,
+      xp: this.xpByPlayer.get(playerId) ?? INITIAL_XP,
+      level: this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
+      shopOffers: [...(this.shopOffersByPlayer.get(playerId) ?? [])],
+      shopLocked: this.shopLockedByPlayer.get(playerId) ?? false,
     };
   }
 
@@ -326,6 +411,8 @@ export class MatchRoomController {
           }
 
           this.pendingRoundDamageByPlayer.clear();
+          this.applyPrepIncome();
+          this.refreshShopsForPrep();
           this.hpAtBattleStartByPlayer = new Map<string, number>();
           this.hpAfterBattleByPlayer = new Map<string, number>();
           this.battleParticipantIds = [];
@@ -350,6 +437,10 @@ export class MatchRoomController {
     commandPayload?: {
       boardUnitCount?: number;
       boardPlacements?: BoardUnitPlacement[];
+      xpPurchaseCount?: number;
+      shopRefreshCount?: number;
+      shopBuySlotIndex?: number;
+      shopLock?: boolean;
     },
   ): CommandResult {
     if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
@@ -394,9 +485,308 @@ export class MatchRoomController {
       this.boardUnitCountByPlayer.set(playerId, normalizedPlacements.length);
     }
 
+    let xpPurchaseCount = 0;
+    let shopRefreshCount = 0;
+    let shopBuySlotIndex: number | null = null;
+
+    if (commandPayload?.xpPurchaseCount !== undefined) {
+      xpPurchaseCount = commandPayload.xpPurchaseCount;
+
+      if (
+        !Number.isInteger(xpPurchaseCount) ||
+        xpPurchaseCount < 1 ||
+        xpPurchaseCount > MAX_XP_PURCHASE_COUNT
+      ) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
+    if (commandPayload?.shopRefreshCount !== undefined) {
+      shopRefreshCount = commandPayload.shopRefreshCount;
+
+      if (
+        !Number.isInteger(shopRefreshCount) ||
+        shopRefreshCount < 1 ||
+        shopRefreshCount > MAX_SHOP_REFRESH_COUNT
+      ) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
+    if (commandPayload?.shopBuySlotIndex !== undefined) {
+      shopBuySlotIndex = commandPayload.shopBuySlotIndex;
+
+      if (
+        !Number.isInteger(shopBuySlotIndex) ||
+        shopBuySlotIndex < 0 ||
+        shopBuySlotIndex > MAX_SHOP_BUY_SLOT_INDEX
+      ) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
+    if (shopBuySlotIndex !== null && shopRefreshCount > 0) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    let shopBuyCost = 0;
+
+    if (shopBuySlotIndex !== null) {
+      const offers = this.shopOffersByPlayer.get(playerId) ?? [];
+      const targetOffer = offers[shopBuySlotIndex];
+
+      if (!targetOffer) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      shopBuyCost = targetOffer.cost;
+    }
+
+    if (xpPurchaseCount > 0 || shopRefreshCount > 0 || shopBuyCost > 0) {
+      const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
+      const requiredGold =
+        XP_PURCHASE_COST * xpPurchaseCount +
+        SHOP_REFRESH_COST * shopRefreshCount +
+        shopBuyCost;
+
+      if (currentGold < requiredGold) {
+        return { accepted: false, code: "INSUFFICIENT_GOLD" };
+      }
+
+      this.goldByPlayer.set(playerId, currentGold - requiredGold);
+
+      if (xpPurchaseCount > 0) {
+        this.addXp(playerId, XP_PURCHASE_GAIN * xpPurchaseCount);
+      }
+
+      if (shopRefreshCount > 0) {
+        this.refreshShopByCount(playerId, shopRefreshCount);
+      }
+
+      if (shopBuySlotIndex !== null) {
+        this.buyShopOfferBySlot(playerId, shopBuySlotIndex);
+      }
+    }
+
+    if (commandPayload?.shopLock !== undefined) {
+      this.shopLockedByPlayer.set(playerId, commandPayload.shopLock);
+    }
+
     this.lastCmdSeqByPlayer.set(playerId, cmdSeq);
 
     return { accepted: true };
+  }
+
+  private applyPrepIncome(): void {
+    const state = this.ensureStarted();
+
+    for (const playerId of state.alivePlayerIds) {
+      const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
+      this.goldByPlayer.set(playerId, currentGold + PREP_BASE_INCOME);
+    }
+  }
+
+  private addXp(playerId: string, gainedXp: number): void {
+    let currentXp = (this.xpByPlayer.get(playerId) ?? INITIAL_XP) + gainedXp;
+    let currentLevel = this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL;
+
+    while (currentLevel < MAX_LEVEL) {
+      const levelCost = XP_COSTS_BY_LEVEL[currentLevel];
+
+      if (levelCost === undefined || currentXp < levelCost) {
+        break;
+      }
+
+      currentXp -= levelCost;
+      currentLevel += 1;
+    }
+
+    this.xpByPlayer.set(playerId, currentXp);
+    this.levelByPlayer.set(playerId, currentLevel);
+  }
+
+  private initializeShopsForPrep(): void {
+    const state = this.ensureStarted();
+
+    for (const playerId of state.playerIds) {
+      this.shopRefreshCountByPlayer.set(playerId, 0);
+      this.shopPurchaseCountByPlayer.set(playerId, 0);
+      this.shopLockedByPlayer.set(playerId, false);
+      this.shopOffersByPlayer.set(
+        playerId,
+        this.buildShopOffers(playerId, state.roundIndex, 0, 0),
+      );
+    }
+  }
+
+  private refreshShopsForPrep(): void {
+    const state = this.ensureStarted();
+
+    for (const playerId of state.alivePlayerIds) {
+      const locked = this.shopLockedByPlayer.get(playerId) ?? false;
+
+      if (locked) {
+        continue;
+      }
+
+      this.shopRefreshCountByPlayer.set(playerId, 0);
+      this.shopPurchaseCountByPlayer.set(playerId, 0);
+      this.shopOffersByPlayer.set(
+        playerId,
+        this.buildShopOffers(playerId, state.roundIndex, 0, 0),
+      );
+    }
+  }
+
+  private refreshShopByCount(playerId: string, refreshCount: number): void {
+    const state = this.ensureStarted();
+    const previousOffers = this.shopOffersByPlayer.get(playerId) ?? [];
+    const currentCount = this.shopRefreshCountByPlayer.get(playerId) ?? 0;
+    const nextCount = currentCount + refreshCount;
+    let nextOffers = this.buildShopOffers(playerId, state.roundIndex, nextCount, 0);
+
+    if (this.areShopOffersEqual(previousOffers, nextOffers)) {
+      nextOffers = this.buildShopOffers(playerId, state.roundIndex, nextCount, 1);
+    }
+
+    this.shopRefreshCountByPlayer.set(playerId, nextCount);
+    this.shopPurchaseCountByPlayer.set(playerId, 0);
+    this.shopOffersByPlayer.set(playerId, nextOffers);
+  }
+
+  private areShopOffersEqual(left: ShopOffer[], right: ShopOffer[]): boolean {
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    for (let index = 0; index < left.length; index += 1) {
+      const leftOffer = left[index];
+      const rightOffer = right[index];
+
+      if (!leftOffer || !rightOffer) {
+        return false;
+      }
+
+      const leftKey: ShopOfferKey = `${leftOffer.unitType}:${leftOffer.rarity}:${leftOffer.cost}`;
+      const rightKey: ShopOfferKey = `${rightOffer.unitType}:${rightOffer.rarity}:${rightOffer.cost}`;
+
+      if (leftKey !== rightKey) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private buyShopOfferBySlot(playerId: string, slotIndex: number): void {
+    const state = this.ensureStarted();
+    const offers = [...(this.shopOffersByPlayer.get(playerId) ?? [])];
+    const refreshCount = this.shopRefreshCountByPlayer.get(playerId) ?? 0;
+    const purchaseCount = (this.shopPurchaseCountByPlayer.get(playerId) ?? 0) + 1;
+
+    if (!offers[slotIndex]) {
+      return;
+    }
+
+    offers.splice(slotIndex, 1);
+    offers.push(
+      this.buildSingleShopOffer(
+        playerId,
+        state.roundIndex,
+        refreshCount,
+        SHOP_SIZE + purchaseCount,
+      ),
+    );
+
+    this.shopPurchaseCountByPlayer.set(playerId, purchaseCount);
+    this.shopOffersByPlayer.set(playerId, offers);
+  }
+
+  private buildShopOffers(
+    playerId: string,
+    roundIndex: number,
+    refreshCount: number,
+    purchaseCount: number,
+  ): ShopOffer[] {
+    const offers: ShopOffer[] = [];
+
+    for (let slotIndex = 0; slotIndex < SHOP_SIZE; slotIndex += 1) {
+      offers.push(
+        this.buildSingleShopOffer(
+          playerId,
+          roundIndex,
+          refreshCount,
+          purchaseCount + slotIndex,
+        ),
+      );
+    }
+
+    return offers;
+  }
+
+  private buildSingleShopOffer(
+    playerId: string,
+    roundIndex: number,
+    refreshCount: number,
+    nonce: number,
+  ): ShopOffer {
+    const level = this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL;
+    const odds = SHOP_ODDS_BY_LEVEL[level] ?? SHOP_ODDS_BY_LEVEL[MAX_LEVEL] ?? [1, 0, 0];
+    const seedBase = MatchRoomController.hashToUint32(
+      `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.setId}`,
+    );
+    const rarityRoll = MatchRoomController.seedToUnitFloat(seedBase + 1);
+    const rarity = MatchRoomController.pickRarity(odds, rarityRoll);
+    const unitPool = SHOP_UNIT_POOL_BY_RARITY[rarity];
+    const unitRoll = MatchRoomController.seedToUnitFloat(seedBase + 2);
+    const unitType =
+      unitPool[Math.floor(unitRoll * unitPool.length) % unitPool.length] ??
+      unitPool[0] ??
+      "vanguard";
+
+    return {
+      unitType,
+      rarity,
+      cost: rarity,
+    };
+  }
+
+  private static pickRarity(
+    odds: readonly [number, number, number],
+    roll: number,
+  ): UnitRarity {
+    const [oneCostRate, twoCostRate] = odds;
+
+    if (roll < oneCostRate) {
+      return 1;
+    }
+
+    if (roll < oneCostRate + twoCostRate) {
+      return 2;
+    }
+
+    return 3;
+  }
+
+  private static seedToUnitFloat(seed: number): number {
+    let x = seed >>> 0;
+
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+
+    return (x >>> 0) / 4294967296;
+  }
+
+  private static hashToUint32(text: string): number {
+    let hash = 2166136261;
+
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return hash >>> 0;
   }
 
   private ensureKnownPlayer(playerId: string): void {

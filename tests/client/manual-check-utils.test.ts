@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   parseAutoDelayMs,
+  parseAutoFillBots,
   parseAutoFlag,
   parsePlacementsSpec,
 } from "../../src/client/manual-check-utils.js";
@@ -74,5 +75,24 @@ describe("parseAutoDelayMs", () => {
 
   test("上限を超える値は30000msに丸める", () => {
     expect(parseAutoDelayMs("50000")).toBe(30000);
+  });
+});
+
+describe("parseAutoFillBots", () => {
+  test("0から3までの範囲を返す", () => {
+    expect(parseAutoFillBots("0")).toBe(0);
+    expect(parseAutoFillBots("1")).toBe(1);
+    expect(parseAutoFillBots("3")).toBe(3);
+  });
+
+  test("未指定や不正値は0に丸める", () => {
+    expect(parseAutoFillBots("")).toBe(0);
+    expect(parseAutoFillBots("abc")).toBe(0);
+    expect(parseAutoFillBots("-1")).toBe(0);
+    expect(parseAutoFillBots(undefined)).toBe(0);
+  });
+
+  test("上限を超える値は3に丸める", () => {
+    expect(parseAutoFillBots("5")).toBe(3);
   });
 });

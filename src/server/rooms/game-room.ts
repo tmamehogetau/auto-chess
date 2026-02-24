@@ -4,6 +4,7 @@ import { MatchRoomController } from "../match-room-controller";
 import {
   MatchRoomState,
   PlayerPresenceState,
+  ShopOfferState,
 } from "../schema/match-room-state";
 import {
   CLIENT_MESSAGE_TYPES,
@@ -163,10 +164,21 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       | {
           boardUnitCount?: number;
           boardPlacements?: NonNullable<PrepCommandMessage["boardPlacements"]>;
+          xpPurchaseCount?: number;
+          shopRefreshCount?: number;
+          shopBuySlotIndex?: number;
+          shopLock?: boolean;
         }
       | undefined;
 
-    if (message.boardUnitCount !== undefined || message.boardPlacements !== undefined) {
+    if (
+      message.boardUnitCount !== undefined ||
+      message.boardPlacements !== undefined ||
+      message.xpPurchaseCount !== undefined ||
+      message.shopRefreshCount !== undefined ||
+      message.shopBuySlotIndex !== undefined ||
+      message.shopLock !== undefined
+    ) {
       commandPayload = {};
 
       if (message.boardUnitCount !== undefined) {
@@ -175,6 +187,22 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       if (message.boardPlacements !== undefined) {
         commandPayload.boardPlacements = message.boardPlacements;
+      }
+
+      if (message.xpPurchaseCount !== undefined) {
+        commandPayload.xpPurchaseCount = message.xpPurchaseCount;
+      }
+
+      if (message.shopRefreshCount !== undefined) {
+        commandPayload.shopRefreshCount = message.shopRefreshCount;
+      }
+
+      if (message.shopBuySlotIndex !== undefined) {
+        commandPayload.shopBuySlotIndex = message.shopBuySlotIndex;
+      }
+
+      if (message.shopLock !== undefined) {
+        commandPayload.shopLock = message.shopLock;
       }
     }
 
@@ -191,6 +219,23 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       const latestStatus = this.controller.getPlayerStatus(client.sessionId);
       player.boardUnitCount = latestStatus.boardUnitCount;
+      player.gold = latestStatus.gold;
+      player.xp = latestStatus.xp;
+      player.level = latestStatus.level;
+      player.shopLocked = latestStatus.shopLocked;
+
+      while (player.shopOffers.length > 0) {
+        player.shopOffers.pop();
+      }
+
+      for (const offer of latestStatus.shopOffers) {
+        const nextOffer = new ShopOfferState();
+
+        nextOffer.unitType = offer.unitType;
+        nextOffer.cost = offer.cost;
+        nextOffer.rarity = offer.rarity;
+        player.shopOffers.push(nextOffer);
+      }
     }
 
     client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);
@@ -243,6 +288,23 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       playerState.hp = status.hp;
       playerState.eliminated = status.eliminated;
       playerState.boardUnitCount = status.boardUnitCount;
+      playerState.gold = status.gold;
+      playerState.xp = status.xp;
+      playerState.level = status.level;
+      playerState.shopLocked = status.shopLocked;
+
+      while (playerState.shopOffers.length > 0) {
+        playerState.shopOffers.pop();
+      }
+
+      for (const offer of status.shopOffers) {
+        const nextOffer = new ShopOfferState();
+
+        nextOffer.unitType = offer.unitType;
+        nextOffer.cost = offer.cost;
+        nextOffer.rarity = offer.rarity;
+        playerState.shopOffers.push(nextOffer);
+      }
     }
 
     this.broadcast(

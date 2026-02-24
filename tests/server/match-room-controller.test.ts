@@ -63,6 +63,26 @@ describe("MatchRoomController", () => {
     expect(result).toEqual({ accepted: true });
   });
 
+  test("試合開始時の経済ステータス初期値を返す", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    expect(controller.getPlayerStatus("p1")).toMatchObject({
+      gold: 15,
+      xp: 0,
+      level: 1,
+    });
+  });
+
   test("Prep締切以降のコマンドはLATE_INPUTで却下される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
@@ -191,6 +211,131 @@ describe("MatchRoomController", () => {
 
     expect(controller.phase).toBe("Prep");
     expect(controller.roundIndex).toBe(2);
+    expect(controller.getPlayerStatus("p1").gold).toBe(20);
+  });
+
+  test("xpPurchaseCountでゴールド消費とXP/レベル上昇が適用される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const result = controller.submitPrepCommand("p1", 1, 3_000, {
+      xpPurchaseCount: 2,
+    });
+
+    expect(result).toEqual({ accepted: true });
+    expect(controller.getPlayerStatus("p1")).toMatchObject({
+      gold: 7,
+      xp: 4,
+      level: 3,
+    });
+  });
+
+  test("ゴールド不足のxpPurchaseCountはINSUFFICIENT_GOLDで却下される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const result = controller.submitPrepCommand("p1", 1, 3_000, {
+      xpPurchaseCount: 4,
+    });
+
+    expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
+    expect(controller.getPlayerStatus("p1")).toMatchObject({
+      gold: 15,
+      xp: 0,
+      level: 1,
+    });
+  });
+
+  test("試合開始時にshopOffersが5枠生成される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const offers = controller.getPlayerStatus("p1").shopOffers;
+
+    expect(offers).toHaveLength(5);
+    for (const offer of offers) {
+      expect(offer.cost).toBeGreaterThanOrEqual(1);
+      expect(offer.cost).toBeLessThanOrEqual(3);
+      expect(["vanguard", "ranger", "mage", "assassin"]).toContain(offer.unitType);
+    }
+  });
+
+  test("shopRefreshCountでgold減少とshopOffers更新が適用される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const beforeOffers = controller
+      .getPlayerStatus("p1")
+      .shopOffers.map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`);
+    const result = controller.submitPrepCommand("p1", 1, 3_000, {
+      shopRefreshCount: 1,
+    });
+    const afterStatus = controller.getPlayerStatus("p1");
+    const afterOffers = afterStatus.shopOffers.map(
+      (offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`,
+    );
+
+    expect(result).toEqual({ accepted: true });
+    expect(afterStatus.gold).toBe(13);
+    expect(afterOffers).not.toEqual(beforeOffers);
+  });
+
+  test("xpPurchaseCountとshopRefreshCountの合計コスト不足はINSUFFICIENT_GOLDで却下される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const result = controller.submitPrepCommand("p1", 1, 3_000, {
+      xpPurchaseCount: 2,
+      shopRefreshCount: 5,
+    });
+
+    expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
+    expect(controller.getPlayerStatus("p1").gold).toBe(15);
   });
 
   test("Eliminationで生存者1人ならEndへ遷移する", () => {

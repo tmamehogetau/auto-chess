@@ -24,6 +24,10 @@ export interface PrepCommandMessage {
   cmdSeq: number;
   boardUnitCount?: number;
   boardPlacements?: BoardUnitPlacement[];
+  xpPurchaseCount?: number;
+  shopRefreshCount?: number;
+  shopBuySlotIndex?: number;
+  shopLock?: boolean;
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
@@ -40,7 +44,8 @@ export type CommandRejectCode =
   | "PHASE_MISMATCH"
   | "DUPLICATE_CMD"
   | "UNKNOWN_PLAYER"
-  | "INVALID_PAYLOAD";
+  | "INVALID_PAYLOAD"
+  | "INSUFFICIENT_GOLD";
 
 export type CommandResult =
   | { accepted: true }

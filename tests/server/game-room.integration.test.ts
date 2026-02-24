@@ -470,6 +470,231 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.players.get(targetClient.sessionId)?.boardUnitCount).toBe(6);
   });
 
+  test("xpPurchaseCountでgold/xp/levelがstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      xpPurchaseCount: 2,
+    });
+
+    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(result).toEqual({ accepted: true });
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(targetClient.sessionId);
+      return player?.gold === 7 && player?.xp === 4 && player?.level === 3;
+    }, 1_000);
+
+    const player = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(player?.gold).toBe(7);
+    expect(player?.xp).toBe(4);
+    expect(player?.level).toBe(3);
+  });
+
+  test("xpPurchaseCountが所持goldを超えるとINSUFFICIENT_GOLDで却下される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      xpPurchaseCount: 4,
+    });
+
+    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
+
+    const player = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(player?.gold).toBe(15);
+    expect(player?.xp).toBe(0);
+    expect(player?.level).toBe(1);
+  });
+
+  test("試合開始時にshopOffersがstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const target = serverRoom.state.players.get(clients[0].sessionId);
+
+    expect(target?.shopOffers.length).toBe(5);
+  });
+
+  test("shopRefreshCountでgold減少とshopOffers更新がstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeOffers =
+      beforePlayer?.shopOffers
+        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+        .join(",") ?? "";
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      shopRefreshCount: 1,
+    });
+
+    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(result).toEqual({ accepted: true });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const afterOffers =
+      afterPlayer?.shopOffers
+        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+        .join(",") ?? "";
+
+    expect(afterPlayer?.gold).toBe(13);
+    expect(afterPlayer?.shopOffers.length).toBe(5);
+    expect(afterOffers).not.toBe(beforeOffers);
+  });
+
+  test("shopBuySlotIndexでgold減少とshopOffers差し替えがstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const firstOfferCost = beforePlayer?.shopOffers[0]?.cost ?? 0;
+    const beforeOffers =
+      beforePlayer?.shopOffers
+        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+        .join(",") ?? "";
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      shopBuySlotIndex: 0,
+    });
+
+    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(result).toEqual({ accepted: true });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const afterOffers =
+      afterPlayer?.shopOffers
+        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+        .join(",") ?? "";
+
+    expect(afterPlayer?.gold).toBe(15 - firstOfferCost);
+    expect(afterPlayer?.shopOffers.length).toBe(5);
+    expect(afterOffers).not.toBe(beforeOffers);
+  });
+
+  test("shopLock=trueで次ラウンドPrepでもshopOffersが維持される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+    const beforeOffers =
+      serverRoom.state.players
+        .get(targetClient.sessionId)
+        ?.shopOffers.map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+        .join(",") ?? "";
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      shopLock: true,
+    });
+
+    const lockResult = await targetClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.COMMAND_RESULT,
+    );
+    expect(lockResult).toEqual({ accepted: true });
+
+    await waitForCondition(
+      () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
+      1_500,
+    );
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const afterOffers =
+      afterPlayer?.shopOffers
+        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+        .join(",") ?? "";
+
+    expect(afterPlayer?.shopLocked).toBe(true);
+    expect(afterOffers).toBe(beforeOffers);
+  });
+
   test("set2ルームではrangerスキル条件の差分が戦闘結果に反映される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game", {
       setId: "set2",

@@ -1,6 +1,21 @@
 import { ArraySchema, MapSchema, Schema, defineTypes } from "@colyseus/schema";
 
-import type { UnitEffectSetId } from "../../shared/room-messages";
+import type { BoardUnitType, UnitEffectSetId } from "../../shared/room-messages";
+
+export class ShopOfferState extends Schema {
+  declare public unitType: BoardUnitType;
+
+  declare public cost: number;
+
+  declare public rarity: number;
+
+  public constructor() {
+    super();
+    this.unitType = "vanguard";
+    this.cost = 1;
+    this.rarity = 1;
+  }
+}
 
 export class PlayerPresenceState extends Schema {
   declare public ready: boolean;
@@ -13,6 +28,16 @@ export class PlayerPresenceState extends Schema {
 
   declare public boardUnitCount: number;
 
+  declare public shopOffers: ArraySchema<ShopOfferState>;
+
+  declare public shopLocked: boolean;
+
+  declare public gold: number;
+
+  declare public xp: number;
+
+  declare public level: number;
+
   declare public lastCmdSeq: number;
 
   public constructor() {
@@ -22,6 +47,11 @@ export class PlayerPresenceState extends Schema {
     this.hp = 100;
     this.eliminated = false;
     this.boardUnitCount = 4;
+    this.shopOffers = new ArraySchema<ShopOfferState>();
+    this.shopLocked = false;
+    this.gold = 15;
+    this.xp = 0;
+    this.level = 1;
     this.lastCmdSeq = 0;
   }
 }
@@ -53,12 +83,23 @@ export class MatchRoomState extends Schema {
   }
 }
 
+defineTypes(ShopOfferState, {
+  unitType: "string",
+  cost: "number",
+  rarity: "number",
+});
+
 defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
   hp: "number",
   eliminated: "boolean",
   boardUnitCount: "number",
+  shopOffers: [ShopOfferState],
+  shopLocked: "boolean",
+  gold: "number",
+  xp: "number",
+  level: "number",
   lastCmdSeq: "number",
 });
 

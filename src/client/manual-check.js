@@ -1,5 +1,6 @@
 import {
   parseAutoDelayMs,
+  parseAutoFillBots,
   parseAutoFlag,
   parsePlacementsSpec,
 } from "./manual-check-utils.js";
@@ -20,6 +21,7 @@ const SERVER_MESSAGE_TYPES = {
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
 const setIdSelect = document.querySelector("[data-setid-select]");
+const autoFillInput = document.querySelector("[data-autofill-input]");
 const connectButton = document.querySelector("[data-connect-button]");
 const leaveButton = document.querySelector("[data-leave-button]");
 const readyCheckbox = document.querySelector("[data-ready-checkbox]");
@@ -29,6 +31,7 @@ const placementsInput = document.querySelector("[data-placements-input]");
 const prepButton = document.querySelector("[data-prep-button]");
 
 const statusElement = document.querySelector("[data-connection-status]");
+const autoFillStatusElement = document.querySelector("[data-autofill-status]");
 const errorElement = document.querySelector("[data-connection-error]");
 const setIdElement = document.querySelector("[data-set-id-display]");
 const phaseElement = document.querySelector("[data-phase-value]");
@@ -41,6 +44,7 @@ let connecting = false;
 let currentPhase = null;
 let pendingAutoReadyTimeout = null;
 let pendingAutoPrepTimeout = null;
+const autoFillRooms = [];
 let autoReadyCompleted = false;
 let autoPrepCompleted = false;
 
@@ -49,6 +53,7 @@ const autoConfig = {
   autoReady: false,
   autoPrep: false,
   autoDelayMs: 300,
+  autoFillBots: 0,
 };
 
 initializeDefaults();
@@ -101,6 +106,9 @@ async function connect() {
     syncNextCmdSeq(room.state, room.sessionId);
     setCommandResult("-");
 
+    await connectAutoFillRooms(client, roomName, roomOptions);
+    setAutoFillStatus();
+
     room.onStateChange((state) => {
       setCurrentSet(state?.setId);
       syncRoundFromState(state);
@@ -125,9 +133,11 @@ async function connect() {
 
     room.onLeave(() => {
       clearPendingAutoActions();
+      void leaveAutoFillRooms();
       activeRoom = null;
       currentPhase = null;
       setStatus("disconnected");
+      setAutoFillStatus();
       syncButtonAvailability();
     });
 
@@ -153,6 +163,7 @@ async function leave() {
   const room = activeRoom;
 
   clearPendingAutoActions();
+  await leaveAutoFillRooms();
   activeRoom = null;
   currentPhase = null;
   setStatus("disconnecting");
@@ -168,6 +179,7 @@ async function leave() {
     }
   } finally {
     setStatus("disconnected");
+    setAutoFillStatus();
     syncButtonAvailability();
   }
 }
@@ -235,6 +247,7 @@ function initializeDefaults() {
   autoConfig.autoReady = parseAutoFlag(params.get("autoReady"));
   autoConfig.autoPrep = parseAutoFlag(params.get("autoPrep"));
   autoConfig.autoDelayMs = parseAutoDelayMs(params.get("autoDelayMs"));
+  autoConfig.autoFillBots = parseAutoFillBots(params.get("autoFillBots"));
 
   if (endpointInput) {
     endpointInput.value =
@@ -250,6 +263,16 @@ function initializeDefaults() {
     const setId = normalizeSetId(params.get("setId"));
 
     setIdSelect.value = setId ?? "";
+  }
+
+  if (autoFillInput) {
+    const parsedAutoFillBots = parseAutoFillBots(autoFillInput.value);
+
+    if (parsedAutoFillBots !== autoConfig.autoFillBots) {
+      autoConfig.autoFillBots = parsedAutoFillBots;
+    }
+
+    autoFillInput.value = String(autoConfig.autoFillBots);
   }
 
   if (cmdSeqInput) {
@@ -278,6 +301,7 @@ function initializeDefaults() {
   setRound("-");
   setSelfStatus("-");
   setCommandResult("-");
+  setAutoFillStatus();
 
   if (autoConfig.autoConnect) {
     void connect();
@@ -288,6 +312,9 @@ function readConfig() {
   const endpointValue = endpointInput?.value?.trim();
   const roomValue = roomInput?.value?.trim();
   const selectedSetId = setIdSelect?.value?.trim() ?? "";
+  const autoFillBots = parseAutoFillBots(autoFillInput?.value ?? "0");
+
+  autoConfig.autoFillBots = autoFillBots;
 
   return {
     endpoint:
@@ -295,6 +322,7 @@ function readConfig() {
       `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:2567`,
     roomName: roomValue || DEFAULT_ROOM_NAME,
     setId: normalizeSetId(selectedSetId),
+    autoFillBots,
   };
 }
 
@@ -336,6 +364,10 @@ function syncButtonAvailability() {
 
   if (placementsInput) {
     placementsInput.disabled = connecting || !connected;
+  }
+
+  if (autoFillInput) {
+    autoFillInput.disabled = connecting || connected;
   }
 }
 
@@ -465,6 +497,61 @@ function setCurrentSet(setId) {
   }
 
   setIdElement.textContent = normalizeSetId(setId) ?? "-";
+}
+
+async function connectAutoFillRooms(client, roomName, roomOptions) {
+  const nextAutoFillBots = autoConfig.autoFillBots;
+
+  if (!Number.isInteger(nextAutoFillBots) || nextAutoFillBots <= 0) {
+    return;
+  }
+
+  for (let index = 0; index < nextAutoFillBots; index += 1) {
+    try {
+      const helperRoom = await client.joinOrCreate(roomName, roomOptions);
+
+      helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      autoFillRooms.push(helperRoom);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      setError(`autofill join failed: ${message}`);
+      break;
+    }
+  }
+}
+
+async function leaveAutoFillRooms() {
+  if (autoFillRooms.length === 0) {
+    return;
+  }
+
+  const leavingRooms = autoFillRooms.splice(0, autoFillRooms.length);
+
+  await Promise.allSettled(
+    leavingRooms.map(async (room) => {
+      if (typeof room.removeAllListeners === "function") {
+        room.removeAllListeners();
+      }
+
+      if (typeof room.leave === "function") {
+        await room.leave();
+      }
+    }),
+  );
+}
+
+function setAutoFillStatus() {
+  if (!autoFillStatusElement) {
+    return;
+  }
+
+  if (autoConfig.autoFillBots <= 0) {
+    autoFillStatusElement.textContent = "disabled";
+    return;
+  }
+
+  autoFillStatusElement.textContent = `${autoFillRooms.length}/${autoConfig.autoFillBots}`;
 }
 
 function maybeScheduleAutoReady() {

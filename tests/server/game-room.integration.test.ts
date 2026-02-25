@@ -621,6 +621,35 @@ describe("GameRoom integration", () => {
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const targetClient = clients[0];
+    const internalController = (serverRoom as unknown as {
+      controller?: {
+        shopOffersByPlayer: Map<
+          string,
+          Array<{
+            unitType: "vanguard" | "ranger" | "mage" | "assassin";
+            rarity: 1 | 2 | 3;
+            cost: number;
+          }>
+        >;
+      };
+    }).controller;
+
+    if (!internalController) {
+      throw new Error("Expected internal controller");
+    }
+
+    // Fix shopOffers to ensure different offers after purchase
+    internalController.shopOffersByPlayer.set(targetClient.sessionId, [
+      { unitType: "vanguard", rarity: 1, cost: 1 },
+      { unitType: "ranger", rarity: 1, cost: 1 },
+      { unitType: "mage", rarity: 2, cost: 2 },
+      { unitType: "assassin", rarity: 2, cost: 2 },
+      { unitType: "vanguard", rarity: 1, cost: 1 },
+    ]);
+
+    // Wait for state to sync
+    await new Promise(resolve => setTimeout(resolve, 10));
+
     const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
     const firstOfferCost = beforePlayer?.shopOffers[0]?.cost ?? 0;
     const firstOfferUnitType = beforePlayer?.shopOffers[0]?.unitType;
@@ -1148,7 +1177,7 @@ describe("GameRoom integration", () => {
     );
 
     expect(serverRoom.state.players.get(lowId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(highId)?.hp).toBe(91);
+    expect(serverRoom.state.players.get(highId)?.hp).toBe(89);
   });
 
   test("connectAndAttachSetIdDisplayでjoinOrCreateからsetId表示できる", async () => {

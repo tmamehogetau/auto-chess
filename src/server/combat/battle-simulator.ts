@@ -1,5 +1,6 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
 import { getStarCombatMultiplier } from "../star-level-config";
+import { SKILL_DEFINITIONS } from "./skill-definitions";
 
 /**
  * アクションインターフェース
@@ -26,6 +27,13 @@ export interface BattleUnit {
   attackRange: number; // 1 = 近接, 2+ = 遠距離
   cell: number; // 0-7 のボード位置
   isDead: boolean;
+  attackCount: number; // スキルトリガー用の攻撃回数トラッキング
+  defense: number; // ベース防御力（被ダメージを軽減）
+  buffModifiers: {
+    attackMultiplier: number; // デフォルト 1.0
+    defenseMultiplier: number; // デフォルト 1.0
+    attackSpeedMultiplier: number; // デフォルト 1.0
+  };
 }
 
 /**
@@ -84,6 +92,13 @@ export function createBattleUnit(
     attackRange: baseStats.range,
     cell,
     isDead: false,
+    attackCount: 0,
+    defense: unitType === "vanguard" ? 3 : 0, // Vanguard はタフなので防御力が高い
+    buffModifiers: {
+      attackMultiplier: 1.0,
+      defenseMultiplier: 1.0,
+      attackSpeedMultiplier: 1.0,
+    },
   };
 }
 
@@ -213,11 +228,15 @@ export class BattleSimulator {
         const target = findTarget(action.unit, enemies);
 
         if (target) {
-          const damage = action.unit.attackPower;
-          target.hp -= damage;
+          // 防御力とバフモディファイアを適用したダメージ計算
+          const actualDamage = Math.max(1, Math.floor(
+            action.unit.attackPower * action.unit.buffModifiers.attackMultiplier -
+            target.defense * target.buffModifiers.defenseMultiplier
+          ));
+          target.hp -= actualDamage;
 
           combatLog.push(
-            `${generateUnitName(action.unit)} attacks ${generateUnitName(target)} for ${damage} damage (HP: ${target.hp}/${target.maxHp})`,
+            `${generateUnitName(action.unit)} attacks ${generateUnitName(target)} for ${actualDamage} damage (HP: ${target.hp}/${target.maxHp})`,
           );
 
           if (target.hp <= 0) {
@@ -225,9 +244,24 @@ export class BattleSimulator {
             combatLog.push(`${generateUnitName(target)} has been defeated!`);
           }
 
+          // 攻撃カウントを増加
+          action.unit.attackCount++;
+
+          // スキルトリガーのチェック
+          const skillDef = SKILL_DEFINITIONS[action.unit.type];
+          if (skillDef && skillDef.triggerType === 'on_attack_count' &&
+              action.unit.attackCount % skillDef.triggerCount === 0) {
+            // スキルを即座にスケジュール
+            actionQueue.push({
+              unit: action.unit,
+              actionTime: currentTime,
+              type: 'skill'
+            });
+          }
+
           // 次の攻撃をスケジュール（0でない場合）
           if (action.unit.attackSpeed > 0) {
-            const nextAttackTime = currentTime + 1000 / action.unit.attackSpeed;
+            const nextAttackTime = currentTime + (1000 / (action.unit.attackSpeed * action.unit.buffModifiers.attackSpeedMultiplier));
             actionQueue.push({
               unit: action.unit,
               actionTime: nextAttackTime,
@@ -235,9 +269,12 @@ export class BattleSimulator {
             });
           }
         } else {
-          // ターゲットが見つからない場合も次の攻撃をスケジュール
+          // 攻撃カウントを増加（ターゲットが見つからない場合も）
+          action.unit.attackCount++;
+
+          // 次の攻撃をスケジュール
           if (action.unit.attackSpeed > 0) {
-            const nextAttackTime = currentTime + 1000 / action.unit.attackSpeed;
+            const nextAttackTime = currentTime + (1000 / (action.unit.attackSpeed * action.unit.buffModifiers.attackSpeedMultiplier));
             actionQueue.push({
               unit: action.unit,
               actionTime: nextAttackTime,
@@ -246,8 +283,23 @@ export class BattleSimulator {
           }
         }
       } else if (action.type === "skill") {
-        // スキルアクションのプレースホルダー
-        combatLog.push(`${generateUnitName(action.unit)} activates skill (placeholder)`);
+        const skillDef = SKILL_DEFINITIONS[action.unit.type];
+        if (skillDef) {
+          // ユニットのサイドに基づいて味方と敵を決定
+          const isLeftSide = leftUnits.includes(action.unit);
+          const allies = isLeftSide ? leftUnits : rightUnits;
+          const enemies = isLeftSide ? rightUnits : leftUnits;
+
+          skillDef.execute(action.unit, allies, enemies, combatLog);
+
+          // スキルによる死亡をチェック
+          for (const enemy of enemies) {
+            if (enemy.hp <= 0 && !enemy.isDead) {
+              enemy.isDead = true;
+              combatLog.push(`${generateUnitName(enemy)} has been defeated!`);
+            }
+          }
+        }
       }
 
       actionQueue.sort((a, b) => a.actionTime - b.actionTime);

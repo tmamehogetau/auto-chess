@@ -75,6 +75,13 @@ describe("battle-simulator", () => {
         attackRange: 1,
         cell: 0,
         isDead: false,
+        attackCount: 0,
+        defense: 3,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
       };
       const enemies: BattleUnit[] = [];
       expect(findTarget(attacker, enemies)).toBeNull();
@@ -92,6 +99,13 @@ describe("battle-simulator", () => {
         attackRange: 1,
         cell: 0,
         isDead: false,
+        attackCount: 0,
+        defense: 3,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
       };
       expect(findTarget(attacker, null as any)).toBeNull();
       expect(findTarget(attacker, undefined as any)).toBeNull();
@@ -109,6 +123,13 @@ describe("battle-simulator", () => {
         attackRange: 1,
         cell: 0,
         isDead: false,
+        attackCount: 0,
+        defense: 3,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
       };
       const enemies: BattleUnit[] = [
         {
@@ -122,6 +143,13 @@ describe("battle-simulator", () => {
           attackRange: 3,
           cell: 5,
           isDead: true,
+          attackCount: 0,
+          defense: 0,
+          buffModifiers: {
+            attackMultiplier: 1.0,
+            defenseMultiplier: 1.0,
+            attackSpeedMultiplier: 1.0,
+          },
         },
       ];
       expect(findTarget(attacker, enemies)).toBeNull();
@@ -139,6 +167,13 @@ describe("battle-simulator", () => {
         attackRange: 3,
         cell: 2,
         isDead: false,
+        attackCount: 0,
+        defense: 0,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
       };
       const enemies: BattleUnit[] = [
         {
@@ -152,6 +187,13 @@ describe("battle-simulator", () => {
           attackRange: 3,
           cell: 7,
           isDead: false,
+          attackCount: 0,
+          defense: 0,
+          buffModifiers: {
+            attackMultiplier: 1.0,
+            defenseMultiplier: 1.0,
+            attackSpeedMultiplier: 1.0,
+          },
         },
         {
           id: "right-mage-0",
@@ -164,6 +206,13 @@ describe("battle-simulator", () => {
           attackRange: 2,
           cell: 6,
           isDead: false,
+          attackCount: 0,
+          defense: 0,
+          buffModifiers: {
+            attackMultiplier: 1.0,
+            defenseMultiplier: 1.0,
+            attackSpeedMultiplier: 1.0,
+          },
         },
         {
           id: "right-vanguard-0",
@@ -176,6 +225,13 @@ describe("battle-simulator", () => {
           attackRange: 1,
           cell: 4,
           isDead: false,
+          attackCount: 0,
+          defense: 3,
+          buffModifiers: {
+            attackMultiplier: 1.0,
+            defenseMultiplier: 1.0,
+            attackSpeedMultiplier: 1.0,
+          },
         },
       ];
       const target = findTarget(attacker, enemies);
@@ -195,6 +251,13 @@ describe("battle-simulator", () => {
         attackRange: 1,
         cell: 0,
         isDead: false,
+        attackCount: 0,
+        defense: 3,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
       };
       const enemies: BattleUnit[] = [
         {
@@ -208,6 +271,13 @@ describe("battle-simulator", () => {
           attackRange: 3,
           cell: 7,
           isDead: false,
+          attackCount: 0,
+          defense: 0,
+          buffModifiers: {
+            attackMultiplier: 1.0,
+            defenseMultiplier: 1.0,
+            attackSpeedMultiplier: 1.0,
+          },
         },
       ];
       expect(findTarget(attacker, enemies)).toBeNull();
@@ -312,6 +382,29 @@ describe("battle-simulator", () => {
       expect(result.leftSurvivors).toEqual([]);
       expect(result.rightSurvivors).toEqual([]);
       expect(result.combatLog[result.combatLog.length - 1]).toContain("Draw (all units defeated)");
+      expect(result.rightSurvivors).toEqual([]);
+      expect(result.combatLog[result.combatLog.length - 1]).toContain("Draw (all units defeated)");
+    });
+
+    describe('Skill activation', () => {
+      it('vanguard activates Shield Wall every 3 attacks', () => {
+        const vanguard = createBattleUnit({
+          unitType: 'vanguard',
+          starLevel: 1,
+          cell: 3
+        }, "left", 0);
+        const enemy = createBattleUnit({
+          unitType: 'ranger',
+          starLevel: 1,
+          cell: 4
+        }, "right", 0);
+
+        const simulator = new BattleSimulator();
+        const result = simulator.simulateBattle([vanguard], [enemy], 30000);
+
+        // Check that Shield Wall was activated (should appear in combat log)
+        expect(result.combatLog.some(log => log.includes('Shield Wall'))).toBe(true);
+      });
     });
   });
 });

@@ -856,7 +856,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(91);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("後列assassin2体の奇襲で不利マッチアップを逆転できる", () => {
@@ -935,7 +935,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(93);
+    expect(controller.getPlayerHp("p1")).toBe(89);
     expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
@@ -986,9 +986,9 @@ describe("MatchRoomController", () => {
     }
 
     expect(set1Controller.getPlayerHp("p1")).toBe(100);
-    expect(set1Controller.getPlayerHp("p4")).toBe(91);
+    expect(set1Controller.getPlayerHp("p4")).toBe(89);
     expect(set2Controller.getPlayerHp("p1")).toBe(100);
-    expect(set2Controller.getPlayerHp("p4")).toBe(91);
+    expect(set2Controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("前列vanguard2体の防衛陣形で不利マッチアップを逆転できる", () => {
@@ -1027,7 +1027,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(89);
+    expect(controller.getPlayerHp("p1")).toBe(87);
     expect(controller.getPlayerHp("p4")).toBe(100);
   });
 

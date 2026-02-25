@@ -257,6 +257,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         player.benchUnits.pop();
       }
 
+      while (player.boardUnits.length > 0) {
+        player.boardUnits.pop();
+      }
+
       for (const offer of latestStatus.shopOffers) {
         const nextOffer = new ShopOfferState();
 
@@ -268,6 +272,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       for (const benchUnit of latestStatus.benchUnits) {
         player.benchUnits.push(benchUnit);
+      }
+
+      for (const boardUnit of latestStatus.boardUnits) {
+        player.boardUnits.push(boardUnit);
       }
     }
 
@@ -338,6 +346,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         playerState.benchUnits.pop();
       }
 
+      while (playerState.boardUnits.length > 0) {
+        playerState.boardUnits.pop();
+      }
+
       for (const offer of status.shopOffers) {
         const nextOffer = new ShopOfferState();
 
@@ -349,6 +361,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       for (const benchUnit of status.benchUnits) {
         playerState.benchUnits.push(benchUnit);
+      }
+
+      for (const boardUnit of status.boardUnits) {
+        playerState.boardUnits.push(boardUnit);
       }
     }
 

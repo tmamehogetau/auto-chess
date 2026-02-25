@@ -35,6 +35,7 @@ describe("index.html contract", () => {
       "data-round-value",
       "data-self-status",
       "data-bench-list",
+      "data-board-list",
       "data-command-result",
       "data-connection-error",
       "data-set-id-display",

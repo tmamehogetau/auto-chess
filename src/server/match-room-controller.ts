@@ -359,11 +359,13 @@ export class MatchRoomController {
     shopOffers: ShopOffer[];
     shopLocked: boolean;
     benchUnits: string[];
+    boardUnits: string[];
     ownedUnits: OwnedUnits;
   } {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
     const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
 
     return {
       hp: state.getPlayerHp(playerId),
@@ -379,6 +381,15 @@ export class MatchRoomController {
           ? `${benchUnit.unitType}★${benchUnit.starLevel}`
           : benchUnit.unitType,
       ),
+      boardUnits: boardPlacements.map((placement) => {
+        const starLevel = placement.starLevel ?? 1;
+
+        if (starLevel > 1) {
+          return `${placement.cell}:${placement.unitType}★${starLevel}`;
+        }
+
+        return `${placement.cell}:${placement.unitType}`;
+      }),
       ownedUnits: {
         vanguard: ownedUnits?.vanguard ?? 0,
         ranger: ownedUnits?.ranger ?? 0,

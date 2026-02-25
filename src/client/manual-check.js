@@ -46,6 +46,7 @@ const phaseElement = document.querySelector("[data-phase-value]");
 const roundElement = document.querySelector("[data-round-value]");
 const selfStatusElement = document.querySelector("[data-self-status]");
 const benchListElement = document.querySelector("[data-bench-list]");
+const boardListElement = document.querySelector("[data-board-list]");
 const commandResultElement = document.querySelector("[data-command-result]");
 
 let activeRoom = null;
@@ -391,6 +392,7 @@ function initializeDefaults() {
   setRound("-");
   setSelfStatus("-");
   setBenchList("-");
+  setBoardList("-");
   setCommandResult("-");
   setAutoFillStatus();
 
@@ -511,15 +513,18 @@ function syncSelfStatusFromState(state, sessionId) {
   if (!player) {
     setSelfStatus("-");
     setBenchList("-");
+    setBoardList("-");
     return;
   }
 
   const benchUnits = normalizeBenchUnits(player.benchUnits);
+  const boardUnits = normalizeBoardUnits(player.boardUnits);
 
   setSelfStatus(
-    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${benchUnits.length} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
+    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${benchUnits.length} board=${boardUnits.length} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
   );
   setBenchList(formatBenchUnitsWithIndex(benchUnits));
+  setBoardList(boardUnits.length > 0 ? boardUnits.join(",") : "(empty)");
 }
 
 function syncNextCmdSeq(state, sessionId) {
@@ -686,6 +691,14 @@ function setBenchList(text) {
   }
 
   benchListElement.textContent = String(text);
+}
+
+function setBoardList(text) {
+  if (!boardListElement) {
+    return;
+  }
+
+  boardListElement.textContent = String(text);
 }
 
 function setCommandResult(text) {
@@ -864,6 +877,22 @@ function normalizeBenchUnits(rawBenchUnits) {
 
   try {
     return Array.from(rawBenchUnits).map((unitType) => String(unitType));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBoardUnits(rawBoardUnits) {
+  if (!rawBoardUnits) {
+    return [];
+  }
+
+  if (Array.isArray(rawBoardUnits)) {
+    return rawBoardUnits.map((unit) => String(unit));
+  }
+
+  try {
+    return Array.from(rawBoardUnits).map((unit) => String(unit));
   } catch {
     return [];
   }

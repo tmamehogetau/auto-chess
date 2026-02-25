@@ -40,6 +40,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public benchUnits: ArraySchema<string>;
 
+  declare public boardUnits: ArraySchema<string>;
+
   declare public ownedVanguard: number;
 
   declare public ownedRanger: number;
@@ -63,6 +65,7 @@ export class PlayerPresenceState extends Schema {
     this.xp = 0;
     this.level = 1;
     this.benchUnits = new ArraySchema<string>();
+    this.boardUnits = new ArraySchema<string>();
     this.ownedVanguard = 0;
     this.ownedRanger = 0;
     this.ownedMage = 0;
@@ -116,6 +119,7 @@ defineTypes(PlayerPresenceState, {
   xp: "number",
   level: "number",
   benchUnits: ["string"],
+  boardUnits: ["string"],
   ownedVanguard: "number",
   ownedRanger: "number",
   ownedMage: "number",

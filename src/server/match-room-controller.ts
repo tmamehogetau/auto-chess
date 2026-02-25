@@ -13,6 +13,13 @@ import {
   DEFAULT_UNIT_EFFECT_SET_ID,
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
+import {
+  STAR_LEVEL_MAX,
+  STAR_LEVEL_MIN,
+  STAR_MERGE_THRESHOLD,
+  UNIT_SELL_VALUE_BY_TYPE,
+  calculateSellValue,
+} from "./star-level-config";
 
 interface MatchRoomControllerOptions {
   readyAutoStartMs: number;
@@ -91,13 +98,6 @@ const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, numb
   4: [0.45, 0.4, 0.15],
   5: [0.3, 0.45, 0.25],
   6: [0.2, 0.45, 0.35],
-};
-
-const UNIT_SELL_VALUE_BY_TYPE: Readonly<Record<BoardUnitType, number>> = {
-  vanguard: 1,
-  ranger: 1,
-  mage: 2,
-  assassin: 2,
 };
 
 interface MatchupOutcome {
@@ -913,7 +913,7 @@ export class MatchRoomController {
     benchUnits.push({
       unitType: boughtOffer.unitType,
       cost: boughtOffer.cost,
-      starLevel: 1,
+      starLevel: STAR_LEVEL_MIN,
       unitCount: 1,
     });
     this.benchUnitsByPlayer.set(playerId, benchUnits);
@@ -939,7 +939,7 @@ export class MatchRoomController {
       mergedAny = false;
 
       for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
-        for (const starLevel of [1, 2] as const) {
+        for (const starLevel of [STAR_LEVEL_MIN, STAR_LEVEL_MAX - 1] as const) {
           const mergeCandidates: number[] = [];
 
           for (let index = 0; index < benchUnits.length; index += 1) {
@@ -952,12 +952,12 @@ export class MatchRoomController {
             mergeCandidates.push(index);
           }
 
-          if (mergeCandidates.length < 3) {
+          if (mergeCandidates.length < STAR_MERGE_THRESHOLD) {
             continue;
           }
 
           const consumedIndexes = mergeCandidates
-            .slice(0, 3)
+            .slice(0, STAR_MERGE_THRESHOLD)
             .sort((left, right) => right - left);
           let mergedCost = 0;
           let mergedCount = 0;

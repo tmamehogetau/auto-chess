@@ -6,6 +6,7 @@ import {
   type UnitEffectSetId,
   type UnitSkillRule,
 } from "./unit-effect-definitions";
+import { getStarCombatMultiplier } from "../star-level-config";
 
 const MAX_BOARD_UNITS = 8;
 const MIN_CELL_INDEX = 0;
@@ -137,7 +138,7 @@ function calculatePlacementPower(
 
   return (
     (effectRule.basePower + (inFrontRow ? effectRule.frontRowBonus : effectRule.backRowBonus)) *
-    (placement.starLevel ?? 1)
+    getStarCombatMultiplier(placement.starLevel)
   );
 }
 

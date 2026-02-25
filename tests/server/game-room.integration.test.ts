@@ -1013,6 +1013,65 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.ownedVanguard).toBe(3);
   });
 
+  test("同種9体購入で連鎖合成した★3がstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+    const internalController = (serverRoom as unknown as {
+      controller?: {
+        shopOffersByPlayer: Map<
+          string,
+          Array<{
+            unitType: "vanguard" | "ranger" | "mage" | "assassin";
+            rarity: 1 | 2 | 3;
+            cost: number;
+          }>
+        >;
+      };
+    }).controller;
+
+    if (!internalController) {
+      throw new Error("Expected internal controller");
+    }
+
+    for (const cmdSeq of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      internalController.shopOffersByPlayer.set(targetClient.sessionId, [
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+        { unitType: "ranger", rarity: 1, cost: 1 },
+        { unitType: "mage", rarity: 2, cost: 2 },
+        { unitType: "assassin", rarity: 2, cost: 2 },
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+      ]);
+
+      targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq,
+        shopBuySlotIndex: 0,
+      });
+
+      const buyResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+      expect(buyResult).toEqual({ accepted: true });
+    }
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(afterPlayer?.benchUnits.length).toBe(1);
+    expect(afterPlayer?.benchUnits[0]).toBe("vanguard★3");
+    expect(afterPlayer?.ownedVanguard).toBe(9);
+  });
+
   test("set2ルームではrangerスキル条件の差分が戦闘結果に反映される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game", {
       setId: "set2",

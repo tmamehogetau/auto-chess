@@ -1,6 +1,7 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS } from "./skill-definitions";
+import { SYNERGY_DEFINITIONS, calculateSynergyDetails, SynergyTier } from "./synergy-definitions";
 
 /**
  * アクションインターフェース
@@ -29,6 +30,8 @@ export interface BattleUnit {
   isDead: boolean;
   attackCount: number; // スキルトリガー用の攻撃回数トラッキング
   defense: number; // ベース防御力（被ダメージを軽減）
+  critRate: number; // 0.0-1.0, クリティカルヒット率
+  critDamageMultiplier: number; // 1.5 = 150% クリティカルダメージ
   buffModifiers: {
     attackMultiplier: number; // デフォルト 1.0
     defenseMultiplier: number; // デフォルト 1.0
@@ -94,6 +97,8 @@ export function createBattleUnit(
     isDead: false,
     attackCount: 0,
     defense: unitType === "vanguard" ? 3 : 0, // Vanguard はタフなので防御力が高い
+    critRate: 0, // ベース 0%（シナジーで追加）
+    critDamageMultiplier: 1.5, // ベース 150%
     buffModifiers: {
       attackMultiplier: 1.0,
       defenseMultiplier: 1.0,
@@ -156,6 +161,78 @@ function calculateTeamPower(units: BattleUnit[]): number {
 }
 
 /**
+ * シナジーバフをユニットに適用
+ * @param units ユニット配列
+ * @param boardPlacements ボード配置情報
+ */
+function applySynergyBuffs(
+  units: BattleUnit[],
+  boardPlacements: Array<{ unitType: BoardUnitType }>
+): void {
+  const synergyDetails = calculateSynergyDetails(boardPlacements);
+
+  for (const unit of units) {
+    const tier = synergyDetails.activeTiers[unit.type];
+    if (tier === 0) continue;
+
+    const def = SYNERGY_DEFINITIONS[unit.type];
+    const idx = tier - 1; // tier 1 -> index 0
+
+    // Apply defense buff
+    if (def.effects.defense) {
+      const defenseValue = def.effects.defense[idx];
+      if (defenseValue !== undefined) {
+        unit.defense += defenseValue;
+      }
+    }
+
+    // Apply HP multiplier
+    if (def.effects.hpMultiplier) {
+      const multiplier = def.effects.hpMultiplier[idx];
+      if (multiplier !== undefined) {
+        unit.maxHp = Math.floor(unit.maxHp * multiplier);
+        unit.hp = Math.floor(unit.hp * multiplier);
+      }
+    }
+
+    // Apply attack power buff
+    if (def.effects.attackPower) {
+      const attackPowerValue = def.effects.attackPower[idx];
+      if (attackPowerValue !== undefined) {
+        unit.attackPower += attackPowerValue;
+      }
+    }
+
+    // Apply attack speed multiplier
+    if (def.effects.attackSpeedMultiplier) {
+      const attackSpeedValue = def.effects.attackSpeedMultiplier[idx];
+      if (attackSpeedValue !== undefined) {
+        unit.buffModifiers.attackSpeedMultiplier *= attackSpeedValue;
+      }
+    }
+
+    // Apply crit rate
+    if (def.effects.critRate) {
+      const critRateValue = def.effects.critRate[idx];
+      if (critRateValue !== undefined) {
+        unit.critRate += critRateValue;
+      }
+    }
+
+    // Apply crit damage multiplier
+    if (def.effects.critDamageMultiplier) {
+      const critDamageValue = def.effects.critDamageMultiplier[idx];
+      if (critDamageValue !== undefined) {
+        unit.critDamageMultiplier = Math.max(
+          unit.critDamageMultiplier,
+          critDamageValue
+        );
+      }
+    }
+  }
+}
+
+/**
  * ユニット名を生成（戦闘ログ用）
  */
 function generateUnitName(unit: BattleUnit): string {
@@ -181,18 +258,26 @@ export class BattleSimulator {
    * ターゲット選択ロジックとターン制戦闘ループを使用して戦闘をシミュレート
    * @param leftUnits 左側チームのユニット（セル 0-3）
    * @param rightUnits 右側チームのユニット（セル 4-7）
+   * @param leftPlacements 左側チームのユニット配置（シナジー計算用）
+   * @param rightPlacements 右側チームのユニット配置（シナジー計算用）
    * @param maxDurationMs 最大戦闘時間（ミリ秒）
    * @returns 戦闘結果
    */
   simulateBattle(
     leftUnits: BattleUnit[],
     rightUnits: BattleUnit[],
-    maxDurationMs: number,
+    leftPlacements: Array<{ unitType: BoardUnitType }> = [],
+    rightPlacements: Array<{ unitType: BoardUnitType }> = [],
+    maxDurationMs: number = 30000,
   ): BattleResult {
     const combatLog: string[] = [];
     combatLog.push("Battle started");
     combatLog.push(`Left units: ${leftUnits.length}`);
     combatLog.push(`Right units: ${rightUnits.length}`);
+
+    // シナジーバフを適用
+    applySynergyBuffs(leftUnits, leftPlacements);
+    applySynergyBuffs(rightUnits, rightPlacements);
 
     const allUnits = [...leftUnits, ...rightUnits];
     const actionQueue: Action[] = [];
@@ -228,16 +313,25 @@ export class BattleSimulator {
         const target = findTarget(action.unit, enemies);
 
         if (target) {
-          // 防御力とバフモディファイアを適用したダメージ計算
-          const actualDamage = Math.max(1, Math.floor(
-            action.unit.attackPower * action.unit.buffModifiers.attackMultiplier -
-            target.defense * target.buffModifiers.defenseMultiplier
-          ));
+          // クリティカルヒット判定
+          const isCrit = Math.random() < action.unit.critRate;
+          const critMultiplier = isCrit ? action.unit.critDamageMultiplier : 1.0;
+
+          // 防御力とバフモディファイアとクリティカルを適用したダメージ計算
+          const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier;
+          const defense = target.defense * target.buffModifiers.defenseMultiplier;
+          const actualDamage = Math.max(1, Math.floor(baseDamage - defense));
           target.hp -= actualDamage;
 
-          combatLog.push(
-            `${generateUnitName(action.unit)} attacks ${generateUnitName(target)} for ${actualDamage} damage (HP: ${target.hp}/${target.maxHp})`,
-          );
+          if (isCrit) {
+            combatLog.push(
+              `${generateUnitName(action.unit)} CRITICAL HIT on ${generateUnitName(target)} for ${actualDamage} damage!`,
+            );
+          } else {
+            combatLog.push(
+              `${generateUnitName(action.unit)} attacks ${generateUnitName(target)} for ${actualDamage} damage (${target.hp}/${target.maxHp})`,
+            );
+          }
 
           if (target.hp <= 0) {
             target.isDead = true;

@@ -77,6 +77,8 @@ describe("battle-simulator", () => {
         isDead: false,
         attackCount: 0,
         defense: 3,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -101,6 +103,8 @@ describe("battle-simulator", () => {
         isDead: false,
         attackCount: 0,
         defense: 3,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -125,6 +129,8 @@ describe("battle-simulator", () => {
         isDead: false,
         attackCount: 0,
         defense: 3,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -145,6 +151,8 @@ describe("battle-simulator", () => {
           isDead: true,
           attackCount: 0,
           defense: 0,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -169,6 +177,8 @@ describe("battle-simulator", () => {
         isDead: false,
         attackCount: 0,
         defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -189,6 +199,8 @@ describe("battle-simulator", () => {
           isDead: false,
           attackCount: 0,
           defense: 0,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -208,6 +220,8 @@ describe("battle-simulator", () => {
           isDead: false,
           attackCount: 0,
           defense: 0,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -227,6 +241,8 @@ describe("battle-simulator", () => {
           isDead: false,
           attackCount: 0,
           defense: 3,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -253,6 +269,8 @@ describe("battle-simulator", () => {
         isDead: false,
         attackCount: 0,
         defense: 3,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -273,6 +291,8 @@ describe("battle-simulator", () => {
           isDead: false,
           attackCount: 0,
           defense: 0,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -295,7 +315,7 @@ describe("battle-simulator", () => {
         createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      const result = simulator.simulateBattle(leftUnits, rightUnits, 5000);
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 5000);
 
       expect(result.winner).toMatch(/^left$|^right$|^draw$/);
       expect(result.leftSurvivors.length + result.rightSurvivors.length).toBeGreaterThan(0);
@@ -317,8 +337,8 @@ describe("battle-simulator", () => {
         createBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
       ];
 
-      const result1 = simulator1.simulateBattle(leftUnits, rightUnits, 10000);
-      const result2 = simulator2.simulateBattle(leftUnits, rightUnits, 10000);
+      const result1 = simulator1.simulateBattle(leftUnits, rightUnits, [], [], 10000);
+      const result2 = simulator2.simulateBattle(leftUnits, rightUnits, [], [], 10000);
 
       expect(result1.winner).toBe(result2.winner);
       expect(result1.leftSurvivors.length).toBe(result2.leftSurvivors.length);
@@ -336,11 +356,11 @@ describe("battle-simulator", () => {
         createBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      const result = simulator.simulateBattle(leftUnits, rightUnits, 5000);
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 5000);
 
       const damageLogs = result.combatLog.filter((log) => log.includes("damage"));
       expect(damageLogs.length).toBeGreaterThan(0);
-      expect(damageLogs[0]).toMatch(/attacks .* for \d+ damage \(HP: \d+\/\d+\)/);
+      expect(damageLogs[0]).toMatch(/attacks.*for \d+ damage \(\d+\/\d+\)|CRITICAL HIT on.*for \d+ damage!/);
     });
 
     test("時間制限に達した場合はHPで勝敗が決まる", () => {
@@ -353,7 +373,7 @@ describe("battle-simulator", () => {
         createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      const result = simulator.simulateBattle(leftUnits, rightUnits, 100);
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 100);
 
       expect(result.combatLog[result.combatLog.length - 1]).toMatch(/Battle ended: (Left|Right) wins \(HP:/);
     });
@@ -369,7 +389,7 @@ describe("battle-simulator", () => {
         createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      const result = simulator.simulateBattle(leftUnits, rightUnits, 10000);
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 10000);
 
       expect(["left", "right", "draw"]).toContain(result.winner);
     });
@@ -377,7 +397,7 @@ describe("battle-simulator", () => {
     test("空のユニット配列では即座に戦闘が終了する", () => {
       const simulator = new BattleSimulator();
 
-      const result = simulator.simulateBattle([], [], 10000);
+      const result = simulator.simulateBattle([], [], [], [], 10000);
       expect(result.winner).toBe("draw");
       expect(result.leftSurvivors).toEqual([]);
       expect(result.rightSurvivors).toEqual([]);
@@ -400,7 +420,7 @@ describe("battle-simulator", () => {
         }, "right", 0);
 
         const simulator = new BattleSimulator();
-        const result = simulator.simulateBattle([vanguard], [enemy], 30000);
+        const result = simulator.simulateBattle([vanguard], [enemy], [], [], 30000);
 
         // Check that Shield Wall was activated (should appear in combat log)
         expect(result.combatLog.some(log => log.includes('Shield Wall'))).toBe(true);

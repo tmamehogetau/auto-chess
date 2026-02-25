@@ -1318,6 +1318,8 @@ export class MatchRoomController {
     const result = battleSimulator.simulateBattle(
       leftBattleUnits,
       rightBattleUnits,
+      leftPlacements,
+      rightPlacements,
       30000, // 30秒の最大戦闘時間
     );
 

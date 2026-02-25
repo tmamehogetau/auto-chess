@@ -42,15 +42,46 @@ export function normalizeBoardPlacements(
       return null;
     }
 
+    const starLevel = placement.starLevel ?? 1;
+
+    if (!Number.isInteger(starLevel) || starLevel < 1 || starLevel > 3) {
+      return null;
+    }
+
+    if (
+      placement.sellValue !== undefined &&
+      (!Number.isInteger(placement.sellValue) || placement.sellValue < 1)
+    ) {
+      return null;
+    }
+
+    if (
+      placement.unitCount !== undefined &&
+      (!Number.isInteger(placement.unitCount) || placement.unitCount < 1)
+    ) {
+      return null;
+    }
+
     if (usedCells.has(placement.cell)) {
       return null;
     }
 
     usedCells.add(placement.cell);
-    normalized.push({
+    const normalizedPlacement: BoardUnitPlacement = {
       cell: placement.cell,
       unitType: placement.unitType,
-    });
+      starLevel,
+    };
+
+    if (placement.sellValue !== undefined) {
+      normalizedPlacement.sellValue = placement.sellValue;
+    }
+
+    if (placement.unitCount !== undefined) {
+      normalizedPlacement.unitCount = placement.unitCount;
+    }
+
+    normalized.push(normalizedPlacement);
   }
 
   normalized.sort((left, right) => left.cell - right.cell);
@@ -105,8 +136,8 @@ function calculatePlacementPower(
   const inFrontRow = isFrontRowCell(placement.cell);
 
   return (
-    effectRule.basePower +
-    (inFrontRow ? effectRule.frontRowBonus : effectRule.backRowBonus)
+    (effectRule.basePower + (inFrontRow ? effectRule.frontRowBonus : effectRule.backRowBonus)) *
+    (placement.starLevel ?? 1)
   );
 }
 

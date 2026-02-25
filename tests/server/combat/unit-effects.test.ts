@@ -17,10 +17,29 @@ describe("unit-effects", () => {
     const normalized = normalizeBoardPlacements(placements);
 
     expect(normalized).toEqual([
-      { cell: 1, unitType: "vanguard" },
-      { cell: 4, unitType: "ranger" },
-      { cell: 5, unitType: "mage" },
+      { cell: 1, unitType: "vanguard", starLevel: 1 },
+      { cell: 4, unitType: "ranger", starLevel: 1 },
+      { cell: 5, unitType: "mage", starLevel: 1 },
     ]);
+  });
+
+  test("starLevelが不正な配置はrejectする", () => {
+    const placements: BoardUnitPlacement[] = [{ cell: 0, unitType: "mage", starLevel: 0 }];
+
+    const normalized = normalizeBoardPlacements(placements);
+
+    expect(normalized).toBeNull();
+  });
+
+  test("starLevel=2は同じ配置のstarLevel=1より火力が高い", () => {
+    const base: BoardUnitPlacement[] = [{ cell: 4, unitType: "mage", starLevel: 1 }];
+    const upgraded: BoardUnitPlacement[] = [{ cell: 4, unitType: "mage", starLevel: 2 }];
+
+    const basePower = calculateBoardPower(base);
+    const upgradedPower = calculateBoardPower(upgraded);
+
+    expect(upgradedPower).toBeGreaterThan(basePower);
+    expect(upgradedPower).toBe(basePower * 2);
   });
 
   test("normalizeBoardPlacementsは重複セルをrejectする", () => {

@@ -463,8 +463,11 @@ describe("MatchRoomController", () => {
     const unitCost = beforeBuyGold - afterBuyGold;
     const beforeSellOwned = controller.getPlayerStatus("p1").ownedUnits;
     const soldUnitType = controller.getPlayerStatus("p1").benchUnits[0];
+    const soldOwnedKey = (["vanguard", "ranger", "mage", "assassin"] as const).find(
+      (unitType) => unitType === soldUnitType,
+    );
 
-    if (!soldUnitType) {
+    if (!soldUnitType || !soldOwnedKey) {
       throw new Error("expected bench unit to sell");
     }
 
@@ -478,7 +481,49 @@ describe("MatchRoomController", () => {
     expect(sellResult).toEqual({ accepted: true });
     expect(status.gold).toBe(beforeSellGold + unitCost);
     expect(status.benchUnits.length).toBe(0);
-    expect(status.ownedUnits[soldUnitType]).toBe(beforeSellOwned[soldUnitType] - 1);
+    expect(status.ownedUnits[soldOwnedKey]).toBe(beforeSellOwned[soldOwnedKey] - 1);
+  });
+
+  test("同種3体購入でベンチ上で自動合成されて★2になる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const internalOffersMap = (controller as unknown as {
+      shopOffersByPlayer: Map<
+        string,
+        Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; rarity: 1 | 2 | 3; cost: number }>
+      >;
+    }).shopOffersByPlayer;
+
+    for (const cmdSeq of [1, 2, 3]) {
+      internalOffersMap.set("p1", [
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+        { unitType: "ranger", rarity: 1, cost: 1 },
+        { unitType: "mage", rarity: 2, cost: 2 },
+        { unitType: "assassin", rarity: 2, cost: 2 },
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+      ]);
+
+      const result = controller.submitPrepCommand("p1", cmdSeq, 3_000 + cmdSeq, {
+        shopBuySlotIndex: 0,
+      });
+
+      expect(result).toEqual({ accepted: true });
+    }
+
+    const status = controller.getPlayerStatus("p1");
+
+    expect(status.benchUnits).toEqual(["vanguard★2"]);
+    expect(status.ownedUnits.vanguard).toBe(3);
   });
 
   test("benchToBoardCellとbenchSellIndexを同時指定するとINVALID_PAYLOAD", () => {

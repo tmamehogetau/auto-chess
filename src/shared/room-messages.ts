@@ -43,6 +43,9 @@ export type UnitEffectSetId = "set1" | "set2";
 export interface BoardUnitPlacement {
   cell: number;
   unitType: BoardUnitType;
+  starLevel?: number;
+  sellValue?: number;
+  unitCount?: number;
 }
 
 export type CommandRejectCode =

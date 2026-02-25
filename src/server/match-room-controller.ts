@@ -72,6 +72,8 @@ interface OwnedUnits {
 interface BenchUnit {
   unitType: BoardUnitType;
   cost: number;
+  starLevel: number;
+  unitCount: number;
 }
 
 type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
@@ -356,7 +358,7 @@ export class MatchRoomController {
     level: number;
     shopOffers: ShopOffer[];
     shopLocked: boolean;
-    benchUnits: BoardUnitType[];
+    benchUnits: string[];
     ownedUnits: OwnedUnits;
   } {
     const state = this.ensureStarted();
@@ -372,7 +374,11 @@ export class MatchRoomController {
       level: this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
       shopOffers: [...(this.shopOffersByPlayer.get(playerId) ?? [])],
       shopLocked: this.shopLockedByPlayer.get(playerId) ?? false,
-      benchUnits: benchUnits.map((benchUnit) => benchUnit.unitType),
+      benchUnits: benchUnits.map((benchUnit) =>
+        benchUnit.starLevel > 1
+          ? `${benchUnit.unitType}★${benchUnit.starLevel}`
+          : benchUnit.unitType,
+      ),
       ownedUnits: {
         vanguard: ownedUnits?.vanguard ?? 0,
         ranger: ownedUnits?.ranger ?? 0,
@@ -893,8 +899,14 @@ export class MatchRoomController {
 
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
 
-    benchUnits.push({ unitType: boughtOffer.unitType, cost: boughtOffer.cost });
+    benchUnits.push({
+      unitType: boughtOffer.unitType,
+      cost: boughtOffer.cost,
+      starLevel: 1,
+      unitCount: 1,
+    });
     this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.tryMergeBenchUnits(playerId);
 
     const nextOwnedUnits: OwnedUnits = {
       vanguard: ownedUnits.vanguard,
@@ -907,6 +919,53 @@ export class MatchRoomController {
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
   }
 
+  private tryMergeBenchUnits(playerId: string): void {
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+
+    for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
+      const mergeCandidates: number[] = [];
+
+      for (let index = 0; index < benchUnits.length; index += 1) {
+        const unit = benchUnits[index];
+
+        if (!unit || unit.unitType !== unitType || unit.starLevel !== 1) {
+          continue;
+        }
+
+        mergeCandidates.push(index);
+      }
+
+      if (mergeCandidates.length < 3) {
+        continue;
+      }
+
+      const consumedIndexes = mergeCandidates.slice(0, 3).sort((left, right) => right - left);
+      let mergedCost = 0;
+      let mergedCount = 0;
+
+      for (const index of consumedIndexes) {
+        const unit = benchUnits[index];
+
+        if (!unit) {
+          continue;
+        }
+
+        mergedCost += unit.cost;
+        mergedCount += unit.unitCount;
+        benchUnits.splice(index, 1);
+      }
+
+      benchUnits.push({
+        unitType,
+        cost: mergedCost,
+        starLevel: 2,
+        unitCount: mergedCount,
+      });
+    }
+
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+  }
+
   private deployBenchUnitToBoard(playerId: string, benchIndex: number, cell: number): void {
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
     const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
@@ -917,7 +976,13 @@ export class MatchRoomController {
     }
 
     benchUnits.splice(benchIndex, 1);
-    boardPlacements.push({ cell, unitType: benchUnit.unitType });
+    boardPlacements.push({
+      cell,
+      unitType: benchUnit.unitType,
+      starLevel: benchUnit.starLevel,
+      sellValue: benchUnit.cost,
+      unitCount: benchUnit.unitCount,
+    });
     boardPlacements.sort((left, right) => left.cell - right.cell);
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);
@@ -944,7 +1009,10 @@ export class MatchRoomController {
       assassin: ownedUnits.assassin,
     };
 
-    nextOwnedUnits[benchUnit.unitType] = Math.max(0, nextOwnedUnits[benchUnit.unitType] - 1);
+    nextOwnedUnits[benchUnit.unitType] = Math.max(
+      0,
+      nextOwnedUnits[benchUnit.unitType] - benchUnit.unitCount,
+    );
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
@@ -976,12 +1044,11 @@ export class MatchRoomController {
       assassin: ownedUnits.assassin,
     };
 
-    nextOwnedUnits[soldPlacement.unitType] = Math.max(
-      0,
-      nextOwnedUnits[soldPlacement.unitType] - 1,
-    );
+    const unitCount = soldPlacement.unitCount ?? soldPlacement.starLevel ?? 1;
 
-    const sellValue = UNIT_SELL_VALUE_BY_TYPE[soldPlacement.unitType] ?? 1;
+    nextOwnedUnits[soldPlacement.unitType] = Math.max(0, nextOwnedUnits[soldPlacement.unitType] - unitCount);
+
+    const sellValue = soldPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[soldPlacement.unitType] ?? 1;
 
     this.boardPlacementsByPlayer.set(playerId, boardPlacements);
     this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);

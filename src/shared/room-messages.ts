@@ -33,6 +33,7 @@ export interface PrepCommandMessage {
     cell: number;
   };
   benchSellIndex?: number;
+  boardSellIndex?: number;
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";

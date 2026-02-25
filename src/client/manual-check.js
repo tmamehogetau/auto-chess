@@ -34,6 +34,7 @@ const shopLockInput = document.querySelector("[data-shop-lock-input]");
 const benchDeployIndexInput = document.querySelector("[data-bench-deploy-index-input]");
 const benchDeployCellInput = document.querySelector("[data-bench-deploy-cell-input]");
 const benchSellIndexInput = document.querySelector("[data-bench-sell-index-input]");
+const boardSellCellInput = document.querySelector("[data-board-sell-cell-input]");
 const placementsInput = document.querySelector("[data-placements-input]");
 const prepButton = document.querySelector("[data-prep-button]");
 
@@ -263,6 +264,12 @@ function sendPrepCommand() {
       8,
       "benchSellIndex must be between 0 and 8",
     );
+    const boardSellCell = parseOptionalIntegerInRange(
+      boardSellCellInput?.value,
+      0,
+      7,
+      "boardSellCell must be between 0 and 7",
+    );
 
     if (boardPlacements.length > 0) {
       payload.boardPlacements = boardPlacements;
@@ -298,6 +305,10 @@ function sendPrepCommand() {
 
     if (benchSellIndex !== null) {
       payload.benchSellIndex = benchSellIndex;
+    }
+
+    if (boardSellCell !== null) {
+      payload.boardSellIndex = boardSellCell;
     }
 
     if (Object.keys(payload).length <= 1) {
@@ -474,6 +485,10 @@ function syncButtonAvailability() {
     benchSellIndexInput.disabled = connecting || !connected;
   }
 
+  if (boardSellCellInput) {
+    boardSellCellInput.disabled = connecting || !connected;
+  }
+
   if (autoFillInput) {
     autoFillInput.disabled = connecting || connected;
   }
@@ -580,6 +595,14 @@ function buildRejectHint(code) {
       const benchSell = Number.parseInt(benchSellIndexInput?.value ?? "", 10);
       if (benchSellIndexInput?.value && (!Number.isInteger(benchSell) || benchSell < 0 || benchSell > 8)) {
         hints.push("Bench Sell Index must be 0-8");
+      }
+
+      const boardSellCell = Number.parseInt(boardSellCellInput?.value ?? "", 10);
+      if (
+        boardSellCellInput?.value &&
+        (!Number.isInteger(boardSellCell) || boardSellCell < 0 || boardSellCell > 7)
+      ) {
+        hints.push("Board Sell Cell must be 0-7");
       }
 
       const shopLockValue = shopLockInput?.value?.trim();

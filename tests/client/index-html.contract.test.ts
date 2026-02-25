@@ -26,6 +26,7 @@ describe("index.html contract", () => {
       "data-bench-deploy-index-input",
       "data-bench-deploy-cell-input",
       "data-bench-sell-index-input",
+      "data-board-sell-cell-input",
       "data-placements-input",
       "data-prep-button",
       "data-connection-status",

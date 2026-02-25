@@ -862,6 +862,98 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.gold).toBe(beforeSellGold + unitCost);
   });
 
+  test("boardSellIndexで盤面ユニット売却するとgold増加とboardUnitCount減少がstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      boardPlacements: [{ cell: 3, unitType: "mage" }],
+    });
+    expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: true,
+    });
+
+    const beforeSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeSellGold = Number(beforeSellPlayer?.gold ?? 0);
+    const beforeSellCount = Number(beforeSellPlayer?.boardUnitCount ?? 0);
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 2,
+      boardSellIndex: 3,
+    });
+
+    const sellResult = await targetClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.COMMAND_RESULT,
+    );
+    expect(sellResult).toEqual({ accepted: true });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(afterPlayer?.gold).toBe(beforeSellGold + 2);
+    expect(afterPlayer?.boardUnitCount).toBe(beforeSellCount - 1);
+  });
+
+  test("boardSellIndexでユニット不在セル指定はINVALID_PAYLOADでstate不変", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      boardPlacements: [{ cell: 0, unitType: "vanguard" }],
+    });
+    expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: true,
+    });
+
+    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeGold = Number(beforePlayer?.gold ?? 0);
+    const beforeCount = Number(beforePlayer?.boardUnitCount ?? 0);
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 2,
+      boardSellIndex: 7,
+    });
+
+    const rejectResult = await targetClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.COMMAND_RESULT,
+    );
+    expect(rejectResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(afterPlayer?.gold).toBe(beforeGold);
+    expect(afterPlayer?.boardUnitCount).toBe(beforeCount);
+  });
+
   test("set2ルームではrangerスキル条件の差分が戦闘結果に反映される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game", {
       setId: "set2",

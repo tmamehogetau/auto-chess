@@ -91,6 +91,13 @@ const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, numb
   6: [0.2, 0.45, 0.35],
 };
 
+const UNIT_SELL_VALUE_BY_TYPE: Readonly<Record<BoardUnitType, number>> = {
+  vanguard: 1,
+  ranger: 1,
+  mage: 2,
+  assassin: 2,
+};
+
 interface MatchupOutcome {
   winnerId: string;
   loserId: string;
@@ -485,6 +492,7 @@ export class MatchRoomController {
         cell: number;
       };
       benchSellIndex?: number;
+      boardSellIndex?: number;
     },
   ): CommandResult {
     if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
@@ -539,6 +547,7 @@ export class MatchRoomController {
         }
       | null = null;
     let benchSellIndex: number | null = null;
+    let boardSellIndex: number | null = null;
 
     if (commandPayload?.xpPurchaseCount !== undefined) {
       xpPurchaseCount = commandPayload.xpPurchaseCount;
@@ -608,11 +617,42 @@ export class MatchRoomController {
       }
     }
 
+    if (commandPayload?.boardSellIndex !== undefined) {
+      boardSellIndex = commandPayload.boardSellIndex;
+
+      if (
+        !Number.isInteger(boardSellIndex) ||
+        boardSellIndex < MIN_BOARD_CELL_INDEX ||
+        boardSellIndex > MAX_BOARD_CELL_INDEX
+      ) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
     if (benchToBoardCell && benchSellIndex !== null) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
     if (benchSellIndex !== null && shopBuySlotIndex !== null) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (boardSellIndex !== null && benchToBoardCell) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (boardSellIndex !== null && benchSellIndex !== null) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (boardSellIndex !== null && shopBuySlotIndex !== null) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (
+      boardSellIndex !== null &&
+      (commandPayload?.boardUnitCount !== undefined || commandPayload?.boardPlacements !== undefined)
+    ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
@@ -642,6 +682,15 @@ export class MatchRoomController {
       const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
 
       if (!benchUnits[benchSellIndex]) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
+    if (boardSellIndex !== null) {
+      const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+      const hasBoardUnit = boardPlacements.some((placement) => placement.cell === boardSellIndex);
+
+      if (!hasBoardUnit) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
     }
@@ -700,6 +749,10 @@ export class MatchRoomController {
 
     if (benchSellIndex !== null) {
       this.sellBenchUnit(playerId, benchSellIndex);
+    }
+
+    if (boardSellIndex !== null) {
+      this.sellBoardUnit(playerId, boardSellIndex);
     }
 
     this.lastCmdSeqByPlayer.set(playerId, cmdSeq);
@@ -896,6 +949,44 @@ export class MatchRoomController {
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
     this.goldByPlayer.set(playerId, currentGold + benchUnit.cost);
+  }
+
+  private sellBoardUnit(playerId: string, cell: number): void {
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
+    const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
+    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
+
+    if (targetIndex < 0 || !ownedUnits) {
+      return;
+    }
+
+    const soldPlacement = boardPlacements[targetIndex];
+
+    if (!soldPlacement) {
+      return;
+    }
+
+    boardPlacements.splice(targetIndex, 1);
+
+    const nextOwnedUnits: OwnedUnits = {
+      vanguard: ownedUnits.vanguard,
+      ranger: ownedUnits.ranger,
+      mage: ownedUnits.mage,
+      assassin: ownedUnits.assassin,
+    };
+
+    nextOwnedUnits[soldPlacement.unitType] = Math.max(
+      0,
+      nextOwnedUnits[soldPlacement.unitType] - 1,
+    );
+
+    const sellValue = UNIT_SELL_VALUE_BY_TYPE[soldPlacement.unitType] ?? 1;
+
+    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
+    this.goldByPlayer.set(playerId, currentGold + sellValue);
   }
 
   private buildShopOffers(

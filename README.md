@@ -74,7 +74,7 @@ await binding?.leave();
 - Start local static server: `npm run client:check`
 - Open `src/client/index.html` from the local server (do not use `file://`).
 - `src/client/manual-check.js` provides `Connect` / `Leave` / `Ready` / `Prep Command` controls.
-- Prep controls support `placements` plus economy/shop fields (`XP Buy`, `Shop Refresh`, `Shop Buy Slot`, `Shop Lock`) and bench actions (`Bench Deploy Index`, `Bench Deploy Cell`, `Bench Sell Index`).
+- Prep controls support `placements` plus economy/shop fields (`XP Buy`, `Shop Refresh`, `Shop Buy Slot`, `Shop Lock`) and board/bench actions (`Bench Deploy Index`, `Bench Deploy Cell`, `Bench Sell Index`, `Board Sell Cell`).
 - Placements format: `cell:unitType,cell:unitType` (example: `0:vanguard,1:assassin,4:ranger,5:ranger`).
 - Optional query params: `endpoint`, `roomName`, `setId`, `autoconnect=1`, `autoReady=1`, `autoPrep=1`, `autoDelayMs`, `autoFillBots`, `cmdSeq`, `placements`.
 

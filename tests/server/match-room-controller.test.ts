@@ -540,6 +540,63 @@ describe("MatchRoomController", () => {
     expect(deployResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
   });
 
+  test("boardSellIndexで盤面ユニット売却するとunitTypeに応じてgoldが増える", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const setBoardResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      boardPlacements: [{ cell: 2, unitType: "mage" }],
+    });
+    const beforeSell = controller.getPlayerStatus("p1");
+    const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      boardSellIndex: 2,
+    });
+    const afterSell = controller.getPlayerStatus("p1");
+
+    expect(setBoardResult).toEqual({ accepted: true });
+    expect(sellResult).toEqual({ accepted: true });
+    expect(beforeSell.boardUnitCount).toBe(1);
+    expect(afterSell.boardUnitCount).toBe(0);
+    expect(afterSell.gold).toBe(beforeSell.gold + 2);
+  });
+
+  test("boardSellIndexでユニット不在セル指定はINVALID_PAYLOAD", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const setBoardResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      boardPlacements: [{ cell: 1, unitType: "vanguard" }],
+    });
+    const beforeStatus = controller.getPlayerStatus("p1");
+    const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      boardSellIndex: 7,
+    });
+    const afterStatus = controller.getPlayerStatus("p1");
+
+    expect(setBoardResult).toEqual({ accepted: true });
+    expect(sellResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    expect(afterStatus.boardUnitCount).toBe(beforeStatus.boardUnitCount);
+    expect(afterStatus.gold).toBe(beforeStatus.gold);
+  });
+
   test("Eliminationで生存者1人ならEndへ遷移する", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

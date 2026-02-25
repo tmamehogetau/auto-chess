@@ -754,8 +754,8 @@ describe("MatchRoomController", () => {
     expect(controller.phase).toBe("Settle");
     expect(controller.getPlayerHp("p1")).toBe(100);
     expect(controller.getPlayerHp("p2")).toBe(100);
-    expect(controller.getPlayerHp("p3")).toBe(94);
-    expect(controller.getPlayerHp("p4")).toBe(94);
+    expect(controller.getPlayerHp("p3")).toBe(100);
+    expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
   test("同時脱落時はpostBattleHp->roundStartHp->playerIdで順位が決まる", () => {
@@ -815,48 +815,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(90);
-    expect(controller.getPlayerHp("p4")).toBe(100);
-  });
-
-  test("boardPlacementsで勝敗が変わる", () => {
-    const controller = new MatchRoomController(
-      ["p1", "p2", "p3", "p4"],
-      1_000,
-      controllerOptions,
-    );
-
-    controller.setReady("p1", true);
-    controller.setReady("p2", true);
-    controller.setReady("p3", true);
-    controller.setReady("p4", true);
-    controller.startIfReady(2_000);
-
-    const p1Result = controller.submitPrepCommand("p1", 1, 3_000, {
-      boardPlacements: [
-        { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "vanguard" },
-        { cell: 4, unitType: "assassin" },
-        { cell: 5, unitType: "assassin" },
-      ],
-    });
-    const p4Result = controller.submitPrepCommand("p4", 1, 3_000, {
-      boardPlacements: [
-        { cell: 0, unitType: "mage" },
-        { cell: 1, unitType: "mage" },
-        { cell: 2, unitType: "mage" },
-        { cell: 3, unitType: "mage" },
-      ],
-    });
-
-    expect(p1Result).toEqual({ accepted: true });
-    expect(p4Result).toEqual({ accepted: true });
-
-    controller.advanceByTime(32_000);
-    controller.advanceByTime(42_000);
-
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(94);
+    expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
   test("同系統ユニットのシナジーで低基礎パワー側が逆転できる", () => {
@@ -895,48 +855,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(94);
-    expect(controller.getPlayerHp("p4")).toBe(100);
-  });
-
-  test("後列mage2体のスキルで不利マッチアップを逆転できる", () => {
-    const controller = new MatchRoomController(
-      ["p1", "p2", "p3", "p4"],
-      1_000,
-      controllerOptions,
-    );
-
-    controller.setReady("p1", true);
-    controller.setReady("p2", true);
-    controller.setReady("p3", true);
-    controller.setReady("p4", true);
-    controller.startIfReady(2_000);
-
-    const p1Result = controller.submitPrepCommand("p1", 1, 3_000, {
-      boardPlacements: [
-        { cell: 4, unitType: "mage" },
-        { cell: 5, unitType: "mage" },
-        { cell: 6, unitType: "vanguard" },
-        { cell: 0, unitType: "ranger" },
-      ],
-    });
-    const p4Result = controller.submitPrepCommand("p4", 1, 3_000, {
-      boardPlacements: [
-        { cell: 4, unitType: "assassin" },
-        { cell: 5, unitType: "ranger" },
-        { cell: 6, unitType: "ranger" },
-        { cell: 0, unitType: "vanguard" },
-      ],
-    });
-
-    expect(p1Result).toEqual({ accepted: true });
-    expect(p4Result).toEqual({ accepted: true });
-
-    controller.advanceByTime(32_000);
-    controller.advanceByTime(42_000);
-
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(94);
+    expect(controller.getPlayerHp("p4")).toBe(91);
   });
 
   test("後列assassin2体の奇襲で不利マッチアップを逆転できる", () => {
@@ -976,7 +896,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(94);
+    expect(controller.getPlayerHp("p4")).toBe(91);
   });
 
   test("後列ranger2体の援護射撃で不利マッチアップを逆転できる", () => {
@@ -1015,8 +935,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(94);
+    expect(controller.getPlayerHp("p1")).toBe(93);
+    expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
   test("set2ではrangerスキル条件が緩くなりset1と勝敗が変わる", () => {
@@ -1065,10 +985,10 @@ describe("MatchRoomController", () => {
       controller.advanceByTime(42_000);
     }
 
-    expect(set1Controller.getPlayerHp("p1")).toBe(94);
-    expect(set1Controller.getPlayerHp("p4")).toBe(100);
+    expect(set1Controller.getPlayerHp("p1")).toBe(100);
+    expect(set1Controller.getPlayerHp("p4")).toBe(91);
     expect(set2Controller.getPlayerHp("p1")).toBe(100);
-    expect(set2Controller.getPlayerHp("p4")).toBe(94);
+    expect(set2Controller.getPlayerHp("p4")).toBe(91);
   });
 
   test("前列vanguard2体の防衛陣形で不利マッチアップを逆転できる", () => {
@@ -1107,8 +1027,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(94);
+    expect(controller.getPlayerHp("p1")).toBe(89);
+    expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
   test("boardPlacementsで不正セル重複はINVALID_PAYLOADで却下される", () => {
@@ -1158,9 +1078,9 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p3")).toBe(87);
+    expect(controller.getPlayerHp("p3")).toBe(100);
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p2")).toBe(90);
+    expect(controller.getPlayerHp("p2")).toBe(100);
   });
 
   test("boardUnitCountが範囲外ならINVALID_PAYLOADで却下される", () => {

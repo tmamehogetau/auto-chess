@@ -10,6 +10,11 @@ import {
   resolveUnitCountFromState,
 } from "./combat/unit-effects";
 import {
+  BattleSimulator,
+  createBattleUnit,
+  type BattleUnit,
+} from "./combat/battle-simulator";
+import {
   DEFAULT_UNIT_EFFECT_SET_ID,
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
@@ -101,10 +106,11 @@ const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, numb
 };
 
 interface MatchupOutcome {
-  winnerId: string;
-  loserId: string;
+  winnerId: string | null;
+  loserId: string | null;
   winnerUnitCount: number;
   loserUnitCount: number;
+  isDraw: boolean;
 }
 
 export class MatchRoomController {
@@ -1249,17 +1255,25 @@ export class MatchRoomController {
     }
 
     const outcome = this.resolveMatchupOutcome(leftPlayerId, rightPlayerId);
+
+    // 引き分けの場合は両方ダメージなし
+    if (outcome.isDraw) {
+      this.pendingRoundDamageByPlayer.set(leftPlayerId, 0);
+      this.pendingRoundDamageByPlayer.set(rightPlayerId, 0);
+      return;
+    }
+
     const loserDamage = this.buildLoserDamage(
       outcome.winnerUnitCount,
       outcome.loserUnitCount,
     );
 
-    if (!this.pendingRoundDamageByPlayer.has(outcome.winnerId)) {
-      this.pendingRoundDamageByPlayer.set(outcome.winnerId, 0);
+    if (!this.pendingRoundDamageByPlayer.has(outcome.winnerId!)) {
+      this.pendingRoundDamageByPlayer.set(outcome.winnerId!, 0);
     }
 
-    if (!this.pendingRoundDamageByPlayer.has(outcome.loserId)) {
-      this.pendingRoundDamageByPlayer.set(outcome.loserId, loserDamage);
+    if (!this.pendingRoundDamageByPlayer.has(outcome.loserId!)) {
+      this.pendingRoundDamageByPlayer.set(outcome.loserId!, loserDamage);
     }
   }
 
@@ -1273,7 +1287,8 @@ export class MatchRoomController {
 
     const outcome = this.resolveMatchupOutcome(challengerPlayerId, ghostSourcePlayerId);
 
-    if (outcome.winnerId === challengerPlayerId) {
+    // 引き分けまたはチャレンジャーが勝つ場合: チャレンジャーのダメージは0
+    if (outcome.isDraw || outcome.winnerId === challengerPlayerId) {
       this.pendingRoundDamageByPlayer.set(challengerPlayerId, 0);
       return;
     }
@@ -1286,55 +1301,53 @@ export class MatchRoomController {
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
-    const leftUnitCount = this.resolveUnitCount(leftPlayerId);
-    const rightUnitCount = this.resolveUnitCount(rightPlayerId);
-    const leftBoardPower = this.resolveBoardPower(leftPlayerId);
-    const rightBoardPower = this.resolveBoardPower(rightPlayerId);
-    const leftHp = this.hpAtBattleStartByPlayer.get(leftPlayerId) ?? 0;
-    const rightHp = this.hpAtBattleStartByPlayer.get(rightPlayerId) ?? 0;
+    const leftPlacements = this.boardPlacementsByPlayer.get(leftPlayerId) ?? [];
+    const rightPlacements = this.boardPlacementsByPlayer.get(rightPlayerId) ?? [];
 
-    let winnerId = leftPlayerId;
-    let loserId = rightPlayerId;
-    let winnerUnitCount = leftUnitCount;
-    let loserUnitCount = rightUnitCount;
+    // ボード配置をBattleUnitに変換
+    const leftBattleUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+      createBattleUnit(placement, "left", index),
+    );
 
-    if (rightBoardPower > leftBoardPower) {
-      winnerId = rightPlayerId;
-      loserId = leftPlayerId;
-      winnerUnitCount = rightUnitCount;
-      loserUnitCount = leftUnitCount;
-    } else if (rightBoardPower === leftBoardPower && rightUnitCount > leftUnitCount) {
-      winnerId = rightPlayerId;
-      loserId = leftPlayerId;
-      winnerUnitCount = rightUnitCount;
-      loserUnitCount = leftUnitCount;
-    } else if (
-      rightBoardPower === leftBoardPower &&
-      rightUnitCount === leftUnitCount &&
-      rightHp > leftHp
-    ) {
-      winnerId = rightPlayerId;
-      loserId = leftPlayerId;
-      winnerUnitCount = rightUnitCount;
-      loserUnitCount = leftUnitCount;
-    } else if (
-      rightBoardPower === leftBoardPower &&
-      rightUnitCount === leftUnitCount &&
-      rightHp === leftHp &&
-      MatchRoomController.comparePlayerIds(rightPlayerId, leftPlayerId) < 0
-    ) {
-      winnerId = rightPlayerId;
-      loserId = leftPlayerId;
-      winnerUnitCount = rightUnitCount;
-      loserUnitCount = leftUnitCount;
+    const rightBattleUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
+      createBattleUnit(placement, "right", index),
+    );
+
+    // バトルシミュレーターで戦闘を実行
+    const battleSimulator = new BattleSimulator();
+    const result = battleSimulator.simulateBattle(
+      leftBattleUnits,
+      rightBattleUnits,
+      30000, // 30秒の最大戦闘時間
+    );
+
+    // 戦闘結果から勝者と生存ユニット数を判定
+    if (result.winner === "right") {
+      return {
+        winnerId: rightPlayerId,
+        loserId: leftPlayerId,
+        winnerUnitCount: result.rightSurvivors.length,
+        loserUnitCount: result.leftSurvivors.length,
+        isDraw: false,
+      };
+    } else if (result.winner === "left") {
+      return {
+        winnerId: leftPlayerId,
+        loserId: rightPlayerId,
+        winnerUnitCount: result.leftSurvivors.length,
+        loserUnitCount: result.rightSurvivors.length,
+        isDraw: false,
+      };
+    } else {
+      // 引き分けの場合
+      return {
+        winnerId: null,
+        loserId: null,
+        winnerUnitCount: result.leftSurvivors.length,
+        loserUnitCount: result.rightSurvivors.length,
+        isDraw: true,
+      };
     }
-
-    return {
-      winnerId,
-      loserId,
-      winnerUnitCount,
-      loserUnitCount,
-    };
   }
 
   private resolveUnitCount(playerId: string): number {
@@ -1355,12 +1368,8 @@ export class MatchRoomController {
 
   private buildLoserDamage(winnerUnitCount: number, loserUnitCount: number): number {
     const baseDamage = 5;
-    const estimatedSurvivingUnits = this.estimateWinningSurvivingUnits(
-      winnerUnitCount,
-      loserUnitCount,
-    );
-
-    return baseDamage + estimatedSurvivingUnits;
+    // 新しいダメージ計算式: ベースダメージ + 勝者の生存ユニット数 × 2
+    return baseDamage + winnerUnitCount * 2;
   }
 
   private estimateWinningSurvivingUnits(

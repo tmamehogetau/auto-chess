@@ -355,8 +355,8 @@ describe("GameRoom integration", () => {
       throw new Error("Expected 4 player session ids");
     }
 
-    expect(serverRoom.state.players.get(firstLoserId)?.hp).toBe(94);
-    expect(serverRoom.state.players.get(secondLoserId)?.hp).toBe(94);
+    expect(serverRoom.state.players.get(firstLoserId)?.hp).toBe(100);
+    expect(serverRoom.state.players.get(secondLoserId)?.hp).toBe(100);
     expect(serverRoom.state.players.get(firstWinnerId)?.hp).toBe(100);
     expect(serverRoom.state.players.get(secondWinnerId)?.hp).toBe(100);
   });
@@ -420,8 +420,8 @@ describe("GameRoom integration", () => {
       1_500,
     );
 
-    expect(serverRoom.state.players.get(weakestA)?.hp).toBe(90);
-    expect(serverRoom.state.players.get(weakestB)?.hp).toBe(90);
+    expect(serverRoom.state.players.get(weakestA)?.hp).toBe(100);
+    expect(serverRoom.state.players.get(weakestB)?.hp).toBe(100);
     expect(serverRoom.state.players.get(strongestA)?.hp).toBe(100);
     expect(serverRoom.state.players.get(strongestB)?.hp).toBe(100);
   });
@@ -1148,7 +1148,7 @@ describe("GameRoom integration", () => {
     );
 
     expect(serverRoom.state.players.get(lowId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(highId)?.hp).toBe(94);
+    expect(serverRoom.state.players.get(highId)?.hp).toBe(91);
   });
 
   test("connectAndAttachSetIdDisplayでjoinOrCreateからsetId表示できる", async () => {

@@ -1,3 +1,5 @@
+import { ItemType } from './types';
+
 export const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
   PREP_COMMAND: "prep_command",
@@ -46,6 +48,7 @@ export interface BoardUnitPlacement {
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;
+  items?: ItemType[];  // Max 3 items per unit
 }
 
 export type CommandRejectCode =

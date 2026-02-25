@@ -7,7 +7,26 @@ const MAX_AUTO_DELAY_MS = 30_000;
 const MIN_AUTO_FILL_BOTS = 0;
 const MAX_AUTO_FILL_BOTS = 3;
 
-export function parsePlacementsSpec(spec) {
+export interface BoardUnitPlacement {
+  cell: number;
+  unitType: string;
+  starLevel?: number;
+}
+
+export interface BattleResult {
+  winner: "left" | "right" | "draw";
+  leftSurvivors: Array<{ id: string; type: string; hp: number; maxHp: number }>;
+  rightSurvivors: Array<{ id: string; type: string; hp: number; maxHp: number }>;
+  combatLog: string[];
+  durationMs: number;
+}
+
+export interface SynergyDetails {
+  countsByType: Record<string, number>;
+  activeTiers: Record<string, number>;
+}
+
+export function parsePlacementsSpec(spec: string | undefined | null): BoardUnitPlacement[] {
   const trimmedSpec = String(spec ?? "").trim();
 
   if (!trimmedSpec) {
@@ -23,8 +42,8 @@ export function parsePlacementsSpec(spec) {
     throw new Error(`placements must be <= ${MAX_BOARD_UNITS}`);
   }
 
-  const usedCells = new Set();
-  const placements = [];
+  const usedCells = new Set<number>();
+  const placements: BoardUnitPlacement[] = [];
 
   for (const entry of rawEntries) {
     const parts = entry.split(":");
@@ -33,8 +52,13 @@ export function parsePlacementsSpec(spec) {
       throw new Error(`invalid placement entry: ${entry}`);
     }
 
-    const cellText = parts[0].trim();
-    const unitType = parts[1].trim();
+    const cellText = parts[0]?.trim();
+    const unitType = parts[1]?.trim();
+
+    if (!cellText || !unitType) {
+      throw new Error(`invalid placement entry: ${entry}`);
+    }
+
     const cell = Number.parseInt(cellText, 10);
 
     if (!Number.isInteger(cell) || cell < MIN_CELL_INDEX || cell > MAX_CELL_INDEX) {
@@ -58,7 +82,7 @@ export function parsePlacementsSpec(spec) {
   return placements;
 }
 
-export function parseAutoFlag(value) {
+export function parseAutoFlag(value: unknown): boolean {
   if (typeof value !== "string") {
     return false;
   }
@@ -68,7 +92,7 @@ export function parseAutoFlag(value) {
   return normalized === "1" || normalized === "true";
 }
 
-export function parseAutoDelayMs(value) {
+export function parseAutoDelayMs(value: unknown): number {
   if (typeof value !== "string" || value.trim() === "") {
     return DEFAULT_AUTO_DELAY_MS;
   }
@@ -86,7 +110,7 @@ export function parseAutoDelayMs(value) {
   return parsed;
 }
 
-export function parseAutoFillBots(value) {
+export function parseAutoFillBots(value: unknown): number {
   if (typeof value !== "string" || value.trim() === "") {
     return MIN_AUTO_FILL_BOTS;
   }
@@ -106,21 +130,23 @@ export function parseAutoFillBots(value) {
 
 /**
  * 戦闘ログを表示用にフォーマット
- * @param {string[]} combatLog 戦闘ログ配列
- * @returns {string} 改行で結合された文字列
+ * @param combatLog 戦闘ログ配列
+ * @returns 改行で結合された文字列
  */
-export function formatCombatLogForDisplay(combatLog) {
+export function formatCombatLogForDisplay(combatLog: string[]): string {
   return combatLog.join('\n');
 }
 
 /**
  * シナジー情報を表示用にフォーマット
- * @param {Object} synergyDetails シナジー詳細情報
- * @returns {string} 改行で結合された文字列
+ * @param synergyDetails シナジー詳細情報
+ * @returns 改行で結合された文字列
  */
-export function formatSynergyDisplay(synergyDetails) {
-  const lines = [];
-
+export function formatSynergyDisplay(
+  synergyDetails: SynergyDetails
+): string {
+  const lines: string[] = [];
+  
   for (const [unitType, count] of Object.entries(synergyDetails.countsByType)) {
     if (count > 0) {
       const tier = synergyDetails.activeTiers[unitType] ?? 0;
@@ -128,16 +154,16 @@ export function formatSynergyDisplay(synergyDetails) {
       lines.push(`${unitType}: ${count}体 ${tierStars}`);
     }
   }
-
+  
   return lines.join('\n');
 }
 
 /**
  * 戦闘結果を表示用にフォーマット
- * @param {Object} result 戦闘結果
- * @returns {string} フォーマットされた戦闘結果文字列
+ * @param result 戦闘結果
+ * @returns フォーマットされた戦闘結果文字列
  */
-export function displayBattleResult(result) {
+export function displayBattleResult(result: BattleResult): string {
   const lines = [
     `=== Battle Result ===`,
     `Winner: ${result.winner}`,
@@ -151,27 +177,29 @@ export function displayBattleResult(result) {
 
 /**
  * 配置からシナジー情報を表示用にフォーマット
- * @param {Array<{unitType: string}>} placements ユニット配置配列
- * @returns {string} シナジー情報の文字列
+ * @param placements ユニット配置配列
+ * @returns シナジー情報の文字列
  */
-export function displaySynergies(placements) {
-  const counts = {};
+export function displaySynergies(
+  placements: Array<{ unitType: string }>
+): string {
+  const counts: Record<string, number> = {};
   for (const p of placements) {
     counts[p.unitType] = (counts[p.unitType] || 0) + 1;
   }
-
-  const lines = ['Active Synergies:'];
-
+  
+  const lines: string[] = ['Active Synergies:'];
+  
   for (const [type, count] of Object.entries(counts)) {
     let tier = 0;
     if (count >= 9) tier = 3;
     else if (count >= 6) tier = 2;
     else if (count >= 3) tier = 1;
-
+    
     if (tier > 0) {
       lines.push(`  ${type}: ${count}体 ${'★'.repeat(tier)}`);
     }
   }
-
+  
   return lines.join('\n');
 }

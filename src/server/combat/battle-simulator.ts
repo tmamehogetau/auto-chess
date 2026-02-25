@@ -2,6 +2,7 @@ import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messag
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS } from "./skill-definitions";
 import { SYNERGY_DEFINITIONS, calculateSynergyDetails, SynergyTier } from "./synergy-definitions";
+import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 
 /**
  * アクションインターフェース
@@ -167,7 +168,7 @@ function calculateTeamPower(units: BattleUnit[]): number {
  */
 function applySynergyBuffs(
   units: BattleUnit[],
-  boardPlacements: Array<{ unitType: BoardUnitType }>
+  boardPlacements: BoardUnitPlacement[]
 ): void {
   const synergyDetails = calculateSynergyDetails(boardPlacements);
 
@@ -233,6 +234,35 @@ function applySynergyBuffs(
 }
 
 /**
+ * アイテム効果をユニットに適用
+ * @param unit ユニット
+ * @param items 装備されているアイテムの配列
+ */
+function applyItemEffects(unit: BattleUnit, items: ItemType[]): void {
+  for (const itemType of items) {
+    const itemDef = ITEM_DEFINITIONS[itemType];
+
+    if (itemDef.effects.attackPower) {
+      unit.attackPower += itemDef.effects.attackPower;
+    }
+    if (itemDef.effects.defense) {
+      unit.defense += itemDef.effects.defense;
+    }
+    if (itemDef.effects.attackSpeedMultiplier) {
+      unit.buffModifiers.attackSpeedMultiplier += itemDef.effects.attackSpeedMultiplier;
+    }
+    if (itemDef.effects.critRate) {
+      unit.critRate += itemDef.effects.critRate;
+    }
+    if (itemDef.effects.hpMultiplier) {
+      const multiplier = 1 + itemDef.effects.hpMultiplier;
+      unit.maxHp = Math.floor(unit.maxHp * multiplier);
+      unit.hp = Math.floor(unit.hp * multiplier);
+    }
+  }
+}
+
+/**
  * ユニット名を生成（戦闘ログ用）
  */
 function generateUnitName(unit: BattleUnit): string {
@@ -258,16 +288,16 @@ export class BattleSimulator {
    * ターゲット選択ロジックとターン制戦闘ループを使用して戦闘をシミュレート
    * @param leftUnits 左側チームのユニット（セル 0-3）
    * @param rightUnits 右側チームのユニット（セル 4-7）
-   * @param leftPlacements 左側チームのユニット配置（シナジー計算用）
-   * @param rightPlacements 右側チームのユニット配置（シナジー計算用）
+   * @param leftPlacements 左側チームのユニット配置（シナジー・アイテム計算用）
+   * @param rightPlacements 右側チームのユニット配置（シナジー・アイテム計算用）
    * @param maxDurationMs 最大戦闘時間（ミリ秒）
    * @returns 戦闘結果
    */
   simulateBattle(
     leftUnits: BattleUnit[],
     rightUnits: BattleUnit[],
-    leftPlacements: Array<{ unitType: BoardUnitType }> = [],
-    rightPlacements: Array<{ unitType: BoardUnitType }> = [],
+    leftPlacements: BoardUnitPlacement[] = [],
+    rightPlacements: BoardUnitPlacement[] = [],
     maxDurationMs: number = 30000,
   ): BattleResult {
     const combatLog: string[] = [];
@@ -278,6 +308,22 @@ export class BattleSimulator {
     // シナジーバフを適用
     applySynergyBuffs(leftUnits, leftPlacements);
     applySynergyBuffs(rightUnits, rightPlacements);
+
+    // アイテム効果を適用
+    for (let i = 0; i < leftUnits.length; i++) {
+      const unit = leftUnits[i];
+      if (unit) {
+        const items = leftPlacements[i]?.items || [];
+        applyItemEffects(unit, items);
+      }
+    }
+    for (let i = 0; i < rightUnits.length; i++) {
+      const unit = rightUnits[i];
+      if (unit) {
+        const items = rightPlacements[i]?.items || [];
+        applyItemEffects(unit, items);
+      }
+    }
 
     const allUnits = [...leftUnits, ...rightUnits];
     const actionQueue: Action[] = [];

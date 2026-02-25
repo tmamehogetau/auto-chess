@@ -524,7 +524,7 @@ function syncSelfStatusFromState(state, sessionId) {
     `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${benchUnits.length} board=${boardUnits.length} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
   );
   setBenchList(formatBenchUnitsWithIndex(benchUnits));
-  setBoardList(boardUnits.length > 0 ? boardUnits.join(",") : "(empty)");
+  setBoardList(formatBoardUnits(boardUnits));
 }
 
 function syncNextCmdSeq(state, sessionId) {
@@ -904,4 +904,26 @@ function formatBenchUnitsWithIndex(benchUnits) {
   }
 
   return benchUnits.map((unitType, index) => `${index}:${unitType}`).join(",");
+}
+
+function formatBoardUnits(boardUnits) {
+  if (boardUnits.length === 0) {
+    return "(empty)";
+  }
+
+  const parsed = boardUnits.map((unitText) => {
+    const [cellText, unitPart] = String(unitText).split(":");
+    const cell = Number.parseInt(cellText ?? "", 10);
+    const hasValidCell = Number.isInteger(cell) && cell >= 0 && cell <= 7;
+    const lane = hasValidCell ? (cell <= 3 ? "F" : "B") : "?";
+
+    return {
+      cell: hasValidCell ? cell : 99,
+      text: `${lane}${cellText}:${unitPart ?? "-"}`,
+    };
+  });
+
+  parsed.sort((left, right) => left.cell - right.cell);
+
+  return parsed.map((item) => item.text).join(" | ");
 }

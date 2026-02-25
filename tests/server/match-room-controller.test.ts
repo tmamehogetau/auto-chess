@@ -526,6 +526,48 @@ describe("MatchRoomController", () => {
     expect(status.ownedUnits.vanguard).toBe(3);
   });
 
+  test("同種9体購入でベンチ上で連鎖合成されて★3になる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const internalOffersMap = (controller as unknown as {
+      shopOffersByPlayer: Map<
+        string,
+        Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; rarity: 1 | 2 | 3; cost: number }>
+      >;
+    }).shopOffersByPlayer;
+
+    for (const cmdSeq of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      internalOffersMap.set("p1", [
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+        { unitType: "ranger", rarity: 1, cost: 1 },
+        { unitType: "mage", rarity: 2, cost: 2 },
+        { unitType: "assassin", rarity: 2, cost: 2 },
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+      ]);
+
+      const result = controller.submitPrepCommand("p1", cmdSeq, 3_000 + cmdSeq, {
+        shopBuySlotIndex: 0,
+      });
+
+      expect(result).toEqual({ accepted: true });
+    }
+
+    const status = controller.getPlayerStatus("p1");
+
+    expect(status.benchUnits).toEqual(["vanguard★3"]);
+    expect(status.ownedUnits.vanguard).toBe(9);
+  });
+
   test("benchToBoardCellとbenchSellIndexを同時指定するとINVALID_PAYLOAD", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

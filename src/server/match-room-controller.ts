@@ -933,45 +933,56 @@ export class MatchRoomController {
   private tryMergeBenchUnits(playerId: string): void {
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
 
-    for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
-      const mergeCandidates: number[] = [];
+    let mergedAny = true;
 
-      for (let index = 0; index < benchUnits.length; index += 1) {
-        const unit = benchUnits[index];
+    while (mergedAny) {
+      mergedAny = false;
 
-        if (!unit || unit.unitType !== unitType || unit.starLevel !== 1) {
-          continue;
+      for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
+        for (const starLevel of [1, 2] as const) {
+          const mergeCandidates: number[] = [];
+
+          for (let index = 0; index < benchUnits.length; index += 1) {
+            const unit = benchUnits[index];
+
+            if (!unit || unit.unitType !== unitType || unit.starLevel !== starLevel) {
+              continue;
+            }
+
+            mergeCandidates.push(index);
+          }
+
+          if (mergeCandidates.length < 3) {
+            continue;
+          }
+
+          const consumedIndexes = mergeCandidates
+            .slice(0, 3)
+            .sort((left, right) => right - left);
+          let mergedCost = 0;
+          let mergedCount = 0;
+
+          for (const index of consumedIndexes) {
+            const unit = benchUnits[index];
+
+            if (!unit) {
+              continue;
+            }
+
+            mergedCost += unit.cost;
+            mergedCount += unit.unitCount;
+            benchUnits.splice(index, 1);
+          }
+
+          benchUnits.push({
+            unitType,
+            cost: mergedCost,
+            starLevel: starLevel + 1,
+            unitCount: mergedCount,
+          });
+          mergedAny = true;
         }
-
-        mergeCandidates.push(index);
       }
-
-      if (mergeCandidates.length < 3) {
-        continue;
-      }
-
-      const consumedIndexes = mergeCandidates.slice(0, 3).sort((left, right) => right - left);
-      let mergedCost = 0;
-      let mergedCount = 0;
-
-      for (const index of consumedIndexes) {
-        const unit = benchUnits[index];
-
-        if (!unit) {
-          continue;
-        }
-
-        mergedCost += unit.cost;
-        mergedCount += unit.unitCount;
-        benchUnits.splice(index, 1);
-      }
-
-      benchUnits.push({
-        unitType,
-        cost: mergedCost,
-        starLevel: 2,
-        unitCount: mergedCount,
-      });
     }
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);

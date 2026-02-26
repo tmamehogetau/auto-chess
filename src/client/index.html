@@ -175,6 +175,42 @@
         <p class="hint">
           format: cell:unitType,cell:unitType (unitType: vanguard/ranger/mage/assassin)
         </p>
+        <!-- Item Shop Section -->
+        <h2>Item Shop</h2>
+        <section class="controls">
+          <div class="row">
+            <span class="label">Item Shop</span>
+            <div data-item-shop-list></div>
+          </div>
+          <label class="row">
+            <span class="label">Buy Item Slot</span>
+            <input data-item-buy-slot-input type="number" min="0" max="4" placeholder="0-4" />
+          </label>
+        </section>
+        <!-- Inventory Section -->
+        <h2>Inventory</h2>
+        <section class="controls">
+          <div class="row">
+            <span class="label">Items</span>
+            <div data-inventory-list></div>
+          </div>
+          <label class="row">
+            <span class="label">Equip Item</span>
+            <input data-equip-item-index-input type="number" min="0" max="8" placeholder="Item index" />
+            <span>to Bench</span>
+            <input data-equip-bench-index-input type="number" min="0" max="8" placeholder="Bench index" />
+          </label>
+          <label class="row">
+            <span class="label">Unequip</span>
+            <input data-unequip-bench-index-input type="number" min="0" max="8" placeholder="Bench index" />
+            <span>Item Slot</span>
+            <input data-unequip-item-slot-input type="number" min="0" max="2" placeholder="0-2" />
+          </label>
+          <label class="row">
+            <span class="label">Sell Item</span>
+            <input data-sell-item-index-input type="number" min="0" max="8" placeholder="Inventory index" />
+          </label>
+        </section>
         <div class="actions">
           <button data-prep-button type="button" disabled>Send Prep Command</button>
         </div>

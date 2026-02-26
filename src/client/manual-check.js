@@ -48,6 +48,14 @@ const selfStatusElement = document.querySelector("[data-self-status]");
 const benchListElement = document.querySelector("[data-bench-list]");
 const boardListElement = document.querySelector("[data-board-list]");
 const commandResultElement = document.querySelector("[data-command-result]");
+const itemShopListElement = document.querySelector("[data-item-shop-list]");
+const inventoryListElement = document.querySelector("[data-inventory-list]");
+const itemBuySlotInput = document.querySelector("[data-item-buy-slot-input]");
+const equipItemIndexInput = document.querySelector("[data-equip-item-index-input]");
+const equipBenchIndexInput = document.querySelector("[data-equip-bench-index-input]");
+const unequipBenchIndexInput = document.querySelector("[data-unequip-bench-index-input]");
+const unequipItemSlotInput = document.querySelector("[data-unequip-item-slot-input]");
+const sellItemIndexInput = document.querySelector("[data-sell-item-index-input]");
 
 let activeRoom = null;
 let connecting = false;
@@ -271,6 +279,42 @@ function sendPrepCommand() {
       7,
       "boardSellCell must be between 0 and 7",
     );
+    const itemBuySlot = parseOptionalIntegerInRange(
+      itemBuySlotInput?.value,
+      0,
+      4,
+      "itemBuySlot must be between 0 and 4",
+    );
+    const equipItemIndex = parseOptionalIntegerInRange(
+      equipItemIndexInput?.value,
+      0,
+      8,
+      "equipItemIndex must be between 0 and 8",
+    );
+    const equipBenchIndex = parseOptionalIntegerInRange(
+      equipBenchIndexInput?.value,
+      0,
+      8,
+      "equipBenchIndex must be between 0 and 8",
+    );
+    const unequipBenchIndex = parseOptionalIntegerInRange(
+      unequipBenchIndexInput?.value,
+      0,
+      8,
+      "unequipBenchIndex must be between 0 and 8",
+    );
+    const unequipItemSlot = parseOptionalIntegerInRange(
+      unequipItemSlotInput?.value,
+      0,
+      2,
+      "unequipItemSlot must be between 0 and 2",
+    );
+    const sellItemIndex = parseOptionalIntegerInRange(
+      sellItemIndexInput?.value,
+      0,
+      8,
+      "sellItemIndex must be between 0 and 8",
+    );
 
     if (boardPlacements.length > 0) {
       payload.boardPlacements = boardPlacements;
@@ -310,6 +354,28 @@ function sendPrepCommand() {
 
     if (boardSellCell !== null) {
       payload.boardSellIndex = boardSellCell;
+    }
+
+    if (itemBuySlot !== null) {
+      payload.itemBuySlotIndex = itemBuySlot;
+    }
+
+    if (equipItemIndex !== null && equipBenchIndex !== null) {
+      payload.itemEquipToBench = {
+        inventoryItemIndex: equipItemIndex,
+        benchIndex: equipBenchIndex,
+      };
+    }
+
+    if (unequipBenchIndex !== null && unequipItemSlot !== null) {
+      payload.itemUnequipFromBench = {
+        benchIndex: unequipBenchIndex,
+        itemSlotIndex: unequipItemSlot,
+      };
+    }
+
+    if (sellItemIndex !== null) {
+      payload.itemSellInventoryIndex = sellItemIndex;
     }
 
     if (Object.keys(payload).length <= 1) {
@@ -491,6 +557,30 @@ function syncButtonAvailability() {
     boardSellCellInput.disabled = connecting || !connected;
   }
 
+  if (itemBuySlotInput) {
+    itemBuySlotInput.disabled = connecting || !connected;
+  }
+
+  if (equipItemIndexInput) {
+    equipItemIndexInput.disabled = connecting || !connected;
+  }
+
+  if (equipBenchIndexInput) {
+    equipBenchIndexInput.disabled = connecting || !connected;
+  }
+
+  if (unequipBenchIndexInput) {
+    unequipBenchIndexInput.disabled = connecting || !connected;
+  }
+
+  if (unequipItemSlotInput) {
+    unequipItemSlotInput.disabled = connecting || !connected;
+  }
+
+  if (sellItemIndexInput) {
+    sellItemIndexInput.disabled = connecting || !connected;
+  }
+
   if (autoFillInput) {
     autoFillInput.disabled = connecting || connected;
   }
@@ -525,6 +615,24 @@ function syncSelfStatusFromState(state, sessionId) {
   );
   setBenchList(formatBenchUnitsWithIndex(benchUnits));
   setBoardList(formatBoardUnits(boardUnits));
+
+  // Display item shop offers
+  if (state?.itemShopOffers && itemShopListElement) {
+    itemShopListElement.innerHTML = state.itemShopOffers
+      .map((offer, i) => `${i}: ${offer.itemType} (${offer.cost}G)`)
+      .join('<br>');
+  } else if (itemShopListElement) {
+    itemShopListElement.innerHTML = '-';
+  }
+
+  // Display item inventory
+  if (state?.itemInventory && inventoryListElement) {
+    inventoryListElement.innerHTML = state.itemInventory
+      .map((item, i) => `${i}: ${item}`)
+      .join('<br>');
+  } else if (inventoryListElement) {
+    inventoryListElement.innerHTML = '-';
+  }
 }
 
 function syncNextCmdSeq(state, sessionId) {
@@ -613,6 +721,36 @@ function buildRejectHint(code) {
       const shopLockValue = shopLockInput?.value?.trim();
       if (shopLockValue && shopLockValue !== "skip" && shopLockValue !== "true" && shopLockValue !== "false") {
         hints.push("Shop Lock must be skip/true/false");
+      }
+
+      const itemBuySlot = Number.parseInt(itemBuySlotInput?.value ?? "", 10);
+      if (itemBuySlotInput?.value && (!Number.isInteger(itemBuySlot) || itemBuySlot < 0 || itemBuySlot > 4)) {
+        hints.push("Item Buy Slot must be 0-4");
+      }
+
+      const equipItemIndex = Number.parseInt(equipItemIndexInput?.value ?? "", 10);
+      if (equipItemIndexInput?.value && (!Number.isInteger(equipItemIndex) || equipItemIndex < 0 || equipItemIndex > 8)) {
+        hints.push("Equip Item Index must be 0-8");
+      }
+
+      const equipBenchIndex = Number.parseInt(equipBenchIndexInput?.value ?? "", 10);
+      if (equipBenchIndexInput?.value && (!Number.isInteger(equipBenchIndex) || equipBenchIndex < 0 || equipBenchIndex > 8)) {
+        hints.push("Equip Bench Index must be 0-8");
+      }
+
+      const unequipBenchIndex = Number.parseInt(unequipBenchIndexInput?.value ?? "", 10);
+      if (unequipBenchIndexInput?.value && (!Number.isInteger(unequipBenchIndex) || unequipBenchIndex < 0 || unequipBenchIndex > 8)) {
+        hints.push("Unequip Bench Index must be 0-8");
+      }
+
+      const unequipItemSlot = Number.parseInt(unequipItemSlotInput?.value ?? "", 10);
+      if (unequipItemSlotInput?.value && (!Number.isInteger(unequipItemSlot) || unequipItemSlot < 0 || unequipItemSlot > 2)) {
+        hints.push("Unequip Item Slot must be 0-2");
+      }
+
+      const sellItemIndex = Number.parseInt(sellItemIndexInput?.value ?? "", 10);
+      if (sellItemIndexInput?.value && (!Number.isInteger(sellItemIndex) || sellItemIndex < 0 || sellItemIndex > 8)) {
+        hints.push("Sell Item Index must be 0-8");
       }
 
       if (hints.length > 0) {

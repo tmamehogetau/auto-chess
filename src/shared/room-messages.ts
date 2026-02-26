@@ -36,11 +36,26 @@ export interface PrepCommandMessage {
   };
   benchSellIndex?: number;
   boardSellIndex?: number;
+  itemBuySlotIndex?: number;           // Buy item from shop
+  itemEquipToBench?: {                 // Equip item to bench unit
+    inventoryItemIndex: number;        // Index in inventory
+    benchIndex: number;                // Bench unit index
+  };
+  itemUnequipFromBench?: {             // Unequip item from bench
+    benchIndex: number;                // Bench unit index
+    itemSlotIndex: number;             // Item slot on unit (0-2)
+  };
+  itemSellInventoryIndex?: number;     // Sell item from inventory
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
 
 export type UnitEffectSetId = "set1" | "set2";
+
+export interface ShopItemOffer {
+  itemType: ItemType;
+  cost: number;
+}
 
 export interface BoardUnitPlacement {
   cell: number;
@@ -58,7 +73,8 @@ export type CommandRejectCode =
   | "UNKNOWN_PLAYER"
   | "INVALID_PAYLOAD"
   | "INSUFFICIENT_GOLD"
-  | "BENCH_FULL";
+  | "BENCH_FULL"
+  | "INVENTORY_FULL";
 
 export type CommandResult =
   | { accepted: true }
@@ -69,4 +85,20 @@ export interface RoundStateMessage {
   roundIndex: number;
   phaseDeadlineAtMs: number;
   ranking: string[];
+}
+
+export interface PlayerMatchStatus {
+  hp: number;
+  eliminated: boolean;
+  boardUnitCount: number;
+  gold: number;
+  xp: number;
+  level: number;
+  shopOffers: any[];
+  shopLocked: boolean;
+  benchUnits: string[];
+  boardUnits: string[];
+  ownedUnits: any;
+  itemInventory: ItemType[];
+  itemShopOffers: ShopItemOffer[];
 }

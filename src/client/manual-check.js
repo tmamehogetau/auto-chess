@@ -548,10 +548,10 @@ function updateGameUI(state) {
   }
 
   // Update unit shop
-  updateUnitShop(state.shopOffers);
+  updateUnitShop(player.shopOffers);
 
   // Update item shop
-  updateItemShop(state.itemShopOffers);
+  updateItemShop(player.itemShopOffers);
 
   // Update board
   updateBoard(player.boardUnits);
@@ -560,7 +560,7 @@ function updateGameUI(state) {
   updateBench(player.benchUnits);
 
   // Update inventory
-  updateInventory(state.itemInventory);
+  updateInventory(player.itemInventory);
 
   // Update next command sequence
   if (typeof player.lastCmdSeq === "number") {

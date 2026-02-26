@@ -1,6 +1,7 @@
 import { ArraySchema, MapSchema, Schema, defineTypes } from "@colyseus/schema";
 
 import type { BoardUnitType, UnitEffectSetId } from "../../shared/room-messages";
+import type { ItemType } from "../../shared/types";
 
 export class ShopOfferState extends Schema {
   declare public unitType: BoardUnitType;
@@ -14,6 +15,18 @@ export class ShopOfferState extends Schema {
     this.unitType = "vanguard";
     this.cost = 1;
     this.rarity = 1;
+  }
+}
+
+export class ShopItemOfferState extends Schema {
+  declare public itemType: ItemType;
+
+  declare public cost: number;
+
+  public constructor() {
+    super();
+    this.itemType = "sword";
+    this.cost = 3;
   }
 }
 
@@ -52,6 +65,10 @@ export class PlayerPresenceState extends Schema {
 
   declare public lastCmdSeq: number;
 
+  declare public itemShopOffers: ArraySchema<ShopItemOfferState>;
+
+  declare public itemInventory: ArraySchema<string>;
+
   public constructor() {
     super();
     this.ready = false;
@@ -71,6 +88,8 @@ export class PlayerPresenceState extends Schema {
     this.ownedMage = 0;
     this.ownedAssassin = 0;
     this.lastCmdSeq = 0;
+    this.itemShopOffers = new ArraySchema<ShopItemOfferState>();
+    this.itemInventory = new ArraySchema<string>();
   }
 }
 
@@ -107,6 +126,11 @@ defineTypes(ShopOfferState, {
   rarity: "number",
 });
 
+defineTypes(ShopItemOfferState, {
+  itemType: "string",
+  cost: "number",
+});
+
 defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
@@ -125,6 +149,8 @@ defineTypes(PlayerPresenceState, {
   ownedMage: "number",
   ownedAssassin: "number",
   lastCmdSeq: "number",
+  itemShopOffers: [ShopItemOfferState],
+  itemInventory: ["string"],
 });
 
 defineTypes(MatchRoomState, {

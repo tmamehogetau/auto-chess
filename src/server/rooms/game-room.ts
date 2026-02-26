@@ -5,6 +5,7 @@ import {
   MatchRoomState,
   PlayerPresenceState,
   ShopOfferState,
+  ShopItemOfferState,
 } from "../schema/match-room-state";
 import {
   CLIENT_MESSAGE_TYPES,
@@ -277,6 +278,25 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       for (const boardUnit of latestStatus.boardUnits) {
         player.boardUnits.push(boardUnit);
       }
+
+      // Sync item shop offers
+      while (player.itemShopOffers.length > 0) {
+        player.itemShopOffers.pop();
+      }
+      for (const offer of latestStatus.itemShopOffers || []) {
+        const nextOffer = new ShopItemOfferState();
+        nextOffer.itemType = offer.itemType;
+        nextOffer.cost = offer.cost;
+        player.itemShopOffers.push(nextOffer);
+      }
+
+      // Sync item inventory
+      while (player.itemInventory.length > 0) {
+        player.itemInventory.pop();
+      }
+      for (const item of latestStatus.itemInventory || []) {
+        player.itemInventory.push(item);
+      }
     }
 
     client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);
@@ -365,6 +385,25 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       for (const boardUnit of status.boardUnits) {
         playerState.boardUnits.push(boardUnit);
+      }
+
+      // Sync item shop offers
+      while (playerState.itemShopOffers.length > 0) {
+        playerState.itemShopOffers.pop();
+      }
+      for (const offer of status.itemShopOffers || []) {
+        const nextOffer = new ShopItemOfferState();
+        nextOffer.itemType = offer.itemType;
+        nextOffer.cost = offer.cost;
+        playerState.itemShopOffers.push(nextOffer);
+      }
+
+      // Sync item inventory
+      while (playerState.itemInventory.length > 0) {
+        playerState.itemInventory.pop();
+      }
+      for (const item of status.itemInventory || []) {
+        playerState.itemInventory.push(item);
       }
     }
 

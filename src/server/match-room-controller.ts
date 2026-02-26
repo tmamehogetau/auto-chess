@@ -410,6 +410,10 @@ export class MatchRoomController {
     const itemInventory = this.itemInventoryByPlayer.get(playerId) ?? [];
     const itemShopOffers = this.itemShopOffersByPlayer.get(playerId) ?? [];
 
+    // Debug log for shop offers (Bug #1 fix)
+    const shopOffers = this.shopOffersByPlayer.get(playerId) ?? [];
+    console.log(`Shop offers for ${playerId}:`, shopOffers);
+
     // Calculate active synergies
     const activeSynergies = this.calculateActiveSynergies(boardPlacements);
 
@@ -420,18 +424,18 @@ export class MatchRoomController {
       gold: this.goldByPlayer.get(playerId) ?? INITIAL_GOLD,
       xp: this.xpByPlayer.get(playerId) ?? INITIAL_XP,
       level: this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
-      shopOffers: [...(this.shopOffersByPlayer.get(playerId) ?? [])],
+      shopOffers: shopOffers,
       shopLocked: this.shopLockedByPlayer.get(playerId) ?? false,
       benchUnits: benchUnits.map((benchUnit) =>
         benchUnit.starLevel > 1
-          ? `${benchUnit.unitType}★${benchUnit.starLevel}`
+          ? `${benchUnit.unitType}:${benchUnit.starLevel}`
           : benchUnit.unitType,
       ),
       boardUnits: boardPlacements.map((placement) => {
         const starLevel = placement.starLevel ?? 1;
 
         if (starLevel > 1) {
-          return `${placement.cell}:${placement.unitType}★${starLevel}`;
+          return `${placement.cell}:${placement.unitType}:${starLevel}`;
         }
 
         return `${placement.cell}:${placement.unitType}`;

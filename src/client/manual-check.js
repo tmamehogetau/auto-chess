@@ -30,14 +30,9 @@ const UNIT_ICONS = {
 const ITEM_ICONS = {
   sword: "⚔️",
   shield: "🛡️",
-  bow: "🏹",
-  staff: "🪄",
-  armor: "🦺",
-  cloak: "🧥",
+  boots: "👞",
   ring: "💍",
-  gem: "💎",
-  potion: "🧪",
-  book: "📖",
+  amulet: "📿",
 };
 
 // Legacy form elements (kept for compatibility)
@@ -807,7 +802,7 @@ function updateBoard(boardUnits) {
 
   units.forEach((unit) => {
     const unitStr = String(unit);
-    const [cellStr, unitType] = unitStr.split(":");
+    const [cellStr, rest] = unitStr.split(":");
     const cellIndex = Number.parseInt(cellStr, 10);
 
     if (Number.isNaN(cellIndex) || cellIndex < 0 || cellIndex > 7) return;
@@ -815,12 +810,23 @@ function updateBoard(boardUnits) {
     const cell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
     if (!cell) return;
 
+    // Parse unit type and star level (format: "cell:unitType:starLevel" or "cell:unitType")
+    let unitType = rest;
+    let starLevel = 1;
+
+    const starMatch = rest.match(/(.+?):(\d+)$/);
+    if (starMatch) {
+      unitType = starMatch[1];
+      starLevel = Number.parseInt(starMatch[2], 10);
+    }
+
     const icon = UNIT_ICONS[unitType] || "❓";
+    const starClass = `stars-${Math.min(starLevel, 3)}`;
 
     cell.innerHTML = `
       <span class="cell-number">${cellIndex}</span>
       <div class="unit-icon">${icon}</div>
-      <div class="unit-stars stars-1">★</div>
+      <div class="unit-stars ${starClass}">${"★".repeat(starLevel)}</div>
     `;
     cell.classList.remove("empty");
   });
@@ -845,13 +851,24 @@ function updateBench(benchUnits) {
     const slot = benchGrid?.querySelector(`[data-bench-slot="${index}"]`);
     if (!slot) return;
 
-    const unitType = String(unit);
+    // Parse unit type and star level (format: "unitType:starLevel" or "unitType")
+    const unitStr = String(unit);
+    let unitType = unitStr;
+    let starLevel = 1;
+
+    const starMatch = unitStr.match(/(.+?):(\d+)$/);
+    if (starMatch) {
+      unitType = starMatch[1];
+      starLevel = Number.parseInt(starMatch[2], 10);
+    }
+
     const icon = UNIT_ICONS[unitType] || "❓";
+    const starClass = `stars-${Math.min(starLevel, 3)}`;
 
     slot.innerHTML = `
       <span class="slot-number">${index}</span>
       <div class="unit-icon">${icon}</div>
-      <div class="unit-stars stars-1">★</div>
+      <div class="unit-stars ${starClass}">${"★".repeat(starLevel)}</div>
     `;
     slot.classList.remove("empty");
   });

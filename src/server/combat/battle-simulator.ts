@@ -242,19 +242,24 @@ function applyItemEffects(unit: BattleUnit, items: ItemType[]): void {
   for (const itemType of items) {
     const itemDef = ITEM_DEFINITIONS[itemType];
 
-    if (itemDef.effects.attackPower) {
+    if (!itemDef || !itemDef.effects) {
+      console.warn(`Invalid item definition for: ${itemType}`);
+      continue;
+    }
+
+    if (itemDef.effects.attackPower !== undefined) {
       unit.attackPower += itemDef.effects.attackPower;
     }
-    if (itemDef.effects.defense) {
+    if (itemDef.effects.defense !== undefined) {
       unit.defense += itemDef.effects.defense;
     }
-    if (itemDef.effects.attackSpeedMultiplier) {
+    if (itemDef.effects.attackSpeedMultiplier !== undefined) {
       unit.buffModifiers.attackSpeedMultiplier += itemDef.effects.attackSpeedMultiplier;
     }
-    if (itemDef.effects.critRate) {
+    if (itemDef.effects.critRate !== undefined) {
       unit.critRate += itemDef.effects.critRate;
     }
-    if (itemDef.effects.hpMultiplier) {
+    if (itemDef.effects.hpMultiplier !== undefined) {
       const multiplier = 1 + itemDef.effects.hpMultiplier;
       unit.maxHp = Math.floor(unit.maxHp * multiplier);
       unit.hp = Math.floor(unit.hp * multiplier);
@@ -300,48 +305,70 @@ export class BattleSimulator {
     rightPlacements: BoardUnitPlacement[] = [],
     maxDurationMs: number = 30000,
   ): BattleResult {
-    const combatLog: string[] = [];
-    combatLog.push("Battle started");
-    combatLog.push(`Left units: ${leftUnits.length}`);
-    combatLog.push(`Right units: ${rightUnits.length}`);
-
-    // シナジーバフを適用
-    applySynergyBuffs(leftUnits, leftPlacements);
-    applySynergyBuffs(rightUnits, rightPlacements);
-
-    // アイテム効果を適用
-    for (let i = 0; i < leftUnits.length; i++) {
-      const unit = leftUnits[i];
-      if (unit) {
-        const items = leftPlacements[i]?.items || [];
-        applyItemEffects(unit, items);
+    try {
+      // Bug #3 fix: Validate input teams
+      if (!leftUnits || leftUnits.length === 0 || !rightUnits || rightUnits.length === 0) {
+        console.warn("Battle simulation with empty teams");
+        return {
+          winner: leftUnits.length > 0 ? "left" : rightUnits.length > 0 ? "right" : "draw",
+          leftSurvivors: leftUnits.filter(u => !u.isDead),
+          rightSurvivors: rightUnits.filter(u => !u.isDead),
+          combatLog: ["Battle with empty teams"],
+          durationMs: 0,
+        };
       }
-    }
-    for (let i = 0; i < rightUnits.length; i++) {
-      const unit = rightUnits[i];
-      if (unit) {
-        const items = rightPlacements[i]?.items || [];
-        applyItemEffects(unit, items);
+
+      const combatLog: string[] = [];
+      combatLog.push("Battle started");
+      combatLog.push(`Left units: ${leftUnits.length}`);
+      combatLog.push(`Right units: ${rightUnits.length}`);
+
+      // シナジーバフを適用
+      applySynergyBuffs(leftUnits, leftPlacements);
+      applySynergyBuffs(rightUnits, rightPlacements);
+
+      // アイテム効果を適用
+      for (let i = 0; i < leftUnits.length; i++) {
+        const unit = leftUnits[i];
+        if (unit) {
+          const items = leftPlacements[i]?.items || [];
+          applyItemEffects(unit, items);
+        }
       }
-    }
+      for (let i = 0; i < rightUnits.length; i++) {
+        const unit = rightUnits[i];
+        if (unit) {
+          const items = rightPlacements[i]?.items || [];
+          applyItemEffects(unit, items);
+        }
+      }
 
-    const allUnits = [...leftUnits, ...rightUnits];
-    const actionQueue: Action[] = [];
-    let currentTime = 0;
+      const allUnits = [...leftUnits, ...rightUnits];
+      const actionQueue: Action[] = [];
+      let currentTime = 0;
 
-    // 全ユニットの初期アクションをキューに追加
-    for (const unit of allUnits) {
-      actionQueue.push({
-        unit,
-        actionTime: 0,
-        type: "attack",
-      });
-    }
+      // 全ユニットの初期アクションをキューに追加
+      for (const unit of allUnits) {
+        actionQueue.push({
+          unit,
+          actionTime: 0,
+          type: "attack",
+        });
+      }
 
-    actionQueue.sort((a, b) => a.actionTime - b.actionTime);
+      actionQueue.sort((a, b) => a.actionTime - b.actionTime);
 
-    // 戦闘ループ
-    while (currentTime < maxDurationMs && hasLivingUnits(leftUnits) && hasLivingUnits(rightUnits)) {
+      // Bug #3 fix: Add iteration counter to prevent infinite loops
+      let iterationCount = 0;
+      const MAX_ITERATIONS = 10000;
+
+      // 戦闘ループ
+      while (currentTime < maxDurationMs && hasLivingUnits(leftUnits) && hasLivingUnits(rightUnits)) {
+        iterationCount++;
+        if (iterationCount > MAX_ITERATIONS) {
+          console.error("Battle simulation exceeded max iterations");
+          break;
+        }
       const action = actionQueue.shift();
 
       if (!action) {
@@ -385,21 +412,22 @@ export class BattleSimulator {
           }
 
           // 攻撃カウントを増加
-          action.unit.attackCount++;
+      action.unit.attackCount++;
 
-          // スキルトリガーのチェック
-          const skillDef = SKILL_DEFINITIONS[action.unit.type];
-          if (skillDef && skillDef.triggerType === 'on_attack_count' &&
-              action.unit.attackCount % skillDef.triggerCount === 0) {
-            // スキルを即座にスケジュール
-            actionQueue.push({
-              unit: action.unit,
-              actionTime: currentTime,
-              type: 'skill'
-            });
-          }
+      // スキルトリガーのチェック
+      const skillDef = SKILL_DEFINITIONS[action.unit.type];
+      if (skillDef && skillDef.triggerType === 'on_attack_count' &&
+          skillDef.triggerCount !== undefined &&
+          action.unit.attackCount % skillDef.triggerCount === 0) {
+        // スキルを即座にスケジュール
+        actionQueue.push({
+          unit: action.unit,
+          actionTime: currentTime,
+          type: 'skill'
+        });
+      }
 
-          // 次の攻撃をスケジュール（0でない場合）
+      // 次の攻撃をスケジュール（0でない場合）
           if (action.unit.attackSpeed > 0) {
             const nextAttackTime = currentTime + (1000 / (action.unit.attackSpeed * action.unit.buffModifiers.attackSpeedMultiplier));
             actionQueue.push({
@@ -424,13 +452,18 @@ export class BattleSimulator {
         }
       } else if (action.type === "skill") {
         const skillDef = SKILL_DEFINITIONS[action.unit.type];
-        if (skillDef) {
+        if (skillDef && skillDef.execute) {
           // ユニットのサイドに基づいて味方と敵を決定
           const isLeftSide = leftUnits.includes(action.unit);
           const allies = isLeftSide ? leftUnits : rightUnits;
           const enemies = isLeftSide ? rightUnits : leftUnits;
 
-          skillDef.execute(action.unit, allies, enemies, combatLog);
+          try {
+            skillDef.execute(action.unit, allies, enemies, combatLog);
+          } catch (error) {
+            console.error(`Error executing skill for ${action.unit.type}:`, error);
+            combatLog.push(`Error executing skill for ${action.unit.type}`);
+          }
 
           // スキルによる死亡をチェック
           for (const enemy of enemies) {
@@ -448,6 +481,17 @@ export class BattleSimulator {
     const result = this.determineBattleResult(leftUnits, rightUnits, currentTime, maxDurationMs, combatLog);
 
     return result;
+    } catch (error) {
+      console.error("Battle simulation error:", error);
+      // Return a draw result on error (Bug #3 fix)
+      return {
+        winner: "draw",
+        leftSurvivors: leftUnits ? leftUnits.filter(u => !u.isDead) : [],
+        rightSurvivors: rightUnits ? rightUnits.filter(u => !u.isDead) : [],
+        combatLog: ["Battle error occurred"],
+        durationMs: 0,
+      };
+    }
   }
 
   /**

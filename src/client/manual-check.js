@@ -86,6 +86,9 @@ let selectedBoardCell = null;
 let selectedInventoryIndex = null;
 let selectedShopSlot = null;
 
+// Timer state
+let timerInterval = null;
+
 // Auto-fill state
 let pendingAutoReadyTimeout = null;
 let pendingAutoPrepTimeout = null;
@@ -501,6 +504,28 @@ function hideSelectionMode() {
   selectionModeIndicator?.classList.remove("active");
 }
 
+// Combat Log functions
+function addCombatLogEntry(message, type = 'info') {
+  if (!combatLogContainer) return;
+  
+  // Clear initial message if present
+  if (combatLogContainer.querySelector('.log-entry')?.textContent?.includes('Connect to')) {
+    combatLogContainer.innerHTML = '';
+  }
+  
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  entry.textContent = message;
+  
+  combatLogContainer.appendChild(entry);
+  combatLogContainer.scrollTop = combatLogContainer.scrollHeight;
+  
+  // Keep only last 50 entries
+  while (combatLogContainer.children.length > 50) {
+    combatLogContainer.removeChild(combatLogContainer.firstChild);
+  }
+}
+
 // UI Update functions
 function updateGameUI(state) {
   if (!state) return;
@@ -562,6 +587,36 @@ function updateGameUI(state) {
   // Update inventory
   updateInventory(player.itemInventory);
 
+  // Update synergies
+  updateSynergyDisplay(player.activeSynergies);
+
+  // Update timer for Prep phase
+  if (state.phase === 'Prep' && state.prepDeadlineAtMs) {
+    startPrepTimer(state.prepDeadlineAtMs);
+  } else if (timerInterval && state.phase !== 'Prep') {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    const timerDisplay = document.querySelector("[data-timer-display]");
+    if (timerDisplay) timerDisplay.textContent = '';
+  }
+
+  // Check for battle result
+  const battleResult = player.lastBattleResult;
+  if (battleResult) {
+    // Only show once per round (track last shown round)
+    if (!window.lastShownBattleRound || window.lastShownBattleRound !== state.roundIndex) {
+      window.lastShownBattleRound = state.roundIndex;
+      
+      const resultText = battleResult.won ? '🏆 VICTORY!' : '💀 DEFEAT';
+      const type = battleResult.won ? 'win' : 'lose';
+      
+      addCombatLogEntry(`--- Round ${state.roundIndex} ---`, 'info');
+      addCombatLogEntry(`${resultText} vs Player`, type);
+      addCombatLogEntry(`Survivors: ${battleResult.survivors} vs ${battleResult.opponentSurvivors}`, 'info');
+      addCombatLogEntry(`Damage: ${battleResult.won ? '+' : '-'}${battleResult.damageTaken} HP`, type);
+    }
+  }
+
   // Update next command sequence
   if (typeof player.lastCmdSeq === "number") {
     nextCmdSeq = player.lastCmdSeq + 1;
@@ -571,6 +626,8 @@ function updateGameUI(state) {
 function updatePhaseDisplay(phase) {
   if (!phaseDisplay) return;
 
+  const previousPhase = phaseDisplay.textContent;
+  
   phaseDisplay.textContent = phase || "Waiting";
   phaseDisplay.className = "phase-indicator";
 
@@ -579,6 +636,103 @@ function updatePhaseDisplay(phase) {
   } else {
     phaseDisplay.classList.add("waiting");
   }
+  
+  // Log phase changes
+  if (previousPhase !== phase) {
+    if (phase === 'Prep') {
+      addCombatLogEntry('🛒 Prep phase started - Buy and deploy units!', 'info');
+    } else if (phase === 'Battle') {
+      addCombatLogEntry('⚔️ Battle phase started!', 'info');
+    } else if (phase === 'Settle') {
+      addCombatLogEntry('📊 Settling scores...', 'info');
+    }
+  }
+}
+
+function updateSynergyDisplay(synergies) {
+  // Find or create synergy container
+  let container = document.querySelector("[data-synergy-display]");
+  if (!container) {
+    container = document.createElement('div');
+    container.setAttribute('data-synergy-display', '');
+    container.className = 'synergy-display';
+    container.style.cssText = 'display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;';
+    
+    // Insert after status bar
+    const statusBar = document.querySelector('.status-bar');
+    if (statusBar) {
+      statusBar.after(container);
+    }
+    return;
+  }
+  
+  container.innerHTML = '';
+  
+  if (!synergies || synergies.length === 0) return;
+  
+  const icons = { vanguard: '🛡️', ranger: '🏹', mage: '✨', assassin: '🗡️' };
+  
+  for (const syn of synergies) {
+    const div = document.createElement('div');
+    div.className = `synergy-item tier-${syn.tier}`;
+    div.style.cssText = `
+      padding: 5px 10px;
+      background: ${syn.tier > 0 ? 'rgba(39, 174, 96, 0.3)' : 'rgba(255,255,255,0.1)'};
+      border-radius: 5px;
+      font-size: 12px;
+    `;
+    div.innerHTML = `${icons[syn.unitType] || '?'} ${syn.unitType}: ${syn.count} ${'★'.repeat(syn.tier)}`;
+    container.appendChild(div);
+  }
+}
+
+function startPrepTimer(deadlineMs) {
+  // Clear existing interval
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  
+  if (!deadlineMs) return;
+  
+  const timerDisplay = document.querySelector("[data-timer-display]");
+  if (!timerDisplay) {
+    // Create timer display if not exists
+    const timer = document.createElement('div');
+    timer.setAttribute('data-timer-display', '');
+    timer.className = 'timer-display';
+    timer.style.cssText = `
+      font-size: 18px;
+      font-weight: bold;
+      color: #f39c12;
+      margin-left: 20px;
+    `;
+    
+    const statusLeft = document.querySelector('.status-left');
+    if (statusLeft) {
+      statusLeft.appendChild(timer);
+    }
+  }
+  
+  const updateTimer = () => {
+    const now = Date.now();
+    const remaining = Math.max(0, deadlineMs - now);
+    const seconds = Math.ceil(remaining / 1000);
+    
+    const display = document.querySelector("[data-timer-display]");
+    if (display) {
+      display.textContent = `⏱️ ${seconds}s`;
+      display.style.color = seconds <= 10 ? '#e74c3c' : '#f39c12';
+    }
+    
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  };
+  
+  updateTimer();
+  timerInterval = setInterval(updateTimer, 1000);
 }
 
 function updateUnitShop(offers) {

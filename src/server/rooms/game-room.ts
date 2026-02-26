@@ -6,6 +6,8 @@ import {
   PlayerPresenceState,
   ShopOfferState,
   ShopItemOfferState,
+  BattleResultSchema,
+  SynergySchema,
 } from "../schema/match-room-state";
 import {
   CLIENT_MESSAGE_TYPES,
@@ -297,6 +299,35 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       for (const item of latestStatus.itemInventory || []) {
         player.itemInventory.push(item);
       }
+
+      // Sync last battle result
+      if (latestStatus.lastBattleResult) {
+        player.lastBattleResult.opponentId = latestStatus.lastBattleResult.opponentId;
+        player.lastBattleResult.won = latestStatus.lastBattleResult.won;
+        player.lastBattleResult.damageDealt = latestStatus.lastBattleResult.damageDealt;
+        player.lastBattleResult.damageTaken = latestStatus.lastBattleResult.damageTaken;
+        player.lastBattleResult.survivors = latestStatus.lastBattleResult.survivors;
+        player.lastBattleResult.opponentSurvivors = latestStatus.lastBattleResult.opponentSurvivors;
+      } else {
+        player.lastBattleResult.opponentId = "";
+        player.lastBattleResult.won = false;
+        player.lastBattleResult.damageDealt = 0;
+        player.lastBattleResult.damageTaken = 0;
+        player.lastBattleResult.survivors = 0;
+        player.lastBattleResult.opponentSurvivors = 0;
+      }
+
+      // Sync active synergies
+      while (player.activeSynergies.length > 0) {
+        player.activeSynergies.pop();
+      }
+      for (const synergy of latestStatus.activeSynergies || []) {
+        const nextSynergy = new SynergySchema();
+        nextSynergy.unitType = synergy.unitType;
+        nextSynergy.count = synergy.count;
+        nextSynergy.tier = synergy.tier;
+        player.activeSynergies.push(nextSynergy);
+      }
     }
 
     client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);
@@ -404,6 +435,35 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       }
       for (const item of status.itemInventory || []) {
         playerState.itemInventory.push(item);
+      }
+
+      // Sync last battle result
+      if (status.lastBattleResult) {
+        playerState.lastBattleResult.opponentId = status.lastBattleResult.opponentId;
+        playerState.lastBattleResult.won = status.lastBattleResult.won;
+        playerState.lastBattleResult.damageDealt = status.lastBattleResult.damageDealt;
+        playerState.lastBattleResult.damageTaken = status.lastBattleResult.damageTaken;
+        playerState.lastBattleResult.survivors = status.lastBattleResult.survivors;
+        playerState.lastBattleResult.opponentSurvivors = status.lastBattleResult.opponentSurvivors;
+      } else {
+        playerState.lastBattleResult.opponentId = "";
+        playerState.lastBattleResult.won = false;
+        playerState.lastBattleResult.damageDealt = 0;
+        playerState.lastBattleResult.damageTaken = 0;
+        playerState.lastBattleResult.survivors = 0;
+        playerState.lastBattleResult.opponentSurvivors = 0;
+      }
+
+      // Sync active synergies
+      while (playerState.activeSynergies.length > 0) {
+        playerState.activeSynergies.pop();
+      }
+      for (const synergy of status.activeSynergies || []) {
+        const nextSynergy = new SynergySchema();
+        nextSynergy.unitType = synergy.unitType;
+        nextSynergy.count = synergy.count;
+        nextSynergy.tier = synergy.tier;
+        playerState.activeSynergies.push(nextSynergy);
       }
     }
 

@@ -124,6 +124,15 @@ interface MatchupOutcome {
   isDraw: boolean;
 }
 
+interface BattleResult {
+  opponentId: string;
+  won: boolean;
+  damageDealt: number;
+  damageTaken: number;
+  survivors: number;
+  opponentSurvivors: number;
+}
+
 export class MatchRoomController {
   private readonly playerIds: string[];
 
@@ -156,6 +165,8 @@ export class MatchRoomController {
   private readonly itemInventoryByPlayer: Map<string, ItemType[]>;
 
   private readonly itemShopOffersByPlayer: Map<string, ShopItemOffer[]>;
+
+  private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
   private readonly readyDeadlineAtMs: number;
 
@@ -216,6 +227,7 @@ export class MatchRoomController {
     this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
     this.itemInventoryByPlayer = new Map<string, ItemType[]>();
     this.itemShopOffersByPlayer = new Map<string, ShopItemOffer[]>();
+    this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
@@ -388,6 +400,8 @@ export class MatchRoomController {
     ownedUnits: OwnedUnits;
     itemInventory: ItemType[];
     itemShopOffers: ShopItemOffer[];
+    lastBattleResult: BattleResult | undefined;
+    activeSynergies?: { unitType: string; count: number; tier: number }[];
   } {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
@@ -395,6 +409,9 @@ export class MatchRoomController {
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
     const itemInventory = this.itemInventoryByPlayer.get(playerId) ?? [];
     const itemShopOffers = this.itemShopOffersByPlayer.get(playerId) ?? [];
+
+    // Calculate active synergies
+    const activeSynergies = this.calculateActiveSynergies(boardPlacements);
 
     return {
       hp: state.getPlayerHp(playerId),
@@ -427,6 +444,8 @@ export class MatchRoomController {
       },
       itemInventory: [...itemInventory],
       itemShopOffers: [...itemShopOffers],
+      lastBattleResult: this.battleResultsByPlayer.get(playerId),
+      activeSynergies,
     };
   }
 
@@ -1114,6 +1133,9 @@ export class MatchRoomController {
         this.buildShopOffers(playerId, state.roundIndex, 0, 0),
       );
     }
+
+    // Clear battle results at the start of each new Prep phase
+    this.battleResultsByPlayer.clear();
   }
 
   private refreshShopByCount(playerId: string, refreshCount: number): void {
@@ -1494,6 +1516,40 @@ export class MatchRoomController {
     throw new Error("Match has not started");
   }
 
+  private calculateActiveSynergies(
+    placements: BoardUnitPlacement[]
+  ): { unitType: string; count: number; tier: number }[] {
+    const counts: { [key in BoardUnitType]: number } = { vanguard: 0, ranger: 0, mage: 0, assassin: 0 };
+    
+    if (!placements) {
+      return [];
+    }
+    
+    for (const p of placements) {
+      if (!p || !p.unitType) continue;
+      counts[p.unitType]++;
+    }
+    
+    const result: { unitType: string; count: number; tier: number }[] = [];
+    
+    const unitTypes: BoardUnitType[] = ["vanguard", "ranger", "mage", "assassin"];
+    
+    for (const type of unitTypes) {
+      const count: number = counts[type]! || 0;
+      
+      let tier = 0;
+      if (count >= 9) tier = 3;
+      else if (count >= 6) tier = 2;
+      else if (count >= 3) tier = 1;
+      
+      if (count > 0) {
+        result.push({ unitType: type, count, tier });
+      }
+    }
+    
+    return result;
+  }
+
   private captureBattleStartHp(): void {
     const state = this.ensureStarted();
     const snapshot = new Map<string, number>();
@@ -1622,7 +1678,7 @@ export class MatchRoomController {
 
     // バトルシミュレーターで戦闘を実行
     const battleSimulator = new BattleSimulator();
-    const result = battleSimulator.simulateBattle(
+    const battleResult = battleSimulator.simulateBattle(
       leftBattleUnits,
       rightBattleUnits,
       leftPlacements,
@@ -1631,29 +1687,90 @@ export class MatchRoomController {
     );
 
     // 戦闘結果から勝者と生存ユニット数を判定
-    if (result.winner === "right") {
+    if (battleResult.winner === "right") {
+      // After battle simulation, store results for both players
+      const damageToLeft = this.buildLoserDamage(
+        battleResult.rightSurvivors.length,
+        battleResult.leftSurvivors.length,
+      );
+      this.battleResultsByPlayer.set(leftPlayerId, {
+        opponentId: rightPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: damageToLeft,
+        survivors: battleResult.leftSurvivors.length,
+        opponentSurvivors: battleResult.rightSurvivors.length,
+      });
+      this.battleResultsByPlayer.set(rightPlayerId, {
+        opponentId: leftPlayerId,
+        won: true,
+        damageDealt: damageToLeft,
+        damageTaken: 0,
+        survivors: battleResult.rightSurvivors.length,
+        opponentSurvivors: battleResult.leftSurvivors.length,
+      });
+
       return {
         winnerId: rightPlayerId,
         loserId: leftPlayerId,
-        winnerUnitCount: result.rightSurvivors.length,
-        loserUnitCount: result.leftSurvivors.length,
+        winnerUnitCount: battleResult.rightSurvivors.length,
+        loserUnitCount: battleResult.leftSurvivors.length,
         isDraw: false,
       };
-    } else if (result.winner === "left") {
+    } else if (battleResult.winner === "left") {
+      // After battle simulation, store results for both players
+      const damageToRight = this.buildLoserDamage(
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+      this.battleResultsByPlayer.set(leftPlayerId, {
+        opponentId: rightPlayerId,
+        won: true,
+        damageDealt: damageToRight,
+        damageTaken: 0,
+        survivors: battleResult.leftSurvivors.length,
+        opponentSurvivors: battleResult.rightSurvivors.length,
+      });
+      this.battleResultsByPlayer.set(rightPlayerId, {
+        opponentId: leftPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: damageToRight,
+        survivors: battleResult.rightSurvivors.length,
+        opponentSurvivors: battleResult.leftSurvivors.length,
+      });
+
       return {
         winnerId: leftPlayerId,
         loserId: rightPlayerId,
-        winnerUnitCount: result.leftSurvivors.length,
-        loserUnitCount: result.rightSurvivors.length,
+        winnerUnitCount: battleResult.leftSurvivors.length,
+        loserUnitCount: battleResult.rightSurvivors.length,
         isDraw: false,
       };
     } else {
-      // 引き分けの場合
+      // 引き分けの場合 - 双方の結果を保存
+      this.battleResultsByPlayer.set(leftPlayerId, {
+        opponentId: rightPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: 0,
+        survivors: battleResult.leftSurvivors.length,
+        opponentSurvivors: battleResult.rightSurvivors.length,
+      });
+      this.battleResultsByPlayer.set(rightPlayerId, {
+        opponentId: leftPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: 0,
+        survivors: battleResult.rightSurvivors.length,
+        opponentSurvivors: battleResult.leftSurvivors.length,
+      });
+
       return {
         winnerId: null,
         loserId: null,
-        winnerUnitCount: result.leftSurvivors.length,
-        loserUnitCount: result.rightSurvivors.length,
+        winnerUnitCount: battleResult.leftSurvivors.length,
+        loserUnitCount: battleResult.rightSurvivors.length,
         isDraw: true,
       };
     }

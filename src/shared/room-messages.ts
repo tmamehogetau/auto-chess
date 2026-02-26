@@ -85,6 +85,23 @@ export interface RoundStateMessage {
   roundIndex: number;
   phaseDeadlineAtMs: number;
   ranking: string[];
+
+  // Battle results (added for each player)
+  lastBattleResult?: {
+    opponentId: string;        // Who you fought
+    won: boolean;              // Did you win?
+    damageDealt: number;       // Damage you dealt
+    damageTaken: number;       // Damage you received
+    survivors: number;         // Your surviving units
+    opponentSurvivors: number; // Enemy surviving units
+  };
+
+  // Active synergies for this player
+  activeSynergies?: {
+    unitType: string;
+    count: number;
+    tier: number;  // 0, 1, 2, or 3
+  }[];
 }
 
 export interface PlayerMatchStatus {
@@ -101,4 +118,17 @@ export interface PlayerMatchStatus {
   ownedUnits: any;
   itemInventory: ItemType[];
   itemShopOffers: ShopItemOffer[];
+  lastBattleResult?: {
+    opponentId: string;
+    won: boolean;
+    damageDealt: number;
+    damageTaken: number;
+    survivors: number;
+    opponentSurvivors: number;
+  };
+  activeSynergies?: {
+    unitType: string;
+    count: number;
+    tier: number;
+  }[];
 }

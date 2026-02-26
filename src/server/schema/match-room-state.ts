@@ -30,6 +30,38 @@ export class ShopItemOfferState extends Schema {
   }
 }
 
+export class BattleResultSchema extends Schema {
+  declare public opponentId: string;
+  declare public won: boolean;
+  declare public damageDealt: number;
+  declare public damageTaken: number;
+  declare public survivors: number;
+  declare public opponentSurvivors: number;
+
+  public constructor() {
+    super();
+    this.opponentId = "";
+    this.won = false;
+    this.damageDealt = 0;
+    this.damageTaken = 0;
+    this.survivors = 0;
+    this.opponentSurvivors = 0;
+  }
+}
+
+export class SynergySchema extends Schema {
+  declare public unitType: string;
+  declare public count: number;
+  declare public tier: number;
+
+  public constructor() {
+    super();
+    this.unitType = "vanguard";
+    this.count = 0;
+    this.tier = 0;
+  }
+}
+
 export class PlayerPresenceState extends Schema {
   declare public ready: boolean;
 
@@ -69,6 +101,10 @@ export class PlayerPresenceState extends Schema {
 
   declare public itemInventory: ArraySchema<string>;
 
+  declare public lastBattleResult: BattleResultSchema;
+
+  declare public activeSynergies: ArraySchema<SynergySchema>;
+
   public constructor() {
     super();
     this.ready = false;
@@ -90,6 +126,8 @@ export class PlayerPresenceState extends Schema {
     this.lastCmdSeq = 0;
     this.itemShopOffers = new ArraySchema<ShopItemOfferState>();
     this.itemInventory = new ArraySchema<string>();
+    this.lastBattleResult = new BattleResultSchema();
+    this.activeSynergies = new ArraySchema<SynergySchema>();
   }
 }
 
@@ -131,6 +169,21 @@ defineTypes(ShopItemOfferState, {
   cost: "number",
 });
 
+defineTypes(BattleResultSchema, {
+  opponentId: "string",
+  won: "boolean",
+  damageDealt: "number",
+  damageTaken: "number",
+  survivors: "number",
+  opponentSurvivors: "number",
+});
+
+defineTypes(SynergySchema, {
+  unitType: "string",
+  count: "number",
+  tier: "number",
+});
+
 defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
@@ -151,6 +204,8 @@ defineTypes(PlayerPresenceState, {
   lastCmdSeq: "number",
   itemShopOffers: [ShopItemOfferState],
   itemInventory: ["string"],
+  lastBattleResult: BattleResultSchema,
+  activeSynergies: [SynergySchema],
 });
 
 defineTypes(MatchRoomState, {

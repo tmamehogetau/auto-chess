@@ -1,14 +1,16 @@
 {
   "name": "auto-chess-mvp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Auto-Chess MVP with Colyseus",
+  "main": "server.mjs",
   "private": true,
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit",
-    "client:check": "node scripts/serve-client-check.mjs"
+    "client:check": "node scripts/serve-client-check.mjs",
+    "server": "node server.mjs",
+    "play": "npm-run-all --parallel server client:check"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,7 @@
   "devDependencies": {
     "@colyseus/testing": "^0.17.11",
     "@types/node": "^25.3.0",
+    "npm-run-all": "^4.1.5",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

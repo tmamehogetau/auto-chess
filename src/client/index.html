@@ -3,256 +3,904 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>auto-chess-mvp client check</title>
+    <title>Auto Chess - Playable UI</title>
     <style>
-      body {
+      :root {
+        --bg-color: #1a1a2e;
+        --panel-bg: #16213e;
+        --accent-bg: #0f3460;
+        --gold-color: #ffd700;
+        --hp-color: #e74c3c;
+        --xp-color: #9b59b6;
+        --bronze: #cd7f32;
+        --silver: #c0c0c0;
+        --gold: #ffd700;
+        --text-color: #eee;
+        --border-color: #2a2a4a;
+      }
+
+      * {
         margin: 0;
-        font-family: sans-serif;
-        background: #f5f5f5;
-        color: #222;
+        padding: 0;
+        box-sizing: border-box;
       }
 
-      .panel {
-        max-width: 640px;
-        margin: 48px auto;
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: var(--bg-color);
+        color: var(--text-color);
+        min-height: 100vh;
         padding: 20px;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        background: #fff;
       }
 
-      .label {
-        color: #666;
+      /* Connection Panel */
+      .connection-panel {
+        max-width: 400px;
+        margin: 0 auto 20px;
+        padding: 15px;
+        background: var(--panel-bg);
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
       }
 
-      .controls {
-        display: grid;
-        gap: 8px;
-        margin: 12px 0 16px;
+      .connection-panel h2 {
+        font-size: 14px;
+        margin-bottom: 10px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
       }
 
-      .row {
-        display: grid;
-        gap: 8px;
-        grid-template-columns: 112px 1fr;
-        align-items: center;
-      }
-
-      input,
-      select,
-      button {
-        font: inherit;
-        padding: 6px 8px;
-        border: 1px solid #c8c8c8;
-        border-radius: 4px;
-        background: #fff;
-      }
-
-      input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-      }
-
-      .actions {
+      .connection-row {
         display: flex;
         gap: 8px;
+        margin-bottom: 8px;
       }
 
-      .actions button {
-        min-width: 120px;
-      }
-
-      .hint {
-        color: #666;
-        margin: 0;
+      .connection-row input,
+      .connection-row select {
+        flex: 1;
+        padding: 8px;
+        background: var(--accent-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        color: var(--text-color);
         font-size: 13px;
       }
 
-      .status {
-        margin: 0;
+      .connection-row button {
+        padding: 8px 16px;
+        background: #27ae60;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background 0.2s;
       }
 
-      .error {
-        color: #b00020;
-        min-height: 20px;
-        margin: 0;
+      .connection-row button:hover {
+        background: #229954;
       }
 
-      [data-set-id-display] {
-        font-family: monospace;
-        font-size: 15px;
+      .connection-row button:disabled {
+        background: #555;
+        cursor: not-allowed;
       }
 
-      [data-command-result],
-      [data-self-status] {
-        font-family: monospace;
+      .connection-row button.leave-btn {
+        background: #e74c3c;
+      }
+
+      .connection-row button.leave-btn:hover {
+        background: #c0392b;
+      }
+
+      /* Main Game Container */
+      .game-container {
+        max-width: 900px;
+        margin: 0 auto;
+        display: none;
+      }
+
+      .game-container.connected {
+        display: block;
+      }
+
+      /* Status Bar */
+      .status-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 20px;
+        background: var(--panel-bg);
+        border-radius: 10px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .status-left {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+      }
+
+      .status-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .status-label {
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .status-value {
+        font-size: 24px;
+        font-weight: bold;
+      }
+
+      .status-value.gold {
+        color: var(--gold-color);
+      }
+
+      .status-value.hp {
+        color: var(--hp-color);
+      }
+
+      .status-value.xp {
+        color: var(--xp-color);
+      }
+
+      .status-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 5px;
+      }
+
+      .phase-indicator {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .phase-indicator.prep {
+        background: #27ae60;
+        color: white;
+      }
+
+      .phase-indicator.battle {
+        background: #e74c3c;
+        color: white;
+      }
+
+      .phase-indicator.settle {
+        background: #f39c12;
+        color: white;
+      }
+
+      .phase-indicator.waiting {
+        background: #7f8c8d;
+        color: white;
+      }
+
+      .ready-count {
+        font-size: 12px;
+        color: #888;
+      }
+
+      /* Ready Button */
+      .ready-section {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 15px;
+      }
+
+      .ready-btn {
+        padding: 15px 50px;
+        font-size: 18px;
+        font-weight: bold;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      .ready-btn.not-ready {
+        background: #27ae60;
+        color: white;
+      }
+
+      .ready-btn.not-ready:hover {
+        background: #229954;
+        transform: scale(1.05);
+      }
+
+      .ready-btn.ready {
+        background: #f39c12;
+        color: white;
+      }
+
+      .ready-btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      /* Shop Section */
+      .shop-section {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .shop-title {
+        font-size: 14px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+      }
+
+      .shop-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+      }
+
+      .shop-card {
+        background: var(--accent-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        padding: 12px 8px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+      }
+
+      .shop-card:hover {
+        border-color: var(--gold-color);
+        transform: translateY(-3px);
+      }
+
+      .shop-card.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .shop-card.disabled:hover {
+        border-color: var(--border-color);
+        transform: none;
+      }
+
+      .shop-card .icon {
+        font-size: 32px;
+        margin-bottom: 5px;
+      }
+
+      .shop-card .name {
+        font-size: 12px;
+        font-weight: bold;
+        margin-bottom: 3px;
+      }
+
+      .shop-card .cost {
+        font-size: 11px;
+        color: var(--gold-color);
+      }
+
+      .shop-card .type {
+        font-size: 10px;
+        color: #888;
+        margin-top: 3px;
+      }
+
+      /* Item Shop Cards */
+      .shop-card.item .icon {
+        font-size: 24px;
+      }
+
+      /* Board Section */
+      .board-section {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .board-label {
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 5px;
+        text-align: center;
+      }
+
+      .board-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .board-cell {
+        aspect-ratio: 1;
+        background: var(--accent-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+      }
+
+      .board-cell:hover {
+        border-color: #3498db;
+      }
+
+      .board-cell.selected {
+        border-color: #f39c12;
+        box-shadow: 0 0 10px rgba(243, 156, 18, 0.5);
+      }
+
+      .board-cell .cell-number {
+        position: absolute;
+        top: 3px;
+        left: 5px;
+        font-size: 10px;
+        color: #555;
+      }
+
+      .board-cell .unit-icon {
+        font-size: 32px;
+        margin-bottom: 2px;
+      }
+
+      .board-cell .unit-stars {
+        font-size: 12px;
+      }
+
+      .board-cell .unit-items {
+        position: absolute;
+        bottom: 3px;
+        right: 3px;
+        display: flex;
+        gap: 2px;
+        font-size: 10px;
+      }
+
+      .board-cell.empty::after {
+        content: '+';
+        color: #444;
+        font-size: 24px;
+      }
+
+      /* Bench Section */
+      .bench-section {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .bench-grid {
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        gap: 8px;
+      }
+
+      .bench-slot {
+        aspect-ratio: 1;
+        background: var(--accent-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        min-height: 60px;
+      }
+
+      .bench-slot:hover {
+        border-color: #3498db;
+      }
+
+      .bench-slot.selected {
+        border-color: #f39c12;
+        box-shadow: 0 0 10px rgba(243, 156, 18, 0.5);
+      }
+
+      .bench-slot .slot-number {
+        position: absolute;
+        top: 2px;
+        left: 4px;
+        font-size: 9px;
+        color: #555;
+      }
+
+      .bench-slot .unit-icon {
+        font-size: 24px;
+        margin-bottom: 1px;
+      }
+
+      .bench-slot .unit-stars {
+        font-size: 10px;
+      }
+
+      .bench-slot .unit-items {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        display: flex;
+        gap: 1px;
+        font-size: 8px;
+      }
+
+      .bench-slot.empty {
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      /* Inventory Section */
+      .inventory-section {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .inventory-grid {
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        gap: 8px;
+      }
+
+      .inventory-slot {
+        aspect-ratio: 1;
+        background: var(--accent-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 24px;
+        min-height: 50px;
+      }
+
+      .inventory-slot:hover {
+        border-color: #9b59b6;
+      }
+
+      .inventory-slot.selected {
+        border-color: #9b59b6;
+        box-shadow: 0 0 10px rgba(155, 89, 182, 0.5);
+      }
+
+      .inventory-slot.empty::after {
+        content: '';
+      }
+
+      /* Combat Log */
+      .combat-log {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      .combat-log-title {
+        font-size: 14px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+      }
+
+      .log-entry {
+        padding: 5px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 13px;
+      }
+
+      .log-entry:last-child {
+        border-bottom: none;
+      }
+
+      .log-entry.win {
+        color: #27ae60;
+      }
+
+      .log-entry.lose {
+        color: #e74c3c;
+      }
+
+      /* Action Buttons */
+      .action-bar {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 15px;
+      }
+
+      .action-btn {
+        padding: 10px 20px;
+        background: var(--accent-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-color);
+        cursor: pointer;
+        font-weight: bold;
+        transition: all 0.2s;
+      }
+
+      .action-btn:hover {
+        border-color: #3498db;
+      }
+
+      .action-btn.sell-btn {
+        border-color: #e74c3c;
+      }
+
+      .action-btn.sell-btn:hover {
+        background: #e74c3c;
+      }
+
+      .action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Error/Status Messages */
+      .message-bar {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 1000;
+        transition: opacity 0.3s;
+      }
+
+      .message-bar.error {
+        border-color: #e74c3c;
+        color: #e74c3c;
+      }
+
+      .message-bar.success {
+        border-color: #27ae60;
+        color: #27ae60;
+      }
+
+      .message-bar.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* Star Colors */
+      .stars-1 {
+        color: var(--bronze);
+      }
+
+      .stars-2 {
+        color: var(--silver);
+      }
+
+      .stars-3 {
+        color: var(--gold);
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .shop-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .bench-grid {
+          grid-template-columns: repeat(5, 1fr);
+        }
+
+        .inventory-grid {
+          grid-template-columns: repeat(5, 1fr);
+        }
+
+        .status-left {
+          gap: 10px;
+        }
+
+        .status-value {
+          font-size: 18px;
+        }
+      }
+
+      /* Selection Mode Indicator */
+      .selection-mode {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 20px;
+        background: rgba(243, 156, 18, 0.9);
+        color: white;
+        border-radius: 20px;
+        font-weight: bold;
+        z-index: 1001;
+        display: none;
+      }
+
+      .selection-mode.active {
+        display: block;
       }
     </style>
   </head>
   <body>
-    <main class="panel">
-      <h1>SetId Display Check</h1>
-      <section class="controls">
-        <label class="row">
-          <span class="label">Endpoint</span>
-          <input data-endpoint-input type="text" />
-        </label>
-        <label class="row">
-          <span class="label">Room</span>
-          <input data-room-input type="text" />
-        </label>
-        <label class="row">
-          <span class="label">SetId</span>
-          <select data-setid-select>
-            <option value="">default</option>
-            <option value="set1">set1</option>
-            <option value="set2">set2</option>
-          </select>
-        </label>
-        <label class="row">
-          <span class="label">Bots</span>
-          <input data-autofill-input type="number" min="0" max="3" value="0" />
-        </label>
-        <div class="actions">
-          <button data-connect-button type="button">Connect</button>
-          <button data-leave-button type="button" disabled>Leave</button>
-        </div>
-        <label class="row">
-          <span class="label">Ready</span>
-          <input data-ready-checkbox type="checkbox" checked />
-        </label>
-        <div class="actions">
-          <button data-ready-button type="button" disabled>Send Ready</button>
-        </div>
-        <label class="row">
-          <span class="label">CmdSeq</span>
-          <input data-cmdseq-input type="number" min="1" step="1" value="1" />
-        </label>
-        <label class="row">
-          <span class="label">XP Buy</span>
-          <input data-xp-purchase-input type="number" min="0" max="10" step="1" value="0" />
-        </label>
-        <label class="row">
-          <span class="label">Shop Refresh</span>
-          <input data-shop-refresh-input type="number" min="0" max="5" step="1" value="0" />
-        </label>
-        <label class="row">
-          <span class="label">Shop Buy Slot</span>
-          <input data-shop-buy-slot-input type="number" min="0" max="4" step="1" placeholder="skip" />
-        </label>
-        <label class="row">
-          <span class="label">Shop Lock</span>
-          <select data-shop-lock-input>
-            <option value="skip">skip</option>
-            <option value="true">true</option>
-            <option value="false">false</option>
-          </select>
-        </label>
-        <label class="row">
-          <span class="label">Bench Deploy Index</span>
-          <input data-bench-deploy-index-input type="number" min="0" max="8" step="1" placeholder="skip" />
-        </label>
-        <label class="row">
-          <span class="label">Bench Deploy Cell</span>
-          <input data-bench-deploy-cell-input type="number" min="0" max="7" step="1" placeholder="skip" />
-        </label>
-        <label class="row">
-          <span class="label">Bench Sell Index</span>
-          <input data-bench-sell-index-input type="number" min="0" max="8" step="1" placeholder="skip" />
-        </label>
-        <label class="row">
-          <span class="label">Board Sell Cell</span>
-          <input data-board-sell-cell-input type="number" min="0" max="7" step="1" placeholder="skip" />
-        </label>
-        <label class="row">
-          <span class="label">Placements</span>
-          <input
-            data-placements-input
-            type="text"
-            value="0:vanguard,1:assassin,4:ranger,5:ranger"
-          />
-        </label>
-        <p class="hint">
-          format: cell:unitType,cell:unitType (unitType: vanguard/ranger/mage/assassin)
-        </p>
-        <!-- Item Shop Section -->
-        <h2>Item Shop</h2>
-        <section class="controls">
-          <div class="row">
-            <span class="label">Item Shop</span>
-            <div data-item-shop-list></div>
+    <!-- Connection Panel -->
+    <div class="connection-panel">
+      <h2>Connection</h2>
+      <div class="connection-row">
+        <input data-endpoint-input type="text" placeholder="ws://localhost:2567" />
+        <input data-room-input type="text" placeholder="Room name" value="game" />
+      </div>
+      <div class="connection-row">
+        <select data-setid-select>
+          <option value="">Default Set</option>
+          <option value="set1">Set 1</option>
+          <option value="set2">Set 2</option>
+        </select>
+        <input data-autofill-input type="number" min="0" max="3" value="0" placeholder="Bots" />
+      </div>
+      <div class="connection-row">
+        <button data-connect-button type="button">Connect</button>
+        <button data-leave-button type="button" class="leave-btn" disabled>Leave</button>
+      </div>
+    </div>
+
+    <!-- Game Container (shown when connected) -->
+    <div class="game-container" data-game-container>
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <div class="status-left">
+          <div class="status-item">
+            <span class="status-label">Round</span>
+            <span class="status-value" data-round-display>1</span>
           </div>
-          <label class="row">
-            <span class="label">Buy Item Slot</span>
-            <input data-item-buy-slot-input type="number" min="0" max="4" placeholder="0-4" />
-          </label>
-        </section>
-        <!-- Inventory Section -->
-        <h2>Inventory</h2>
-        <section class="controls">
-          <div class="row">
-            <span class="label">Items</span>
-            <div data-inventory-list></div>
+          <div class="status-item">
+            <span class="status-label">Gold</span>
+            <span class="status-value gold" data-gold-display>0</span>
           </div>
-          <label class="row">
-            <span class="label">Equip Item</span>
-            <input data-equip-item-index-input type="number" min="0" max="8" placeholder="Item index" />
-            <span>to Bench</span>
-            <input data-equip-bench-index-input type="number" min="0" max="8" placeholder="Bench index" />
-          </label>
-          <label class="row">
-            <span class="label">Unequip</span>
-            <input data-unequip-bench-index-input type="number" min="0" max="8" placeholder="Bench index" />
-            <span>Item Slot</span>
-            <input data-unequip-item-slot-input type="number" min="0" max="2" placeholder="0-2" />
-          </label>
-          <label class="row">
-            <span class="label">Sell Item</span>
-            <input data-sell-item-index-input type="number" min="0" max="8" placeholder="Inventory index" />
-          </label>
-        </section>
-        <div class="actions">
-          <button data-prep-button type="button" disabled>Send Prep Command</button>
+          <div class="status-item">
+            <span class="status-label">HP</span>
+            <span class="status-value hp" data-hp-display>100</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Level</span>
+            <span class="status-value" data-level-display>1</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">XP</span>
+            <span class="status-value xp" data-xp-display>0</span>
+          </div>
         </div>
-        <p class="status">
-          <span class="label">Status:</span>
-          <strong data-connection-status>idle</strong>
-        </p>
-        <p class="status">
-          <span class="label">AutoFill:</span>
-          <strong data-autofill-status>disabled</strong>
-        </p>
-        <p class="status">
-          <span class="label">Phase:</span>
-          <strong data-phase-value>-</strong>
-          <span class="label">Round:</span>
-          <strong data-round-value>-</strong>
-        </p>
-        <p class="status">
-          <span class="label">Self:</span>
-          <strong data-self-status>-</strong>
-        </p>
-        <p class="status">
-          <span class="label">Bench:</span>
-          <strong data-bench-list>-</strong>
-        </p>
-        <p class="status">
-          <span class="label">Board:</span>
-          <strong data-board-list>-</strong>
-        </p>
-        <p class="hint">board format: F/B lane + cell:unit (example: F2:vanguard★2 | B5:mage)</p>
-        <p class="status">
-          <span class="label">Command:</span>
-          <strong data-command-result>-</strong>
-        </p>
-        <p class="error" data-connection-error></p>
-      </section>
-      <p>
-        <span class="label">Current Set:</span>
-        <strong data-set-id-display>-</strong>
-      </p>
-      <p class="label">Manual browser check template.</p>
-    </main>
+        <div class="status-right">
+          <div class="phase-indicator waiting" data-phase-display>Waiting</div>
+          <div class="ready-count" data-ready-count>0/0 Ready</div>
+        </div>
+      </div>
+
+      <!-- Ready Button -->
+      <div class="ready-section">
+        <button class="ready-btn not-ready" data-ready-btn disabled>
+          Ready
+        </button>
+      </div>
+
+      <!-- Unit Shop -->
+      <div class="shop-section">
+        <div class="shop-title">Unit Shop (Click to Buy)</div>
+        <div class="shop-grid" data-unit-shop>
+          <div class="shop-card" data-shop-slot="0">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card" data-shop-slot="1">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card" data-shop-slot="2">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card" data-shop-slot="3">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card" data-shop-slot="4">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Item Shop -->
+      <div class="shop-section">
+        <div class="shop-title">Item Shop (Click to Buy)</div>
+        <div class="shop-grid" data-item-shop>
+          <div class="shop-card item" data-item-shop-slot="0">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card item" data-item-shop-slot="1">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card item" data-item-shop-slot="2">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card item" data-item-shop-slot="3">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card item" data-item-shop-slot="4">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Board -->
+      <div class="board-section">
+        <div class="shop-title">Board (Click to Deploy)</div>
+        <div class="board-label">Back Row (4-7)</div>
+        <div class="board-grid" data-board-row-back>
+          <div class="board-cell" data-board-cell="4">
+            <span class="cell-number">4</span>
+          </div>
+          <div class="board-cell" data-board-cell="5">
+            <span class="cell-number">5</span>
+          </div>
+          <div class="board-cell" data-board-cell="6">
+            <span class="cell-number">6</span>
+          </div>
+          <div class="board-cell" data-board-cell="7">
+            <span class="cell-number">7</span>
+          </div>
+        </div>
+        <div class="board-label">Front Row (0-3)</div>
+        <div class="board-grid" data-board-row-front>
+          <div class="board-cell" data-board-cell="0">
+            <span class="cell-number">0</span>
+          </div>
+          <div class="board-cell" data-board-cell="1">
+            <span class="cell-number">1</span>
+          </div>
+          <div class="board-cell" data-board-cell="2">
+            <span class="cell-number">2</span>
+          </div>
+          <div class="board-cell" data-board-cell="3">
+            <span class="cell-number">3</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <button class="action-btn sell-btn" data-sell-btn disabled>
+          Sell Selected
+        </button>
+        <button class="action-btn" data-refresh-shop-btn disabled>
+          Refresh Shop (2G)
+        </button>
+        <button class="action-btn" data-buy-xp-btn disabled>
+          Buy XP (4G)
+        </button>
+      </div>
+
+      <!-- Bench -->
+      <div class="bench-section">
+        <div class="shop-title">Bench (Click to Select)</div>
+        <div class="bench-grid" data-bench>
+          <div class="bench-slot empty" data-bench-slot="0">
+            <span class="slot-number">0</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="1">
+            <span class="slot-number">1</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="2">
+            <span class="slot-number">2</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="3">
+            <span class="slot-number">3</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="4">
+            <span class="slot-number">4</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="5">
+            <span class="slot-number">5</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="6">
+            <span class="slot-number">6</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="7">
+            <span class="slot-number">7</span>
+          </div>
+          <div class="bench-slot empty" data-bench-slot="8">
+            <span class="slot-number">8</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inventory -->
+      <div class="inventory-section">
+        <div class="shop-title">Inventory (Click Item, then Click Bench Unit to Equip)</div>
+        <div class="inventory-grid" data-inventory>
+          <div class="inventory-slot empty" data-inv-slot="0"></div>
+          <div class="inventory-slot empty" data-inv-slot="1"></div>
+          <div class="inventory-slot empty" data-inv-slot="2"></div>
+          <div class="inventory-slot empty" data-inv-slot="3"></div>
+          <div class="inventory-slot empty" data-inv-slot="4"></div>
+          <div class="inventory-slot empty" data-inv-slot="5"></div>
+          <div class="inventory-slot empty" data-inv-slot="6"></div>
+          <div class="inventory-slot empty" data-inv-slot="7"></div>
+          <div class="inventory-slot empty" data-inv-slot="8"></div>
+        </div>
+      </div>
+
+      <!-- Combat Log -->
+      <div class="combat-log">
+        <div class="combat-log-title">Combat Log</div>
+        <div data-combat-log>
+          <div class="log-entry">Connect to start playing...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message Bar -->
+    <div class="message-bar hidden" data-message-bar></div>
+
+    <!-- Selection Mode Indicator -->
+    <div class="selection-mode" data-selection-mode>
+      Click a bench unit to equip item
+    </div>
+
     <script type="module" src="./manual-check.js"></script>
   </body>
 </html>

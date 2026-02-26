@@ -18,48 +18,75 @@ const SERVER_MESSAGE_TYPES = {
   ROUND_STATE: "round_state",
 };
 
+// Unit type icons
+const UNIT_ICONS = {
+  vanguard: "🛡️",
+  ranger: "🏹",
+  mage: "✨",
+  assassin: "🗡️",
+};
+
+// Item icons (emoji mapping for common items)
+const ITEM_ICONS = {
+  sword: "⚔️",
+  shield: "🛡️",
+  bow: "🏹",
+  staff: "🪄",
+  armor: "🦺",
+  cloak: "🧥",
+  ring: "💍",
+  gem: "💎",
+  potion: "🧪",
+  book: "📖",
+};
+
+// Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
 const setIdSelect = document.querySelector("[data-setid-select]");
 const autoFillInput = document.querySelector("[data-autofill-input]");
 const connectButton = document.querySelector("[data-connect-button]");
 const leaveButton = document.querySelector("[data-leave-button]");
-const readyCheckbox = document.querySelector("[data-ready-checkbox]");
-const readyButton = document.querySelector("[data-ready-button]");
-const cmdSeqInput = document.querySelector("[data-cmdseq-input]");
-const xpPurchaseInput = document.querySelector("[data-xp-purchase-input]");
-const shopRefreshInput = document.querySelector("[data-shop-refresh-input]");
-const shopBuySlotInput = document.querySelector("[data-shop-buy-slot-input]");
-const shopLockInput = document.querySelector("[data-shop-lock-input]");
-const benchDeployIndexInput = document.querySelector("[data-bench-deploy-index-input]");
-const benchDeployCellInput = document.querySelector("[data-bench-deploy-cell-input]");
-const benchSellIndexInput = document.querySelector("[data-bench-sell-index-input]");
-const boardSellCellInput = document.querySelector("[data-board-sell-cell-input]");
-const placementsInput = document.querySelector("[data-placements-input]");
-const prepButton = document.querySelector("[data-prep-button]");
 
-const statusElement = document.querySelector("[data-connection-status]");
-const autoFillStatusElement = document.querySelector("[data-autofill-status]");
-const errorElement = document.querySelector("[data-connection-error]");
-const setIdElement = document.querySelector("[data-set-id-display]");
-const phaseElement = document.querySelector("[data-phase-value]");
-const roundElement = document.querySelector("[data-round-value]");
-const selfStatusElement = document.querySelector("[data-self-status]");
-const benchListElement = document.querySelector("[data-bench-list]");
-const boardListElement = document.querySelector("[data-board-list]");
-const commandResultElement = document.querySelector("[data-command-result]");
-const itemShopListElement = document.querySelector("[data-item-shop-list]");
-const inventoryListElement = document.querySelector("[data-inventory-list]");
-const itemBuySlotInput = document.querySelector("[data-item-buy-slot-input]");
-const equipItemIndexInput = document.querySelector("[data-equip-item-index-input]");
-const equipBenchIndexInput = document.querySelector("[data-equip-bench-index-input]");
-const unequipBenchIndexInput = document.querySelector("[data-unequip-bench-index-input]");
-const unequipItemSlotInput = document.querySelector("[data-unequip-item-slot-input]");
-const sellItemIndexInput = document.querySelector("[data-sell-item-index-input]");
+// New UI elements
+const gameContainer = document.querySelector("[data-game-container]");
+const roundDisplay = document.querySelector("[data-round-display]");
+const goldDisplay = document.querySelector("[data-gold-display]");
+const hpDisplay = document.querySelector("[data-hp-display]");
+const levelDisplay = document.querySelector("[data-level-display]");
+const xpDisplay = document.querySelector("[data-xp-display]");
+const phaseDisplay = document.querySelector("[data-phase-display]");
+const readyCountDisplay = document.querySelector("[data-ready-count]");
+const readyBtn = document.querySelector("[data-ready-btn]");
+const unitShopGrid = document.querySelector("[data-unit-shop]");
+const itemShopGrid = document.querySelector("[data-item-shop]");
+const boardRowFront = document.querySelector("[data-board-row-front]");
+const boardRowBack = document.querySelector("[data-board-row-back]");
+const benchGrid = document.querySelector("[data-bench]");
+const inventoryGrid = document.querySelector("[data-inventory]");
+const sellBtn = document.querySelector("[data-sell-btn]");
+const refreshShopBtn = document.querySelector("[data-refresh-shop-btn]");
+const buyXpBtn = document.querySelector("[data-buy-xp-btn]");
+const messageBar = document.querySelector("[data-message-bar]");
+const selectionModeIndicator = document.querySelector("[data-selection-mode]");
+const combatLogContainer = document.querySelector("[data-combat-log]");
 
+// Game state
 let activeRoom = null;
 let connecting = false;
 let currentPhase = null;
+let currentGold = 0;
+let currentPlayerState = null;
+let currentGameState = null;
+let sessionId = null;
+
+// Selection state
+let selectedBenchIndex = null;
+let selectedBoardCell = null;
+let selectedInventoryIndex = null;
+let selectedShopSlot = null;
+
+// Auto-fill state
 let pendingAutoReadyTimeout = null;
 let pendingAutoPrepTimeout = null;
 const autoFillRooms = [];
@@ -74,9 +101,13 @@ const autoConfig = {
   autoFillBots: 0,
 };
 
+// Command sequence for prep commands
+let nextCmdSeq = 1;
+
 initializeDefaults();
 syncButtonAvailability();
 
+// Event listeners
 connectButton?.addEventListener("click", () => {
   void connect();
 });
@@ -85,12 +116,59 @@ leaveButton?.addEventListener("click", () => {
   void leave();
 });
 
-readyButton?.addEventListener("click", () => {
+readyBtn?.addEventListener("click", () => {
   sendReady();
 });
 
-prepButton?.addEventListener("click", () => {
-  sendPrepCommand();
+sellBtn?.addEventListener("click", () => {
+  handleSell();
+});
+
+refreshShopBtn?.addEventListener("click", () => {
+  handleRefreshShop();
+});
+
+buyXpBtn?.addEventListener("click", () => {
+  handleBuyXp();
+});
+
+// Shop card click handlers
+unitShopGrid?.querySelectorAll("[data-shop-slot]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const slot = Number.parseInt(card.dataset.shopSlot, 10);
+    handleBuyUnit(slot);
+  });
+});
+
+itemShopGrid?.querySelectorAll("[data-item-shop-slot]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const slot = Number.parseInt(card.dataset.itemShopSlot, 10);
+    handleBuyItem(slot);
+  });
+});
+
+// Bench slot click handlers
+benchGrid?.querySelectorAll("[data-bench-slot]").forEach((slot) => {
+  slot.addEventListener("click", () => {
+    const index = Number.parseInt(slot.dataset.benchSlot, 10);
+    handleBenchClick(index);
+  });
+});
+
+// Board cell click handlers
+document.querySelectorAll("[data-board-cell]").forEach((cell) => {
+  cell.addEventListener("click", () => {
+    const cellIndex = Number.parseInt(cell.dataset.boardCell, 10);
+    handleBoardClick(cellIndex);
+  });
+});
+
+// Inventory slot click handlers
+inventoryGrid?.querySelectorAll("[data-inv-slot]").forEach((slot) => {
+  slot.addEventListener("click", () => {
+    const index = Number.parseInt(slot.dataset.invSlot, 10);
+    handleInventoryClick(index);
+  });
 });
 
 window.addEventListener("beforeunload", () => {
@@ -104,8 +182,7 @@ async function connect() {
 
   connecting = true;
   syncButtonAvailability();
-  setStatus("connecting");
-  setError("");
+  showMessage("Connecting...", "success");
 
   try {
     const { endpoint, roomName, setId } = readConfig();
@@ -115,58 +192,60 @@ async function connect() {
     const room = await client.joinOrCreate(roomName, roomOptions);
 
     activeRoom = room;
+    sessionId = room.sessionId;
     currentPhase = readPhase(room.state?.phase);
 
-    setStatus("connected");
-    setCurrentSet(room.state?.setId);
-    syncRoundFromState(room.state);
-    syncSelfStatusFromState(room.state, room.sessionId);
-    syncNextCmdSeq(room.state, room.sessionId);
-    setCommandResult("-");
+    // Show game container
+    gameContainer?.classList.add("connected");
+
+    // Initialize UI from state
+    updateGameUI(room.state);
 
     await connectAutoFillRooms(client, roomName, roomOptions);
-    setAutoFillStatus();
 
+    // State change handler
     room.onStateChange((state) => {
-      setCurrentSet(state?.setId);
-      syncRoundFromState(state);
-      syncSelfStatusFromState(state, room.sessionId);
-      syncNextCmdSeq(state, room.sessionId);
+      currentGameState = state;
+      updateGameUI(state);
       currentPhase = readPhase(state?.phase);
       syncButtonAvailability();
       maybeScheduleAutoPrep();
     });
 
+    // Round state messages
     room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
       currentPhase = readPhase(message?.phase);
-      setPhase(currentPhase);
-      setRound(message?.roundIndex);
+      updatePhaseDisplay(currentPhase);
+      if (typeof message?.roundIndex === "number") {
+        roundDisplay.textContent = message.roundIndex + 1;
+      }
       syncButtonAvailability();
       maybeScheduleAutoPrep();
     });
 
+    // Command results
     room.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (result) => {
-      setCommandResultFromResult(result);
+      handleCommandResult(result);
     });
 
     room.onLeave(() => {
       clearPendingAutoActions();
       void leaveAutoFillRooms();
       activeRoom = null;
+      sessionId = null;
       currentPhase = null;
-      setStatus("disconnected");
-      setAutoFillStatus();
+      gameContainer?.classList.remove("connected");
+      showMessage("Disconnected", "error");
       syncButtonAvailability();
     });
 
+    showMessage("Connected!", "success");
     maybeScheduleAutoReady();
     maybeScheduleAutoPrep();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-
     currentPhase = null;
-    setStatus("error");
-    setError(message);
+    showMessage(`Connection failed: ${message}`, "error");
   } finally {
     connecting = false;
     syncButtonAvailability();
@@ -183,220 +262,513 @@ async function leave() {
   clearPendingAutoActions();
   await leaveAutoFillRooms();
   activeRoom = null;
+  sessionId = null;
   currentPhase = null;
-  setStatus("disconnecting");
   syncButtonAvailability();
 
   try {
     if (typeof room.removeAllListeners === "function") {
       room.removeAllListeners();
     }
-
     if (typeof room.leave === "function") {
       await room.leave();
     }
   } finally {
-    setStatus("disconnected");
-    setAutoFillStatus();
+    gameContainer?.classList.remove("connected");
+    showMessage("Disconnected", "error");
     syncButtonAvailability();
   }
 }
 
 function sendReady() {
   if (!activeRoom) {
-    setError("not connected");
+    showMessage("Not connected", "error");
     return;
   }
 
-  const ready = Boolean(readyCheckbox?.checked);
+  const currentReady = readyBtn?.classList.contains("ready");
+  const newReady = !currentReady;
 
-  activeRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready });
-  setError("");
-  setCommandResult(`ready sent: ${ready}`);
+  activeRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: newReady });
+  
+  // Optimistically update button
+  if (newReady) {
+    readyBtn?.classList.remove("not-ready");
+    readyBtn?.classList.add("ready");
+    readyBtn.textContent = "Cancel Ready";
+  } else {
+    readyBtn?.classList.remove("ready");
+    readyBtn?.classList.add("not-ready");
+    readyBtn.textContent = "Ready";
+  }
 }
 
-function sendPrepCommand() {
+function sendPrepCommand(payload) {
   if (!activeRoom) {
-    setError("not connected");
+    showMessage("Not connected", "error");
     return;
   }
 
   if (currentPhase !== "Prep") {
-    setError("phase is not Prep");
+    showMessage("Not in prep phase", "error");
     return;
   }
 
-  const cmdSeq = Number.parseInt(cmdSeqInput?.value ?? "", 10);
+  const cmdSeq = nextCmdSeq;
+  const fullPayload = { cmdSeq, ...payload };
 
-  if (!Number.isInteger(cmdSeq) || cmdSeq < 1) {
-    setError("cmdSeq must be >= 1");
+  activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, fullPayload);
+  nextCmdSeq++;
+}
+
+// Shop handlers
+function handleBuyUnit(shopSlot) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only buy during prep phase", "error");
     return;
   }
 
-  try {
-    const payload = { cmdSeq };
-    const boardPlacements = parsePlacementsSpec(placementsInput?.value ?? "");
-    const xpPurchaseCount = parseOptionalIntegerInRange(
-      xpPurchaseInput?.value,
-      0,
-      10,
-      "xpPurchaseCount must be between 0 and 10",
-    );
-    const shopRefreshCount = parseOptionalIntegerInRange(
-      shopRefreshInput?.value,
-      0,
-      5,
-      "shopRefreshCount must be between 0 and 5",
-    );
-    const shopBuySlotIndex = parseOptionalIntegerInRange(
-      shopBuySlotInput?.value,
-      0,
-      4,
-      "shopBuySlotIndex must be between 0 and 4",
-    );
-    const shopLock = parseOptionalBoolean(shopLockInput?.value);
-    const benchDeployIndex = parseOptionalIntegerInRange(
-      benchDeployIndexInput?.value,
-      0,
-      8,
-      "benchDeployIndex must be between 0 and 8",
-    );
-    const benchDeployCell = parseOptionalIntegerInRange(
-      benchDeployCellInput?.value,
-      0,
-      7,
-      "benchDeployCell must be between 0 and 7",
-    );
-    const benchSellIndex = parseOptionalIntegerInRange(
-      benchSellIndexInput?.value,
-      0,
-      8,
-      "benchSellIndex must be between 0 and 8",
-    );
-    const boardSellCell = parseOptionalIntegerInRange(
-      boardSellCellInput?.value,
-      0,
-      7,
-      "boardSellCell must be between 0 and 7",
-    );
-    const itemBuySlot = parseOptionalIntegerInRange(
-      itemBuySlotInput?.value,
-      0,
-      4,
-      "itemBuySlot must be between 0 and 4",
-    );
-    const equipItemIndex = parseOptionalIntegerInRange(
-      equipItemIndexInput?.value,
-      0,
-      8,
-      "equipItemIndex must be between 0 and 8",
-    );
-    const equipBenchIndex = parseOptionalIntegerInRange(
-      equipBenchIndexInput?.value,
-      0,
-      8,
-      "equipBenchIndex must be between 0 and 8",
-    );
-    const unequipBenchIndex = parseOptionalIntegerInRange(
-      unequipBenchIndexInput?.value,
-      0,
-      8,
-      "unequipBenchIndex must be between 0 and 8",
-    );
-    const unequipItemSlot = parseOptionalIntegerInRange(
-      unequipItemSlotInput?.value,
-      0,
-      2,
-      "unequipItemSlot must be between 0 and 2",
-    );
-    const sellItemIndex = parseOptionalIntegerInRange(
-      sellItemIndexInput?.value,
-      0,
-      8,
-      "sellItemIndex must be between 0 and 8",
-    );
+  sendPrepCommand({ shopBuySlotIndex: shopSlot });
+  showMessage(`Buying unit from slot ${shopSlot}...`, "success");
+}
 
-    if (boardPlacements.length > 0) {
-      payload.boardPlacements = boardPlacements;
-    }
+function handleBuyItem(shopSlot) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only buy during prep phase", "error");
+    return;
+  }
 
-    if (xpPurchaseCount !== null && xpPurchaseCount > 0) {
-      payload.xpPurchaseCount = xpPurchaseCount;
-    }
+  sendPrepCommand({ itemBuySlotIndex: shopSlot });
+  showMessage(`Buying item from slot ${shopSlot}...`, "success");
+}
 
-    if (shopRefreshCount !== null && shopRefreshCount > 0) {
-      payload.shopRefreshCount = shopRefreshCount;
-    }
+function handleRefreshShop() {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only refresh during prep phase", "error");
+    return;
+  }
 
-    if (shopBuySlotIndex !== null) {
-      payload.shopBuySlotIndex = shopBuySlotIndex;
-    }
+  sendPrepCommand({ shopRefreshCount: 1 });
+  showMessage("Refreshing shop...", "success");
+}
 
-    if (shopLock !== null) {
-      payload.shopLock = shopLock;
-    }
+function handleBuyXp() {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only buy XP during prep phase", "error");
+    return;
+  }
 
-    if (benchDeployIndex !== null || benchDeployCell !== null) {
-      if (benchDeployIndex === null || benchDeployCell === null) {
-        setError("bench deploy needs both index and cell");
-        return;
-      }
+  sendPrepCommand({ xpPurchaseCount: 1 });
+  showMessage("Buying XP...", "success");
+}
 
-      payload.benchToBoardCell = {
-        benchIndex: benchDeployIndex,
-        cell: benchDeployCell,
-      };
-    }
+// Selection and deployment handlers
+function handleBenchClick(index) {
+  // If we have an item selected, try to equip it
+  if (selectedInventoryIndex !== null) {
+    equipItemToBench(selectedInventoryIndex, index);
+    clearSelections();
+    return;
+  }
 
-    if (benchSellIndex !== null) {
-      payload.benchSellIndex = benchSellIndex;
-    }
-
-    if (boardSellCell !== null) {
-      payload.boardSellIndex = boardSellCell;
-    }
-
-    if (itemBuySlot !== null) {
-      payload.itemBuySlotIndex = itemBuySlot;
-    }
-
-    if (equipItemIndex !== null && equipBenchIndex !== null) {
-      payload.itemEquipToBench = {
-        inventoryItemIndex: equipItemIndex,
-        benchIndex: equipBenchIndex,
-      };
-    }
-
-    if (unequipBenchIndex !== null && unequipItemSlot !== null) {
-      payload.itemUnequipFromBench = {
-        benchIndex: unequipBenchIndex,
-        itemSlotIndex: unequipItemSlot,
-      };
-    }
-
-    if (sellItemIndex !== null) {
-      payload.itemSellInventoryIndex = sellItemIndex;
-    }
-
-    if (Object.keys(payload).length <= 1) {
-      setError("prep payload is empty");
-      return;
-    }
-
-    activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, payload);
-
-    setError("");
-    setCommandResult(`prep sent: cmdSeq=${cmdSeq}`);
-
-    if (cmdSeqInput) {
-      cmdSeqInput.value = String(cmdSeq + 1);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    setError(message);
+  // Toggle selection
+  if (selectedBenchIndex === index) {
+    clearSelections();
+  } else {
+    clearSelections();
+    selectedBenchIndex = index;
+    const slot = benchGrid?.querySelector(`[data-bench-slot="${index}"]`);
+    slot?.classList.add("selected");
+    updateActionButtons();
   }
 }
 
+function handleBoardClick(cellIndex) {
+  // If we have a bench unit selected, deploy it
+  if (selectedBenchIndex !== null) {
+    deployBenchUnit(selectedBenchIndex, cellIndex);
+    clearSelections();
+    return;
+  }
+
+  // Toggle board cell selection for selling
+  if (selectedBoardCell === cellIndex) {
+    clearSelections();
+  } else {
+    clearSelections();
+    selectedBoardCell = cellIndex;
+    const cell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
+    cell?.classList.add("selected");
+    updateActionButtons();
+  }
+}
+
+function handleInventoryClick(index) {
+  // Check if slot has an item
+  const slot = inventoryGrid?.querySelector(`[data-inv-slot="${index}"]`);
+  if (slot?.classList.contains("empty")) {
+    return;
+  }
+
+  // Toggle selection
+  if (selectedInventoryIndex === index) {
+    clearSelections();
+  } else {
+    clearSelections();
+    selectedInventoryIndex = index;
+    slot?.classList.add("selected");
+    showSelectionMode("Click a bench unit to equip item");
+    updateActionButtons();
+  }
+}
+
+function deployBenchUnit(benchIndex, cellIndex) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only deploy during prep phase", "error");
+    return;
+  }
+
+  sendPrepCommand({
+    benchToBoardCell: {
+      benchIndex: benchIndex,
+      cell: cellIndex,
+    },
+  });
+  showMessage(`Deploying unit to cell ${cellIndex}...`, "success");
+}
+
+function equipItemToBench(itemIndex, benchIndex) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only equip during prep phase", "error");
+    return;
+  }
+
+  sendPrepCommand({
+    itemEquipToBench: {
+      inventoryItemIndex: itemIndex,
+      benchIndex: benchIndex,
+    },
+  });
+  showMessage("Equipping item...", "success");
+}
+
+function handleSell() {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only sell during prep phase", "error");
+    return;
+  }
+
+  if (selectedBenchIndex !== null) {
+    sendPrepCommand({ benchSellIndex: selectedBenchIndex });
+    showMessage("Selling bench unit...", "success");
+    clearSelections();
+  } else if (selectedBoardCell !== null) {
+    sendPrepCommand({ boardSellIndex: selectedBoardCell });
+    showMessage("Selling board unit...", "success");
+    clearSelections();
+  }
+}
+
+function clearSelections() {
+  selectedBenchIndex = null;
+  selectedBoardCell = null;
+  selectedInventoryIndex = null;
+  selectedShopSlot = null;
+
+  document.querySelectorAll(".selected").forEach((el) => {
+    el.classList.remove("selected");
+  });
+
+  hideSelectionMode();
+  updateActionButtons();
+}
+
+function updateActionButtons() {
+  const canSell = selectedBenchIndex !== null || selectedBoardCell !== null;
+  if (sellBtn) {
+    sellBtn.disabled = !canSell || currentPhase !== "Prep";
+  }
+}
+
+function showSelectionMode(text) {
+  if (selectionModeIndicator) {
+    selectionModeIndicator.textContent = text;
+    selectionModeIndicator.classList.add("active");
+  }
+}
+
+function hideSelectionMode() {
+  selectionModeIndicator?.classList.remove("active");
+}
+
+// UI Update functions
+function updateGameUI(state) {
+  if (!state) return;
+
+  const player = state.players?.get?.(sessionId);
+  if (!player) return;
+
+  currentPlayerState = player;
+  currentGold = Number(player.gold) || 0;
+
+  // Update status displays
+  roundDisplay.textContent = (Number(state.roundIndex) || 0) + 1;
+  goldDisplay.textContent = currentGold;
+  hpDisplay.textContent = Number(player.hp) || 0;
+  levelDisplay.textContent = Number(player.level) || 1;
+  xpDisplay.textContent = Number(player.xp) || 0;
+
+  // Update phase display
+  updatePhaseDisplay(readPhase(state.phase));
+
+  // Update ready count
+  const players = state.players || new Map();
+  let readyCount = 0;
+  let totalCount = 0;
+  players.forEach((p) => {
+    totalCount++;
+    if (p.ready) readyCount++;
+  });
+  if (readyCountDisplay) {
+    readyCountDisplay.textContent = `${readyCount}/${totalCount} Ready`;
+  }
+
+  // Update ready button
+  const isReady = Boolean(player.ready);
+  if (readyBtn) {
+    if (isReady) {
+      readyBtn.classList.remove("not-ready");
+      readyBtn.classList.add("ready");
+      readyBtn.textContent = "Cancel Ready";
+    } else {
+      readyBtn.classList.remove("ready");
+      readyBtn.classList.add("not-ready");
+      readyBtn.textContent = "Ready";
+    }
+  }
+
+  // Update unit shop
+  updateUnitShop(state.shopOffers);
+
+  // Update item shop
+  updateItemShop(state.itemShopOffers);
+
+  // Update board
+  updateBoard(player.boardUnits);
+
+  // Update bench
+  updateBench(player.benchUnits);
+
+  // Update inventory
+  updateInventory(state.itemInventory);
+
+  // Update next command sequence
+  if (typeof player.lastCmdSeq === "number") {
+    nextCmdSeq = player.lastCmdSeq + 1;
+  }
+}
+
+function updatePhaseDisplay(phase) {
+  if (!phaseDisplay) return;
+
+  phaseDisplay.textContent = phase || "Waiting";
+  phaseDisplay.className = "phase-indicator";
+
+  if (phase) {
+    phaseDisplay.classList.add(phase.toLowerCase());
+  } else {
+    phaseDisplay.classList.add("waiting");
+  }
+}
+
+function updateUnitShop(offers) {
+  if (!offers || !unitShopGrid) return;
+
+  offers.forEach((offer, index) => {
+    const card = unitShopGrid.querySelector(`[data-shop-slot="${index}"]`);
+    if (!card) return;
+
+    if (offer) {
+      const icon = UNIT_ICONS[offer.unitType] || "❓";
+      const cost = offer.cost || 0;
+      const canAfford = currentGold >= cost;
+
+      card.innerHTML = `
+        <div class="icon">${icon}</div>
+        <div class="name">${offer.unitType}</div>
+        <div class="cost">${cost}G</div>
+      `;
+      card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
+    } else {
+      card.innerHTML = `
+        <div class="icon">❓</div>
+        <div class="name">-</div>
+        <div class="cost">-</div>
+      `;
+      card.classList.add("disabled");
+    }
+  });
+}
+
+function updateItemShop(offers) {
+  if (!offers || !itemShopGrid) return;
+
+  offers.forEach((offer, index) => {
+    const card = itemShopGrid.querySelector(`[data-item-shop-slot="${index}"]`);
+    if (!card) return;
+
+    if (offer) {
+      const icon = ITEM_ICONS[offer.itemType] || "📦";
+      const cost = offer.cost || 0;
+      const canAfford = currentGold >= cost;
+
+      card.innerHTML = `
+        <div class="icon">${icon}</div>
+        <div class="name">${offer.itemType}</div>
+        <div class="cost">${cost}G</div>
+      `;
+      card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
+    } else {
+      card.innerHTML = `
+        <div class="icon">❓</div>
+        <div class="name">-</div>
+        <div class="cost">-</div>
+      `;
+      card.classList.add("disabled");
+    }
+  });
+}
+
+function updateBoard(boardUnits) {
+  // Clear all cells
+  document.querySelectorAll("[data-board-cell]").forEach((cell) => {
+    cell.innerHTML = `<span class="cell-number">${cell.dataset.boardCell}</span>`;
+    cell.classList.add("empty");
+  });
+
+  if (!boardUnits) return;
+
+  // Convert to array if needed
+  const units = Array.isArray(boardUnits) ? boardUnits : Array.from(boardUnits);
+
+  units.forEach((unit) => {
+    const unitStr = String(unit);
+    const [cellStr, unitType] = unitStr.split(":");
+    const cellIndex = Number.parseInt(cellStr, 10);
+
+    if (Number.isNaN(cellIndex) || cellIndex < 0 || cellIndex > 7) return;
+
+    const cell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
+    if (!cell) return;
+
+    const icon = UNIT_ICONS[unitType] || "❓";
+
+    cell.innerHTML = `
+      <span class="cell-number">${cellIndex}</span>
+      <div class="unit-icon">${icon}</div>
+      <div class="unit-stars stars-1">★</div>
+    `;
+    cell.classList.remove("empty");
+  });
+}
+
+function updateBench(benchUnits) {
+  // Clear all slots
+  benchGrid?.querySelectorAll("[data-bench-slot]").forEach((slot) => {
+    const index = slot.dataset.benchSlot;
+    slot.innerHTML = `<span class="slot-number">${index}</span>`;
+    slot.classList.add("empty");
+  });
+
+  if (!benchUnits) return;
+
+  // Convert to array if needed
+  const units = Array.isArray(benchUnits) ? benchUnits : Array.from(benchUnits);
+
+  units.forEach((unit, index) => {
+    if (index >= 9) return;
+
+    const slot = benchGrid?.querySelector(`[data-bench-slot="${index}"]`);
+    if (!slot) return;
+
+    const unitType = String(unit);
+    const icon = UNIT_ICONS[unitType] || "❓";
+
+    slot.innerHTML = `
+      <span class="slot-number">${index}</span>
+      <div class="unit-icon">${icon}</div>
+      <div class="unit-stars stars-1">★</div>
+    `;
+    slot.classList.remove("empty");
+  });
+}
+
+function updateInventory(inventory) {
+  // Clear all slots
+  inventoryGrid?.querySelectorAll("[data-inv-slot]").forEach((slot) => {
+    slot.textContent = "";
+    slot.classList.add("empty");
+  });
+
+  if (!inventory) return;
+
+  // Convert to array if needed
+  const items = Array.isArray(inventory) ? inventory : Array.from(inventory);
+
+  items.forEach((item, index) => {
+    if (index >= 9) return;
+
+    const slot = inventoryGrid?.querySelector(`[data-inv-slot="${index}"]`);
+    if (!slot) return;
+
+    const itemType = String(item);
+    const icon = ITEM_ICONS[itemType] || "📦";
+
+    slot.textContent = icon;
+    slot.classList.remove("empty");
+  });
+}
+
+function handleCommandResult(result) {
+  if (result?.accepted === true) {
+    showMessage("Action successful!", "success");
+  } else if (result?.accepted === false) {
+    const hint = buildRejectHint(result.code);
+    showMessage(`Failed: ${result.code}${hint ? ` - ${hint}` : ""}`, "error");
+  }
+}
+
+function buildRejectHint(code) {
+  switch (code) {
+    case "INSUFFICIENT_GOLD":
+      return "Not enough gold";
+    case "BENCH_FULL":
+      return "Bench is full";
+    case "PHASE_MISMATCH":
+      return "Wrong phase";
+    case "LATE_INPUT":
+      return "Too late";
+    case "DUPLICATE_CMD":
+      return "Command already sent";
+    case "INVALID_PAYLOAD":
+      return "Invalid action";
+    default:
+      return "";
+  }
+}
+
+function showMessage(text, type) {
+  if (!messageBar) return;
+
+  messageBar.textContent = text;
+  messageBar.className = `message-bar ${type}`;
+
+  setTimeout(() => {
+    messageBar.classList.add("hidden");
+  }, 3000);
+}
+
+// Legacy support functions
 function initializeDefaults() {
   const params = searchParams();
 
@@ -418,49 +790,16 @@ function initializeDefaults() {
 
   if (setIdSelect) {
     const setId = normalizeSetId(params.get("setId"));
-
     setIdSelect.value = setId ?? "";
   }
 
   if (autoFillInput) {
     const parsedAutoFillBots = parseAutoFillBots(autoFillInput.value);
-
     if (parsedAutoFillBots !== autoConfig.autoFillBots) {
       autoConfig.autoFillBots = parsedAutoFillBots;
     }
-
     autoFillInput.value = String(autoConfig.autoFillBots);
   }
-
-  if (cmdSeqInput) {
-    const cmdSeqFromQuery = Number.parseInt(params.get("cmdSeq") ?? "", 10);
-
-    if (Number.isInteger(cmdSeqFromQuery) && cmdSeqFromQuery > 0) {
-      cmdSeqInput.value = String(cmdSeqFromQuery);
-    } else if (!cmdSeqInput.value) {
-      cmdSeqInput.value = "1";
-    }
-  }
-
-  if (placementsInput) {
-    const placementsFromQuery = params.get("placements");
-
-    if (typeof placementsFromQuery === "string" && placementsFromQuery.trim()) {
-      placementsInput.value = placementsFromQuery;
-    }
-  }
-
-  if (readyCheckbox) {
-    readyCheckbox.checked = true;
-  }
-
-  setPhase("-");
-  setRound("-");
-  setSelfStatus("-");
-  setBenchList("-");
-  setBoardList("-");
-  setCommandResult("-");
-  setAutoFillStatus();
 
   if (autoConfig.autoConnect) {
     void connect();
@@ -489,7 +828,6 @@ function normalizeSetId(value) {
   if (!value || !VALID_SET_IDS.has(value)) {
     return undefined;
   }
-
   return value;
 }
 
@@ -509,270 +847,33 @@ function syncButtonAvailability() {
     leaveButton.disabled = connecting || !connected;
   }
 
-  if (readyButton) {
-    readyButton.disabled = connecting || !connected;
+  if (readyBtn) {
+    readyBtn.disabled = connecting || !connected;
   }
 
-  if (prepButton) {
-    prepButton.disabled = connecting || !connected || !prepPhase;
+  if (sellBtn) {
+    sellBtn.disabled = !connected || !prepPhase || (selectedBenchIndex === null && selectedBoardCell === null);
   }
 
-  if (cmdSeqInput) {
-    cmdSeqInput.disabled = connecting || !connected;
+  if (refreshShopBtn) {
+    refreshShopBtn.disabled = !connected || !prepPhase;
   }
 
-  if (placementsInput) {
-    placementsInput.disabled = connecting || !connected;
+  if (buyXpBtn) {
+    buyXpBtn.disabled = !connected || !prepPhase;
   }
 
-  if (xpPurchaseInput) {
-    xpPurchaseInput.disabled = connecting || !connected;
-  }
+  // Disable shop cards if not in prep phase
+  unitShopGrid?.querySelectorAll(".shop-card").forEach((card) => {
+    card.classList.toggle("disabled", !prepPhase);
+  });
 
-  if (shopRefreshInput) {
-    shopRefreshInput.disabled = connecting || !connected;
-  }
-
-  if (shopBuySlotInput) {
-    shopBuySlotInput.disabled = connecting || !connected;
-  }
-
-  if (shopLockInput) {
-    shopLockInput.disabled = connecting || !connected;
-  }
-
-  if (benchDeployIndexInput) {
-    benchDeployIndexInput.disabled = connecting || !connected;
-  }
-
-  if (benchDeployCellInput) {
-    benchDeployCellInput.disabled = connecting || !connected;
-  }
-
-  if (benchSellIndexInput) {
-    benchSellIndexInput.disabled = connecting || !connected;
-  }
-
-  if (boardSellCellInput) {
-    boardSellCellInput.disabled = connecting || !connected;
-  }
-
-  if (itemBuySlotInput) {
-    itemBuySlotInput.disabled = connecting || !connected;
-  }
-
-  if (equipItemIndexInput) {
-    equipItemIndexInput.disabled = connecting || !connected;
-  }
-
-  if (equipBenchIndexInput) {
-    equipBenchIndexInput.disabled = connecting || !connected;
-  }
-
-  if (unequipBenchIndexInput) {
-    unequipBenchIndexInput.disabled = connecting || !connected;
-  }
-
-  if (unequipItemSlotInput) {
-    unequipItemSlotInput.disabled = connecting || !connected;
-  }
-
-  if (sellItemIndexInput) {
-    sellItemIndexInput.disabled = connecting || !connected;
-  }
+  itemShopGrid?.querySelectorAll(".shop-card").forEach((card) => {
+    card.classList.toggle("disabled", !prepPhase);
+  });
 
   if (autoFillInput) {
     autoFillInput.disabled = connecting || connected;
-  }
-}
-
-function syncRoundFromState(state) {
-  setPhase(readPhase(state?.phase) ?? "-");
-
-  if (typeof state?.roundIndex === "number") {
-    setRound(state.roundIndex);
-    return;
-  }
-
-  setRound("-");
-}
-
-function syncSelfStatusFromState(state, sessionId) {
-  const player = state?.players?.get?.(sessionId);
-
-  if (!player) {
-    setSelfStatus("-");
-    setBenchList("-");
-    setBoardList("-");
-    return;
-  }
-
-  const benchUnits = normalizeBenchUnits(player.benchUnits);
-  const boardUnits = normalizeBoardUnits(player.boardUnits);
-
-  setSelfStatus(
-    `ready=${Boolean(player.ready)} hp=${Number(player.hp)} units=${Number(player.boardUnitCount)} gold=${Number(player.gold)} xp=${Number(player.xp)} lv=${Number(player.level)} bench=${benchUnits.length} board=${boardUnits.length} lock=${Boolean(player.shopLocked)} seq=${Number(player.lastCmdSeq)}`,
-  );
-  setBenchList(formatBenchUnitsWithIndex(benchUnits));
-  setBoardList(formatBoardUnits(boardUnits));
-
-  // Display item shop offers
-  if (state?.itemShopOffers && itemShopListElement) {
-    itemShopListElement.innerHTML = state.itemShopOffers
-      .map((offer, i) => `${i}: ${offer.itemType} (${offer.cost}G)`)
-      .join('<br>');
-  } else if (itemShopListElement) {
-    itemShopListElement.innerHTML = '-';
-  }
-
-  // Display item inventory
-  if (state?.itemInventory && inventoryListElement) {
-    inventoryListElement.innerHTML = state.itemInventory
-      .map((item, i) => `${i}: ${item}`)
-      .join('<br>');
-  } else if (inventoryListElement) {
-    inventoryListElement.innerHTML = '-';
-  }
-}
-
-function syncNextCmdSeq(state, sessionId) {
-  if (!cmdSeqInput) {
-    return;
-  }
-
-  const player = state?.players?.get?.(sessionId);
-
-  if (!player || typeof player.lastCmdSeq !== "number") {
-    return;
-  }
-
-  const nextSeq = player.lastCmdSeq + 1;
-  const currentSeq = Number.parseInt(cmdSeqInput.value, 10);
-
-  if (!Number.isInteger(currentSeq) || currentSeq < nextSeq) {
-    cmdSeqInput.value = String(nextSeq);
-  }
-}
-
-function setCommandResultFromResult(result) {
-  if (result?.accepted === true) {
-    setCommandResult("accepted");
-    return;
-  }
-
-  if (result?.accepted === false && typeof result.code === "string") {
-    const code = result.code;
-    const hint = buildRejectHint(code);
-    setCommandResult(`rejected: ${code}${hint ? ` (${hint})` : ""}`);
-    return;
-  }
-
-  setCommandResult("unknown result");
-}
-
-function buildRejectHint(code) {
-  switch (code) {
-    case "INVALID_PAYLOAD": {
-      const hints = [];
-
-      const cmdSeq = Number.parseInt(cmdSeqInput?.value ?? "", 10);
-      if (!Number.isInteger(cmdSeq) || cmdSeq < 1) {
-        hints.push("CmdSeq must be >= 1");
-      }
-
-      const xpPurchase = Number.parseInt(xpPurchaseInput?.value ?? "0", 10);
-      if (xpPurchaseInput?.value && (!Number.isInteger(xpPurchase) || xpPurchase < 0 || xpPurchase > 10)) {
-        hints.push("XP Buy must be 0-10");
-      }
-
-      const shopRefresh = Number.parseInt(shopRefreshInput?.value ?? "0", 10);
-      if (shopRefreshInput?.value && (!Number.isInteger(shopRefresh) || shopRefresh < 0 || shopRefresh > 5)) {
-        hints.push("Shop Refresh must be 0-5");
-      }
-
-      const shopBuySlot = Number.parseInt(shopBuySlotInput?.value ?? "", 10);
-      if (shopBuySlotInput?.value && (!Number.isInteger(shopBuySlot) || shopBuySlot < 0 || shopBuySlot > 4)) {
-        hints.push("Shop Buy Slot must be 0-4");
-      }
-
-      const benchDeployIndex = Number.parseInt(benchDeployIndexInput?.value ?? "", 10);
-      if (benchDeployIndexInput?.value && (!Number.isInteger(benchDeployIndex) || benchDeployIndex < 0 || benchDeployIndex > 8)) {
-        hints.push("Bench Deploy Index must be 0-8");
-      }
-
-      const benchDeployCell = Number.parseInt(benchDeployCellInput?.value ?? "", 10);
-      if (benchDeployCellInput?.value && (!Number.isInteger(benchDeployCell) || benchDeployCell < 0 || benchDeployCell > 7)) {
-        hints.push("Bench Deploy Cell must be 0-7");
-      }
-
-      const benchSell = Number.parseInt(benchSellIndexInput?.value ?? "", 10);
-      if (benchSellIndexInput?.value && (!Number.isInteger(benchSell) || benchSell < 0 || benchSell > 8)) {
-        hints.push("Bench Sell Index must be 0-8");
-      }
-
-      const boardSellCell = Number.parseInt(boardSellCellInput?.value ?? "", 10);
-      if (
-        boardSellCellInput?.value &&
-        (!Number.isInteger(boardSellCell) || boardSellCell < 0 || boardSellCell > 7)
-      ) {
-        hints.push("Board Sell Cell must be 0-7");
-      }
-
-      const shopLockValue = shopLockInput?.value?.trim();
-      if (shopLockValue && shopLockValue !== "skip" && shopLockValue !== "true" && shopLockValue !== "false") {
-        hints.push("Shop Lock must be skip/true/false");
-      }
-
-      const itemBuySlot = Number.parseInt(itemBuySlotInput?.value ?? "", 10);
-      if (itemBuySlotInput?.value && (!Number.isInteger(itemBuySlot) || itemBuySlot < 0 || itemBuySlot > 4)) {
-        hints.push("Item Buy Slot must be 0-4");
-      }
-
-      const equipItemIndex = Number.parseInt(equipItemIndexInput?.value ?? "", 10);
-      if (equipItemIndexInput?.value && (!Number.isInteger(equipItemIndex) || equipItemIndex < 0 || equipItemIndex > 8)) {
-        hints.push("Equip Item Index must be 0-8");
-      }
-
-      const equipBenchIndex = Number.parseInt(equipBenchIndexInput?.value ?? "", 10);
-      if (equipBenchIndexInput?.value && (!Number.isInteger(equipBenchIndex) || equipBenchIndex < 0 || equipBenchIndex > 8)) {
-        hints.push("Equip Bench Index must be 0-8");
-      }
-
-      const unequipBenchIndex = Number.parseInt(unequipBenchIndexInput?.value ?? "", 10);
-      if (unequipBenchIndexInput?.value && (!Number.isInteger(unequipBenchIndex) || unequipBenchIndex < 0 || unequipBenchIndex > 8)) {
-        hints.push("Unequip Bench Index must be 0-8");
-      }
-
-      const unequipItemSlot = Number.parseInt(unequipItemSlotInput?.value ?? "", 10);
-      if (unequipItemSlotInput?.value && (!Number.isInteger(unequipItemSlot) || unequipItemSlot < 0 || unequipItemSlot > 2)) {
-        hints.push("Unequip Item Slot must be 0-2");
-      }
-
-      const sellItemIndex = Number.parseInt(sellItemIndexInput?.value ?? "", 10);
-      if (sellItemIndexInput?.value && (!Number.isInteger(sellItemIndex) || sellItemIndex < 0 || sellItemIndex > 8)) {
-        hints.push("Sell Item Index must be 0-8");
-      }
-
-      if (hints.length > 0) {
-        return hints.join("; ");
-      }
-
-      return "check conflicting operations or empty bench/cell";
-    }
-    case "INSUFFICIENT_GOLD":
-      return "not enough gold for XP/Shop operations (sell bench units to get purchase cost back)";
-    case "BENCH_FULL":
-      return "bench is full (9/9)";
-    case "PHASE_MISMATCH":
-      return "not in Prep phase";
-    case "LATE_INPUT":
-      return "prep deadline passed";
-    case "DUPLICATE_CMD":
-      return "cmdSeq must increase";
-    case "UNKNOWN_PLAYER":
-      return "player not found";
-    default:
-      return "";
   }
 }
 
@@ -787,82 +888,10 @@ function readPhase(value) {
   ) {
     return value;
   }
-
   return null;
 }
 
-function setStatus(status) {
-  if (!statusElement) {
-    return;
-  }
-
-  statusElement.textContent = String(status);
-}
-
-function setPhase(phase) {
-  if (!phaseElement) {
-    return;
-  }
-
-  phaseElement.textContent = String(phase);
-}
-
-function setRound(round) {
-  if (!roundElement) {
-    return;
-  }
-
-  roundElement.textContent = String(round);
-}
-
-function setSelfStatus(text) {
-  if (!selfStatusElement) {
-    return;
-  }
-
-  selfStatusElement.textContent = String(text);
-}
-
-function setBenchList(text) {
-  if (!benchListElement) {
-    return;
-  }
-
-  benchListElement.textContent = String(text);
-}
-
-function setBoardList(text) {
-  if (!boardListElement) {
-    return;
-  }
-
-  boardListElement.textContent = String(text);
-}
-
-function setCommandResult(text) {
-  if (!commandResultElement) {
-    return;
-  }
-
-  commandResultElement.textContent = String(text);
-}
-
-function setError(message) {
-  if (!errorElement) {
-    return;
-  }
-
-  errorElement.textContent = String(message);
-}
-
-function setCurrentSet(setId) {
-  if (!setIdElement) {
-    return;
-  }
-
-  setIdElement.textContent = normalizeSetId(setId) ?? "-";
-}
-
+// Auto-fill functions
 async function connectAutoFillRooms(client, roomName, roomOptions) {
   const nextAutoFillBots = autoConfig.autoFillBots;
 
@@ -873,13 +902,11 @@ async function connectAutoFillRooms(client, roomName, roomOptions) {
   for (let index = 0; index < nextAutoFillBots; index += 1) {
     try {
       const helperRoom = await client.joinOrCreate(roomName, roomOptions);
-
       helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
       autoFillRooms.push(helperRoom);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-
-      setError(`autofill join failed: ${message}`);
+      showMessage(`Autofill join failed: ${message}`, "error");
       break;
     }
   }
@@ -897,25 +924,11 @@ async function leaveAutoFillRooms() {
       if (typeof room.removeAllListeners === "function") {
         room.removeAllListeners();
       }
-
       if (typeof room.leave === "function") {
         await room.leave();
       }
-    }),
+    })
   );
-}
-
-function setAutoFillStatus() {
-  if (!autoFillStatusElement) {
-    return;
-  }
-
-  if (autoConfig.autoFillBots <= 0) {
-    autoFillStatusElement.textContent = "disabled";
-    return;
-  }
-
-  autoFillStatusElement.textContent = `${autoFillRooms.length}/${autoConfig.autoFillBots}`;
 }
 
 function maybeScheduleAutoReady() {
@@ -929,11 +942,7 @@ function maybeScheduleAutoReady() {
 
   pendingAutoReadyTimeout = setTimeout(() => {
     pendingAutoReadyTimeout = null;
-
-    if (!activeRoom) {
-      return;
-    }
-
+    if (!activeRoom) return;
     sendReady();
     autoReadyCompleted = true;
     maybeScheduleAutoPrep();
@@ -951,12 +960,9 @@ function maybeScheduleAutoPrep() {
 
   pendingAutoPrepTimeout = setTimeout(() => {
     pendingAutoPrepTimeout = null;
-
-    if (!activeRoom || currentPhase !== "Prep") {
-      return;
-    }
-
-    sendPrepCommand();
+    if (!activeRoom || currentPhase !== "Prep") return;
+    // Auto-prep: just send empty command to proceed
+    sendPrepCommand({});
     autoPrepCompleted = true;
   }, autoConfig.autoDelayMs);
 }
@@ -966,102 +972,10 @@ function clearPendingAutoActions() {
     clearTimeout(pendingAutoReadyTimeout);
     pendingAutoReadyTimeout = null;
   }
-
   if (pendingAutoPrepTimeout !== null) {
     clearTimeout(pendingAutoPrepTimeout);
     pendingAutoPrepTimeout = null;
   }
-
   autoReadyCompleted = false;
   autoPrepCompleted = false;
-}
-
-function parseOptionalIntegerInRange(rawValue, minValue, maxValue, errorMessage) {
-  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
-    return null;
-  }
-
-  const parsed = Number.parseInt(String(rawValue), 10);
-
-  if (!Number.isInteger(parsed) || parsed < minValue || parsed > maxValue) {
-    throw new Error(errorMessage);
-  }
-
-  return parsed;
-}
-
-function parseOptionalBoolean(rawValue) {
-  const normalized = String(rawValue ?? "skip").trim().toLowerCase();
-
-  if (normalized === "true") {
-    return true;
-  }
-
-  if (normalized === "false") {
-    return false;
-  }
-
-  return null;
-}
-
-function normalizeBenchUnits(rawBenchUnits) {
-  if (!rawBenchUnits) {
-    return [];
-  }
-
-  if (Array.isArray(rawBenchUnits)) {
-    return rawBenchUnits.map((unitType) => String(unitType));
-  }
-
-  try {
-    return Array.from(rawBenchUnits).map((unitType) => String(unitType));
-  } catch {
-    return [];
-  }
-}
-
-function normalizeBoardUnits(rawBoardUnits) {
-  if (!rawBoardUnits) {
-    return [];
-  }
-
-  if (Array.isArray(rawBoardUnits)) {
-    return rawBoardUnits.map((unit) => String(unit));
-  }
-
-  try {
-    return Array.from(rawBoardUnits).map((unit) => String(unit));
-  } catch {
-    return [];
-  }
-}
-
-function formatBenchUnitsWithIndex(benchUnits) {
-  if (benchUnits.length === 0) {
-    return "(empty)";
-  }
-
-  return benchUnits.map((unitType, index) => `${index}:${unitType}`).join(",");
-}
-
-function formatBoardUnits(boardUnits) {
-  if (boardUnits.length === 0) {
-    return "(empty)";
-  }
-
-  const parsed = boardUnits.map((unitText) => {
-    const [cellText, unitPart] = String(unitText).split(":");
-    const cell = Number.parseInt(cellText ?? "", 10);
-    const hasValidCell = Number.isInteger(cell) && cell >= 0 && cell <= 7;
-    const lane = hasValidCell ? (cell <= 3 ? "F" : "B") : "?";
-
-    return {
-      cell: hasValidCell ? cell : 99,
-      text: `${lane}${cellText}:${unitPart ?? "-"}`,
-    };
-  });
-
-  parsed.sort((left, right) => left.cell - right.cell);
-
-  return parsed.map((item) => item.text).join(" | ");
 }

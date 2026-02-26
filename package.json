@@ -9,7 +9,7 @@
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit",
     "client:check": "node scripts/serve-client-check.mjs",
-    "server": "node server.mjs",
+    "server": "tsx server.ts",
     "play": "npm-run-all --parallel server client:check"
   },
   "keywords": [],

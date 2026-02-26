@@ -1,5 +1,5 @@
 import { defineServer, defineRoom } from "colyseus";
-import { GameRoom } from "./src/server/rooms/game-room.js";
+import { GameRoom } from "./src/server/rooms/game-room";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 2567;
 

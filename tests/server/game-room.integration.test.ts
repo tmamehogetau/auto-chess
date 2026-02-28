@@ -642,25 +642,31 @@ describe("GameRoom integration", () => {
       throw new Error("Expected internal controller");
     }
 
-    // Fix shopOffers to ensure different offers after purchase
-    internalController.shopOffersByPlayer.set(targetClient.sessionId, [
+    // Fix shopOffers to ensure deterministic purchase target
+    const forcedOffers: Array<{
+      unitType: "vanguard" | "ranger" | "mage" | "assassin";
+      rarity: 1 | 2 | 3;
+      cost: number;
+    }> = [
       { unitType: "vanguard", rarity: 1, cost: 1 },
       { unitType: "ranger", rarity: 1, cost: 1 },
       { unitType: "mage", rarity: 2, cost: 2 },
       { unitType: "assassin", rarity: 2, cost: 2 },
       { unitType: "vanguard", rarity: 1, cost: 1 },
-    ]);
+    ];
+    internalController.shopOffersByPlayer.set(targetClient.sessionId, forcedOffers);
 
-    // Wait for state to sync
-    await new Promise(resolve => setTimeout(resolve, 10));
+    const firstForcedOffer = forcedOffers[0];
 
-    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
-    const firstOfferCost = beforePlayer?.shopOffers[0]?.cost ?? 0;
-    const firstOfferUnitType = beforePlayer?.shopOffers[0]?.unitType;
-    const beforeOffers =
-      beforePlayer?.shopOffers
-        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
-        .join(",") ?? "";
+    if (!firstForcedOffer) {
+      throw new Error("Expected forced shop offers to include slot 0");
+    }
+
+    const firstOfferCost = firstForcedOffer.cost;
+    const firstOfferUnitType = firstForcedOffer.unitType;
+    const beforeOffers = forcedOffers
+      .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
+      .join(",");
 
     targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
@@ -680,10 +686,6 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.shopOffers.length).toBe(5);
     expect(afterOffers).not.toBe(beforeOffers);
     expect(afterPlayer?.benchUnits.length).toBe(1);
-
-    if (!firstOfferUnitType) {
-      throw new Error("Expected first offer unit type");
-    }
 
     expect(afterPlayer?.benchUnits[0]).toBe(firstOfferUnitType);
 

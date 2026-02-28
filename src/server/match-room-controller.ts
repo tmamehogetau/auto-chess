@@ -25,6 +25,10 @@ import {
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
 import {
+  SYNERGY_TO_UNIT_TYPE,
+  UNIT_TYPE_TO_SYNERGY_NAMES,
+} from "./combat/synergy-definitions";
+import {
   STAR_LEVEL_MAX,
   STAR_LEVEL_MIN,
   STAR_MERGE_THRESHOLD,
@@ -1568,33 +1572,49 @@ export class MatchRoomController {
     placements: BoardUnitPlacement[]
   ): { unitType: string; count: number; tier: number }[] {
     const counts: { [key in BoardUnitType]: number } = { vanguard: 0, ranger: 0, mage: 0, assassin: 0 };
-    
+
     if (!placements) {
       return [];
     }
-    
+
     for (const p of placements) {
       if (!p || !p.unitType) continue;
-      counts[p.unitType]++;
+      const unitType = p.unitType;
+
+      // Check if this unit type has associated synergies
+      const synergyNames = UNIT_TYPE_TO_SYNERGY_NAMES[unitType];
+
+      if (synergyNames && synergyNames.length > 0) {
+        // Map each synergy name to its unit type and count
+        for (const synergyName of synergyNames) {
+          const mappedType = SYNERGY_TO_UNIT_TYPE[synergyName];
+          if (mappedType) {
+            counts[mappedType]++;
+          }
+        }
+      } else {
+        // If no specific synergies, count by unit type directly
+        counts[unitType]++;
+      }
     }
-    
+
     const result: { unitType: string; count: number; tier: number }[] = [];
-    
+
     const unitTypes: BoardUnitType[] = ["vanguard", "ranger", "mage", "assassin"];
-    
+
     for (const type of unitTypes) {
       const count: number = counts[type]! || 0;
-      
+
       let tier = 0;
       if (count >= 9) tier = 3;
       else if (count >= 6) tier = 2;
       else if (count >= 3) tier = 1;
-      
+
       if (count > 0) {
         result.push({ unitType: type, count, tier });
       }
     }
-    
+
     return result;
   }
 

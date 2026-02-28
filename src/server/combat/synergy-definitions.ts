@@ -24,6 +24,14 @@ export const SYNERGY_TO_UNIT_TYPE: Record<string, BoardUnitType> = {
   archer: 'ranger',
 };
 
+// Unit type to synergy names mapping (reverse mapping)
+export const UNIT_TYPE_TO_SYNERGY_NAMES: Record<BoardUnitType, string[]> = {
+  vanguard: ['warrior'],
+  ranger: ['archer'],
+  mage: [],
+  assassin: [],
+};
+
 export const SYNERGY_DEFINITIONS: Record<BoardUnitType, SynergyDefinition> = {
   vanguard: {
     thresholds: SYNERGY_THRESHOLDS,
@@ -84,7 +92,23 @@ export function calculateSynergyDetails(
   };
 
   for (const placement of boardPlacements) {
-    countsByType[placement.unitType]++;
+    const unitType = placement.unitType;
+
+    // Check if this unit type has associated synergies
+    const synergyNames = UNIT_TYPE_TO_SYNERGY_NAMES[unitType];
+
+    if (synergyNames && synergyNames.length > 0) {
+      // Map each synergy name to its unit type and count
+      for (const synergyName of synergyNames) {
+        const mappedType = SYNERGY_TO_UNIT_TYPE[synergyName];
+        if (mappedType) {
+          countsByType[mappedType]++;
+        }
+      }
+    } else {
+      // If no specific synergies, count by unit type directly
+      countsByType[unitType]++;
+    }
   }
 
   const activeTiers: Record<BoardUnitType, SynergyTier> = {

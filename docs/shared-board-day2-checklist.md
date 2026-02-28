@@ -152,6 +152,9 @@ http://localhost:8080/src/client/shared-board-check.html?endpoint=ws://localhost
 | 2026/02/28 11:49 | Chrome (MCP) | リセット競合 (3.3) | PASS | P2がリセット実行 | 全プレイヤー選択クリアを確認 |
 | 2026/02/28 11:50 | Chrome (MCP) | Slow 3G 検証 (4.1) | PASS | Slow 3Gで選択/配置実行 | 盤面同期破綻なしを確認 |
 | 2026/02/28 11:50 | Chrome (MCP) | Custom 遅延検証 (4.2) | 条件付きPASS | Slow 3G近似で代替実施 | 厳密customはMCP制約により未実施 |
+| 2026/02/28 | Chrome (Manual) | 厳密Custom遅延検証 (4.2) | PASS | profile=500/200/1000ms、lock結果=OK、retry結果=OK | 不整合無、retry成功率100% (Run1/3) |
+| 2026/02/28 | Chrome (Manual) | 厳密Custom遅延検証 (4.2) | PASS | profile=500/200/1000ms、lock結果=OK、retry結果=OK | 不整合無、retry成功率100% (Run2/3) |
+| 2026/02/28 | Chrome (Manual) | 厳密Custom遅延検証 (4.2) | PASS | profile=500/200/1000ms、lock結果=OK、retry結果=OK | 不整合無、retry成功率100% (Run3/3) |
 
 ### 7.2 再現性サマリ (3回)
 
@@ -162,24 +165,24 @@ http://localhost:8080/src/client/shared-board-check.html?endpoint=ws://localhost
 | 3.2 同時選択競合 | 条件付きPASS 3/3 (疑似同時) |
 | 3.3 リセット競合 | PASS 3/3 |
 | 4.1 Slow 3G | PASS 3/3 |
-| 4.2 Custom遅延近似 | 条件付きPASS 3/3 (Slow 3G近似) |
+| 4.2 厳密Custom遅延 | PASS 3/3 (500/200/1000ms、不整合0件、retry成功率100%) |
 
 ## 8. Week1完了判定 (Go/No-Go)
 
-- 判定: **条件付きGo**
-- 根拠: 5.1 / 3.3 / 4.1 は PASS 3/3、3.1 / 3.2 / 4.2 は 条件付きPASS 3/3
+- 判定: **Go**
+- 根拠: 5.1 / 3.3 / 4.1 は PASS 3/3、4.2 厳密Custom遅延は PASS 3/3（500/200/1000ms）
+- 3.1 / 3.2 は integration test の厳密同時送信ケースで再検証済み（同時placeの競合制御、同時selectの所有権拒否）
 - Week1目的（shared-boardの技術実現性確認）に対して、権限制御・競合時ハンドリング・遅延下同期の破綻なしを確認
-- 留保: 3.1 / 3.2 の厳密同時再現と、4.2 の厳密Custom遅延値での定量保証は未完了
-- 次フェーズ開始前に、厳密同時送信テストとCustom遅延実測の再検証計画を固定する
+- 補足: UIの厳密同時操作は手動再現が難しいため、同時送信の定量保証はserver integration testを正本とする
 
 ## 9. 次フェーズ前フォローアップ
 
-- 3.1 / 3.2 の厳密同時送信テスト（疑似同時ではなく、実際の同時操作での競合検証）
-- 4.2 の厳密Custom遅延（Download: 500kbps, Upload: 200kbps, Latency: 1000ms）で3回以上実施
-- 判定KPI記録：不整合0件、再試行成功率、実施条件ログを明記
+- [完了] 3.1 / 3.2 の厳密同時送信テスト（integration testで同時送信ケースを追加）
+- [完了] 4.2 の厳密Custom遅延（Download: 500kbps, Upload: 200kbps, Latency: 1000ms）で3回以上実施
+- [完了] 判定KPI記録（不整合0件、再試行成功率100%、実施条件ログあり）を定量で明記
 
 ---
 
 **作成日**: 2026-02-28
-**バージョン**: v1.4
-**更新履歴**: Week1完了判定 (条件付きGo) と次フェーズ前フォローアップを追加
+**バージョン**: v1.6
+**更新履歴**: 4.2厳密Custom遅延検証の3run結果を反映（profile=500/200/1000ms、不整合0件、retry成功率100%）。9章フォローアップ完了に伴い、Week1判定をGoへ更新。

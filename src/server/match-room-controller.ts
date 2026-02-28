@@ -151,7 +151,7 @@ interface BattleResult {
 }
 
 export class MatchRoomController {
-  private readonly playerIds: string[];
+  private playerIds: string[];
 
   private readonly readyPlayers: Set<string>;
 
@@ -365,19 +365,27 @@ export class MatchRoomController {
     this.readyPlayers.delete(playerId);
   }
 
-  public startIfReady(nowMs: number): boolean {
+  public startIfReady(nowMs: number, connectedPlayerIds: string[] = this.playerIds): boolean {
     if (this.gameLoopState) {
       return false;
     }
 
-    const allReady = this.readyPlayers.size === this.playerIds.length;
+    const activePlayerIds = this.playerIds.filter((id) => connectedPlayerIds.includes(id));
+    const readyActivePlayers = this.playerIds.filter(
+      (id) => this.readyPlayers.has(id) && connectedPlayerIds.includes(id),
+    );
+    const allReady = readyActivePlayers.length === activePlayerIds.length;
     const autoStartReached = nowMs >= this.readyDeadlineAtMs;
 
     if (!allReady && !autoStartReached) {
       return false;
     }
 
-    this.gameLoopState = new GameLoopState(this.playerIds);
+    if (activePlayerIds.length < 2) {
+      return false;
+    }
+
+    this.gameLoopState = new GameLoopState(activePlayerIds);
     this.initializeShopsForPrep();
     this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
     this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
@@ -1566,6 +1574,29 @@ export class MatchRoomController {
     }
 
     throw new Error("Match has not started");
+  }
+
+  public removePlayer(playerId: string): void {
+    this.playerIds = this.playerIds.filter((id) => id !== playerId);
+    this.readyPlayers.delete(playerId);
+    this.lastCmdSeqByPlayer.delete(playerId);
+    this.boardUnitCountByPlayer.delete(playerId);
+    this.boardPlacementsByPlayer.delete(playerId);
+    this.goldByPlayer.delete(playerId);
+    this.xpByPlayer.delete(playerId);
+    this.levelByPlayer.delete(playerId);
+    this.shopOffersByPlayer.delete(playerId);
+    this.shopRefreshCountByPlayer.delete(playerId);
+    this.shopPurchaseCountByPlayer.delete(playerId);
+    this.shopLockedByPlayer.delete(playerId);
+    this.benchUnitsByPlayer.delete(playerId);
+    this.ownedUnitsByPlayer.delete(playerId);
+    this.itemInventoryByPlayer.delete(playerId);
+    this.itemShopOffersByPlayer.delete(playerId);
+    this.battleResultsByPlayer.delete(playerId);
+    this.pendingRoundDamageByPlayer.delete(playerId);
+    this.hpAtBattleStartByPlayer.delete(playerId);
+    this.hpAfterBattleByPlayer.delete(playerId);
   }
 
   private calculateActiveSynergies(

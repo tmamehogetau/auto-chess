@@ -181,7 +181,12 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     player.connected = false;
     this.clearPlayerLocks(client.sessionId);
 
-    if (code === CloseCode.CONSENTED) {
+    const shouldRemoveImmediately =
+      code === CloseCode.CONSENTED ||
+      code === CloseCode.NORMAL_CLOSURE ||
+      code === CloseCode.GOING_AWAY;
+
+    if (shouldRemoveImmediately) {
       this.removePlayerCompletely(client.sessionId);
       return;
     }

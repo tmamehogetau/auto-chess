@@ -58,6 +58,44 @@ export function parsePlacementsSpec(spec) {
   return placements;
 }
 
+export function parseBoardUnitToken(token) {
+  const trimmedToken = String(token ?? "").trim();
+
+  if (!trimmedToken) {
+    return null;
+  }
+
+  const match = trimmedToken.match(/^(\d+):([^:]+?)(?::(\d+))?$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const cell = Number.parseInt(match[1], 10);
+
+  if (!Number.isInteger(cell) || cell < MIN_CELL_INDEX || cell > MAX_CELL_INDEX) {
+    return null;
+  }
+
+  const unitType = match[2]?.trim();
+
+  if (!unitType) {
+    return null;
+  }
+
+  const parsedStarLevel = match[3] ? Number.parseInt(match[3], 10) : 1;
+
+  if (!Number.isInteger(parsedStarLevel) || parsedStarLevel < 1) {
+    return null;
+  }
+
+  return {
+    cell,
+    unitType,
+    starLevel: parsedStarLevel,
+  };
+}
+
 export function parseAutoFlag(value) {
   if (typeof value !== "string") {
     return false;

@@ -273,7 +273,10 @@ describe("GameRoom integration", () => {
 
     for (const client of clients) {
       client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
     }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const droppedClient = clients[0];
     const previousSessionId = droppedClient.sessionId;
@@ -1231,5 +1234,67 @@ describe("GameRoom integration", () => {
         setId: "set3",
       }),
     ).rejects.toThrow("Invalid setId");
+  });
+
+  test("Waiting中の離脱でghost playerが残らず、補充後に開始できる", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+    }
+
+    await waitForCondition(() => serverRoom.state.players.size === 4, 1_000);
+
+    clients[0].connection.close(4000, "refresh");
+
+    await waitForCondition(() => serverRoom.state.players.size === 3, 1_000);
+
+    const remainingClientIds = clients.slice(1).map((c) => c.sessionId);
+
+    for (const clientId of remainingClientIds) {
+      const player = serverRoom.state.players.get(clientId);
+      expect(player?.ready).toBe(false);
+      expect(player?.lastCmdSeq).toBe(0);
+    }
+
+    expect(serverRoom.state.phase).toBe("Waiting");
+    expect(serverRoom.state.phaseDeadlineAtMs).toBe(0);
+    expect(serverRoom.state.prepDeadlineAtMs).toBe(0);
+    expect(serverRoom.state.roundIndex).toBe(0);
+    expect(serverRoom.state.ranking.length).toBe(0);
+
+    const newClient = await testServer.connectTo(serverRoom);
+    newClient.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+
+    await waitForCondition(() => serverRoom.state.players.size === 4, 1_000);
+
+    const allClients = [...clients.slice(1), newClient];
+    for (const client of allClients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+  });
+
+  test("Waitingで4人未満の離脱でもghost playerを残さない", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await waitForCondition(() => serverRoom.state.players.size === 3, 1_000);
+
+    clients[0].connection.close(4000, "refresh");
+
+    await waitForCondition(() => serverRoom.state.players.size === 2, 1_000);
+    expect(serverRoom.state.phase).toBe("Waiting");
   });
 });

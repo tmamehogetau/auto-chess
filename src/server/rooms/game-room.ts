@@ -109,10 +109,40 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }, this.readyAutoStartMs);
   }
 
+  private cleanupLobbyPlayer(sessionId: string): void {
+    this.state.players.delete(sessionId);
+
+    if (this.controller?.phase === "Waiting") {
+      this.controller.removePlayer(sessionId);
+
+      if (this.clients.length < 2) {
+        this.controller = null;
+      }
+    }
+
+    for (const player of this.state.players.values()) {
+      player.ready = false;
+      player.lastCmdSeq = 0;
+    }
+
+    this.state.phase = "Waiting";
+    this.state.phaseDeadlineAtMs = 0;
+    this.state.prepDeadlineAtMs = 0;
+    this.state.roundIndex = 0;
+    this.syncRanking([]);
+  }
+
   public async onLeave(client: Client, code: number): Promise<void> {
     const player = this.state.players.get(client.sessionId);
 
     if (!player) {
+      return;
+    }
+
+    const isLobbyPhase = this.controller === null || this.controller.phase === "Waiting";
+
+    if (isLobbyPhase) {
+      this.cleanupLobbyPlayer(client.sessionId);
       return;
     }
 
@@ -338,7 +368,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
-    const started = this.controller.startIfReady(nowMs);
+    const connectedPlayerIds = this.clients.map((c) => c.sessionId);
+    const started = this.controller.startIfReady(nowMs, connectedPlayerIds);
 
     if (!started) {
       return;

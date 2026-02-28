@@ -4,6 +4,7 @@ import {
   parseAutoDelayMs,
   parseAutoFillBots,
   parseAutoFlag,
+  parseBoardUnitToken,
   parsePlacementsSpec,
   formatCombatLogForDisplay,
   formatSynergyDisplay,
@@ -45,6 +46,31 @@ describe("parsePlacementsSpec", () => {
         "0:vanguard,1:vanguard,2:vanguard,3:vanguard,4:ranger,5:ranger,6:mage,7:assassin,0:mage",
       ),
     ).toThrow("placements must be <= 8");
+  });
+});
+
+describe("parseBoardUnitToken", () => {
+  test("cell:unitTypeはstarLevel=1として解析する", () => {
+    expect(parseBoardUnitToken("0:vanguard")).toEqual({
+      cell: 0,
+      unitType: "vanguard",
+      starLevel: 1,
+    });
+  });
+
+  test("cell:unitType:starLevelを正しく解析する", () => {
+    expect(parseBoardUnitToken("7:assassin:3")).toEqual({
+      cell: 7,
+      unitType: "assassin",
+      starLevel: 3,
+    });
+  });
+
+  test("不正フォーマットはnullを返す", () => {
+    expect(parseBoardUnitToken("vanguard:2")).toBeNull();
+    expect(parseBoardUnitToken("8:vanguard:2")).toBeNull();
+    expect(parseBoardUnitToken("0:vanguard:0")).toBeNull();
+    expect(parseBoardUnitToken("")).toBeNull();
   });
 });
 

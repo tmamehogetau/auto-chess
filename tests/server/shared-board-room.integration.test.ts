@@ -115,6 +115,44 @@ describe("SharedBoardRoom integration", () => {
     expect(activeSlots).toEqual([0, 1, 2]);
   });
 
+  test("同意離脱でactive枠が即時解放され新規接続がactiveになる", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    const roles = await Promise.all(
+      clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
+    );
+
+    const leavingIndex = roles.findIndex((role) => !role.isSpectator);
+
+    if (leavingIndex < 0) {
+      throw new Error("Expected one active player to leave");
+    }
+
+    const leavingClient = clients[leavingIndex];
+
+    if (!leavingClient) {
+      throw new Error("Expected resolved active client");
+    }
+
+    const leavingSessionId = leavingClient.sessionId;
+
+    leavingClient.connection.close(4000, "leave");
+
+    await waitForCondition(() => !serverRoom.state.players.get(leavingSessionId), 1_000);
+
+    const newClient = await testServer.connectTo(serverRoom);
+    const newRole = await newClient.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    expect(newRole.isSpectator).toBe(false);
+    expect(newRole.slotIndex).toBeGreaterThanOrEqual(0);
+  });
+
   test("異常切断後の再接続でactive枠を維持しROLEが再送される", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const clients = await Promise.all([

@@ -82,6 +82,46 @@ export function parsePlacementsSpec(spec: string | undefined | null): BoardUnitP
   return placements;
 }
 
+export function parseBoardUnitToken(token: unknown): BoardUnitPlacement | null {
+  const trimmedToken = String(token ?? "").trim();
+
+  if (!trimmedToken) {
+    return null;
+  }
+
+  const match = trimmedToken.match(/^(\d+):([^:]+?)(?::(\d+))?$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const cellText = match[1];
+  const unitType = match[2]?.trim();
+  const starLevelText = match[3];
+
+  if (!cellText || !unitType) {
+    return null;
+  }
+
+  const cell = Number.parseInt(cellText, 10);
+
+  if (!Number.isInteger(cell) || cell < MIN_CELL_INDEX || cell > MAX_CELL_INDEX) {
+    return null;
+  }
+
+  const starLevel = starLevelText ? Number.parseInt(starLevelText, 10) : 1;
+
+  if (!Number.isInteger(starLevel) || starLevel < 1) {
+    return null;
+  }
+
+  return {
+    cell,
+    unitType,
+    starLevel,
+  };
+}
+
 export function parseAutoFlag(value: unknown): boolean {
   if (typeof value !== "string") {
     return false;

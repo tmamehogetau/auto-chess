@@ -2,6 +2,7 @@ import {
   parseAutoDelayMs,
   parseAutoFillBots,
   parseAutoFlag,
+  parseBoardUnitToken,
   parsePlacementsSpec,
 } from "./manual-check-utils.js";
 
@@ -90,6 +91,7 @@ let sessionId = null;
 let latestPhaseHpProgress = null;
 let lastShownSummaryRound = -1;
 let roundSummaryAutoHideTimeout = null;
+let sharedBoardSpectatorNoticeShown = false;
 
 // Selection state
 let selectedBenchIndex = null;
@@ -97,6 +99,7 @@ let selectedBoardCell = null;
 let selectedInventoryIndex = null;
 let selectedShopSlot = null;
 let sharedDraggedUnitId = null;
+let selectedSharedUnitId = null;
 
 // Timer state
 let timerInterval = null;
@@ -124,6 +127,51 @@ const PHASE_RESULT_LABELS = {
   success: "Success",
   failed: "Failed",
 };
+
+const CONNECTION_OPEN_STATE = 1;
+
+function withTimeout(promise, timeoutMs, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      promise.finally(() => {
+        clearTimeout(timeoutId);
+      }).catch(() => {
+        // handled by the race reject path
+      });
+    }),
+  ]);
+}
+
+function isRoomConnectionOpen(room) {
+  if (!room) {
+    return false;
+  }
+
+  const connection = room.connection;
+
+  if (!connection) {
+    return false;
+  }
+
+  if (typeof connection.isOpen === "boolean") {
+    return connection.isOpen;
+  }
+
+  if (typeof connection.readyState === "number") {
+    return connection.readyState === CONNECTION_OPEN_STATE;
+  }
+
+  if (connection.ws && typeof connection.ws.readyState === "number") {
+    return connection.ws.readyState === CONNECTION_OPEN_STATE;
+  }
+
+  return true;
+}
 
 initializeDefaults();
 syncButtonAvailability();
@@ -202,7 +250,26 @@ window.addEventListener("beforeunload", () => {
 });
 
 async function connect() {
-  if (connecting || activeRoom) {
+  if (connecting) {
+    showMessage("Still connecting...", "error");
+    return;
+  }
+
+  if (activeRoom && isRoomConnectionOpen(activeRoom)) {
+    showMessage("Already connected. Press Leave first.", "error");
+    return;
+  }
+
+  if (activeRoom && !isRoomConnectionOpen(activeRoom)) {
+    activeRoom = null;
+    sessionId = null;
+    currentPhase = null;
+    leaveSharedBoardRoom();
+    gameContainer?.classList.remove("connected");
+    syncButtonAvailability();
+  }
+
+  if (activeRoom) {
     return;
   }
 
@@ -212,10 +279,18 @@ async function connect() {
 
   try {
     const { endpoint, roomName, setId } = readConfig();
-    const { Client } = await import("https://esm.sh/@colyseus/sdk@0.17.34");
+    const { Client } = await withTimeout(
+      import("https://esm.sh/@colyseus/sdk@0.17.34"),
+      8_000,
+      "Colyseus SDK load",
+    );
     const client = new Client(endpoint);
     const roomOptions = setId ? { setId } : undefined;
-    const room = await client.joinOrCreate(roomName, roomOptions);
+    const room = await withTimeout(
+      client.joinOrCreate(roomName, roomOptions),
+      8_000,
+      "Room connection",
+    );
 
     activeRoom = room;
     sessionId = room.sessionId;
@@ -1024,33 +1099,25 @@ function updateBoard(boardUnits) {
 
   units.forEach((unit) => {
     const unitStr = String(unit);
-    const [cellStr, rest] = unitStr.split(":");
-    const cellIndex = Number.parseInt(cellStr, 10);
+    const parsedToken = parseBoardUnitToken(unitStr);
 
-    if (Number.isNaN(cellIndex) || cellIndex < 0 || cellIndex > 7) return;
+    if (!parsedToken) return;
 
-    const cell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
-    if (!cell) return;
+    const { cell: parsedCell, unitType, starLevel } = parsedToken;
+    const cellIndex = parsedCell;
 
-    // Parse unit type and star level (format: "cell:unitType:starLevel" or "cell:unitType")
-    let unitType = rest;
-    let starLevel = 1;
-
-    const starMatch = rest.match(/(.+?):(\d+)$/);
-    if (starMatch) {
-      unitType = starMatch[1];
-      starLevel = Number.parseInt(starMatch[2], 10);
-    }
+    const boardCell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
+    if (!boardCell) return;
 
     const icon = UNIT_ICONS[unitType] || "❓";
     const starClass = `stars-${Math.min(starLevel, 3)}`;
 
-    cell.innerHTML = `
+    boardCell.innerHTML = `
       <span class="cell-number">${cellIndex}</span>
       <div class="unit-icon">${icon}</div>
       <div class="unit-stars ${starClass}">${"★".repeat(starLevel)}</div>
     `;
-    cell.classList.remove("empty");
+    boardCell.classList.remove("empty");
   });
 }
 
@@ -1229,6 +1296,16 @@ function searchParams() {
 }
 
 function syncButtonAvailability() {
+  if (activeRoom && !isRoomConnectionOpen(activeRoom)) {
+    activeRoom = null;
+    sessionId = null;
+    currentPhase = null;
+    latestPhaseHpProgress = null;
+    leaveSharedBoardRoom();
+    renderPhaseHpProgress(null);
+    gameContainer?.classList.remove("connected");
+  }
+
   const connected = Boolean(activeRoom);
   const prepPhase = currentPhase === "Prep";
 
@@ -1339,6 +1416,14 @@ function sendSharedCursorMove(cellIndex) {
   sharedBoardRoom.send("shared_cursor_move", { cellIndex });
 }
 
+function sendSharedSelectUnit(unitId) {
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  sharedBoardRoom.send("shared_select_unit", { unitId });
+}
+
 function sendSharedDragState(isDragging, unitId) {
   if (!sharedBoardRoom) {
     return;
@@ -1362,6 +1447,39 @@ function sendSharedPlaceUnit(unitId, toCell) {
   }
 
   sharedBoardRoom.send("shared_place_unit", { unitId, toCell });
+}
+
+function selectSharedUnit(unitId, shouldNotify = true) {
+  if (!unitId) {
+    return;
+  }
+
+  selectedSharedUnitId = unitId;
+  sendSharedSelectUnit(unitId);
+
+  if (currentSharedBoardState) {
+    renderSharedBoardState(currentSharedBoardState);
+  }
+
+  if (shouldNotify) {
+    showMessage(`Shared unit selected (${shortPlayerId(unitId)})`, "success");
+  }
+}
+
+function isSharedSpectator(state) {
+  if (!sharedBoardRoom) {
+    return true;
+  }
+
+  const ownCursor = mapGet(state?.cursors, sharedBoardRoom.sessionId);
+
+  if (ownCursor && typeof ownCursor.isSpectator === "boolean") {
+    return ownCursor.isSpectator;
+  }
+
+  const ownPlayer = mapGet(state?.players, sharedBoardRoom.sessionId);
+
+  return ownPlayer?.isSpectator === true;
 }
 
 function renderSharedCursorChips(state, cellElement, cellIndex) {
@@ -1427,6 +1545,7 @@ function handleSharedDragStart(event, state, cellIndex) {
   }
 
   sharedDraggedUnitId = cell.unitId;
+  selectSharedUnit(cell.unitId, false);
   sendSharedDragState(true, cell.unitId);
 
   if (event.dataTransfer) {
@@ -1453,13 +1572,61 @@ function handleSharedDrop(event, cellIndex) {
   }
 
   const unitIdFromTransfer = event.dataTransfer?.getData("text/plain") || "";
-  const unitId = unitIdFromTransfer || sharedDraggedUnitId;
+  const unitId = unitIdFromTransfer || sharedDraggedUnitId || selectedSharedUnitId;
 
   if (!unitId) {
+    showMessage("Shared board: select your unit first", "error");
     return;
   }
 
   sendSharedPlaceUnit(unitId, cellIndex);
+}
+
+function handleSharedCellClick(state, cellIndex) {
+  if (!sharedBoardRoom) {
+    showMessage("Shared board disconnected", "error");
+    return;
+  }
+
+  if (isSharedSpectator(state)) {
+    showMessage("Shared board: spectator cannot move units", "error");
+    return;
+  }
+
+  const cell = mapGet(state?.cells, cellIndex);
+
+  if (!cell) {
+    showMessage("Shared board syncing... try again", "error");
+    return;
+  }
+
+  if (cell.unitId === "dummy-boss") {
+    showMessage("Boss cell cannot be used", "error");
+    return;
+  }
+
+  if (cell.ownerId === sharedBoardRoom.sessionId && cell.unitId !== "") {
+    selectSharedUnit(cell.unitId, true);
+    return;
+  }
+
+  if (!selectedSharedUnitId) {
+    if (cell.unitId !== "") {
+      showMessage("Select your own shared unit", "error");
+      return;
+    }
+
+    showMessage("Select your unit, then click destination", "error");
+    return;
+  }
+
+  if (cell.unitId !== "") {
+    showMessage("Target cell is occupied", "error");
+    return;
+  }
+
+  sendSharedPlaceUnit(selectedSharedUnitId, cellIndex);
+  showMessage(`Move request sent to cell ${cellIndex}`, "success");
 }
 
 function renderSharedBoard(state) {
@@ -1487,6 +1654,21 @@ function renderSharedBoard(state) {
     indexBadge.className = "shared-board-cell-index";
     indexBadge.textContent = String(cellIndex);
     cellElement.appendChild(indexBadge);
+
+    const handleCellPointerDown = (event) => {
+      if (event && typeof event.button === "number" && event.button > 0) {
+        return;
+      }
+
+      handleSharedCellClick(currentSharedBoardState, cellIndex);
+    };
+
+    if (typeof window !== "undefined" && "PointerEvent" in window) {
+      cellElement.onpointerdown = handleCellPointerDown;
+    } else {
+      cellElement.onmousedown = handleCellPointerDown;
+    }
+
     cellElement.onmouseenter = () => {
       sendSharedCursorMove(cellIndex);
     };
@@ -1513,9 +1695,16 @@ function renderSharedBoard(state) {
     } else if (unitId !== "") {
       cellElement.classList.add("has-unit");
 
+      if (selectedSharedUnitId && unitId === selectedSharedUnitId) {
+        cellElement.classList.add("selected");
+      }
+
       if (sharedBoardRoom && ownerId === sharedBoardRoom.sessionId) {
         cellElement.draggable = true;
         cellElement.classList.add("draggable");
+        cellElement.onpointerdown = () => {
+          selectSharedUnit(unitId, false);
+        };
         cellElement.ondragstart = (event) => {
           handleSharedDragStart(event, state, cellIndex);
         };
@@ -1548,6 +1737,8 @@ function renderSharedBoard(state) {
 
 function renderSharedBoardState(state) {
   if (!state) {
+    sharedDraggedUnitId = null;
+    selectedSharedUnitId = null;
     renderSharedBoard({ boardWidth: 6, boardHeight: 4, cells: {}, cursors: {}, players: {} });
 
     if (sharedCursorList) {
@@ -1559,6 +1750,23 @@ function renderSharedBoardState(state) {
 
   renderSharedBoard(state);
   renderSharedCursorList(state);
+
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  const ownCursor = mapGet(state?.cursors, sharedBoardRoom.sessionId);
+  const isSpectator = ownCursor?.isSpectator === true;
+
+  if (isSpectator && !sharedBoardSpectatorNoticeShown) {
+    addCombatLogEntry("Shared board is spectator mode. Wait for an active slot.", "info");
+    sharedBoardSpectatorNoticeShown = true;
+    return;
+  }
+
+  if (!isSpectator) {
+    sharedBoardSpectatorNoticeShown = false;
+  }
 }
 
 async function connectSharedBoard(client) {
@@ -1569,6 +1777,34 @@ async function connectSharedBoard(client) {
   try {
     sharedBoardRoom = await client.joinOrCreate(DEFAULT_SHARED_BOARD_ROOM_NAME);
     currentSharedBoardState = null;
+    sharedBoardSpectatorNoticeShown = false;
+    sharedDraggedUnitId = null;
+    selectedSharedUnitId = null;
+
+    sharedBoardRoom.onMessage("shared_role", (message) => {
+      if (message?.isSpectator === true && !sharedBoardSpectatorNoticeShown) {
+        addCombatLogEntry("Shared board role: spectator", "info");
+      }
+    });
+
+    sharedBoardRoom.onMessage("shared_action_result", (message) => {
+      if (message?.accepted === true && message.action === "place_unit") {
+        selectedSharedUnitId = null;
+        renderSharedBoardState(currentSharedBoardState);
+        showMessage("Shared board move applied", "success");
+      }
+
+      if (message?.accepted === false) {
+        addCombatLogEntry(
+          `[Shared board] ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}`,
+          "info",
+        );
+        showMessage(
+          `Shared board ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}`,
+          "error",
+        );
+      }
+    });
 
     sharedBoardRoom.onStateChange((state) => {
       currentSharedBoardState = state;
@@ -1578,6 +1814,8 @@ async function connectSharedBoard(client) {
     sharedBoardRoom.onLeave(() => {
       sharedBoardRoom = null;
       currentSharedBoardState = null;
+      sharedDraggedUnitId = null;
+      selectedSharedUnitId = null;
       renderSharedBoardState(null);
     });
   } catch (error) {
@@ -1591,13 +1829,19 @@ async function connectSharedBoard(client) {
 function leaveSharedBoardRoom() {
   if (!sharedBoardRoom) {
     currentSharedBoardState = null;
+    sharedDraggedUnitId = null;
+    selectedSharedUnitId = null;
     renderSharedBoardState(null);
+    sharedBoardSpectatorNoticeShown = false;
     return;
   }
 
   const roomToLeave = sharedBoardRoom;
   sharedBoardRoom = null;
   currentSharedBoardState = null;
+  sharedDraggedUnitId = null;
+  selectedSharedUnitId = null;
+  sharedBoardSpectatorNoticeShown = false;
   renderSharedBoardState(null);
 
   if (typeof roomToLeave.removeAllListeners === "function") {

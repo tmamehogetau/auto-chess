@@ -96,6 +96,7 @@ let selectedBenchIndex = null;
 let selectedBoardCell = null;
 let selectedInventoryIndex = null;
 let selectedShopSlot = null;
+let sharedDraggedUnitId = null;
 
 // Timer state
 let timerInterval = null;
@@ -1338,6 +1339,31 @@ function sendSharedCursorMove(cellIndex) {
   sharedBoardRoom.send("shared_cursor_move", { cellIndex });
 }
 
+function sendSharedDragState(isDragging, unitId) {
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  const payload = unitId
+    ? {
+        isDragging,
+        unitId,
+      }
+    : {
+        isDragging,
+      };
+
+  sharedBoardRoom.send("shared_drag_state", payload);
+}
+
+function sendSharedPlaceUnit(unitId, toCell) {
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  sharedBoardRoom.send("shared_place_unit", { unitId, toCell });
+}
+
 function renderSharedCursorChips(state, cellElement, cellIndex) {
   const chips = document.createElement("div");
   chips.className = "shared-cursor-chips";
@@ -1388,6 +1414,54 @@ function renderSharedCursorList(state) {
   }
 }
 
+function handleSharedDragStart(event, state, cellIndex) {
+  if (!sharedBoardRoom) {
+    event.preventDefault();
+    return;
+  }
+
+  const cell = mapGet(state?.cells, cellIndex);
+  if (!cell || cell.ownerId !== sharedBoardRoom.sessionId || cell.unitId === "" || cell.unitId === "dummy-boss") {
+    event.preventDefault();
+    return;
+  }
+
+  sharedDraggedUnitId = cell.unitId;
+  sendSharedDragState(true, cell.unitId);
+
+  if (event.dataTransfer) {
+    event.dataTransfer.setData("text/plain", cell.unitId);
+    event.dataTransfer.effectAllowed = "move";
+  }
+}
+
+function handleSharedDragEnd() {
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  sendSharedDragState(false, sharedDraggedUnitId ?? undefined);
+  sharedDraggedUnitId = null;
+}
+
+function handleSharedDrop(event, cellIndex) {
+  event.preventDefault();
+  event.currentTarget.classList.remove("drag-over");
+
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  const unitIdFromTransfer = event.dataTransfer?.getData("text/plain") || "";
+  const unitId = unitIdFromTransfer || sharedDraggedUnitId;
+
+  if (!unitId) {
+    return;
+  }
+
+  sendSharedPlaceUnit(unitId, cellIndex);
+}
+
 function renderSharedBoard(state) {
   if (!sharedBoardGrid) {
     return;
@@ -1417,6 +1491,19 @@ function renderSharedBoard(state) {
       sendSharedCursorMove(cellIndex);
     };
 
+    cellElement.ondragover = (event) => {
+      event.preventDefault();
+      cellElement.classList.add("drag-over");
+    };
+
+    cellElement.ondragleave = () => {
+      cellElement.classList.remove("drag-over");
+    };
+
+    cellElement.ondrop = (event) => {
+      handleSharedDrop(event, cellIndex);
+    };
+
     if (isBossCell) {
       cellElement.classList.add("boss");
       const boss = document.createElement("div");
@@ -1425,6 +1512,17 @@ function renderSharedBoard(state) {
       cellElement.appendChild(boss);
     } else if (unitId !== "") {
       cellElement.classList.add("has-unit");
+
+      if (sharedBoardRoom && ownerId === sharedBoardRoom.sessionId) {
+        cellElement.draggable = true;
+        cellElement.classList.add("draggable");
+        cellElement.ondragstart = (event) => {
+          handleSharedDragStart(event, state, cellIndex);
+        };
+        cellElement.ondragend = () => {
+          handleSharedDragEnd();
+        };
+      }
 
       const unit = document.createElement("div");
       unit.className = "shared-board-unit";

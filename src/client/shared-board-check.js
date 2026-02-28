@@ -13,6 +13,7 @@ const SERVER_MESSAGE_TYPES = {
 
 const DEFAULT_ENDPOINT = "ws://localhost:2567";
 const DEFAULT_ROOM_NAME = "shared_board";
+const RECONNECT_TOKEN_KEY_PREFIX = "shared-board:reconnect-token:";
 
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -38,6 +39,8 @@ let roleInfo = null;
 let lastServerEventCount = 0;
 let lastSpectatorWarnTime = 0;
 const SPECTATOR_WARN_THROTTLE_MS = 1000;
+let connectedEndpoint = null;
+let connectedRoomName = null;
 
 const ACTION_ERROR_MESSAGES = {
   INVALID_PAYLOAD: "入力が不正です",
@@ -71,6 +74,50 @@ function appendSpectatorWarning(message) {
 
   appendLog(message, "warn");
   lastSpectatorWarnTime = now;
+}
+
+function getReconnectTokenStorageKey(endpoint, roomName) {
+  return `${RECONNECT_TOKEN_KEY_PREFIX}${endpoint}::${roomName}`;
+}
+
+function readReconnectToken(endpoint, roomName) {
+  try {
+    return sessionStorage.getItem(getReconnectTokenStorageKey(endpoint, roomName)) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeReconnectToken(endpoint, roomName, token) {
+  if (!token) {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(getReconnectTokenStorageKey(endpoint, roomName), token);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function clearReconnectToken(endpoint, roomName) {
+  try {
+    sessionStorage.removeItem(getReconnectTokenStorageKey(endpoint, roomName));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function cacheCurrentReconnectToken() {
+  if (!room || !connectedEndpoint || !connectedRoomName) {
+    return;
+  }
+
+  if (typeof room.reconnectionToken !== "string" || room.reconnectionToken.length === 0) {
+    return;
+  }
+
+  writeReconnectToken(connectedEndpoint, connectedRoomName, room.reconnectionToken);
 }
 
 function updateConnectionUi(connected) {
@@ -514,6 +561,26 @@ function renderState(state) {
   }
 
   if (room) {
+    const myPlayer = mapGet(state.players, room.sessionId);
+
+    if (myPlayer) {
+      const inferredRoleInfo = {
+        isSpectator: myPlayer.isSpectator === true,
+        slotIndex: Number.isInteger(myPlayer.slotIndex) ? myPlayer.slotIndex : -1,
+        color: typeof myPlayer.color === "string" ? myPlayer.color : "#999999",
+      };
+
+      if (
+        !roleInfo ||
+        roleInfo.isSpectator !== inferredRoleInfo.isSpectator ||
+        roleInfo.slotIndex !== inferredRoleInfo.slotIndex ||
+        roleInfo.color !== inferredRoleInfo.color
+      ) {
+        roleInfo = inferredRoleInfo;
+        updateRoleDisplay();
+      }
+    }
+
     const myCursor = mapGet(state.cursors, room.sessionId);
     const syncedSelectedUnitId = myCursor?.selectedUnitId || null;
     if (syncedSelectedUnitId !== selectedUnitId) {
@@ -542,7 +609,25 @@ async function connectRoom() {
     const sdk = await import("https://esm.sh/@colyseus/sdk@0.17.34");
     const ClientCtor = sdk.Client;
     client = new ClientCtor(endpoint);
-    room = await client.joinOrCreate(roomName);
+
+    const reconnectToken = readReconnectToken(endpoint, roomName);
+
+    if (reconnectToken) {
+      try {
+        room = await client.reconnect(reconnectToken);
+        appendLog(`reconnected: ${shortId(room.sessionId)}`, "info");
+      } catch (error) {
+        appendLog(`reconnect failed: ${String(error)}`, "warn");
+        clearReconnectToken(endpoint, roomName);
+        room = await client.joinOrCreate(roomName);
+      }
+    } else {
+      room = await client.joinOrCreate(roomName);
+    }
+
+    connectedEndpoint = endpoint;
+    connectedRoomName = roomName;
+    cacheCurrentReconnectToken();
 
     roleInfo = null;
     selectedUnitId = null;
@@ -587,8 +672,9 @@ async function connectRoom() {
       appendLog(`room error: ${JSON.stringify(args)}`, "error");
     });
 
-    room.onLeave(() => {
-      appendLog("disconnected", "warn");
+    room.onLeave((code) => {
+      cacheCurrentReconnectToken();
+      appendLog(`disconnected (code=${code})`, "warn");
       room = null;
       roleInfo = null;
       selectedUnitId = null;
@@ -613,6 +699,10 @@ async function connectRoom() {
 function leaveRoom() {
   if (!room) {
     return;
+  }
+
+  if (connectedEndpoint && connectedRoomName) {
+    clearReconnectToken(connectedEndpoint, connectedRoomName);
   }
 
   room.leave();

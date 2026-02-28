@@ -203,6 +203,27 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }
 
     player.connected = true;
+
+    this.clock.setTimeout(() => {
+      const latestPlayer = this.state.players.get(client.sessionId);
+
+      if (!latestPlayer) {
+        return;
+      }
+
+      const roleMessage: SharedBoardRoleMessage = {
+        isSpectator: latestPlayer.isSpectator,
+        slotIndex: latestPlayer.slotIndex,
+        color: latestPlayer.color,
+      };
+
+      client.send(SERVER_MESSAGE_TYPES.ROLE, roleMessage);
+    }, 0);
+
+    const cursor = this.state.cursors.get(client.sessionId);
+    if (cursor) {
+      cursor.updatedAtMs = Date.now();
+    }
   }
 
   private initializeBoardCells(): void {

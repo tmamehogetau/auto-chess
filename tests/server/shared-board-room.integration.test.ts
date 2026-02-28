@@ -24,6 +24,22 @@ const waitForCondition = async (
   throw new Error("Timed out while waiting for condition");
 };
 
+const sendConcurrently = async (
+  operations: Array<() => void>,
+): Promise<void> => {
+  await Promise.all(
+    operations.map(
+      (operation) =>
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            operation();
+            resolve();
+          }, 0);
+        }),
+    ),
+  );
+};
+
 describe("SharedBoardRoom integration", () => {
   let testServer!: ColyseusTestServer;
 
@@ -86,14 +102,56 @@ describe("SharedBoardRoom integration", () => {
 
     const roles = await Promise.all(rolePromises);
 
-    expect(roles[0].isSpectator).toBe(false);
-    expect(roles[0].slotIndex).toBe(0);
-    expect(roles[1].isSpectator).toBe(false);
-    expect(roles[1].slotIndex).toBe(1);
-    expect(roles[2].isSpectator).toBe(false);
-    expect(roles[2].slotIndex).toBe(2);
-    expect(roles[3].isSpectator).toBe(true);
-    expect(roles[3].slotIndex).toBe(-1);
+    const activeRoles = roles.filter((role) => !role.isSpectator);
+    const spectatorRoles = roles.filter((role) => role.isSpectator);
+
+    expect(activeRoles).toHaveLength(3);
+    expect(spectatorRoles).toHaveLength(1);
+    expect(spectatorRoles[0].slotIndex).toBe(-1);
+
+    const activeSlots = activeRoles
+      .map((role) => role.slotIndex)
+      .sort((left, right) => left - right);
+    expect(activeSlots).toEqual([0, 1, 2]);
+  });
+
+  test("異常切断後の再接続でactive枠を維持しROLEが再送される", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    const roles = await Promise.all(
+      clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
+    );
+
+    const droppedClient = clients[0];
+    const previousSessionId = droppedClient.sessionId;
+    const previousSlotIndex = roles[0].slotIndex;
+    const reconnectionToken = droppedClient.reconnectionToken;
+
+    droppedClient.connection.close(4001, "network drop");
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(previousSessionId);
+      return player?.connected === false;
+    }, 1_000);
+
+    const reconnectedClient = await testServer.sdk.reconnect(reconnectionToken);
+    const roleAfterReconnect =
+      await reconnectedClient.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    expect(reconnectedClient.sessionId).toBe(previousSessionId);
+    expect(roleAfterReconnect.isSpectator).toBe(false);
+    expect(roleAfterReconnect.slotIndex).toBe(previousSlotIndex);
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(previousSessionId);
+      return player?.connected === true;
+    }, 1_000);
   });
 
   test("spectatorがplace/resetするとNOT_ACTIVE_PLAYERで拒否される", async () => {
@@ -105,12 +163,23 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
     ]);
 
-    await Promise.all(
+    const roles = await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
     );
 
-    const spectatorClient = clients[3];
-    const activeClient = clients[0];
+    const spectatorIndex = roles.findIndex((role) => role.isSpectator);
+    const activeIndex = roles.findIndex((role) => !role.isSpectator);
+
+    if (spectatorIndex < 0 || activeIndex < 0) {
+      throw new Error("Expected one spectator and at least one active player");
+    }
+
+    const spectatorClient = clients[spectatorIndex];
+    const activeClient = clients[activeIndex];
+
+    if (!spectatorClient || !activeClient) {
+      throw new Error("Expected resolved clients for spectator and active players");
+    }
 
     spectatorClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: "any-unit-id",
@@ -582,5 +651,161 @@ describe("SharedBoardRoom integration", () => {
     const finalCellB = serverRoom.state.cells.get(String(cellBIndex));
     expect(finalCellB?.ownerId).toBe(firstClient.sessionId);
     expect(finalCellB?.unitId).toBe(firstUnitId);
+  });
+
+  test("同時place送信で1件成功し他方はTARGET_LOCKED", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await Promise.all(
+      clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
+    );
+
+    const firstClient = clients[0];
+    const secondClient = clients[1];
+
+    await waitForCondition(() => {
+      const firstPlayer = serverRoom.state.players.get(firstClient.sessionId);
+      const secondPlayer = serverRoom.state.players.get(secondClient.sessionId);
+      return firstPlayer !== undefined && secondPlayer !== undefined;
+    }, 1_000);
+
+    let firstUnitId = "";
+    let secondUnitId = "";
+    let emptyCellIndex = -1;
+
+    for (const cell of serverRoom.state.cells.values()) {
+      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "" && firstUnitId === "") {
+        firstUnitId = cell.unitId;
+      } else if (cell.ownerId === secondClient.sessionId && cell.unitId !== "" && secondUnitId === "") {
+        secondUnitId = cell.unitId;
+      }
+      if (cell.unitId === "" && emptyCellIndex === -1) {
+        emptyCellIndex = cell.index;
+      }
+    }
+
+    if (firstUnitId === "") {
+      throw new Error("Expected first player to have a unit");
+    }
+
+    if (secondUnitId === "") {
+      throw new Error("Expected second player to have a unit");
+    }
+
+    if (emptyCellIndex === -1) {
+      throw new Error("Expected an empty cell");
+    }
+
+    await sendConcurrently([
+      () => {
+        firstClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+          unitId: firstUnitId,
+          toCell: emptyCellIndex,
+        });
+      },
+      () => {
+        secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+          unitId: secondUnitId,
+          toCell: emptyCellIndex,
+        });
+      },
+    ]);
+
+    // 両方のアクション結果を待機
+    const firstResult =
+      await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    const secondResult =
+      await secondClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+
+    // 1件は成功、もう1件はTARGET_LOCKEDであること
+    const acceptedResult = firstResult.accepted ? firstResult : secondResult;
+    const rejectedResult = firstResult.accepted ? secondResult : firstResult;
+
+    expect(acceptedResult).toEqual({ accepted: true, action: "place_unit" });
+    expect(rejectedResult).toEqual({
+      accepted: false,
+      action: "place_unit",
+      code: "TARGET_LOCKED",
+    });
+
+    // 最終的に空きセルのownerIdは成功した側であること
+    await waitForCondition(
+      () => {
+        const cell = serverRoom.state.cells.get(String(emptyCellIndex));
+        const winnerId = firstResult.accepted ? firstClient.sessionId : secondClient.sessionId;
+        return cell !== undefined && cell.ownerId === winnerId;
+      },
+      1_000,
+    );
+
+    const finalCell = serverRoom.state.cells.get(String(emptyCellIndex));
+    const winnerSessionId = firstResult.accepted ? firstClient.sessionId : secondClient.sessionId;
+    expect(finalCell?.ownerId).toBe(winnerSessionId);
+  });
+
+  test("同時select送信で所有者のみ成功し他方はUNIT_NOT_OWNED", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await Promise.all(
+      clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
+    );
+
+    const firstClient = clients[0];
+    const secondClient = clients[1];
+
+    await waitForCondition(() => {
+      const firstPlayer = serverRoom.state.players.get(firstClient.sessionId);
+      return firstPlayer !== undefined;
+    }, 1_000);
+
+    let firstUnitId = "";
+
+    for (const cell of serverRoom.state.cells.values()) {
+      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "") {
+        firstUnitId = cell.unitId;
+        break;
+      }
+    }
+
+    if (firstUnitId === "") {
+      throw new Error("Expected first player to have a unit");
+    }
+
+    await sendConcurrently([
+      () => {
+        firstClient.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, {
+          unitId: firstUnitId,
+        });
+      },
+      () => {
+        secondClient.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, {
+          unitId: firstUnitId,
+        });
+      },
+    ]);
+
+    // 両方のアクション結果を待機
+    const firstResult =
+      await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    const secondResult =
+      await secondClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+
+    // 所有者（firstClient）は成功、他方（secondClient）はUNIT_NOT_OWNEDであること
+    expect(firstResult).toEqual({ accepted: true, action: "select_unit" });
+    expect(secondResult).toEqual({
+      accepted: false,
+      action: "select_unit",
+      code: "UNIT_NOT_OWNED",
+    });
   });
 });

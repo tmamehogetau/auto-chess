@@ -86,6 +86,11 @@ export interface RoundStateMessage {
   phaseDeadlineAtMs: number;
   ranking: string[];
 
+  phaseHpTarget?: number;
+  phaseDamageDealt?: number;
+  phaseResult?: "pending" | "success" | "failed";
+  phaseCompletionRate?: number;
+
   // Battle results (added for each player)
   lastBattleResult?: {
     opponentId: string;        // Who you fought

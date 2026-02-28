@@ -484,11 +484,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private createRoundStateMessage(): RoundStateMessage {
+    const phaseProgress = this.controller?.getPhaseProgress();
+
     return {
       phase: this.state.phase as RoundStateMessage["phase"],
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
       ranking: Array.from(this.state.ranking),
+      phaseHpTarget: phaseProgress?.targetHp ?? 0,
+      phaseDamageDealt: phaseProgress?.damageDealt ?? 0,
+      phaseResult: phaseProgress?.result ?? "pending",
+      phaseCompletionRate: phaseProgress?.completionRate ?? 0,
     };
   }
 }

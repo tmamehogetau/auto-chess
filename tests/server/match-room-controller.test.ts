@@ -522,7 +522,7 @@ describe("MatchRoomController", () => {
 
     const status = controller.getPlayerStatus("p1");
 
-    expect(status.benchUnits).toEqual(["vanguard★2"]);
+    expect(status.benchUnits).toEqual(["vanguard:2"]);
     expect(status.ownedUnits.vanguard).toBe(3);
   });
 
@@ -564,7 +564,7 @@ describe("MatchRoomController", () => {
 
     const status = controller.getPlayerStatus("p1");
 
-    expect(status.benchUnits).toEqual(["vanguard★3"]);
+    expect(status.benchUnits).toEqual(["vanguard:3"]);
     expect(status.ownedUnits.vanguard).toBe(9);
   });
 
@@ -733,6 +733,79 @@ describe("MatchRoomController", () => {
     expect(controller.getPlayerHp("p1")).toBe(88);
     expect(controller.getPlayerHp("p2")).toBe(95);
     expect(controller.getPlayerHp("p3")).toBe(100);
+  });
+
+  test("Battle終了時にphase HP進捗が計算される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+    controller.advanceByTime(32_000);
+
+    controller.setPendingRoundDamage({
+      p1: 120,
+      p2: 130,
+      p3: 80,
+      p4: 70,
+    });
+
+    controller.advanceByTime(42_000);
+
+    const phaseProgress = controller.getPhaseProgress();
+
+    expect(controller.phase).toBe("Settle");
+    expect(phaseProgress.targetHp).toBe(400);
+    expect(phaseProgress.damageDealt).toBe(400);
+    expect(phaseProgress.result).toBe("success");
+    expect(phaseProgress.completionRate).toBe(1);
+  });
+
+  test("phase HP未達時はfailedになり次ラウンドPrepでリセットされる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+    controller.advanceByTime(32_000);
+
+    controller.setPendingRoundDamage({
+      p1: 100,
+      p2: 50,
+    });
+
+    controller.advanceByTime(42_000);
+
+    const failedPhaseProgress = controller.getPhaseProgress();
+
+    expect(failedPhaseProgress.targetHp).toBe(400);
+    expect(failedPhaseProgress.damageDealt).toBe(150);
+    expect(failedPhaseProgress.result).toBe("failed");
+    expect(failedPhaseProgress.completionRate).toBeCloseTo(0.375);
+
+    controller.advanceByTime(47_000);
+    controller.advanceByTime(49_000);
+
+    const nextRoundProgress = controller.getPhaseProgress();
+
+    expect(controller.phase).toBe("Prep");
+    expect(controller.roundIndex).toBe(2);
+    expect(nextRoundProgress.targetHp).toBe(500);
+    expect(nextRoundProgress.damageDealt).toBe(0);
+    expect(nextRoundProgress.result).toBe("pending");
+    expect(nextRoundProgress.completionRate).toBe(0);
   });
 
   test("pendingダメージ未設定でもBattle終了時に自動ダメージが反映される", () => {

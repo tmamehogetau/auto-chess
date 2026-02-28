@@ -214,6 +214,10 @@ describe("GameRoom integration", () => {
     expect(roundState.roundIndex).toBe(1);
     expect(roundState.ranking.length).toBe(4);
     expect(roundState.phaseDeadlineAtMs).toBeGreaterThan(0);
+    expect(roundState.phaseHpTarget).toBe(400);
+    expect(roundState.phaseDamageDealt).toBe(0);
+    expect(roundState.phaseResult).toBe("pending");
+    expect(roundState.phaseCompletionRate).toBe(0);
     expect(roundState).not.toHaveProperty("setId");
     expect(serverRoom.state.setId).toBe("set1");
   });
@@ -1038,7 +1042,7 @@ describe("GameRoom integration", () => {
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(1);
-    expect(afterPlayer?.benchUnits[0]).toBe("vanguard★2");
+    expect(afterPlayer?.benchUnits[0]).toBe("vanguard:2");
     expect(afterPlayer?.ownedVanguard).toBe(3);
   });
 
@@ -1097,7 +1101,7 @@ describe("GameRoom integration", () => {
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(1);
-    expect(afterPlayer?.benchUnits[0]).toBe("vanguard★3");
+    expect(afterPlayer?.benchUnits[0]).toBe("vanguard:3");
     expect(afterPlayer?.ownedVanguard).toBe(9);
   });
 

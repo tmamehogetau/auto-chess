@@ -41,6 +41,8 @@ interface MatchRoomControllerOptions {
   setId?: UnitEffectSetId;
 }
 
+type PhaseResult = "pending" | "success" | "failed";
+
 type RoundDamageByPlayer = Partial<Record<string, number>>;
 
 interface BattlePairing {
@@ -64,6 +66,17 @@ const MAX_BENCH_SIZE = 9;
 const MIN_BOARD_CELL_INDEX = 0;
 const MAX_BOARD_CELL_INDEX = 7;
 const MAX_LEVEL = 6;
+
+const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
+  1: 400,
+  2: 500,
+  3: 600,
+  4: 700,
+  5: 800,
+  6: 900,
+  7: 1000,
+  8: 1200,
+};
 
 const ITEM_SHOP_SIZE = 5;
 const MAX_INVENTORY_SIZE = 9;
@@ -202,6 +215,14 @@ export class MatchRoomController {
 
   private readonly setId: UnitEffectSetId;
 
+  private phaseHpTarget: number;
+
+  private phaseDamageDealt: number;
+
+  private phaseResult: PhaseResult;
+
+  private phaseCompletionRate: number;
+
   public constructor(
     playerIds: string[],
     createdAtMs: number,
@@ -245,6 +266,10 @@ export class MatchRoomController {
     this.currentRoundPairings = [];
     this.eliminatedFromBottom = [];
     this.setId = options.setId ?? DEFAULT_UNIT_EFFECT_SET_ID;
+    this.phaseHpTarget = this.resolvePhaseHpTarget(1);
+    this.phaseDamageDealt = 0;
+    this.phaseResult = "pending";
+    this.phaseCompletionRate = 0;
 
     for (const playerId of playerIds) {
       this.lastCmdSeqByPlayer.set(playerId, 0);
@@ -350,6 +375,7 @@ export class MatchRoomController {
 
     this.gameLoopState = new GameLoopState(this.playerIds);
     this.initializeShopsForPrep();
+    this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
     this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
     this.battleDeadlineAtMs = null;
     this.settleDeadlineAtMs = null;
@@ -453,6 +479,22 @@ export class MatchRoomController {
     };
   }
 
+  public getPhaseProgress(): {
+    targetHp: number;
+    damageDealt: number;
+    result: PhaseResult;
+    completionRate: number;
+  } {
+    this.ensureStarted();
+
+    return {
+      targetHp: this.phaseHpTarget,
+      damageDealt: this.phaseDamageDealt,
+      result: this.phaseResult,
+      completionRate: this.phaseCompletionRate,
+    };
+  }
+
   public setPendingRoundDamage(damageByPlayer: RoundDamageByPlayer): void {
     const state = this.ensureStarted();
 
@@ -495,6 +537,7 @@ export class MatchRoomController {
       case "Battle":
         if (this.battleDeadlineAtMs !== null && nowMs >= this.battleDeadlineAtMs) {
           this.resolveMissingRoundDamage();
+          this.capturePhaseProgressFromPendingDamage();
           this.applyPendingRoundDamage();
           this.capturePostBattleHp();
           this.gameLoopState.transitionTo("Settle");
@@ -535,6 +578,7 @@ export class MatchRoomController {
           this.battleParticipantIds = [];
           this.currentRoundPairings = [];
           this.gameLoopState.transitionTo("Prep");
+          this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
           this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
           return true;
         }
@@ -1591,6 +1635,40 @@ export class MatchRoomController {
     }
 
     this.pendingRoundDamageByPlayer.clear();
+  }
+
+  private capturePhaseProgressFromPendingDamage(): void {
+    const state = this.ensureStarted();
+    const targetHp = this.resolvePhaseHpTarget(state.roundIndex);
+    let totalDamage = 0;
+
+    for (const damageValue of this.pendingRoundDamageByPlayer.values()) {
+      totalDamage += damageValue;
+    }
+
+    this.phaseHpTarget = targetHp;
+    this.phaseDamageDealt = totalDamage;
+    this.phaseResult = totalDamage >= targetHp ? "success" : "failed";
+    this.phaseCompletionRate = targetHp > 0 ? totalDamage / targetHp : 0;
+  }
+
+  private resetPhaseProgressForRound(roundIndex: number): void {
+    this.phaseHpTarget = this.resolvePhaseHpTarget(roundIndex);
+    this.phaseDamageDealt = 0;
+    this.phaseResult = "pending";
+    this.phaseCompletionRate = 0;
+  }
+
+  private resolvePhaseHpTarget(roundIndex: number): number {
+    if (roundIndex <= 1) {
+      return PHASE_HP_TARGET_BY_ROUND[1] ?? 400;
+    }
+
+    if (PHASE_HP_TARGET_BY_ROUND[roundIndex] !== undefined) {
+      return PHASE_HP_TARGET_BY_ROUND[roundIndex];
+    }
+
+    return PHASE_HP_TARGET_BY_ROUND[8] ?? 1200;
   }
 
   private resolveMissingRoundDamage(): void {

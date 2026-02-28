@@ -29,6 +29,7 @@ export interface BattleUnit {
   attackRange: number; // 1 = 近接, 2+ = 遠距離
   cell: number; // 0-7 のボード位置
   isDead: boolean;
+  isBoss?: boolean; // ボスフラグ（ボス戦時のみ）
   attackCount: number; // スキルトリガー用の攻撃回数トラッキング
   defense: number; // ベース防御力（被ダメージを軽減）
   critRate: number; // 0.0-1.0, クリティカルヒット率
@@ -50,6 +51,11 @@ export interface BattleResult {
   rightSurvivors: BattleUnit[];
   combatLog: string[]; // デバッグ用
   durationMs: number;
+  damageDealt: {
+    left: number;   // 左チームが与えた合計ダメージ
+    right: number;  // 右チームが与えた合計ダメージ
+  };
+  bossDamage?: number;  // ボスが受けたダメージ（ボス戦時のみ）
 }
 
 /**
@@ -77,10 +83,13 @@ export function createBattleUnit(
   placement: BoardUnitPlacement,
   side: "left" | "right",
   index: number,
+  isBoss: boolean = false,
 ): BattleUnit {
   const { unitType, starLevel = 1, cell } = placement;
   const baseStats = BASE_STATS[unitType];
-  const starMultiplier = getStarCombatMultiplier(starLevel);
+  
+  // ボスの場合、星レベル倍率をスキップ（常に基本値）
+  const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
 
   const scaledHp = baseStats.hp * starMultiplier;
   const scaledAttack = baseStats.attack * starMultiplier;
@@ -96,6 +105,7 @@ export function createBattleUnit(
     attackRange: baseStats.range,
     cell,
     isDead: false,
+    isBoss, // ボスフラグを設定
     attackCount: 0,
     defense: unitType === "vanguard" ? 3 : 0, // Vanguard はタフなので防御力が高い
     critRate: 0, // ベース 0%（シナジーで追加）
@@ -309,13 +319,18 @@ export class BattleSimulator {
       // Bug #3 fix: Validate input teams
       if (!leftUnits || leftUnits.length === 0 || !rightUnits || rightUnits.length === 0) {
         console.warn("Battle simulation with empty teams");
-        return {
+        const result: BattleResult = {
           winner: leftUnits.length > 0 ? "left" : rightUnits.length > 0 ? "right" : "draw",
           leftSurvivors: leftUnits.filter(u => !u.isDead),
           rightSurvivors: rightUnits.filter(u => !u.isDead),
           combatLog: ["Battle with empty teams"],
           durationMs: 0,
+          damageDealt: {
+            left: 0,
+            right: 0,
+          },
         };
+        return result;
       }
 
       const combatLog: string[] = [];
@@ -346,6 +361,11 @@ export class BattleSimulator {
       const allUnits = [...leftUnits, ...rightUnits];
       const actionQueue: Action[] = [];
       let currentTime = 0;
+
+      // ダメージ追跡用変数
+      let damageDealtLeft = 0;  // 左チームが与えたダメージ
+      let damageDealtRight = 0; // 右チームが与えたダメージ
+      let bossDamage = 0;       // ボスが受けたダメージ
 
       // 全ユニットの初期アクションをキューに追加
       for (const unit of allUnits) {
@@ -395,6 +415,19 @@ export class BattleSimulator {
           const defense = target.defense * target.buffModifiers.defenseMultiplier;
           const actualDamage = Math.max(1, Math.floor(baseDamage - defense));
           target.hp -= actualDamage;
+
+          // ダメージ追跡
+          const isAttackerLeft = action.unit.id.startsWith("left");
+          if (isAttackerLeft) {
+            damageDealtLeft += actualDamage;
+          } else {
+            damageDealtRight += actualDamage;
+          }
+
+          // ボスダメージ記録
+          if (target.isBoss) {
+            bossDamage += actualDamage;
+          }
 
           if (isCrit) {
             combatLog.push(
@@ -478,19 +511,33 @@ export class BattleSimulator {
       actionQueue.sort((a, b) => a.actionTime - b.actionTime);
     }
 
-    const result = this.determineBattleResult(leftUnits, rightUnits, currentTime, maxDurationMs, combatLog);
+    const result = this.determineBattleResult(
+      leftUnits, 
+      rightUnits, 
+      currentTime, 
+      maxDurationMs, 
+      combatLog,
+      damageDealtLeft, 
+      damageDealtRight,
+      bossDamage
+    );
 
     return result;
     } catch (error) {
       console.error("Battle simulation error:", error);
       // Return a draw result on error (Bug #3 fix)
-      return {
+      const result: BattleResult = {
         winner: "draw",
         leftSurvivors: leftUnits ? leftUnits.filter(u => !u.isDead) : [],
         rightSurvivors: rightUnits ? rightUnits.filter(u => !u.isDead) : [],
         combatLog: ["Battle error occurred"],
         durationMs: 0,
+        damageDealt: {
+          left: 0,
+          right: 0,
+        },
       };
+      return result;
     }
   }
 
@@ -501,6 +548,9 @@ export class BattleSimulator {
    * @param currentTime 現在の戦闘時間
    * @param maxDurationMs 最大戦闘時間
    * @param combatLog 戦闘ログ
+   * @param damageDealtLeft 左チームが与えたダメージ
+   * @param damageDealtRight 右チームが与えたダメージ
+   * @param bossDamage ボスが受けたダメージ
    * @returns 戦闘結果
    */
   private determineBattleResult(
@@ -509,41 +559,48 @@ export class BattleSimulator {
     currentTime: number,
     maxDurationMs: number,
     combatLog: string[],
+    damageDealtLeft: number,
+    damageDealtRight: number,
+    bossDamage: number = 0,
   ): BattleResult {
+    // BattleResult の基本オブジェクトを作成（bossDamage は条件付きで追加）
+    const createResult = (winner: "left" | "right" | "draw"): BattleResult => {
+      const leftSurvivors = leftUnits.filter((unit) => !unit.isDead);
+      const rightSurvivors = rightUnits.filter((unit) => !unit.isDead);
+      const baseResult = {
+        winner,
+        leftSurvivors,
+        rightSurvivors,
+        combatLog,
+        durationMs: currentTime,
+        damageDealt: {
+          left: damageDealtLeft,
+          right: damageDealtRight,
+        },
+      };
+      
+      // bossDamage が 0 より大きい場合のみ追加
+      if (bossDamage > 0) {
+        return { ...baseResult, bossDamage };
+      }
+      return baseResult;
+    };
     const leftSurvivors = leftUnits.filter((unit) => !unit.isDead);
     const rightSurvivors = rightUnits.filter((unit) => !unit.isDead);
 
     if (leftSurvivors.length === 0 && rightSurvivors.length === 0) {
       combatLog.push("Battle ended: Draw (all units defeated)");
-      return {
-        winner: "draw",
-        leftSurvivors: [],
-        rightSurvivors: [],
-        combatLog,
-        durationMs: currentTime,
-      };
+      return createResult("draw");
     }
 
     if (leftSurvivors.length === 0) {
       combatLog.push("Battle ended: Right wins");
-      return {
-        winner: "right",
-        leftSurvivors: [],
-        rightSurvivors,
-        combatLog,
-        durationMs: currentTime,
-      };
+      return createResult("right");
     }
 
     if (rightSurvivors.length === 0) {
       combatLog.push("Battle ended: Left wins");
-      return {
-        winner: "left",
-        leftSurvivors,
-        rightSurvivors: [],
-        combatLog,
-        durationMs: currentTime,
-      };
+      return createResult("left");
     }
 
     // 時間制限に達した場合
@@ -553,41 +610,41 @@ export class BattleSimulator {
 
       if (leftTotalHp > rightTotalHp) {
         combatLog.push(`Battle ended: Left wins (HP: ${leftTotalHp} vs ${rightTotalHp})`);
-        return {
-          winner: "left",
-          leftSurvivors,
-          rightSurvivors,
-          combatLog,
-          durationMs: currentTime,
-        };
+        return createResult("left");
       } else if (rightTotalHp > leftTotalHp) {
         combatLog.push(`Battle ended: Right wins (HP: ${rightTotalHp} vs ${leftTotalHp})`);
-        return {
-          winner: "right",
-          leftSurvivors,
-          rightSurvivors,
-          combatLog,
-          durationMs: currentTime,
-        };
+        return createResult("right");
       } else {
         combatLog.push(`Battle ended: Draw (HP: ${leftTotalHp} vs ${rightTotalHp})`);
-        return {
-          winner: "draw",
-          leftSurvivors,
-          rightSurvivors,
-          combatLog,
-          durationMs: currentTime,
-        };
+        return createResult("draw");
       }
     }
 
     combatLog.push("Battle ended: Unexpected termination");
+    return createResult("draw");
+  }
+}
+
+/**
+ * ボスダメージ結果を計算
+ * ボス戦のダメージに基づいて成功判定とオーバーキル量を計算
+ * @param bossMaxHp ボスの最大HP
+ * @param damageDealt ボスに与えたダメージ
+ * @returns 成功判定とオーバーキル量
+ */
+export function calculateBossDamageResult(
+  bossMaxHp: number,
+  damageDealt: number,
+): { success: boolean; overkill: number } {
+  if (damageDealt >= bossMaxHp) {
     return {
-      winner: "draw",
-      leftSurvivors,
-      rightSurvivors,
-      combatLog,
-      durationMs: currentTime,
+      success: true,
+      overkill: damageDealt - bossMaxHp,
+    };
+  } else {
+    return {
+      success: false,
+      overkill: 0,
     };
   }
 }

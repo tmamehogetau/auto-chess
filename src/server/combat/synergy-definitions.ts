@@ -18,6 +18,12 @@ export interface SynergyDefinition {
 
 export const SYNERGY_THRESHOLDS: [number, number, number] = [3, 6, 9];
 
+// Synergy name to unit type mapping for MVP Phase 1
+export const SYNERGY_TO_UNIT_TYPE: Record<string, BoardUnitType> = {
+  warrior: 'vanguard',
+  archer: 'ranger',
+};
+
 export const SYNERGY_DEFINITIONS: Record<BoardUnitType, SynergyDefinition> = {
   vanguard: {
     thresholds: SYNERGY_THRESHOLDS,

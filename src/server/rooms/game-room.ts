@@ -355,7 +355,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     const progressed = this.controller.advanceByTime(nowMs);
 
-    if (!progressed) {
+    // Endフェーズでも状態同期を行う（クライアントが終了を認識できるように）
+    if (!progressed && this.controller.phase !== "End") {
       return;
     }
 

@@ -408,7 +408,7 @@ export class MatchRoomController {
     }
 
     this.boardUnitCountByPlayer.set(playerId, nextUnitCount);
-    this.boardPlacementsByPlayer.set(playerId, []);
+    // boardPlacementsByPlayerはリセットしない（Bug #2修正）
   }
 
   public getPlayerHp(playerId: string): number {
@@ -446,8 +446,6 @@ export class MatchRoomController {
 
     // Calculate active synergies
     const activeSynergies = this.calculateActiveSynergies(boardPlacements);
-
-    console.log(`[DEBUG] getPlayerStatus boardUnits:`, boardPlacements.map(p => ({cell: p.cell, type: p.unitType, star: p.starLevel})));
 
     return {
       hp: state.getPlayerHp(playerId),
@@ -571,8 +569,6 @@ export class MatchRoomController {
         ) {
           this.eliminationDeadlineAtMs = null;
 
-          console.log(`[DEBUG] Elimination check: roundIndex=${this.gameLoopState.roundIndex}, aliveCount=${this.gameLoopState.alivePlayerIds.length}, condition=${this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === 8}`);
-
           if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === 8) {
             this.gameLoopState.transitionTo("End");
             return true;
@@ -656,7 +652,7 @@ export class MatchRoomController {
       }
 
       this.boardUnitCountByPlayer.set(playerId, nextUnitCount);
-      this.boardPlacementsByPlayer.set(playerId, []);
+      // boardPlacementsByPlayerはリセットしない（Bug #2修正）
     }
 
     if (commandPayload?.boardPlacements !== undefined) {
@@ -1352,8 +1348,6 @@ export class MatchRoomController {
     if (!benchUnit || boardPlacements.length >= 8) {
       return;
     }
-
-    console.log(`[DEBUG] Deploy: benchUnit.starLevel=${benchUnit.starLevel}, boardPlacements will have starLevel=${benchUnit.starLevel}`);
 
     benchUnits.splice(benchIndex, 1);
     boardPlacements.push({

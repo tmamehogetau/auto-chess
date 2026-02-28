@@ -319,11 +319,12 @@ export class BattleSimulator {
       // Bug #3 fix: Validate input teams
       if (!leftUnits || leftUnits.length === 0 || !rightUnits || rightUnits.length === 0) {
         console.warn("Battle simulation with empty teams");
+        const isBothEmpty = (!leftUnits || leftUnits.length === 0) && (!rightUnits || rightUnits.length === 0);
         const result: BattleResult = {
           winner: leftUnits.length > 0 ? "left" : rightUnits.length > 0 ? "right" : "draw",
           leftSurvivors: leftUnits.filter(u => !u.isDead),
           rightSurvivors: rightUnits.filter(u => !u.isDead),
-          combatLog: ["Battle with empty teams"],
+          combatLog: isBothEmpty ? ["Draw (all units defeated)"] : ["Battle with empty teams"],
           durationMs: 0,
           damageDealt: {
             left: 0,

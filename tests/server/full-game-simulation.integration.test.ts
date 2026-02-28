@@ -31,7 +31,7 @@ const waitForCondition = async (
 describe("Full Game Simulation (R1-R8)", () => {
   let testServer!: ColyseusTestServer;
 
-  const TEST_SERVER_PORT = 2_571;
+  const TEST_SERVER_PORT = 2_572;
 
   beforeAll(async () => {
     const server = defineServer({

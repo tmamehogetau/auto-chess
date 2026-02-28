@@ -1,0 +1,128 @@
+import { ArraySchema, MapSchema, Schema, defineTypes } from "@colyseus/schema";
+
+export class SharedBoardCellState extends Schema {
+  declare public index: number;
+  declare public unitId: string;
+  declare public ownerId: string;
+  declare public lockedBy: string;
+  declare public lockUntilMs: number;
+
+  public constructor() {
+    super();
+    this.index = 0;
+    this.unitId = "";
+    this.ownerId = "";
+    this.lockedBy = "";
+    this.lockUntilMs = 0;
+  }
+}
+
+export class SharedBoardCursorState extends Schema {
+  declare public playerId: string;
+  declare public color: string;
+  declare public cellIndex: number;
+  declare public isDragging: boolean;
+  declare public selectedUnitId: string;
+  declare public isSpectator: boolean;
+  declare public updatedAtMs: number;
+
+  public constructor() {
+    super();
+    this.playerId = "";
+    this.color = "";
+    this.cellIndex = -1;
+    this.isDragging = false;
+    this.selectedUnitId = "";
+    this.isSpectator = false;
+    this.updatedAtMs = 0;
+  }
+}
+
+export class SharedBoardPlayerState extends Schema {
+  declare public playerId: string;
+  declare public connected: boolean;
+  declare public isSpectator: boolean;
+  declare public color: string;
+  declare public slotIndex: number;
+
+  public constructor() {
+    super();
+    this.playerId = "";
+    this.connected = true;
+    this.isSpectator = true;
+    this.color = "#999999";
+    this.slotIndex = -1;
+  }
+}
+
+export class SharedBoardState extends Schema {
+  declare public phase: string;
+  declare public phaseDeadlineAtMs: number;
+  declare public boardWidth: number;
+  declare public boardHeight: number;
+  declare public dummyBossCell: number;
+  declare public players: MapSchema<SharedBoardPlayerState>;
+  declare public cursors: MapSchema<SharedBoardCursorState>;
+  declare public cells: MapSchema<SharedBoardCellState>;
+  declare public eventLog: ArraySchema<string>;
+
+  public constructor() {
+    super();
+    this.phase = "Sandbox";
+    this.phaseDeadlineAtMs = 0;
+    this.boardWidth = 6;
+    this.boardHeight = 4;
+    this.dummyBossCell = 2;
+    this.players = new MapSchema<SharedBoardPlayerState>();
+    this.cursors = new MapSchema<SharedBoardCursorState>();
+    this.cells = new MapSchema<SharedBoardCellState>();
+    this.eventLog = new ArraySchema<string>();
+  }
+}
+
+defineTypes(SharedBoardCellState, {
+  index: "number",
+  unitId: "string",
+  ownerId: "string",
+  lockedBy: "string",
+  lockUntilMs: "number",
+});
+
+defineTypes(SharedBoardCursorState, {
+  playerId: "string",
+  color: "string",
+  cellIndex: "number",
+  isDragging: "boolean",
+  selectedUnitId: "string",
+  isSpectator: "boolean",
+  updatedAtMs: "number",
+});
+
+defineTypes(SharedBoardPlayerState, {
+  playerId: "string",
+  connected: "boolean",
+  isSpectator: "boolean",
+  color: "string",
+  slotIndex: "number",
+});
+
+defineTypes(SharedBoardState, {
+  phase: "string",
+  phaseDeadlineAtMs: "number",
+  boardWidth: "number",
+  boardHeight: "number",
+  dummyBossCell: "number",
+  players: {
+    map: SharedBoardPlayerState,
+    default: new MapSchema<SharedBoardPlayerState>(),
+  },
+  cursors: {
+    map: SharedBoardCursorState,
+    default: new MapSchema<SharedBoardCursorState>(),
+  },
+  cells: {
+    map: SharedBoardCellState,
+    default: new MapSchema<SharedBoardCellState>(),
+  },
+  eventLog: ["string"],
+});

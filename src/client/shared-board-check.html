@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>共有ボード検証 | Shared Board Tech Check</title>
+  <style>
+    :root {
+      --bg-color: #1a1a2e;
+      --panel-bg: #16213e;
+      --border-color: #0f3460;
+      --text-color: #e94560;
+      --highlight: #e94560;
+      --success: #00b894;
+      --warning: #fdcb6e;
+      --danger: #d63031;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg-color);
+      color: #fff;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      color: var(--text-color);
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+    }
+
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .panel-title {
+      color: var(--highlight);
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* 接続パネル */
+    .connection-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    input[type="text"] {
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-color);
+      color: #fff;
+      font-size: 0.9rem;
+      min-width: 200px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+
+    button[data-connect-button] {
+      background: var(--success);
+      color: #fff;
+    }
+
+    button[data-connect-button]:hover {
+      background: #00a383;
+    }
+
+    button[data-leave-button] {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    button[data-leave-button]:hover {
+      background: #c0392b;
+    }
+
+    button[data-reset-button] {
+      background: var(--warning);
+      color: #2d3436;
+    }
+
+    button[data-reset-button]:hover {
+      background: #f39c12;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ステータスパネル */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+
+    .status-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .status-label {
+      color: #aaa;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+
+    .status-value {
+      color: #fff;
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+
+    /* ボードエリア */
+    .board-container {
+      overflow-x: auto;
+    }
+
+    [data-board-grid] {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      min-width: 600px;
+    }
+
+    .board-cell {
+      aspect-ratio: 1;
+      background: var(--bg-color);
+      border: 2px solid var(--border-color);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-height: 60px;
+    }
+
+    .board-cell:hover {
+      border-color: var(--highlight);
+      transform: scale(1.05);
+    }
+
+    .board-cell.boss-cell {
+      background: rgba(233, 69, 96, 0.2);
+      border-color: var(--text-color);
+    }
+
+    .board-cell.unit-cell {
+      background: rgba(0, 184, 148, 0.2);
+      border-color: var(--success);
+    }
+
+    .board-cell.locked-cell {
+      background: rgba(253, 203, 110, 0.2);
+      border-color: var(--warning);
+    }
+
+    .unit-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .unit-id {
+      font-size: 0.6rem;
+      color: #fff;
+      background: rgba(0,0,0,0.5);
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+
+    .lock-indicator {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      font-size: 0.7rem;
+      color: var(--warning);
+    }
+
+    .board-cell.draggable {
+      cursor: grab;
+    }
+
+    .board-cell.draggable:active {
+      cursor: grabbing;
+    }
+
+    .board-cell.drag-over {
+      background: rgba(233, 69, 96, 0.4);
+    }
+
+    /* 選択中ユニットの強調 */
+    .board-cell.selected-cell {
+      box-shadow: 0 0 0 3px var(--highlight), 0 0 15px rgba(233, 69, 96, 0.5);
+      animation: selected-pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes selected-pulse {
+      0%, 100% { box-shadow: 0 0 0 3px var(--highlight), 0 0 15px rgba(233, 69, 96, 0.5); }
+      50% { box-shadow: 0 0 0 4px var(--highlight), 0 0 20px rgba(233, 69, 96, 0.7); }
+    }
+
+    /* ロック残り秒表示バッジ */
+    .lock-remaining {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      background: var(--warning);
+      color: #2d3436;
+      font-size: 0.6rem;
+      font-weight: bold;
+      padding: 2px 5px;
+      border-radius: 8px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    /* 操作ヒント文 */
+    .action-hint {
+      background: rgba(233, 69, 96, 0.1);
+      border-left: 3px solid var(--highlight);
+      padding: 10px 12px;
+      margin: 10px 0;
+      font-size: 0.85rem;
+      color: #ddd;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .action-hint strong {
+      color: var(--highlight);
+    }
+
+    /* カーソルチップ */
+    .cursor-chips {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      display: flex;
+      gap: 2px;
+      flex-wrap: wrap;
+      max-width: calc(100% - 4px);
+    }
+
+    .cursor-chip {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid #fff;
+    }
+
+    /* カーソルリストパネル */
+    [data-cursor-list] {
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .cursor-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.85rem;
+    }
+
+    .cursor-item:last-child {
+      border-bottom: none;
+    }
+
+    .cursor-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid #fff;
+    }
+
+    .cursor-id {
+      font-weight: bold;
+      flex: 1;
+    }
+
+    .cursor-cell {
+      color: #aaa;
+    }
+
+    .cursor-dragging {
+      color: var(--highlight);
+      font-weight: bold;
+    }
+
+    .cursor-spectator {
+      color: var(--warning);
+      font-style: italic;
+    }
+
+    /* イベントログパネル */
+    [data-event-log] {
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--bg-color);
+      border-radius: 4px;
+      padding: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .log-entry:last-child {
+      border-bottom: none;
+    }
+
+    .log-time {
+      color: #666;
+      margin-right: 8px;
+    }
+
+    .log-type-info {
+      color: var(--success);
+    }
+
+    .log-type-warn {
+      color: var(--warning);
+    }
+
+    .log-type-error {
+      color: var(--danger);
+    }
+
+    /* コントロールボタンエリア */
+    .control-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    /* レスポンシブ対応 */
+    @media (max-width: 768px) {
+      .connection-controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      input[type="text"] {
+        min-width: 100%;
+      }
+
+      [data-board-grid] {
+        min-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 共有ボード技術検証 UI | Week1 Day1</h1>
+
+  <!-- 接続パネル -->
+  <div class="panel">
+    <div class="panel-title">🔗 接続設定 | Connection</div>
+    <div class="connection-controls">
+      <div class="control-group">
+        <label for="endpoint-input" style="font-size: 0.8rem; color: #aaa; margin-bottom: 4px;">エンドポイント</label>
+        <input type="text" id="endpoint-input" data-endpoint-input value="ws://localhost:2567" placeholder="ws://localhost:2567">
+      </div>
+      <div class="control-group">
+        <label for="room-input" style="font-size: 0.8rem; color: #aaa; margin-bottom: 4px;">ルーム名</label>
+        <input type="text" id="room-input" data-room-input value="shared_board" placeholder="shared_board">
+      </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="autoconnect-input" data-autoconnect-input checked>
+        <label for="autoconnect-input" style="font-size: 0.85rem;">自動接続</label>
+      </div>
+      <button id="connect-button" data-connect-button>接続</button>
+      <button id="leave-button" data-leave-button disabled>切断</button>
+    </div>
+  </div>
+
+  <!-- ステータスパネル -->
+  <div class="panel">
+    <div class="panel-title">📊 ステータス | Status</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <span class="status-label">接続状態</span>
+        <span class="status-value" id="connection-status" data-connection-status>未接続</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">ロール</span>
+        <span class="status-value" id="role-display" data-role-display>-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">セッション</span>
+        <span class="status-value" id="session-display" data-session-display>-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">選択ユニット</span>
+        <span class="status-value" id="selected-unit-display" data-selected-unit-display>-</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ボードエリア -->
+  <div class="panel">
+    <div class="panel-title">🎲 共有ボード | Shared Board</div>
+    <div class="action-hint" data-lock-help>
+      <strong>操作ヒント:</strong> 自分のユニットをクリックで選択、空きマスクリックで配置。ロック中マスは🔒表示
+    </div>
+    <div class="board-container">
+      <div id="board-grid" data-board-grid>
+        <!-- ボードセルはJSで動的生成 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- プレイヤー/カーソルパネル -->
+  <div class="panel">
+    <div class="panel-title">👥 プレイヤーカーソル | Cursors</div>
+    <div id="cursor-list" data-cursor-list>
+      <div style="color: #666; font-size: 0.85rem;">接続待ち...</div>
+    </div>
+  </div>
+
+  <!-- イベントログパネル -->
+  <div class="panel">
+    <div class="panel-title">📝 イベントログ | Event Log</div>
+    <div style="display: flex; gap: 12px; margin-bottom: 10px; font-size: 0.75rem; color: #888;">
+      <span><span style="color: var(--success);">●</span> info</span>
+      <span><span style="color: var(--warning);">●</span> warn</span>
+      <span><span style="color: var(--danger);">●</span> error</span>
+    </div>
+    <div id="event-log" data-event-log>
+      <div class="log-entry">
+        <span class="log-time">[00:00:00]</span>
+        <span class="log-type-info">システム準備完了</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- コントロールボタン -->
+  <div class="panel">
+    <div class="panel-title">🎛️ コントロール | Controls</div>
+    <div class="control-buttons">
+      <button id="reset-button" data-reset-button>ボードリセット</button>
+    </div>
+  </div>
+
+  <script type="module" src="shared-board-check.js"></script>
+</body>
+</html>

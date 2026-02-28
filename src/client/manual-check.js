@@ -7,6 +7,7 @@ import {
 
 const VALID_SET_IDS = new Set(["set1", "set2"]);
 const DEFAULT_ROOM_NAME = "game";
+const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 
 const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
@@ -52,6 +53,10 @@ const levelDisplay = document.querySelector("[data-level-display]");
 const xpDisplay = document.querySelector("[data-xp-display]");
 const phaseDisplay = document.querySelector("[data-phase-display]");
 const readyCountDisplay = document.querySelector("[data-ready-count]");
+const phaseHpSection = document.querySelector("[data-phase-hp-section]");
+const phaseHpValue = document.querySelector("[data-phase-hp-value]");
+const phaseHpFill = document.querySelector("[data-phase-hp-fill]");
+const phaseHpResult = document.querySelector("[data-phase-hp-result]");
 const readyBtn = document.querySelector("[data-ready-btn]");
 const unitShopGrid = document.querySelector("[data-unit-shop]");
 const itemShopGrid = document.querySelector("[data-item-shop]");
@@ -65,15 +70,26 @@ const buyXpBtn = document.querySelector("[data-buy-xp-btn]");
 const messageBar = document.querySelector("[data-message-bar]");
 const selectionModeIndicator = document.querySelector("[data-selection-mode]");
 const combatLogContainer = document.querySelector("[data-combat-log]");
+const sharedBoardGrid = document.querySelector("[data-shared-board-grid]");
+const sharedCursorList = document.querySelector("[data-shared-cursor-list]");
+const roundSummaryOverlay = document.querySelector("[data-round-summary-overlay]");
+const roundSummaryRound = document.querySelector("[data-round-summary-round]");
+const roundSummaryList = document.querySelector("[data-round-summary-list]");
+const roundSummaryClose = document.querySelector("[data-round-summary-close]");
 
 // Game state
 let activeRoom = null;
+let sharedBoardRoom = null;
 let connecting = false;
 let currentPhase = null;
 let currentGold = 0;
 let currentPlayerState = null;
 let currentGameState = null;
+let currentSharedBoardState = null;
 let sessionId = null;
+let latestPhaseHpProgress = null;
+let lastShownSummaryRound = -1;
+let roundSummaryAutoHideTimeout = null;
 
 // Selection state
 let selectedBenchIndex = null;
@@ -102,8 +118,15 @@ const autoConfig = {
 // Command sequence for prep commands
 let nextCmdSeq = 1;
 
+const PHASE_RESULT_LABELS = {
+  pending: "Pending",
+  success: "Success",
+  failed: "Failed",
+};
+
 initializeDefaults();
 syncButtonAvailability();
+renderSharedBoardState(null);
 
 // Event listeners
 connectButton?.addEventListener("click", () => {
@@ -128,6 +151,10 @@ refreshShopBtn?.addEventListener("click", () => {
 
 buyXpBtn?.addEventListener("click", () => {
   handleBuyXp();
+});
+
+roundSummaryClose?.addEventListener("click", () => {
+  hideRoundSummary();
 });
 
 // Shop card click handlers
@@ -192,12 +219,16 @@ async function connect() {
     activeRoom = room;
     sessionId = room.sessionId;
     currentPhase = readPhase(room.state?.phase);
+    lastShownSummaryRound = -1;
+    hideRoundSummary();
 
     // Show game container
     gameContainer?.classList.add("connected");
 
     // Initialize UI from state
     updateGameUI(room.state);
+
+    await connectSharedBoard(client);
 
     await connectAutoFillRooms(client, roomName, roomOptions);
 
@@ -217,6 +248,7 @@ async function connect() {
       if (typeof message?.roundIndex === "number") {
         roundDisplay.textContent = message.roundIndex + 1;
       }
+      updatePhaseHpProgressFromMessage(message);
       syncButtonAvailability();
       maybeScheduleAutoPrep();
     });
@@ -232,6 +264,11 @@ async function connect() {
       activeRoom = null;
       sessionId = null;
       currentPhase = null;
+      leaveSharedBoardRoom();
+      latestPhaseHpProgress = null;
+      renderPhaseHpProgress(null);
+      lastShownSummaryRound = -1;
+      hideRoundSummary();
       gameContainer?.classList.remove("connected");
       showMessage("Disconnected", "error");
       syncButtonAvailability();
@@ -243,6 +280,10 @@ async function connect() {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     currentPhase = null;
+    latestPhaseHpProgress = null;
+    renderPhaseHpProgress(null);
+    lastShownSummaryRound = -1;
+    hideRoundSummary();
     showMessage(`Connection failed: ${message}`, "error");
   } finally {
     connecting = false;
@@ -259,9 +300,14 @@ async function leave() {
 
   clearPendingAutoActions();
   await leaveAutoFillRooms();
+  leaveSharedBoardRoom();
   activeRoom = null;
   sessionId = null;
   currentPhase = null;
+  latestPhaseHpProgress = null;
+  renderPhaseHpProgress(null);
+  lastShownSummaryRound = -1;
+  hideRoundSummary();
   syncButtonAvailability();
 
   try {
@@ -612,6 +658,8 @@ function updateGameUI(state) {
     }
   }
 
+  maybeShowRoundSummary(state);
+
   // Update next command sequence
   if (typeof player.lastCmdSeq === "number") {
     nextCmdSeq = player.lastCmdSeq + 1;
@@ -642,6 +690,179 @@ function updatePhaseDisplay(phase) {
       addCombatLogEntry('📊 Settling scores...', 'info');
     }
   }
+}
+
+function updatePhaseHpProgressFromMessage(message) {
+  const targetValue = Number(message?.phaseHpTarget);
+
+  if (!Number.isFinite(targetValue) || targetValue <= 0) {
+    latestPhaseHpProgress = null;
+    renderPhaseHpProgress(null);
+    return;
+  }
+
+  const damageValue = Number(message?.phaseDamageDealt);
+  const rateValue = Number(message?.phaseCompletionRate);
+  const resultValue = parsePhaseResult(message?.phaseResult);
+  const safeDamage = Number.isFinite(damageValue) ? Math.max(0, damageValue) : 0;
+  const safeRate = Number.isFinite(rateValue) ? Math.max(0, rateValue) : safeDamage / targetValue;
+
+  latestPhaseHpProgress = {
+    targetHp: targetValue,
+    damageDealt: safeDamage,
+    completionRate: safeRate,
+    result: resultValue,
+  };
+
+  renderPhaseHpProgress(latestPhaseHpProgress);
+}
+
+function parsePhaseResult(value) {
+  if (value === "success" || value === "failed" || value === "pending") {
+    return value;
+  }
+
+  return "pending";
+}
+
+function renderPhaseHpProgress(progress) {
+  if (!phaseHpSection || !phaseHpValue || !phaseHpFill || !phaseHpResult) {
+    return;
+  }
+
+  if (!progress) {
+    phaseHpSection.style.display = "none";
+    phaseHpFill.style.width = "0%";
+    phaseHpFill.classList.remove("pending", "success", "failed");
+    phaseHpFill.classList.add("pending");
+    phaseHpResult.classList.remove("pending", "success", "failed");
+    phaseHpResult.classList.add("pending");
+    phaseHpResult.textContent = PHASE_RESULT_LABELS.pending;
+    phaseHpValue.textContent = "0 / 0";
+    return;
+  }
+
+  phaseHpSection.style.display = "block";
+
+  const completionRate = Math.max(0, progress.completionRate);
+  const visiblePercent = Math.round(Math.min(1, completionRate) * 100);
+  const textPercent = Math.round(completionRate * 100);
+
+  phaseHpValue.textContent = `${Math.round(progress.damageDealt)} / ${Math.round(progress.targetHp)} (${textPercent}%)`;
+  phaseHpFill.style.width = `${visiblePercent}%`;
+  phaseHpFill.classList.remove("pending", "success", "failed");
+  phaseHpFill.classList.add(progress.result);
+
+  phaseHpResult.classList.remove("pending", "success", "failed");
+  phaseHpResult.classList.add(progress.result);
+  phaseHpResult.textContent = PHASE_RESULT_LABELS[progress.result];
+}
+
+function hideRoundSummary() {
+  if (!roundSummaryOverlay) {
+    return;
+  }
+
+  roundSummaryOverlay.classList.remove("visible");
+
+  if (roundSummaryAutoHideTimeout !== null) {
+    clearTimeout(roundSummaryAutoHideTimeout);
+    roundSummaryAutoHideTimeout = null;
+  }
+}
+
+function buildRoundDamageRanking(players) {
+  const ranking = [];
+
+  for (const [playerId, player] of mapEntries(players)) {
+    const damageValue = Number(player?.lastBattleResult?.damageDealt);
+
+    if (!Number.isFinite(damageValue)) {
+      continue;
+    }
+
+    ranking.push({
+      playerId,
+      damageDealt: Math.max(0, Math.round(damageValue)),
+    });
+  }
+
+  ranking.sort((left, right) => right.damageDealt - left.damageDealt);
+  return ranking.slice(0, 3);
+}
+
+function showRoundSummary(roundIndex, ranking) {
+  if (!roundSummaryOverlay || !roundSummaryRound || !roundSummaryList) {
+    return;
+  }
+
+  roundSummaryRound.textContent = `Round ${roundIndex + 1}`;
+  roundSummaryList.innerHTML = "";
+
+  for (let index = 0; index < ranking.length; index += 1) {
+    const entry = ranking[index];
+
+    if (!entry) {
+      continue;
+    }
+
+    const item = document.createElement("div");
+    item.className = "round-summary-item";
+
+    const left = document.createElement("div");
+
+    const rank = document.createElement("span");
+    rank.className = "rank";
+    rank.textContent = `#${index + 1}`;
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = entry.playerId === sessionId
+      ? `${shortPlayerId(entry.playerId)} (you)`
+      : shortPlayerId(entry.playerId);
+
+    left.append(rank, name);
+
+    const damage = document.createElement("span");
+    damage.className = "damage";
+    damage.textContent = `${entry.damageDealt}`;
+
+    item.append(left, damage);
+    roundSummaryList.appendChild(item);
+  }
+
+  roundSummaryOverlay.classList.add("visible");
+
+  if (roundSummaryAutoHideTimeout !== null) {
+    clearTimeout(roundSummaryAutoHideTimeout);
+  }
+
+  roundSummaryAutoHideTimeout = setTimeout(() => {
+    roundSummaryAutoHideTimeout = null;
+    hideRoundSummary();
+  }, 6000);
+}
+
+function maybeShowRoundSummary(state) {
+  const phase = readPhase(state?.phase);
+  const roundIndex = Number(state?.roundIndex);
+
+  if (phase !== "Settle" || !Number.isInteger(roundIndex)) {
+    return;
+  }
+
+  if (lastShownSummaryRound === roundIndex) {
+    return;
+  }
+
+  const ranking = buildRoundDamageRanking(state?.players);
+
+  if (ranking.length === 0) {
+    return;
+  }
+
+  showRoundSummary(roundIndex, ranking);
+  lastShownSummaryRound = roundIndex;
 }
 
 function updateSynergyDisplay(synergies) {
@@ -1060,6 +1281,234 @@ function readPhase(value) {
     return value;
   }
   return null;
+}
+
+function mapEntries(mapLike) {
+  if (!mapLike) {
+    return [];
+  }
+
+  if (typeof mapLike.entries === "function") {
+    try {
+      return Array.from(mapLike.entries());
+    } catch {
+      return [];
+    }
+  }
+
+  return Object.entries(mapLike);
+}
+
+function mapGet(mapLike, key) {
+  if (!mapLike) {
+    return null;
+  }
+
+  const stringKey = String(key);
+
+  if (typeof mapLike.get === "function") {
+    try {
+      return mapLike.get(stringKey) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  return mapLike[stringKey] ?? null;
+}
+
+function shortPlayerId(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return String(value).slice(0, 6);
+}
+
+function getSharedPlayerColor(state, playerId) {
+  const player = mapGet(state?.players, playerId);
+  return player?.color ?? "#999999";
+}
+
+function sendSharedCursorMove(cellIndex) {
+  if (!sharedBoardRoom) {
+    return;
+  }
+
+  sharedBoardRoom.send("shared_cursor_move", { cellIndex });
+}
+
+function renderSharedCursorChips(state, cellElement, cellIndex) {
+  const chips = document.createElement("div");
+  chips.className = "shared-cursor-chips";
+
+  for (const [playerId, cursor] of mapEntries(state?.cursors)) {
+    if (!cursor || Number(cursor.cellIndex) !== cellIndex) {
+      continue;
+    }
+
+    const chip = document.createElement("span");
+    chip.className = "shared-cursor-chip";
+    chip.style.backgroundColor = cursor.color || getSharedPlayerColor(state, playerId);
+    chip.title = `${shortPlayerId(playerId)} @ ${cursor.cellIndex}`;
+    chips.appendChild(chip);
+  }
+
+  if (chips.children.length > 0) {
+    cellElement.appendChild(chips);
+  }
+}
+
+function renderSharedCursorList(state) {
+  if (!sharedCursorList) {
+    return;
+  }
+
+  sharedCursorList.innerHTML = "";
+
+  const entries = mapEntries(state?.cursors).sort((left, right) => left[0].localeCompare(right[0]));
+
+  if (entries.length === 0) {
+    sharedCursorList.textContent = "Waiting for cursors...";
+    return;
+  }
+
+  for (const [playerId, cursor] of entries) {
+    const item = document.createElement("div");
+    item.className = "shared-cursor-item";
+
+    const dot = document.createElement("span");
+    dot.className = "shared-cursor-dot";
+    dot.style.backgroundColor = cursor?.color || getSharedPlayerColor(state, playerId);
+
+    const suffix = sharedBoardRoom && sharedBoardRoom.sessionId === playerId ? " (you)" : "";
+    const spectatorText = cursor?.isSpectator ? " spectator" : "";
+    item.append(dot, `${shortPlayerId(playerId)} @ ${cursor?.cellIndex ?? -1}${suffix}${spectatorText}`);
+    sharedCursorList.appendChild(item);
+  }
+}
+
+function renderSharedBoard(state) {
+  if (!sharedBoardGrid) {
+    return;
+  }
+
+  const width = Number(state?.boardWidth ?? 6);
+  const height = Number(state?.boardHeight ?? 4);
+  const totalCells = width * height;
+
+  sharedBoardGrid.style.gridTemplateColumns = `repeat(${width}, 1fr)`;
+  sharedBoardGrid.innerHTML = "";
+
+  for (let cellIndex = 0; cellIndex < totalCells; cellIndex += 1) {
+    const cell = mapGet(state?.cells, cellIndex);
+    const unitId = cell?.unitId ?? "";
+    const ownerId = cell?.ownerId ?? "";
+    const isBossCell = unitId === "dummy-boss";
+
+    const cellElement = document.createElement("div");
+    cellElement.className = "shared-board-cell";
+
+    const indexBadge = document.createElement("span");
+    indexBadge.className = "shared-board-cell-index";
+    indexBadge.textContent = String(cellIndex);
+    cellElement.appendChild(indexBadge);
+    cellElement.onmouseenter = () => {
+      sendSharedCursorMove(cellIndex);
+    };
+
+    if (isBossCell) {
+      cellElement.classList.add("boss");
+      const boss = document.createElement("div");
+      boss.className = "shared-board-unit";
+      boss.innerHTML = '<div>👑</div><span class="shared-board-unit-id">boss</span>';
+      cellElement.appendChild(boss);
+    } else if (unitId !== "") {
+      cellElement.classList.add("has-unit");
+
+      const unit = document.createElement("div");
+      unit.className = "shared-board-unit";
+
+      const ownerDot = document.createElement("span");
+      ownerDot.className = "shared-board-owner";
+      ownerDot.style.backgroundColor = getSharedPlayerColor(state, ownerId);
+
+      const unitIdLabel = document.createElement("span");
+      unitIdLabel.className = "shared-board-unit-id";
+      unitIdLabel.textContent = shortPlayerId(unitId);
+
+      unit.append(ownerDot, unitIdLabel);
+      cellElement.appendChild(unit);
+    } else {
+      cellElement.classList.add("empty");
+    }
+
+    renderSharedCursorChips(state, cellElement, cellIndex);
+    sharedBoardGrid.appendChild(cellElement);
+  }
+}
+
+function renderSharedBoardState(state) {
+  if (!state) {
+    renderSharedBoard({ boardWidth: 6, boardHeight: 4, cells: {}, cursors: {}, players: {} });
+
+    if (sharedCursorList) {
+      sharedCursorList.textContent = "Shared board disconnected";
+    }
+
+    return;
+  }
+
+  renderSharedBoard(state);
+  renderSharedCursorList(state);
+}
+
+async function connectSharedBoard(client) {
+  if (!client || sharedBoardRoom) {
+    return;
+  }
+
+  try {
+    sharedBoardRoom = await client.joinOrCreate(DEFAULT_SHARED_BOARD_ROOM_NAME);
+    currentSharedBoardState = null;
+
+    sharedBoardRoom.onStateChange((state) => {
+      currentSharedBoardState = state;
+      renderSharedBoardState(state);
+    });
+
+    sharedBoardRoom.onLeave(() => {
+      sharedBoardRoom = null;
+      currentSharedBoardState = null;
+      renderSharedBoardState(null);
+    });
+  } catch (error) {
+    currentSharedBoardState = null;
+    renderSharedBoardState(null);
+    const message = error instanceof Error ? error.message : String(error);
+    addCombatLogEntry(`Shared board unavailable: ${message}`, "info");
+  }
+}
+
+function leaveSharedBoardRoom() {
+  if (!sharedBoardRoom) {
+    currentSharedBoardState = null;
+    renderSharedBoardState(null);
+    return;
+  }
+
+  const roomToLeave = sharedBoardRoom;
+  sharedBoardRoom = null;
+  currentSharedBoardState = null;
+  renderSharedBoardState(null);
+
+  if (typeof roomToLeave.removeAllListeners === "function") {
+    roomToLeave.removeAllListeners();
+  }
+
+  if (typeof roomToLeave.leave === "function") {
+    void roomToLeave.leave();
+  }
 }
 
 // Auto-fill functions

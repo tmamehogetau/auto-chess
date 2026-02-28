@@ -196,6 +196,81 @@
         color: #888;
       }
 
+      .phase-hp-section {
+        display: none;
+        width: 180px;
+        padding: 6px 8px;
+        background: rgba(0, 0, 0, 0.15);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+
+      .phase-hp-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        color: #aab3c5;
+        margin-bottom: 4px;
+      }
+
+      .phase-hp-label {
+        font-weight: 700;
+        letter-spacing: 0.3px;
+      }
+
+      .phase-hp-value {
+        color: #e3e9f6;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .phase-hp-track {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .phase-hp-fill {
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: #f39c12;
+        transition: width 0.25s ease, background-color 0.25s ease;
+      }
+
+      .phase-hp-fill.success {
+        background: #2ecc71;
+      }
+
+      .phase-hp-fill.failed {
+        background: #e74c3c;
+      }
+
+      .phase-hp-fill.pending {
+        background: #f39c12;
+      }
+
+      .phase-hp-result {
+        margin-top: 4px;
+        font-size: 11px;
+        text-align: right;
+        color: #f39c12;
+      }
+
+      .phase-hp-result.success {
+        color: #2ecc71;
+      }
+
+      .phase-hp-result.failed {
+        color: #e74c3c;
+      }
+
+      .phase-hp-result.pending {
+        color: #f39c12;
+      }
+
       /* Ready Button */
       .ready-section {
         display: flex;
@@ -234,6 +309,114 @@
         background: #555;
         cursor: not-allowed;
         transform: none;
+      }
+
+      .shared-board-section {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .shared-board-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .shared-board-cell {
+        aspect-ratio: 1;
+        background: var(--accent-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+      }
+
+      .shared-board-cell.empty {
+        opacity: 0.75;
+      }
+
+      .shared-board-cell.has-unit {
+        border-color: #27ae60;
+        background: rgba(39, 174, 96, 0.15);
+      }
+
+      .shared-board-cell.boss {
+        border-color: #e74c3c;
+        background: rgba(231, 76, 60, 0.2);
+      }
+
+      .shared-board-cell-index {
+        position: absolute;
+        top: 3px;
+        left: 5px;
+        font-size: 10px;
+        color: #6f7a8f;
+      }
+
+      .shared-board-unit {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .shared-board-owner {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid #ffffff;
+      }
+
+      .shared-board-unit-id {
+        font-size: 10px;
+        color: #d6deed;
+      }
+
+      .shared-cursor-chips {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        display: flex;
+        gap: 2px;
+      }
+
+      .shared-cursor-chip {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        border: 1px solid #ffffff;
+      }
+
+      .shared-cursor-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .shared-cursor-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #aab3c5;
+        padding: 3px 7px;
+        background: rgba(0, 0, 0, 0.12);
+        border-radius: 999px;
+      }
+
+      .shared-cursor-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        border: 1px solid #ffffff;
       }
 
       /* Shop Section */
@@ -639,6 +822,28 @@
         .status-value {
           font-size: 18px;
         }
+
+        .phase-hp-section {
+          width: 140px;
+          padding: 5px 6px;
+        }
+
+        .phase-hp-header,
+        .phase-hp-result {
+          font-size: 10px;
+        }
+
+        .shared-board-grid {
+          gap: 6px;
+        }
+
+        .shared-board-cell {
+          min-height: 40px;
+        }
+
+        .shared-cursor-item {
+          font-size: 10px;
+        }
       }
 
       /* Selection Mode Indicator */
@@ -658,6 +863,91 @@
 
       .selection-mode.active {
         display: block;
+      }
+
+      .round-summary-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 1200;
+        padding: 20px;
+      }
+
+      .round-summary-overlay.visible {
+        display: flex;
+      }
+
+      .round-summary-card {
+        width: min(420px, 100%);
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+      }
+
+      .round-summary-title {
+        font-size: 14px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #aab3c5;
+      }
+
+      .round-summary-round {
+        margin-top: 4px;
+        font-size: 20px;
+        font-weight: 700;
+        color: #e3e9f6;
+      }
+
+      .round-summary-list {
+        margin-top: 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .round-summary-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        font-size: 13px;
+      }
+
+      .round-summary-item .rank {
+        font-weight: 700;
+        color: #ffd700;
+        margin-right: 6px;
+      }
+
+      .round-summary-item .name {
+        color: #d6deed;
+      }
+
+      .round-summary-item .damage {
+        font-weight: 700;
+        color: #2ecc71;
+      }
+
+      .round-summary-close {
+        margin-top: 12px;
+        width: 100%;
+        padding: 8px 10px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 700;
+        background: #0f3460;
+        color: #e3e9f6;
+      }
+
+      .round-summary-close:hover {
+        background: #14508d;
       }
     </style>
   </head>
@@ -712,6 +1002,16 @@
         <div class="status-right">
           <div class="phase-indicator waiting" data-phase-display>Waiting</div>
           <div class="ready-count" data-ready-count>0/0 Ready</div>
+          <div class="phase-hp-section" data-phase-hp-section>
+            <div class="phase-hp-header">
+              <span class="phase-hp-label">Phase HP</span>
+              <span class="phase-hp-value" data-phase-hp-value>0 / 0</span>
+            </div>
+            <div class="phase-hp-track">
+              <div class="phase-hp-fill pending" data-phase-hp-fill></div>
+            </div>
+            <div class="phase-hp-result pending" data-phase-hp-result>Pending</div>
+          </div>
         </div>
       </div>
 
@@ -720,6 +1020,12 @@
         <button class="ready-btn not-ready" data-ready-btn disabled>
           Ready
         </button>
+      </div>
+
+      <div class="shared-board-section" data-shared-board-section>
+        <div class="shop-title">Shared Board (6 x 4)</div>
+        <div class="shared-board-grid" data-shared-board-grid></div>
+        <div class="shared-cursor-list" data-shared-cursor-list></div>
       </div>
 
       <!-- Unit Shop -->
@@ -899,6 +1205,15 @@
     <!-- Selection Mode Indicator -->
     <div class="selection-mode" data-selection-mode>
       Click a bench unit to equip item
+    </div>
+
+    <div class="round-summary-overlay" data-round-summary-overlay>
+      <div class="round-summary-card">
+        <div class="round-summary-title">Round Summary</div>
+        <div class="round-summary-round" data-round-summary-round>Round 1</div>
+        <div class="round-summary-list" data-round-summary-list></div>
+        <button class="round-summary-close" data-round-summary-close type="button">Close</button>
+      </div>
     </div>
 
     <script type="module" src="./manual-check.js"></script>

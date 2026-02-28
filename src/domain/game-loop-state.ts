@@ -99,10 +99,6 @@ export class GameLoopState {
       if (nextPhase === "Prep" && aliveCount < 2) {
         throw new Error(`Invalid transition: ${this.phase} -> ${nextPhase}`);
       }
-
-      if (nextPhase === "End" && aliveCount >= 2) {
-        throw new Error(`Invalid transition: ${this.phase} -> ${nextPhase}`);
-      }
     }
 
     if (nextPhase === "Elimination") {

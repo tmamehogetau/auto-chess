@@ -8,7 +8,7 @@ const server = defineServer({
   rooms: {
     game: defineRoom(GameRoom, {
       readyAutoStartMs: 30_000,      // 30秒でReady締切
-      prepDurationMs: 60_000,        // 60秒の準備フェーズ
+      prepDurationMs: 45_000,        // 45秒の準備フェーズ
       battleDurationMs: 30_000,      // 30秒の戦闘フェーズ
       settleDurationMs: 5_000,       // 5秒の決算フェーズ
       eliminationDurationMs: 5_000,  // 5秒の脱落処理

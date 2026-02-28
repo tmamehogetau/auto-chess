@@ -569,7 +569,7 @@ export class MatchRoomController {
         ) {
           this.eliminationDeadlineAtMs = null;
 
-          if (this.gameLoopState.alivePlayerIds.length <= 1) {
+          if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === 8) {
             this.gameLoopState.transitionTo("End");
             return true;
           }

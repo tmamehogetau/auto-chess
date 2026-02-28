@@ -38,7 +38,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private readyAutoStartMs = 60_000;
 
-  private prepDurationMs = 30_000;
+  private prepDurationMs = 45_000;
 
   private battleDurationMs = 40_000;
 

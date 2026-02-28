@@ -67,7 +67,7 @@ describe("Full Game Simulation (R1-R8)", () => {
   });
 
   test(
-    "4人で3ラウンド以上正常に進行する",
+    "4人でR8完走後にEndフェーズへ遷移する",
     async () => {
       const serverRoom = await testServer.createRoom<GameRoom>("game");
       const clients = await Promise.all([
@@ -91,33 +91,24 @@ describe("Full Game Simulation (R1-R8)", () => {
       // Wait for game to start
       await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
-      // Verify we can progress through at least 3 rounds
-      const seenRounds = new Set<number>();
-      const startTime = Date.now();
-      const maxDuration = 15_000;
+      // Verify all 4 players are in the game initially
+      expect(serverRoom.state.players.size).toBe(4);
 
-      while (Date.now() - startTime < maxDuration) {
-        seenRounds.add(serverRoom.state.roundIndex);
+      // Wait for game to complete R1-R8 and reach End phase
+      const maxDuration = 45_000;
+      await waitForCondition(
+        () => serverRoom.state.phase === "End" && serverRoom.state.roundIndex === 8,
+        maxDuration,
+      );
 
-        // Stop if we've seen rounds 0, 1, 2 (R1-R3)
-        if (seenRounds.has(0) && seenRounds.has(1) && seenRounds.has(2)) {
-          break;
-        }
+      // Verify final state
+      expect(serverRoom.state.phase).toBe("End");
+      expect(serverRoom.state.roundIndex).toBe(8);
 
-        // Stop if game ended
-        if (serverRoom.state.phase === "End") {
-          break;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-
-      // Verify we progressed through at least 2 rounds (0 and 1, or more)
-      // Note: round 0 might be missed depending on timing, so check for progression
-      expect(seenRounds.size).toBeGreaterThanOrEqual(2);
-      expect(Array.from(seenRounds).sort((a, b) => a - b)[0]).toBeLessThanOrEqual(1);
+      // Verify all 4 players are still in the game
+      expect(serverRoom.state.players.size).toBe(4);
     },
-    20_000,
+    50_000,
   );
 
   test(

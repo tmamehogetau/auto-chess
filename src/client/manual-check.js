@@ -88,8 +88,52 @@ const HEROES = [
     hp: 120,
     attack: 15,
     skill: {
-      name: '結界',
-      description: 'ダメージ無効化',
+      name: '夢符「二重結界」',
+      description: '味方全体に防御バフを付与（与ダメージ-20%, 被ダメージ+10%）',
+    },
+  },
+  {
+    id: 'marisa',
+    name: '魔理沙',
+    role: 'dps',
+    hp: 100,
+    attack: 25,
+    skill: {
+      name: '恋符「マスタースパーク」',
+      description: '直線に強力な魔法ダメージ（ATK × 3.0）',
+    },
+  },
+  {
+    id: 'sanae',
+    name: '早苗',
+    role: 'support',
+    hp: 110,
+    attack: 18,
+    skill: {
+      name: '奇跡「神の風」',
+      description: '味方全体に攻撃力バフと防御バフ（攻撃速度+25%, 被ダメージ-10%）',
+    },
+  },
+  {
+    id: 'youmu',
+    name: '妖夢',
+    role: 'dps',
+    hp: 130,
+    attack: 22,
+    skill: {
+      name: '人符「現世斬」',
+      description: 'ターゲットに3連撃（ATK × 1.2 × 3）',
+    },
+  },
+  {
+    id: 'sakuya',
+    name: '咲夜',
+    role: 'control',
+    hp: 110,
+    attack: 20,
+    skill: {
+      name: '時符「プライベートスクウェア」',
+      description: '範囲内の敵の移動速度-60%、攻撃速度-30%（3秒間）',
     },
   },
 ];
@@ -99,6 +143,7 @@ const HERO_ROLE_ICONS = {
   tank: "🛡️",
   dps: "⚔️",
   support: "✨",
+  control: "⏱️",
 };
 
 // Spell cards (client-side copy)

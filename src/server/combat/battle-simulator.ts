@@ -1,9 +1,10 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
 import { getStarCombatMultiplier } from "../star-level-config";
-import { SKILL_DEFINITIONS } from "./skill-definitions";
+import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import { SYNERGY_DEFINITIONS, calculateSynergyDetails, SynergyTier } from "./synergy-definitions";
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
+import { HEROES } from "../../data/heroes";
 
 /**
  * アクションインターフェース
@@ -440,6 +441,21 @@ export class BattleSimulator {
         });
       }
 
+      // ヒーローのスキルを戦闘開始時に発動
+      for (const unit of allUnits) {
+        if (unit.id.startsWith("hero-")) {
+          // ヒーローのIDからヒーローを取得して、スキルが定義されているか確認
+          const heroId = unit.id.replace("hero-", "").split("-")[0];
+          if (heroId && HERO_SKILL_DEFINITIONS[heroId]) {
+            actionQueue.push({
+              unit,
+              actionTime: 100, // 戦闘開始直後に発動（100ms後）
+              type: "skill",
+            });
+          }
+        }
+      }
+
       actionQueue.sort((a, b) => a.actionTime - b.actionTime);
 
       // Bug #3 fix: Add iteration counter to prevent infinite loops
@@ -573,25 +589,61 @@ export class BattleSimulator {
           }
         }
       } else if (action.type === "skill") {
-        const skillDef = SKILL_DEFINITIONS[action.unit.type];
-        if (skillDef && skillDef.execute) {
-          // ユニットのサイドに基づいて味方と敵を決定
-          const isLeftSide = leftUnits.includes(action.unit);
-          const allies = isLeftSide ? leftUnits : rightUnits;
-          const enemies = isLeftSide ? rightUnits : leftUnits;
+        // ヒーローユニットかどうかを判定
+        const isHero = action.unit.id.startsWith("hero-");
+        let skillExecuted = false;
 
-          try {
-            skillDef.execute(action.unit, allies, enemies, combatLog);
-          } catch (error) {
-            console.error(`Error executing skill for ${action.unit.type}:`, error);
-            combatLog.push(`Error executing skill for ${action.unit.type}`);
+        if (isHero) {
+          // ヒーロースキルを使用（ヒーローIDからヒーローを取得）
+          const heroId = action.unit.id.replace("hero-", "").split("-")[0];
+          if (!heroId) {
+            console.error(`Invalid hero ID for unit: ${action.unit.id}`);
+            continue;
           }
+          const heroSkillDef = HERO_SKILL_DEFINITIONS[heroId];
+          if (heroSkillDef && heroSkillDef.execute) {
+            const isLeftSide = leftUnits.includes(action.unit);
+            const allies = isLeftSide ? leftUnits : rightUnits;
+            const enemies = isLeftSide ? rightUnits : leftUnits;
 
-          // スキルによる死亡をチェック
-          for (const enemy of enemies) {
-            if (enemy.hp <= 0 && !enemy.isDead) {
-              enemy.isDead = true;
-              combatLog.push(`${generateUnitName(enemy)} has been defeated!`);
+            try {
+              heroSkillDef.execute(action.unit, allies, enemies, combatLog);
+              skillExecuted = true;
+            } catch (error) {
+              console.error(`Error executing hero skill for ${heroId}:`, error);
+              combatLog.push(`Error executing hero skill for ${heroId}`);
+            }
+
+            // スキルによる死亡をチェック
+            for (const enemy of enemies) {
+              if (enemy.hp <= 0 && !enemy.isDead) {
+                enemy.isDead = true;
+                combatLog.push(`${generateUnitName(enemy)} has been defeated!`);
+              }
+            }
+          }
+        } else {
+          // 通常ユニットのスキルを使用
+          const skillDef = SKILL_DEFINITIONS[action.unit.type];
+          if (skillDef && skillDef.execute) {
+            const isLeftSide = leftUnits.includes(action.unit);
+            const allies = isLeftSide ? leftUnits : rightUnits;
+            const enemies = isLeftSide ? rightUnits : leftUnits;
+
+            try {
+              skillDef.execute(action.unit, allies, enemies, combatLog);
+              skillExecuted = true;
+            } catch (error) {
+              console.error(`Error executing skill for ${action.unit.type}:`, error);
+              combatLog.push(`Error executing skill for ${action.unit.type}`);
+            }
+
+            // スキルによる死亡をチェック
+            for (const enemy of enemies) {
+              if (enemy.hp <= 0 && !enemy.isDead) {
+                enemy.isDead = true;
+                combatLog.push(`${generateUnitName(enemy)} has been defeated!`);
+              }
             }
           }
         }

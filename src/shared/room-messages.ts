@@ -74,7 +74,8 @@ export type CommandRejectCode =
   | "INVALID_PAYLOAD"
   | "INSUFFICIENT_GOLD"
   | "BENCH_FULL"
-  | "INVENTORY_FULL";
+  | "INVENTORY_FULL"
+  | "POOL_DEPLETED";
 
 export type CommandResult =
   | { accepted: true }

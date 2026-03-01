@@ -36,6 +36,8 @@ import {
   calculateSellValue,
 } from "./star-level-config";
 import { HEROES, type Hero } from "../data/heroes";
+import { FeatureFlagService } from "./feature-flag-service";
+import { SharedPool } from "./shared-pool";
 
 interface MatchRoomControllerOptions {
   readyAutoStartMs: number;
@@ -230,6 +232,10 @@ export class MatchRoomController {
 
   private phaseCompletionRate: number;
 
+  private readonly sharedPool: SharedPool | null;
+
+  private readonly enableSharedPool: boolean;
+
   public constructor(
     playerIds: string[],
     createdAtMs: number,
@@ -301,6 +307,10 @@ export class MatchRoomController {
       this.itemShopOffersByPlayer.set(playerId, []);
       this.selectedHeroByPlayer.set(playerId, "");
     }
+
+    // Feature Flagに基づいて共有プールを初期化
+    this.enableSharedPool = FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool');
+    this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
   }
 
   public get phase(): Phase | "Waiting" {
@@ -461,6 +471,7 @@ export class MatchRoomController {
     lastBattleResult: BattleResult | undefined;
     activeSynergies?: { unitType: string; count: number; tier: number }[];
     selectedHeroId: string;
+    sharedPoolInventory?: ReadonlyMap<BoardUnitType, number>;
   } {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
@@ -476,7 +487,7 @@ export class MatchRoomController {
     // Calculate active synergies
     const activeSynergies = this.calculateActiveSynergies(boardPlacements);
 
-    return {
+    const baseStatus = {
       hp: state.getPlayerHp(playerId),
       eliminated: state.isPlayerEliminated(playerId),
       boardUnitCount: this.boardUnitCountByPlayer.get(playerId) ?? 4,
@@ -511,6 +522,16 @@ export class MatchRoomController {
       activeSynergies,
       selectedHeroId: this.selectedHeroByPlayer.get(playerId) ?? "",
     };
+
+    // 共有プールの在庫情報を追加（Feature Flagが有効な場合のみ）
+    if (this.enableSharedPool && this.sharedPool) {
+      return {
+        ...baseStatus,
+        sharedPoolInventory: this.sharedPool.getAllInventory(),
+      };
+    }
+
+    return baseStatus;
   }
 
   public getPhaseProgress(): {
@@ -999,6 +1020,11 @@ export class MatchRoomController {
         return { accepted: false, code: "BENCH_FULL" };
       }
 
+      // 共有プールの在庫チェック（Feature Flagが有効な場合）
+      if (this.enableSharedPool && this.sharedPool && this.sharedPool.isDepleted(targetOffer.unitType)) {
+        return { accepted: false, code: "POOL_DEPLETED" };
+      }
+
       shopBuyCost = targetOffer.cost;
     }
 
@@ -1277,6 +1303,11 @@ export class MatchRoomController {
       return;
     }
 
+    // 共有プールから在庫を減らす（Feature Flagが有効な場合）
+    if (this.enableSharedPool && this.sharedPool) {
+      this.sharedPool.decrease(boughtOffer.unitType);
+    }
+
     offers.splice(slotIndex, 1);
     offers.push(
       this.buildSingleShopOffer(
@@ -1422,6 +1453,11 @@ export class MatchRoomController {
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
     this.goldByPlayer.set(playerId, currentGold + benchUnit.cost);
+
+    // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
+    if (this.enableSharedPool && this.sharedPool) {
+      this.sharedPool.increase(benchUnit.unitType);
+    }
   }
 
   private sellBoardUnit(playerId: string, cell: number): void {
@@ -1472,6 +1508,11 @@ export class MatchRoomController {
     this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
     this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
     this.goldByPlayer.set(playerId, currentGold + sellValue);
+
+    // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
+    if (this.enableSharedPool && this.sharedPool) {
+      this.sharedPool.increase(soldPlacement.unitType);
+    }
   }
 
   private buildShopOffers(
@@ -1530,12 +1571,26 @@ export class MatchRoomController {
     );
     const rarityRoll = MatchRoomController.seedToUnitFloat(seedBase + 1);
     const rarity = MatchRoomController.pickRarity(odds, rarityRoll);
-    const unitPool = SHOP_UNIT_POOL_BY_RARITY[rarity];
+    let unitPool = SHOP_UNIT_POOL_BY_RARITY[rarity];
+
+    // 共有プールが有効な場合、枯渇したユニットを除外
+    if (this.enableSharedPool && this.sharedPool) {
+      unitPool = unitPool.filter((unitType) => !this.sharedPool!.isDepleted(unitType));
+
+      // すべてのユニットが枯渇している場合は、代わりに低レアリティを試行
+      if (unitPool.length === 0 && rarity > 1) {
+        const lowerRarity = (rarity - 1) as UnitRarity;
+        unitPool = SHOP_UNIT_POOL_BY_RARITY[lowerRarity].filter(
+          (unitType) => !this.sharedPool!.isDepleted(unitType),
+        );
+      }
+    }
+
     const unitRoll = MatchRoomController.seedToUnitFloat(seedBase + 2);
     const unitType =
-      unitPool[Math.floor(unitRoll * unitPool.length) % unitPool.length] ??
-      unitPool[0] ??
-      "vanguard";
+      unitPool.length > 0
+        ? unitPool[Math.floor(unitRoll * unitPool.length) % unitPool.length] ?? unitPool[0] ?? "vanguard"
+        : "vanguard";
 
     return {
       unitType,
@@ -1619,6 +1674,28 @@ export class MatchRoomController {
     this.pendingRoundDamageByPlayer.delete(playerId);
     this.hpAtBattleStartByPlayer.delete(playerId);
     this.hpAfterBattleByPlayer.delete(playerId);
+
+    // 共有プールへ全ユニットを返却（Feature Flagが有効な場合）
+    if (this.enableSharedPool && this.sharedPool) {
+      const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+
+      // 盤面のユニットを返却
+      for (const placement of boardPlacements) {
+        const unitCount = placement.unitCount ?? placement.starLevel ?? 1;
+        for (let i = 0; i < unitCount; i++) {
+          this.sharedPool.increase(placement.unitType);
+        }
+      }
+
+      // ベンチのユニットを返却
+      for (const benchUnit of benchUnits) {
+        const unitCount = benchUnit.unitCount ?? 1;
+        for (let i = 0; i < unitCount; i++) {
+          this.sharedPool.increase(benchUnit.unitType);
+        }
+      }
+    }
   }
 
   private calculateActiveSynergies(

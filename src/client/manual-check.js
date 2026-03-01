@@ -126,6 +126,7 @@ let latestPhaseHpProgress = null;
 let lastShownSummaryRound = -1;
 let roundSummaryAutoHideTimeout = null;
 let sharedBoardSpectatorNoticeShown = false;
+let currentSharedPoolInventory = null;
 
 // Hero selection state
 let selectedHeroId = null;
@@ -696,6 +697,7 @@ function updateGameUI(state) {
 
   currentPlayerState = player;
   currentGold = Number(player.gold) || 0;
+  currentSharedPoolInventory = player.sharedPoolInventory;
 
   // Update status displays
   roundDisplay.textContent = (Number(state.roundIndex) || 0) + 1;
@@ -1108,12 +1110,22 @@ function updateUnitShop(offers) {
       const cost = offer.cost || 0;
       const canAfford = currentGold >= cost;
 
+      // 共有プールの在庫チェック
+      let isDepleted = false;
+      let remainingCount = null;
+      if (currentSharedPoolInventory && currentSharedPoolInventory instanceof Map) {
+        remainingCount = currentSharedPoolInventory.get(offer.unitType) ?? 0;
+        isDepleted = remainingCount <= 0;
+      }
+
       card.innerHTML = `
         <div class="icon">${icon}</div>
         <div class="name">${offer.unitType}</div>
         <div class="cost">${cost}G</div>
+        ${remainingCount !== null ? `<div class="pool-badge">残り${remainingCount}枚</div>` : ''}
       `;
-      card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
+      card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep" || isDepleted);
+      card.classList.toggle("depleted", isDepleted);
     } else {
       card.innerHTML = `
         <div class="icon">❓</div>

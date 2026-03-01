@@ -106,6 +106,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public activeSynergies: ArraySchema<SynergySchema>;
 
+  declare public selectedHeroId: string;
+
   public constructor() {
     super();
     this.ready = false;
@@ -129,6 +131,7 @@ export class PlayerPresenceState extends Schema {
     this.itemInventory = new ArraySchema<string>();
     this.lastBattleResult = new BattleResultSchema();
     this.activeSynergies = new ArraySchema<SynergySchema>();
+    this.selectedHeroId = "";
   }
 }
 
@@ -216,6 +219,7 @@ defineTypes(PlayerPresenceState, {
   itemInventory: ["string"],
   lastBattleResult: BattleResultSchema,
   activeSynergies: [SynergySchema],
+  selectedHeroId: "string",
 });
 
 defineTypes(MatchRoomState, {

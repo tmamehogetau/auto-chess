@@ -35,6 +35,7 @@ import {
   UNIT_SELL_VALUE_BY_TYPE,
   calculateSellValue,
 } from "./star-level-config";
+import { HEROES, type Hero } from "../data/heroes";
 
 interface MatchRoomControllerOptions {
   readyAutoStartMs: number;
@@ -185,6 +186,8 @@ export class MatchRoomController {
 
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
+  private readonly selectedHeroByPlayer: Map<string, string>;
+
   private readonly readyDeadlineAtMs: number;
 
   private readonly prepDurationMs: number;
@@ -253,6 +256,7 @@ export class MatchRoomController {
     this.itemInventoryByPlayer = new Map<string, ItemType[]>();
     this.itemShopOffersByPlayer = new Map<string, ShopItemOffer[]>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
+    this.selectedHeroByPlayer = new Map<string, string>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
@@ -295,6 +299,7 @@ export class MatchRoomController {
       });
       this.itemInventoryByPlayer.set(playerId, []);
       this.itemShopOffersByPlayer.set(playerId, []);
+      this.selectedHeroByPlayer.set(playerId, "");
     }
   }
 
@@ -363,6 +368,21 @@ export class MatchRoomController {
     }
 
     this.readyPlayers.delete(playerId);
+  }
+
+  public selectHero(playerId: string, heroId: string): void {
+    this.ensureKnownPlayer(playerId);
+
+    if (!HEROES.some((hero) => hero.id === heroId)) {
+      throw new Error(`Unknown hero: ${heroId}`);
+    }
+
+    this.selectedHeroByPlayer.set(playerId, heroId);
+  }
+
+  public getSelectedHero(playerId: string): string {
+    this.ensureKnownPlayer(playerId);
+    return this.selectedHeroByPlayer.get(playerId) ?? "";
   }
 
   public startIfReady(nowMs: number, connectedPlayerIds: string[] = this.playerIds): boolean {
@@ -440,6 +460,7 @@ export class MatchRoomController {
     itemShopOffers: ShopItemOffer[];
     lastBattleResult: BattleResult | undefined;
     activeSynergies?: { unitType: string; count: number; tier: number }[];
+    selectedHeroId: string;
   } {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
@@ -488,6 +509,7 @@ export class MatchRoomController {
       itemShopOffers: [...itemShopOffers],
       lastBattleResult: this.battleResultsByPlayer.get(playerId),
       activeSynergies,
+      selectedHeroId: this.selectedHeroByPlayer.get(playerId) ?? "",
     };
   }
 
@@ -1808,6 +1830,63 @@ export class MatchRoomController {
     const rightBattleUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
       createBattleUnit(placement, "right", index),
     );
+
+    // 主人公を追加（選択されている場合）
+    const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
+    if (leftHeroId) {
+      const leftHero = HEROES.find((h) => h.id === leftHeroId);
+      if (leftHero) {
+        leftBattleUnits.push({
+          id: `hero-${leftPlayerId}`,
+          type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
+          starLevel: 1,
+          hp: leftHero.hp,
+          maxHp: leftHero.hp,
+          attackPower: leftHero.attack,
+          attackSpeed: 0.5,
+          attackRange: 1,
+          cell: 8, // 主人公固定セル（盤面外）
+          isDead: false,
+          attackCount: 0,
+          defense: 0,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
+          buffModifiers: {
+            attackMultiplier: 1,
+            defenseMultiplier: 1,
+            attackSpeedMultiplier: 1,
+          },
+        });
+      }
+    }
+
+    const rightHeroId = this.selectedHeroByPlayer.get(rightPlayerId);
+    if (rightHeroId) {
+      const rightHero = HEROES.find((h) => h.id === rightHeroId);
+      if (rightHero) {
+        rightBattleUnits.push({
+          id: `hero-${rightPlayerId}`,
+          type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
+          starLevel: 1,
+          hp: rightHero.hp,
+          maxHp: rightHero.hp,
+          attackPower: rightHero.attack,
+          attackSpeed: 0.5,
+          attackRange: 1,
+          cell: 8, // 主人公固定セル（盤面外）
+          isDead: false,
+          attackCount: 0,
+          defense: 0,
+          critRate: 0,
+          critDamageMultiplier: 1.5,
+          buffModifiers: {
+            attackMultiplier: 1,
+            defenseMultiplier: 1,
+            attackSpeedMultiplier: 1,
+          },
+        });
+      }
+    }
 
     // バトルシミュレーターで戦闘を実行
     const battleSimulator = new BattleSimulator();

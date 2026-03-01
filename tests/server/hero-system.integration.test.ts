@@ -1,0 +1,98 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { MatchRoomController } from "../../src/server/match-room-controller";
+import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
+
+describe("Hero System Integration Tests", () => {
+  let controller: MatchRoomController;
+  const playerIds = ["player1", "player2"];
+  const createdAtMs = Date.now();
+
+  beforeEach(() => {
+    controller = new MatchRoomController(playerIds, createdAtMs, {
+      readyAutoStartMs: 0, // Auto-start immediately
+      prepDurationMs: 45_000,
+      battleDurationMs: 40_000,
+      settleDurationMs: 5_000,
+      eliminationDurationMs: 2_000,
+    });
+  });
+
+  describe("Hero Selection", () => {
+    it("should allow hero selection with valid hero ID", () => {
+      expect(() => {
+        controller.selectHero("player1", "reimu");
+      }).not.toThrow();
+
+      expect(controller.getSelectedHero("player1")).toBe("reimu");
+    });
+
+    it("should throw error for invalid hero ID", () => {
+      expect(() => {
+        controller.selectHero("player1", "invalid-hero");
+      }).toThrow("Unknown hero: invalid-hero");
+    });
+
+    it("should throw error for unknown player", () => {
+      expect(() => {
+        controller.selectHero("unknown-player", "reimu");
+      }).toThrow("Unknown player: unknown-player");
+    });
+
+    it("should update player status with selected hero ID", () => {
+      controller.selectHero("player1", "reimu");
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+
+      const status = controller.getPlayerStatus("player1");
+      expect(status.selectedHeroId).toBe("reimu");
+    });
+  });
+
+  describe("Hero in Battle Simulation", () => {
+    it("should include hero in battle units when selected", () => {
+      controller.selectHero("player1", "reimu");
+      controller.selectHero("player2", "reimu");
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+
+      // Start battle phase
+      controller.advanceByTime(createdAtMs + 45_001);
+
+      // Check that battle units include heroes
+      const status1 = controller.getPlayerStatus("player1");
+      const status2 = controller.getPlayerStatus("player2");
+
+      expect(status1.selectedHeroId).toBe("reimu");
+      expect(status2.selectedHeroId).toBe("reimu");
+    });
+
+    it("should not include hero when not selected", () => {
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+      controller.advanceByTime(createdAtMs + 45_001);
+
+      const status = controller.getPlayerStatus("player1");
+      expect(status.selectedHeroId).toBe("");
+    });
+  });
+
+  describe("Hero System Disabled (Feature Flag OFF)", () => {
+    it("should work normally when hero system is disabled", () => {
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+
+      const status = controller.getPlayerStatus("player1");
+      expect(status.selectedHeroId).toBe("");
+      expect(status.boardUnits).toEqual([]);
+      expect(status.benchUnits).toEqual([]);
+    });
+
+    it("should not require hero selection when flag is OFF", () => {
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+
+      const status = controller.getPlayerStatus("player1");
+      expect(status.selectedHeroId).toBe("");
+    });
+  });
+});

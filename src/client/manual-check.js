@@ -37,6 +37,28 @@ const ITEM_ICONS = {
   amulet: "📿",
 };
 
+// Hero definitions (client-side copy)
+const HEROES = [
+  {
+    id: 'reimu',
+    name: '霊夢',
+    role: 'support',
+    hp: 120,
+    attack: 15,
+    skill: {
+      name: '結界',
+      description: 'ダメージ無効化',
+    },
+  },
+];
+
+// Hero role icons
+const HERO_ROLE_ICONS = {
+  tank: "🛡️",
+  dps: "⚔️",
+  support: "✨",
+};
+
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -78,6 +100,18 @@ const roundSummaryRound = document.querySelector("[data-round-summary-round]");
 const roundSummaryList = document.querySelector("[data-round-summary-list]");
 const roundSummaryClose = document.querySelector("[data-round-summary-close]");
 
+// Hero selection elements
+const heroSelectionOverlay = document.querySelector("[data-hero-selection-overlay]");
+const heroGrid = document.querySelector("[data-hero-grid]");
+const heroConfirmBtn = document.querySelector("[data-hero-confirm-btn]");
+
+const heroSection = document.querySelector("[data-hero-section]");
+const heroDisplay = document.querySelector("[data-hero-display]");
+const heroNameDisplay = document.querySelector("[data-hero-name]");
+const heroRoleDisplay = document.querySelector("[data-hero-role]");
+const heroHpDisplay = document.querySelector("[data-hero-hp]");
+const heroAttackDisplay = document.querySelector("[data-hero-attack]");
+
 // Game state
 let activeRoom = null;
 let sharedBoardRoom = null;
@@ -92,6 +126,10 @@ let latestPhaseHpProgress = null;
 let lastShownSummaryRound = -1;
 let roundSummaryAutoHideTimeout = null;
 let sharedBoardSpectatorNoticeShown = false;
+
+// Hero selection state
+let selectedHeroId = null;
+let heroSelectionConfirmed = false;
 
 // Selection state
 let selectedBenchIndex = null;
@@ -174,6 +212,12 @@ function isRoomConnectionOpen(room) {
 }
 
 initializeDefaults();
+
+// Hero selection event listeners
+heroConfirmBtn?.addEventListener("click", () => {
+  confirmHeroSelection();
+});
+
 syncButtonAvailability();
 renderSharedBoardState(null);
 
@@ -738,6 +782,31 @@ function updateGameUI(state) {
 
   // Update next command sequence
   if (typeof player.lastCmdSeq === "number") {
+
+  // Show hero selection dialog in Waiting phase if hero system enabled and not selected yet
+  if (state.featureFlagsEnableHeroSystem && state.phase === "Waiting" && !player.selectedHeroId && !heroSelectionConfirmed) {
+    showHeroSelection();
+  } else if (state.phase !== "Waiting" || player.selectedHeroId || heroSelectionConfirmed) {
+    hideHeroSelection();
+  }
+
+  // Update hero display
+  if (state.featureFlagsEnableHeroSystem && player.selectedHeroId) {
+    const hero = HEROES.find((h) => h.id === player.selectedHeroId);
+    if (hero && heroSection) {
+      heroSection.style.display = "block";
+      if (heroNameDisplay) heroNameDisplay.textContent = hero.name;
+      if (heroRoleDisplay) heroRoleDisplay.textContent = hero.role;
+      if (heroHpDisplay) heroHpDisplay.textContent = hero.hp;
+      if (heroAttackDisplay) heroAttackDisplay.textContent = hero.attack;
+      const roleIcon = HERO_ROLE_ICONS[hero.role] || "❓";
+      const heroIcon = heroSection.querySelector(".hero-icon");
+      if (heroIcon) heroIcon.textContent = roleIcon;
+    }
+  } else if (heroSection) {
+    heroSection.style.display = "none";
+  }
+
     nextCmdSeq = player.lastCmdSeq + 1;
   }
 }
@@ -1941,3 +2010,83 @@ function clearPendingAutoActions() {
   autoReadyCompleted = false;
   autoPrepCompleted = false;
 }
+
+
+// Hero Selection Functions
+function showHeroSelection() {
+  heroSelectionOverlay?.classList.add("visible");
+  renderHeroGrid();
+  selectedHeroId = null;
+  heroSelectionConfirmed = false;
+  heroConfirmBtn?.classList.add("disabled");
+}
+
+function hideHeroSelection() {
+  heroSelectionOverlay?.classList.remove("visible");
+}
+
+function renderHeroGrid() {
+  if (!heroGrid) return;
+  
+  heroGrid.innerHTML = "";
+  
+  HEROES.forEach((hero) => {
+    const card = document.createElement("div");
+    card.className = "hero-card";
+    card.dataset.heroId = hero.id;
+    
+    const roleIcon = HERO_ROLE_ICONS[hero.role] || "❓";
+    
+    card.innerHTML = `
+      <div class="hero-icon">${roleIcon}</div>
+      <div class="hero-name">${hero.name}</div>
+      <div class="hero-role">${hero.role}</div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-label">HP</span>
+          <span class="hero-stat-value">${hero.hp}</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-label">ATK</span>
+          <span class="hero-stat-value">${hero.attack}</span>
+        </div>
+      </div>
+      <div class="hero-skill">${hero.skill.name}: ${hero.skill.description}</div>
+    `;
+    
+    card.addEventListener("click", () => {
+      handleHeroCardClick(hero.id);
+    });
+    
+    heroGrid.appendChild(card);
+  });
+}
+
+function handleHeroCardClick(heroId) {
+  if (heroSelectionConfirmed) return;
+  
+  selectedHeroId = heroId;
+  
+  // Update visual selection
+  document.querySelectorAll(".hero-card").forEach((card) => {
+    card.classList.toggle("selected", card.dataset.heroId === heroId);
+  });
+  
+  // Enable confirm button
+  if (heroConfirmBtn) {
+    heroConfirmBtn.disabled = false;
+  }
+}
+
+function confirmHeroSelection() {
+  if (!selectedHeroId || !activeRoom) return;
+  
+  // Send hero selection to server
+  activeRoom.send("HERO_SELECT", { heroId: selectedHeroId });
+  
+  heroSelectionConfirmed = true;
+  hideHeroSelection();
+  
+  showMessage(`Hero selected: ${HEROES.find(h => h.id === selectedHeroId)?.name || selectedHeroId}`, "success");
+}
+

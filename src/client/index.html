@@ -968,6 +968,224 @@
       .round-summary-close:hover {
         background: #14508d;
       }
+
+      /* Hero Selection Dialog */
+      .hero-selection-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 1300;
+        padding: 20px;
+      }
+
+      .hero-selection-overlay.visible {
+        display: flex;
+      }
+
+      .hero-selection-card {
+        width: min(500px, 100%);
+        background: var(--panel-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+      }
+
+      .hero-selection-title {
+        font-size: 18px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #ffd700;
+        margin-bottom: 15px;
+        text-align: center;
+        font-weight: 700;
+      }
+
+      .hero-selection-subtitle {
+        font-size: 13px;
+        color: #aab3c5;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .hero-card {
+        background: rgba(15, 52, 96, 0.6);
+        border: 2px solid var(--border-color);
+        border-radius: 10px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: center;
+      }
+
+      .hero-card:hover {
+        border-color: #3498db;
+        transform: translateY(-3px);
+        background: rgba(15, 52, 96, 0.9);
+      }
+
+      .hero-card.selected {
+        border-color: #ffd700;
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+        background: rgba(255, 215, 0, 0.1);
+      }
+
+      .hero-card .hero-icon {
+        font-size: 48px;
+        margin-bottom: 8px;
+      }
+
+      .hero-card .hero-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: #e3e9f6;
+        margin-bottom: 5px;
+      }
+
+      .hero-card .hero-role {
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+      }
+
+      .hero-card .hero-stats {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        font-size: 12px;
+      }
+
+      .hero-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .hero-stat-label {
+        color: #6f7a8f;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .hero-stat-value {
+        color: #e3e9f6;
+        font-weight: 700;
+      }
+
+      .hero-skill {
+        font-size: 11px;
+        color: #9b59b6;
+        margin-top: 8px;
+        padding: 6px;
+        background: rgba(155, 89, 182, 0.1);
+        border-radius: 6px;
+      }
+
+      .hero-confirm-btn {
+        width: 100%;
+        padding: 12px;
+        background: #27ae60;
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .hero-confirm-btn:hover {
+        background: #229954;
+        transform: scale(1.02);
+      }
+
+      .hero-confirm-btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+        transform: none;
+      }
+      /* Hero Display Section */
+      .hero-section {
+        background: var(--panel-bg);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+      }
+
+      .hero-display {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .hero-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+
+      .hero-info .hero-icon {
+        font-size: 48px;
+      }
+
+      .hero-details {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .hero-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: #e3e9f6;
+      }
+
+      .hero-role {
+        font-size: 12px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .hero-stats-display {
+        display: flex;
+        gap: 20px;
+      }
+
+      .hero-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .hero-stat-label {
+        font-size: 11px;
+        color: #6f7a8f;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .hero-stat-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #e3e9f6;
+      }
     </style>
   </head>
   <body>
@@ -1091,6 +1309,29 @@
           </div>
           <div class="shop-card item" data-item-shop-slot="1">
             <div class="icon">❓</div>
+      <!-- Hero Display -->
+      <div class="hero-section" data-hero-section style="display: none;">
+        <div class="shop-title">Hero (Always Present)</div>
+        <div class="hero-display" data-hero-display>
+          <div class="hero-info">
+            <div class="hero-icon">❓</div>
+            <div class="hero-details">
+              <div class="hero-name" data-hero-name>-</div>
+              <div class="hero-role" data-hero-role>-</div>
+            </div>
+          </div>
+          <div class="hero-stats-display">
+            <div class="hero-stat">
+              <span class="hero-stat-label">HP</span>
+              <span class="hero-stat-value" data-hero-hp>-</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-label">ATK</span>
+              <span class="hero-stat-value" data-hero-attack>-</span>
+            </div>
+          </div>
+        </div>
+      </div>
             <div class="name">-</div>
             <div class="cost">0G</div>
           </div>
@@ -1233,6 +1474,16 @@
         <div class="round-summary-round" data-round-summary-round>Round 1</div>
         <div class="round-summary-list" data-round-summary-list></div>
         <button class="round-summary-close" data-round-summary-close type="button">Close</button>
+      </div>
+    </div>
+
+    <!-- Hero Selection Overlay -->
+    <div class="hero-selection-overlay" data-hero-selection-overlay>
+      <div class="hero-selection-card">
+        <div class="hero-selection-title">⚔️ Select Your Hero</div>
+        <div class="hero-selection-subtitle">Choose a hero to lead your army. Heroes are always present on the battlefield.</div>
+        <div class="hero-grid" data-hero-grid></div>
+        <button class="hero-confirm-btn" data-hero-confirm-btn type="button" disabled>Confirm Hero Selection</button>
       </div>
     </div>
 

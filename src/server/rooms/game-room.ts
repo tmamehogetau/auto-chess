@@ -87,6 +87,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       },
     );
 
+    this.onMessage("HERO_SELECT", (client, message) => {
+      this.handleHeroSelect(client, message as { heroId: string });
+    });
+
     this.clock.setInterval(() => {
       this.advanceLoop(Date.now());
     }, 50);
@@ -194,6 +198,36 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     player.ready = nextReady;
 
     await this.tryStartMatch(Date.now());
+  }
+
+  private handleHeroSelect(client: Client, message: { heroId: string }): void {
+    if (!this.controller) {
+      return;
+    }
+
+    const player = this.state.players.get(client.sessionId);
+
+    if (!player) {
+      return;
+    }
+
+    // Check if hero system is enabled
+    if (!this.state.featureFlagsEnableHeroSystem) {
+      return;
+    }
+
+    const { heroId } = message;
+
+    if (!heroId || typeof heroId !== "string") {
+      return;
+    }
+
+    try {
+      this.controller.selectHero(client.sessionId, heroId);
+      player.selectedHeroId = heroId;
+    } catch (error) {
+      console.error(`Hero selection error for ${client.sessionId}:`, error);
+    }
   }
 
   private handlePrepCommand(client: Client, message: PrepCommandMessage): void {

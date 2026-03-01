@@ -21,7 +21,7 @@ export const HEROES: Hero[] = [
     hp: 120,
     attack: 15,
     skill: {
-      name: '博麗結界',
+      name: '夢符「二重結界」',
       description: '味方全体に防御バフを付与（与ダメージ-20%, 被ダメージ+10%）',
       effect: (caster, allies, _enemies, log) => {
         // 味方全員に防御バフ（簡易化実装）
@@ -30,7 +30,7 @@ export const HEROES: Hero[] = [
             ally.buffModifiers.defenseMultiplier *= 1.2;
           }
         }
-        log.push(`${caster.type} activates 博麗結界! All allies gain +20% defense`);
+        log.push(`${caster.type} activates 夢符「二重結界」! All allies gain +20% defense`);
       },
     },
   },
@@ -41,7 +41,7 @@ export const HEROES: Hero[] = [
     hp: 100,
     attack: 25,
     skill: {
-      name: 'マスタースパーク',
+      name: '恋符「マスタースパーク」',
       description: '直線に強力な魔法ダメージ（ATK × 3.0）',
       effect: (caster, _allies, enemies, log) => {
         // 全敵に魔法ダメージ（ATK × 3.0）
@@ -51,7 +51,7 @@ export const HEROES: Hero[] = [
             enemy.hp -= damage;
           }
         }
-        log.push(`${caster.type} activates マスタースパーク! Deals ${damage} damage to all enemies`);
+        log.push(`${caster.type} activates 恋符「マスタースパーク」! Deals ${damage} damage to all enemies`);
       },
     },
   },
@@ -62,7 +62,7 @@ export const HEROES: Hero[] = [
     hp: 110,
     attack: 18,
     skill: {
-      name: '奇跡『神風の祝福』',
+      name: '奇跡「神の風」',
       description: '味方全体に攻撃力バフと防御バフ（攻撃速度+25%, 被ダメージ-10%）',
       effect: (caster, allies, _enemies, log) => {
         // 味方全員に攻撃力バフと防御バフ
@@ -72,7 +72,7 @@ export const HEROES: Hero[] = [
             ally.buffModifiers.defenseMultiplier *= 1.1;
           }
         }
-        log.push(`${caster.type} activates 奇跡『神風の祝福』! All allies gain +25% attack and +10% defense`);
+        log.push(`${caster.type} activates 奇跡「神の風」! All allies gain +25% attack and +10% defense`);
       },
     },
   },
@@ -83,7 +83,7 @@ export const HEROES: Hero[] = [
     hp: 130,
     attack: 22,
     skill: {
-      name: '人符『現世斬』',
+      name: '人符「現世斬」',
       description: 'ターゲットに3連撃（ATK × 1.2 × 3）',
       effect: (caster, _allies, enemies, log) => {
         // HPが最も低い敵に3連撃（ATK × 1.2 × 3）
@@ -93,7 +93,7 @@ export const HEROES: Hero[] = [
           const singleDamage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 1.2);
           const totalDamage = singleDamage * 3;
           target.hp -= totalDamage;
-          log.push(`${caster.type} activates 人符『現世斬』! Deals ${totalDamage} damage (3 hits) to ${target.type}`);
+          log.push(`${caster.type} activates 人符「現世斬」! Deals ${totalDamage} damage (3 hits) to ${target.type}`);
         }
       },
     },

@@ -159,7 +159,7 @@ export function calculateCellDistance(cell1: number, cell2: number): number {
 }
 
 /**
- * ボスパッシブ「紅き夜の王」が有効かどうかを判定
+ * ボスパッシブ「紅色の世界」が有効かどうかを判定
  * 条件: ボスユニットかつ HP ≥ 70%
  * @param unit ユニット
  * @returns パッシブが有効な場合は true
@@ -456,7 +456,7 @@ export class BattleSimulator {
           const isCrit = Math.random() < action.unit.critRate;
           const critMultiplier = isCrit ? action.unit.critDamageMultiplier : 1.0;
 
-          // ボスパッシブ「紅き夜の王」の判定とATKバフ適用
+          // ボスパッシブ「紅色の世界」の判定とATKバフ適用
           const bossPassiveActive = isBossPassiveActive(action.unit);
           const bossAtkMultiplier = bossPassiveActive ? 1.1 : 1.0;
 
@@ -466,7 +466,7 @@ export class BattleSimulator {
           const actualDamage = Math.max(1, Math.floor(baseDamage - defense));
           target.hp -= actualDamage;
 
-          // ボスパッシブ「紅き夜の王」の回復効果（与えたダメージの5%回復）
+          // ボスパッシブ「紅色の世界」の回復効果（与えたダメージの5%回復）
           if (bossPassiveActive && actualDamage > 0) {
             const healAmount = Math.floor(actualDamage * 0.05);
             action.unit.hp = Math.min(action.unit.maxHp, action.unit.hp + healAmount);

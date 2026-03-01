@@ -37,16 +37,52 @@ export interface SpellCard {
  * スペルカードリスト
  */
 export const SPELL_CARDS: SpellCard[] = [
-  // R1-4: スカーレットデスレーザー簡易版
+  // R1-4: 紅符「スカーレットシュート」
   {
     id: 'sdl-1',
-    name: 'スカーレットデスレーザー',
+    name: '紅符「スカーレットシュート」',
     description: 'レイドメンバー全員に50ダメージを与える',
     roundRange: [1, 4],
     effect: {
       type: 'damage',
       target: 'raid',
       value: 50,
+    },
+  },
+  // R5-8: 必殺「ハートブレイク」(未実装)
+  {
+    id: 'sdl-2',
+    name: '必殺「ハートブレイク」',
+    description: 'レイドメンバー全員にダメージを与える（未実装）',
+    roundRange: [5, 8],
+    effect: {
+      type: 'damage',
+      target: 'raid',
+      value: 0,
+    },
+  },
+  // R9-11: 神槍「スピア・ザ・グングニル」(未実装)
+  {
+    id: 'sdl-3',
+    name: '神槍「スピア・ザ・グングニル」',
+    description: 'レイドメンバー全員にダメージを与える（未実装）',
+    roundRange: [9, 11],
+    effect: {
+      type: 'damage',
+      target: 'raid',
+      value: 0,
+    },
+  },
+  // R12: 「紅色の幻想郷」(未実装)
+  {
+    id: 'sdl-4',
+    name: '「紅色の幻想郷」',
+    description: 'ラストスペル（未実装）',
+    roundRange: [12, 12],
+    effect: {
+      type: 'damage',
+      target: 'raid',
+      value: 0,
     },
   },
 ];

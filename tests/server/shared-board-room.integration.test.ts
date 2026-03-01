@@ -4,6 +4,7 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
+import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -845,5 +846,82 @@ describe("SharedBoardRoom integration", () => {
       action: "select_unit",
       code: "UNIT_NOT_OWNED",
     });
+  });
+
+  test("サーバー同期APIでGameRoom配置をSharedBoardへ反映できる", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    const targetCellIndex = combatCellToRaidBoardIndex(0);
+    const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
+      {
+        cell: 0,
+        unitType: "vanguard",
+      },
+    ]);
+
+    expect(result.applied).toBe(1);
+    expect(result.skipped).toBe(0);
+
+    const targetCell = serverRoom.state.cells.get(String(targetCellIndex));
+    expect(targetCell?.ownerId).toBe(client.sessionId);
+    expect(targetCell?.unitId.startsWith("vanguard-")).toBe(true);
+  });
+
+  test("join options の gamePlayerId を bridge向け配置イベントに反映する", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const mappedGamePlayerId = "game-player-1";
+    const client = await testServer.connectTo(serverRoom, {
+      gamePlayerId: mappedGamePlayerId,
+    });
+
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    let unitId = "";
+    let sourceCellIndex = -1;
+
+    for (const cell of serverRoom.state.cells.values()) {
+      if (cell.ownerId === client.sessionId && cell.unitId !== "") {
+        unitId = cell.unitId;
+        sourceCellIndex = cell.index;
+        break;
+      }
+    }
+
+    if (unitId === "") {
+      throw new Error("Expected connected player to have an initial unit");
+    }
+
+    const targetCellIndex = [...serverRoom.state.cells.values()].find(
+      (cell) =>
+        cell.index !== sourceCellIndex
+        && cell.index !== serverRoom.state.dummyBossCell
+        && cell.unitId === "",
+    )?.index;
+
+    if (typeof targetCellIndex !== "number") {
+      throw new Error("Expected at least one empty target cell");
+    }
+
+    let emittedPlayerId: string | null = null;
+    serverRoom.onPlacementChange((playerId) => {
+      emittedPlayerId = playerId;
+    });
+
+    client.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, { unitId });
+    const selectResult = await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    expect(selectResult).toEqual({ accepted: true, action: "select_unit" });
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId,
+      toCell: targetCellIndex,
+    });
+    const placeResult = await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    expect(placeResult).toEqual({ accepted: true, action: "place_unit" });
+
+    await waitForCondition(() => emittedPlayerId !== null, 1_000);
+    expect(emittedPlayerId).toBe(mappedGamePlayerId);
   });
 });

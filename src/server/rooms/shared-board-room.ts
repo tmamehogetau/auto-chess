@@ -6,12 +6,23 @@ import {
   SharedBoardPlayerState,
   SharedBoardState,
 } from "../schema/shared-board-state";
+import { combatCellToRaidBoardIndex } from "../../shared/board-geometry";
+import type { BoardUnitPlacement } from "../../shared/room-messages";
 
 interface SharedBoardRoomOptions {
   boardWidth?: number;
   boardHeight?: number;
   lockDurationMs?: number;
 }
+
+interface SharedBoardJoinOptions {
+  gamePlayerId?: string;
+}
+
+/**
+ * 配置変更イベントリスナー
+ */
+export type PlacementChangeListener = (playerId: string, cells: SharedBoardCellState[]) => void;
 
 interface CursorMoveMessage {
   cellIndex: number;
@@ -91,6 +102,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private readonly unitIdByPlayer = new Map<string, string>();
 
+  private readonly gamePlayerIdBySharedSessionId = new Map<string, string>();
+
+  private placementChangeListener: PlacementChangeListener | null = null;
+
   public onCreate(options: SharedBoardRoomOptions = {}): void {
     this.maxClients = SharedBoardRoom.MAX_CLIENTS;
 
@@ -130,8 +145,12 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }, 100);
   }
 
-  public onJoin(client: Client): void {
+  public onJoin(client: Client, options: SharedBoardJoinOptions = {}): void {
     const sessionId = client.sessionId;
+    if (typeof options.gamePlayerId === "string" && options.gamePlayerId.length > 0) {
+      this.gamePlayerIdBySharedSessionId.set(sessionId, options.gamePlayerId);
+    }
+
     const slotIndex = this.findNextActiveSlot();
     const isSpectator = slotIndex < 0;
     const color = isSpectator
@@ -426,6 +445,9 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }
 
     this.sendActionResult(client, "place_unit", true);
+
+    // 配置変更イベントを発行（GameRoom連携用）
+    this.emitPlacementChange(client.sessionId);
   }
 
   private handleReset(client: Client): void {
@@ -505,6 +527,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.state.cursors.delete(playerId);
 
     this.unitIdByPlayer.delete(playerId);
+    this.gamePlayerIdBySharedSessionId.delete(playerId);
 
     for (const cell of this.state.cells.values()) {
       if (cell.ownerId === playerId) {
@@ -610,6 +633,120 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }
 
     return -1;
+  }
+
+  /**
+   * 配置変更リスナーを登録
+   * @param listener コールバック関数
+   */
+  public onPlacementChange(listener: PlacementChangeListener): void {
+    this.placementChangeListener = listener;
+  }
+
+  /**
+   * 配置変更リスナーを解除
+   */
+  public offPlacementChange(): void {
+    this.placementChangeListener = null;
+  }
+
+  /**
+   * GameRoom側の確定配置をSharedBoardに反映
+   * Bridge経由のサーバー間同期で利用する。
+   */
+  public applyPlacementsFromGame(
+    playerId: string,
+    placements: BoardUnitPlacement[],
+  ): { applied: number; skipped: number } {
+    if (!playerId || !Array.isArray(placements)) {
+      return { applied: 0, skipped: placements?.length ?? 0 };
+    }
+
+    const desiredCells = new Map<number, BoardUnitPlacement>();
+
+    for (const placement of placements) {
+      if (!placement || !Number.isInteger(placement.cell)) {
+        continue;
+      }
+
+      try {
+        const sharedCellIndex = combatCellToRaidBoardIndex(placement.cell);
+        desiredCells.set(sharedCellIndex, placement);
+      } catch {
+        continue;
+      }
+    }
+
+    const desiredIndexes = new Set<number>(desiredCells.keys());
+
+    for (const cell of this.state.cells.values()) {
+      if (
+        cell.ownerId === playerId
+        && cell.index !== this.state.dummyBossCell
+        && !desiredIndexes.has(cell.index)
+      ) {
+        cell.unitId = "";
+        cell.ownerId = "";
+        cell.lockedBy = "";
+        cell.lockUntilMs = 0;
+      }
+    }
+
+    let applied = 0;
+    let skipped = 0;
+
+    for (const [cellIndex, placement] of desiredCells.entries()) {
+      const targetCell = this.state.cells.get(String(cellIndex));
+
+      if (!targetCell || targetCell.index === this.state.dummyBossCell) {
+        skipped += 1;
+        continue;
+      }
+
+      if (targetCell.ownerId !== "" && targetCell.ownerId !== playerId) {
+        skipped += 1;
+        continue;
+      }
+
+      const stableUnitId = `${placement.unitType}-${playerId.slice(0, 6)}-${placement.cell}`;
+      targetCell.unitId = stableUnitId;
+      targetCell.ownerId = playerId;
+      targetCell.lockedBy = "";
+      targetCell.lockUntilMs = 0;
+      applied += 1;
+    }
+
+    this.appendEvent(`bridge sync ${playerId.slice(0, 8)} applied=${applied} skipped=${skipped}`);
+
+    return { applied, skipped };
+  }
+
+  /**
+   * 配置変更イベントを発行
+   * @param playerId SharedBoard側プレイヤーID
+   */
+  private emitPlacementChange(playerId: string): void {
+    if (!this.placementChangeListener) {
+      return;
+    }
+
+    // 現在のセル状態を収集（ユニットがあるセルのみ）
+    const cellsWithUnits: SharedBoardCellState[] = [];
+    for (const cell of this.state.cells.values()) {
+      if (cell.unitId && cell.ownerId === playerId) {
+        cellsWithUnits.push(cell);
+      }
+    }
+
+    try {
+      this.placementChangeListener(this.resolveBridgePlayerId(playerId), cellsWithUnits);
+    } catch (error) {
+      console.error("[SharedBoardRoom] Placement change listener error:", error);
+    }
+  }
+
+  private resolveBridgePlayerId(sharedPlayerId: string): string {
+    return this.gamePlayerIdBySharedSessionId.get(sharedPlayerId) ?? sharedPlayerId;
   }
 
   private findNextActiveSlot(): number {

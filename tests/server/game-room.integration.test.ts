@@ -13,8 +13,10 @@ import { GameRoom } from "../../src/server/rooms/game-room";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
+  type AdminResponseMessage,
   type RoundStateMessage,
 } from "../../src/shared/room-messages";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -1296,5 +1298,112 @@ describe("GameRoom integration", () => {
 
     await waitForCondition(() => serverRoom.state.players.size === 2, 1_000);
     expect(serverRoom.state.phase).toBe("Waiting");
+  });
+
+  test("shared board shadow無効時のadmin_queryはnot availableを返す", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const client = await testServer.connectTo(serverRoom);
+
+    const responsePromise = client.waitForMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE);
+
+    client.send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
+      kind: "metrics",
+      correlationId: "corr_admin_disabled",
+    });
+
+    const response = (await responsePromise) as AdminResponseMessage;
+
+    expect(response.ok).toBe(false);
+    expect(response.kind).toBe("metrics");
+    expect(response.correlationId).toBe("corr_admin_disabled");
+    expect(response.error).toContain("SharedBoardBridge is not available");
+  });
+
+  test("shared board shadow有効時のadmin_queryはdashboard/alerts/logsを返す", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.SHARED_BOARD_SHADOW_ONLY, async () => {
+      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const targetClient = clients[0];
+
+      const dashboardPromise = targetClient.waitForMessage(
+        SERVER_MESSAGE_TYPES.ADMIN_RESPONSE,
+      );
+      targetClient.send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
+        kind: "dashboard",
+        correlationId: "corr_admin_dashboard",
+        windowMs: 60_000,
+      });
+      const dashboardResponse = (await dashboardPromise) as AdminResponseMessage;
+
+      expect(dashboardResponse.ok).toBe(true);
+      expect(dashboardResponse.kind).toBe("dashboard");
+      expect(dashboardResponse.correlationId).toBe("corr_admin_dashboard");
+      expect(dashboardResponse.data).toEqual(
+        expect.objectContaining({
+          windowMs: 60_000,
+          windowEventCount: expect.any(Number),
+          successRate: expect.any(Number),
+          failureRate: expect.any(Number),
+          conflictRate: expect.any(Number),
+          avgLatencyMs: expect.any(Number),
+          p95LatencyMs: expect.any(Number),
+          topErrors: expect.any(Array),
+        }),
+      );
+
+      const alertsPromise = targetClient.waitForMessage(
+        SERVER_MESSAGE_TYPES.ADMIN_RESPONSE,
+      );
+      targetClient.send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
+        kind: "alerts",
+        correlationId: "corr_admin_alerts",
+        thresholds: {
+          windowMs: 60_000,
+          minEventCount: 1,
+          maxFailureRate: 0.5,
+          maxConflictRate: 0.5,
+          maxP95LatencyMs: 500,
+        },
+      });
+      const alertsResponse = (await alertsPromise) as AdminResponseMessage;
+
+      expect(alertsResponse.ok).toBe(true);
+      expect(alertsResponse.kind).toBe("alerts");
+      expect(alertsResponse.correlationId).toBe("corr_admin_alerts");
+      expect(alertsResponse.data).toEqual(
+        expect.objectContaining({
+          hasAlert: expect.any(Boolean),
+          triggeredRules: expect.any(Array),
+          evaluatedAt: expect.any(Number),
+          thresholds: expect.objectContaining({
+            windowMs: 60_000,
+          }),
+          dashboard: expect.objectContaining({
+            windowMs: 60_000,
+          }),
+        }),
+      );
+
+      const logsPromise = targetClient.waitForMessage(
+        SERVER_MESSAGE_TYPES.ADMIN_RESPONSE,
+      );
+      targetClient.send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
+        kind: "logs",
+        correlationId: "corr_admin_logs",
+        limit: 5,
+      });
+      const logsResponse = (await logsPromise) as AdminResponseMessage;
+
+      expect(logsResponse.ok).toBe(true);
+      expect(logsResponse.kind).toBe("logs");
+      expect(logsResponse.correlationId).toBe("corr_admin_logs");
+      expect(Array.isArray(logsResponse.data)).toBe(true);
+    });
   });
 });

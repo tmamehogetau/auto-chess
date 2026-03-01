@@ -3,11 +3,14 @@ import { ItemType } from './types';
 export const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
   PREP_COMMAND: "prep_command",
+  ADMIN_QUERY: "admin_query",
 } as const;
 
 export const SERVER_MESSAGE_TYPES = {
   COMMAND_RESULT: "command_result",
   ROUND_STATE: "round_state",
+  SHADOW_DIFF: "shadow_diff",
+  ADMIN_RESPONSE: "admin_response",
 } as const;
 
 export type MatchPhase =
@@ -24,6 +27,7 @@ export interface ReadyMessage {
 
 export interface PrepCommandMessage {
   cmdSeq: number;
+  correlationId?: string;
   boardUnitCount?: number;
   boardPlacements?: BoardUnitPlacement[];
   xpPurchaseCount?: number;
@@ -137,4 +141,53 @@ export interface PlayerMatchStatus {
     count: number;
     tier: number;
   }[];
+}
+
+/**
+ * shadow_diffメッセージペイロード
+ * SharedBoardとの差分検知結果を配信
+ */
+export interface ShadowDiffMessage {
+  type: "shadow_diff";
+  seq: number;
+  roomId: string;
+  sourceVersion: number;
+  ts: number;
+  status: "ok" | "mismatch" | "degraded" | "unavailable";
+  mismatchCount: number;
+  mismatchedCells: Array<{
+    combatCell: number;
+    gameUnitType: string | null;
+    sharedUnitType: string | null;
+  }>;
+}
+
+export type AdminQueryKind =
+  | "metrics"
+  | "dashboard"
+  | "alerts"
+  | "top_errors"
+  | "logs";
+
+export interface AdminQueryMessage {
+  kind: AdminQueryKind;
+  correlationId?: string;
+  windowMs?: number;
+  limit?: number;
+  thresholds?: {
+    windowMs?: number;
+    minEventCount?: number;
+    maxFailureRate?: number;
+    maxConflictRate?: number;
+    maxP95LatencyMs?: number;
+  };
+}
+
+export interface AdminResponseMessage {
+  ok: boolean;
+  kind: AdminQueryKind;
+  timestamp: number;
+  correlationId?: string;
+  data?: unknown;
+  error?: string;
 }

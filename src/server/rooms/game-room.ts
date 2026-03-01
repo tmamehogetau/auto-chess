@@ -2,6 +2,7 @@ import { CloseCode, type Client, Room } from "colyseus";
 
 import { MatchRoomController } from "../match-room-controller";
 import { FeatureFlagService } from "../feature-flag-service";
+import { SharedBoardBridge } from "../shared-board-bridge";
 import {
   MatchRoomState,
   PlayerPresenceState,
@@ -13,6 +14,8 @@ import {
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
+  type AdminQueryMessage,
+  type AdminResponseMessage,
   type PrepCommandMessage,
   type ReadyMessage,
   type RoundStateMessage,
@@ -51,6 +54,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private controller: MatchRoomController | null = null;
 
+  private sharedBoardBridge: SharedBoardBridge | null = null;
+
+  private enableSharedBoardShadow = false;
+
   public onCreate(options: GameRoomOptions = {}): void {
     this.maxClients = GameRoom.MAX_PLAYERS;
     this.state = new MatchRoomState();
@@ -75,6 +82,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableHeroSystem = flags.enableHeroSystem;
     this.state.featureFlagsEnableSharedPool = flags.enableSharedPool;
     this.state.featureFlagsEnablePhaseExpansion = flags.enablePhaseExpansion;
+    this.state.featureFlagsEnableSharedBoardShadow = flags.enableSharedBoardShadow;
+    this.enableSharedBoardShadow = flags.enableSharedBoardShadow;
 
     this.onMessage<ReadyMessage>(CLIENT_MESSAGE_TYPES.READY, async (client, message) => {
       await this.handleReady(client, message);
@@ -84,6 +93,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       (client, message) => {
         this.handlePrepCommand(client, message);
+      },
+    );
+
+    this.onMessage<AdminQueryMessage>(
+      CLIENT_MESSAGE_TYPES.ADMIN_QUERY,
+      (client, message) => {
+        this.handleAdminQuery(client, message);
       },
     );
 
@@ -115,6 +131,15 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         setId: this.setId,
       },
     );
+
+    // SharedBoardBridge初期化（Feature Flag制御・非同期・fail-open）
+    if (this.enableSharedBoardShadow && this.controller) {
+      this.sharedBoardBridge = new SharedBoardBridge(
+        this,
+        this.controller,
+        true,
+      );
+    }
 
     this.clock.setTimeout(() => {
       void this.tryStartMatch(Date.now());
@@ -235,6 +260,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
+    const correlationId = this.resolveCorrelationId(
+      client.sessionId,
+      message.cmdSeq,
+      message.correlationId,
+    );
+
     let commandPayload:
       | {
           boardUnitCount?: number;
@@ -302,12 +333,45 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       }
     }
 
+    this.sharedBoardBridge?.logGameCommandEvent({
+      playerId: client.sessionId,
+      eventType: "apply_request",
+      success: true,
+      latencyMs: 0,
+      correlationId,
+    });
+
+    const submitStartedAtMs = Date.now();
+
     const result = this.controller.submitPrepCommand(
       client.sessionId,
       message.cmdSeq,
-      Date.now(),
+      submitStartedAtMs,
       commandPayload,
     );
+
+    const submitLatencyMs = Date.now() - submitStartedAtMs;
+
+    if (result.accepted) {
+      this.sharedBoardBridge?.logGameCommandEvent({
+        playerId: client.sessionId,
+        eventType: "apply_result",
+        success: true,
+        latencyMs: submitLatencyMs,
+        correlationId,
+      });
+    } else {
+      this.sharedBoardBridge?.logGameCommandEvent({
+        playerId: client.sessionId,
+        eventType: "error",
+        success: false,
+        latencyMs: submitLatencyMs,
+        correlationId,
+        errorCode: result.code,
+        errorMessage: result.code,
+      });
+    }
+
     const player = this.state.players.get(client.sessionId);
 
     if (result.accepted && player) {
@@ -400,9 +464,119 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         nextSynergy.tier = synergy.tier;
         player.activeSynergies.push(nextSynergy);
       }
+
+      const latestBoardPlacements = this.controller.getBoardPlacementsForPlayer(client.sessionId);
+      void this.sharedBoardBridge?.sendPlacementToSharedBoard(client.sessionId, latestBoardPlacements);
     }
 
     client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);
+  }
+
+  private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
+    const correlationId =
+      typeof message?.correlationId === "string" && message.correlationId.trim().length > 0
+        ? message.correlationId.trim()
+        : undefined;
+    const correlationMeta = correlationId ? { correlationId } : {};
+
+    if (!this.sharedBoardBridge) {
+      this.sendAdminResponse(client, {
+        ok: false,
+        kind: message?.kind ?? "metrics",
+        timestamp: Date.now(),
+        ...correlationMeta,
+        error: "SharedBoardBridge is not available",
+      });
+      return;
+    }
+
+    switch (message.kind) {
+      case "metrics": {
+        this.sendAdminResponse(client, {
+          ok: true,
+          kind: "metrics",
+          timestamp: Date.now(),
+          ...correlationMeta,
+          data: this.sharedBoardBridge.getMetrics(),
+        });
+        return;
+      }
+
+      case "dashboard": {
+        this.sendAdminResponse(client, {
+          ok: true,
+          kind: "dashboard",
+          timestamp: Date.now(),
+          ...correlationMeta,
+          data: this.sharedBoardBridge.getDashboardMetrics(message.windowMs),
+        });
+        return;
+      }
+
+      case "alerts": {
+        this.sendAdminResponse(client, {
+          ok: true,
+          kind: "alerts",
+          timestamp: Date.now(),
+          ...correlationMeta,
+          data: this.sharedBoardBridge.getAlertStatus(message.thresholds),
+        });
+        return;
+      }
+
+      case "top_errors": {
+        this.sendAdminResponse(client, {
+          ok: true,
+          kind: "top_errors",
+          timestamp: Date.now(),
+          ...correlationMeta,
+          data: this.sharedBoardBridge.getTopErrors(message.limit, message.windowMs),
+        });
+        return;
+      }
+
+      case "logs": {
+        this.sendAdminResponse(client, {
+          ok: true,
+          kind: "logs",
+          timestamp: Date.now(),
+          ...correlationMeta,
+          data: this.sharedBoardBridge.getRecentLogs(message.limit),
+        });
+        return;
+      }
+
+      default: {
+        this.sendAdminResponse(client, {
+          ok: false,
+          kind: "metrics",
+          timestamp: Date.now(),
+          ...correlationMeta,
+          error: `Unknown admin query kind: ${String((message as { kind?: unknown }).kind)}`,
+        });
+      }
+    }
+  }
+
+  private sendAdminResponse(client: Client, message: AdminResponseMessage): void {
+    client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, message);
+  }
+
+  private resolveCorrelationId(
+    playerId: string,
+    cmdSeq: number,
+    incomingCorrelationId?: string,
+  ): string {
+    if (typeof incomingCorrelationId === "string") {
+      const normalized = incomingCorrelationId.trim();
+      if (normalized.length > 0) {
+        return normalized.slice(0, 128);
+      }
+    }
+
+    const nowMs = Date.now();
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return `corr_${playerId}_${cmdSeq}_${nowMs}_${suffix}`;
   }
 
   private async tryStartMatch(nowMs: number): Promise<void> {
@@ -436,7 +610,20 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.syncStateFromController();
   }
 
-  private syncStateFromController(): void {
+  /**
+   * 指定プレイヤーのみをcontrollerから同期（SharedBoardBridgeのバッチ同期用）
+   * @param playerIds 同期対象プレイヤーID一覧
+   */
+  public syncPlayersFromController(playerIds: string[]): void {
+    if (!this.controller || playerIds.length === 0) {
+      return;
+    }
+
+    const uniquePlayerIds = [...new Set(playerIds)];
+    this.syncStateFromController(uniquePlayerIds);
+  }
+
+  private syncStateFromController(playerIds?: ReadonlyArray<string>): void {
     if (!this.controller) {
       return;
     }
@@ -456,102 +643,120 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     this.syncRanking(this.controller.rankingTopToBottom);
 
-    for (const [playerId, playerState] of this.state.players.entries()) {
-      const status = this.controller.getPlayerStatus(playerId);
-      playerState.hp = status.hp;
-      playerState.eliminated = status.eliminated;
-      playerState.boardUnitCount = status.boardUnitCount;
-      playerState.gold = status.gold;
-      playerState.xp = status.xp;
-      playerState.level = status.level;
-      playerState.shopLocked = status.shopLocked;
-      playerState.ownedVanguard = status.ownedUnits.vanguard;
-      playerState.ownedRanger = status.ownedUnits.ranger;
-      playerState.ownedMage = status.ownedUnits.mage;
-      playerState.ownedAssassin = status.ownedUnits.assassin;
+    const targetPlayerIds =
+      playerIds && playerIds.length > 0
+        ? playerIds
+        : Array.from(this.state.players.keys());
 
-      while (playerState.shopOffers.length > 0) {
-        playerState.shopOffers.pop();
-      }
-
-      while (playerState.benchUnits.length > 0) {
-        playerState.benchUnits.pop();
-      }
-
-      while (playerState.boardUnits.length > 0) {
-        playerState.boardUnits.pop();
-      }
-
-      for (const offer of status.shopOffers) {
-        const nextOffer = new ShopOfferState();
-
-        nextOffer.unitType = offer.unitType;
-        nextOffer.cost = offer.cost;
-        nextOffer.rarity = offer.rarity;
-        playerState.shopOffers.push(nextOffer);
-      }
-
-      for (const benchUnit of status.benchUnits) {
-        playerState.benchUnits.push(benchUnit);
-      }
-
-      for (const boardUnit of status.boardUnits) {
-        playerState.boardUnits.push(boardUnit);
-      }
-
-      // Sync item shop offers
-      while (playerState.itemShopOffers.length > 0) {
-        playerState.itemShopOffers.pop();
-      }
-      for (const offer of status.itemShopOffers || []) {
-        const nextOffer = new ShopItemOfferState();
-        nextOffer.itemType = offer.itemType;
-        nextOffer.cost = offer.cost;
-        playerState.itemShopOffers.push(nextOffer);
-      }
-
-      // Sync item inventory
-      while (playerState.itemInventory.length > 0) {
-        playerState.itemInventory.pop();
-      }
-      for (const item of status.itemInventory || []) {
-        playerState.itemInventory.push(item);
-      }
-
-      // Sync last battle result
-      if (status.lastBattleResult) {
-        playerState.lastBattleResult.opponentId = status.lastBattleResult.opponentId;
-        playerState.lastBattleResult.won = status.lastBattleResult.won;
-        playerState.lastBattleResult.damageDealt = status.lastBattleResult.damageDealt;
-        playerState.lastBattleResult.damageTaken = status.lastBattleResult.damageTaken;
-        playerState.lastBattleResult.survivors = status.lastBattleResult.survivors;
-        playerState.lastBattleResult.opponentSurvivors = status.lastBattleResult.opponentSurvivors;
-      } else {
-        playerState.lastBattleResult.opponentId = "";
-        playerState.lastBattleResult.won = false;
-        playerState.lastBattleResult.damageDealt = 0;
-        playerState.lastBattleResult.damageTaken = 0;
-        playerState.lastBattleResult.survivors = 0;
-        playerState.lastBattleResult.opponentSurvivors = 0;
-      }
-
-      // Sync active synergies
-      while (playerState.activeSynergies.length > 0) {
-        playerState.activeSynergies.pop();
-      }
-      for (const synergy of status.activeSynergies || []) {
-        const nextSynergy = new SynergySchema();
-        nextSynergy.unitType = synergy.unitType;
-        nextSynergy.count = synergy.count;
-        nextSynergy.tier = synergy.tier;
-        playerState.activeSynergies.push(nextSynergy);
-      }
+    for (const playerId of targetPlayerIds) {
+      this.syncSinglePlayerStateFromController(playerId);
     }
 
     this.broadcast(
       SERVER_MESSAGE_TYPES.ROUND_STATE,
       this.createRoundStateMessage(),
     );
+  }
+
+  private syncSinglePlayerStateFromController(playerId: string): void {
+    if (!this.controller) {
+      return;
+    }
+
+    const playerState = this.state.players.get(playerId);
+    if (!playerState) {
+      return;
+    }
+
+    const status = this.controller.getPlayerStatus(playerId);
+    playerState.hp = status.hp;
+    playerState.eliminated = status.eliminated;
+    playerState.boardUnitCount = status.boardUnitCount;
+    playerState.gold = status.gold;
+    playerState.xp = status.xp;
+    playerState.level = status.level;
+    playerState.shopLocked = status.shopLocked;
+    playerState.ownedVanguard = status.ownedUnits.vanguard;
+    playerState.ownedRanger = status.ownedUnits.ranger;
+    playerState.ownedMage = status.ownedUnits.mage;
+    playerState.ownedAssassin = status.ownedUnits.assassin;
+
+    while (playerState.shopOffers.length > 0) {
+      playerState.shopOffers.pop();
+    }
+
+    while (playerState.benchUnits.length > 0) {
+      playerState.benchUnits.pop();
+    }
+
+    while (playerState.boardUnits.length > 0) {
+      playerState.boardUnits.pop();
+    }
+
+    for (const offer of status.shopOffers) {
+      const nextOffer = new ShopOfferState();
+
+      nextOffer.unitType = offer.unitType;
+      nextOffer.cost = offer.cost;
+      nextOffer.rarity = offer.rarity;
+      playerState.shopOffers.push(nextOffer);
+    }
+
+    for (const benchUnit of status.benchUnits) {
+      playerState.benchUnits.push(benchUnit);
+    }
+
+    for (const boardUnit of status.boardUnits) {
+      playerState.boardUnits.push(boardUnit);
+    }
+
+    // Sync item shop offers
+    while (playerState.itemShopOffers.length > 0) {
+      playerState.itemShopOffers.pop();
+    }
+    for (const offer of status.itemShopOffers || []) {
+      const nextOffer = new ShopItemOfferState();
+      nextOffer.itemType = offer.itemType;
+      nextOffer.cost = offer.cost;
+      playerState.itemShopOffers.push(nextOffer);
+    }
+
+    // Sync item inventory
+    while (playerState.itemInventory.length > 0) {
+      playerState.itemInventory.pop();
+    }
+    for (const item of status.itemInventory || []) {
+      playerState.itemInventory.push(item);
+    }
+
+    // Sync last battle result
+    if (status.lastBattleResult) {
+      playerState.lastBattleResult.opponentId = status.lastBattleResult.opponentId;
+      playerState.lastBattleResult.won = status.lastBattleResult.won;
+      playerState.lastBattleResult.damageDealt = status.lastBattleResult.damageDealt;
+      playerState.lastBattleResult.damageTaken = status.lastBattleResult.damageTaken;
+      playerState.lastBattleResult.survivors = status.lastBattleResult.survivors;
+      playerState.lastBattleResult.opponentSurvivors = status.lastBattleResult.opponentSurvivors;
+    } else {
+      playerState.lastBattleResult.opponentId = "";
+      playerState.lastBattleResult.won = false;
+      playerState.lastBattleResult.damageDealt = 0;
+      playerState.lastBattleResult.damageTaken = 0;
+      playerState.lastBattleResult.survivors = 0;
+      playerState.lastBattleResult.opponentSurvivors = 0;
+    }
+
+    // Sync active synergies
+    while (playerState.activeSynergies.length > 0) {
+      playerState.activeSynergies.pop();
+    }
+    for (const synergy of status.activeSynergies || []) {
+      const nextSynergy = new SynergySchema();
+      nextSynergy.unitType = synergy.unitType;
+      nextSynergy.count = synergy.count;
+      nextSynergy.tier = synergy.tier;
+      playerState.activeSynergies.push(nextSynergy);
+    }
   }
 
   private syncRanking(nextRanking: string[]): void {
@@ -577,5 +782,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       phaseResult: phaseProgress?.result ?? "pending",
       phaseCompletionRate: phaseProgress?.completionRate ?? 0,
     };
+  }
+
+  public onDispose(): void {
+    // SharedBoardBridgeの破棄
+    if (this.sharedBoardBridge) {
+      this.sharedBoardBridge.dispose();
+      this.sharedBoardBridge = null;
+    }
   }
 }

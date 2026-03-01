@@ -4,6 +4,9 @@ export interface FeatureFlags {
   enablePhaseExpansion: boolean;
   enableEmblemCells: boolean;
   enableSpellCard: boolean;
+  enableRumorInfluence: boolean;
+  enableBossExclusiveShop: boolean;
+  enableSharedBoardShadow: boolean;
 }
 
 export const DEFAULT_FLAGS: FeatureFlags = {
@@ -12,4 +15,7 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   enablePhaseExpansion: false,
   enableEmblemCells: false,
   enableSpellCard: false,
+  enableRumorInfluence: false,
+  enableBossExclusiveShop: false,
+  enableSharedBoardShadow: false,
 };

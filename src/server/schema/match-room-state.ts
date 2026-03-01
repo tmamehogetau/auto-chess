@@ -158,6 +158,8 @@ export class MatchRoomState extends Schema {
 
   declare public featureFlagsEnableSpellCard: boolean;
 
+  declare public featureFlagsEnableSharedBoardShadow: boolean;
+
   declare public declaredSpellId: string;
 
   public constructor() {
@@ -173,6 +175,7 @@ export class MatchRoomState extends Schema {
     this.featureFlagsEnableSharedPool = false;
     this.featureFlagsEnablePhaseExpansion = false;
     this.featureFlagsEnableSpellCard = false;
+    this.featureFlagsEnableSharedBoardShadow = false;
     this.declaredSpellId = "";
   }
 }
@@ -243,5 +246,6 @@ defineTypes(MatchRoomState, {
   featureFlagsEnableSharedPool: "boolean",
   featureFlagsEnablePhaseExpansion: "boolean",
   featureFlagsEnableSpellCard: "boolean",
+  featureFlagsEnableSharedBoardShadow: "boolean",
   declaredSpellId: "string",
 });

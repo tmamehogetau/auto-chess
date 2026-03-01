@@ -39,6 +39,12 @@ import { HEROES, type Hero } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
 import { SPELL_CARDS, getAvailableSpellsForRound, type SpellCard } from "../data/spell-cards";
+import { getRumorUnitForRound, type RumorUnit } from "../data/rumor-units";
+import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansionUnit } from "../data/scarlet-mansion-units";
+import {
+  COMBAT_CELL_MAX_INDEX,
+  COMBAT_CELL_MIN_INDEX,
+} from "../shared/board-geometry";
 
 interface MatchRoomControllerOptions {
   readyAutoStartMs: number;
@@ -70,9 +76,10 @@ const SHOP_REFRESH_COST = 2;
 const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
+const BOSS_SHOP_SIZE = 2;
 const MAX_BENCH_SIZE = 9;
-const MIN_BOARD_CELL_INDEX = 0;
-const MAX_BOARD_CELL_INDEX = 7;
+const MIN_BOARD_CELL_INDEX = COMBAT_CELL_MIN_INDEX;
+const MAX_BOARD_CELL_INDEX = COMBAT_CELL_MAX_INDEX;
 const MAX_LEVEL = 6;
 
 const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
@@ -239,7 +246,15 @@ export class MatchRoomController {
 
   private readonly enableSpellCard: boolean;
 
+  private readonly enableRumorInfluence: boolean;
+
+  private readonly enableBossExclusiveShop: boolean;
+
   private declaredSpell: SpellCard | null;
+
+  private readonly rumorInfluenceEligibleByPlayer: Map<string, boolean>;
+
+  private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
 
   public constructor(
     playerIds: string[],
@@ -320,6 +335,19 @@ export class MatchRoomController {
     // Feature Flagに基づいてスペルカードを初期化
     this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
     this.declaredSpell = null;
+
+    // Feature Flagに基づいて噂勢力を初期化
+    this.enableRumorInfluence = FeatureFlagService.getInstance().isFeatureEnabled('enableRumorInfluence');
+    this.rumorInfluenceEligibleByPlayer = new Map<string, boolean>();
+
+    // 噂勢力 eligibility を全プレイヤーで初期化
+    for (const playerId of playerIds) {
+      this.rumorInfluenceEligibleByPlayer.set(playerId, false);
+    }
+
+    // Feature Flagに基づいてボス専用ショップを初期化
+    this.enableBossExclusiveShop = FeatureFlagService.getInstance().isFeatureEnabled('enableBossExclusiveShop');
+    this.bossShopOffersByPlayer = new Map<string, ShopOffer[]>();
   }
 
   public get phase(): Phase | "Waiting" {
@@ -352,6 +380,67 @@ export class MatchRoomController {
         return null;
       default:
         return null;
+    }
+  }
+
+  /**
+   * ゲーム状態を取得（SharedBoardBridge用）
+   * @returns ゲーム状態（未開始時はnull）
+   */
+  public getGameState(): { phase: string; roundIndex: number } | null {
+    if (!this.gameLoopState) {
+      return null;
+    }
+    return {
+      phase: this.gameLoopState.phase,
+      roundIndex: this.gameLoopState.roundIndex,
+    };
+  }
+
+  /**
+   * SharedBoardBridgeからの配置適用（双方向同期）
+   * @param playerId プレイヤーID
+   * @param placements 配置データ
+   * @returns 適用結果
+   */
+  public applyPrepPlacementForPlayer(
+    playerId: string,
+    placements: BoardUnitPlacement[],
+  ): { success: boolean; code: string; error?: string } {
+    try {
+      // プレイヤー存在確認
+      this.ensureKnownPlayer(playerId);
+
+      // Prepフェーズチェック
+      if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
+        return { success: false, code: "PHASE_MISMATCH", error: "Not in Prep phase" };
+      }
+
+      // 配置の正規化とバリデーション
+      const normalizedPlacements = normalizeBoardPlacements(placements);
+      if (!normalizedPlacements) {
+        return { success: false, code: "INVALID_PAYLOAD", error: "Invalid placements" };
+      }
+
+      // 配置上限チェック（8枠）
+      if (normalizedPlacements.length > 8) {
+        return { success: false, code: "INVALID_PAYLOAD", error: "Too many units (max 8)" };
+      }
+
+      // 配置を適用
+      this.boardPlacementsByPlayer.set(playerId, normalizedPlacements);
+      this.boardUnitCountByPlayer.set(playerId, normalizedPlacements.length);
+
+      // 副作用（シナジー計算等）はgetPlayerStatus()で自動的に行われる
+
+      return { success: true, code: "SUCCESS" };
+    } catch (error) {
+      console.error(`[MatchRoomController] applyPrepPlacementForPlayer failed for ${playerId}:`, error);
+      return {
+        success: false,
+        code: "ERROR",
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
@@ -425,6 +514,12 @@ export class MatchRoomController {
     }
 
     this.gameLoopState = new GameLoopState(activePlayerIds);
+
+    // ボスプレイヤーをランダムに設定（ボス専用ショップ用）
+    if (this.enableBossExclusiveShop) {
+      this.gameLoopState.setRandomBoss();
+    }
+
     this.initializeShopsForPrep();
     this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
     this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
@@ -461,6 +556,66 @@ export class MatchRoomController {
   public getPlayerHp(playerId: string): number {
     const state = this.ensureStarted();
     return state.getPlayerHp(playerId);
+  }
+
+  public getShopOffersForPlayer(playerId: string): ShopOffer[] {
+    this.ensureKnownPlayer(playerId);
+    return [...(this.shopOffersByPlayer.get(playerId) ?? [])];
+  }
+
+  /**
+   * ボス専用ショップのオファーを取得
+   * @param playerId プレイヤーID
+   * @returns ボスショップオファー、ボスでない場合は空配列
+   */
+  public getBossShopOffersForPlayer(playerId: string): ShopOffer[] {
+    this.ensureKnownPlayer(playerId);
+    if (!this.enableBossExclusiveShop) {
+      return [];
+    }
+    const state = this.ensureStarted();
+    if (!state.isBoss(playerId)) {
+      return [];
+    }
+    return [...(this.bossShopOffersByPlayer.get(playerId) ?? [])];
+  }
+
+  /**
+   * 指定プレイヤーがボスかどうか
+   * @param playerId プレイヤーID
+   * @returns ボスの場合true
+   */
+  public isBossPlayer(playerId: string): boolean {
+    this.ensureKnownPlayer(playerId);
+    const state = this.ensureStarted();
+    return state.isBoss(playerId);
+  }
+
+  /**
+   * ボスプレイヤーIDを取得
+   * @returns ボスプレイヤーID、未設定の場合はnull
+   */
+  public getBossPlayerId(): string | null {
+    const state = this.ensureStarted();
+    return state.bossPlayerId;
+  }
+
+  /**
+   * 全プレイヤーIDを取得
+   * @returns プレイヤーID配列
+   */
+  public getPlayerIds(): string[] {
+    return [...this.playerIds];
+  }
+
+  /**
+   * 指定プレイヤーの盤面配置を取得
+   * @param playerId プレイヤーID
+   * @returns 盤面配置配列
+   */
+  public getBoardPlacementsForPlayer(playerId: string): BoardUnitPlacement[] {
+    this.ensureKnownPlayer(playerId);
+    return [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
   }
 
   public getPlayerStatus(playerId: string): {
@@ -1232,6 +1387,19 @@ export class MatchRoomController {
         const itemOffers = this.buildItemShopOffers();
         this.itemShopOffersByPlayer.set(playerId, itemOffers);
       }
+
+      // 噂勢力: ショップ初期化時にeligibleフラグをリセット
+      if (this.enableRumorInfluence) {
+        this.rumorInfluenceEligibleByPlayer.set(playerId, false);
+      }
+
+      // ボス専用ショップ: ボスプレイヤーに初期化
+      if (this.enableBossExclusiveShop && state.isBoss(playerId)) {
+        this.bossShopOffersByPlayer.set(
+          playerId,
+          this.buildBossShopOffers(),
+        );
+      }
     }
   }
 
@@ -1251,6 +1419,19 @@ export class MatchRoomController {
         playerId,
         this.buildShopOffers(playerId, state.roundIndex, 0, 0),
       );
+
+      // 噂勢力: ショップ生成後、eligibleフラグをリセット
+      if (this.enableRumorInfluence) {
+        this.rumorInfluenceEligibleByPlayer.set(playerId, false);
+      }
+
+      // ボス専用ショップ: ボスプレイヤーを更新
+      if (this.enableBossExclusiveShop && state.isBoss(playerId)) {
+        this.bossShopOffersByPlayer.set(
+          playerId,
+          this.buildBossShopOffers(),
+        );
+      }
     }
 
     // Clear battle results at the start of each new Prep phase
@@ -1533,8 +1714,23 @@ export class MatchRoomController {
     purchaseCount: number,
   ): ShopOffer[] {
     const offers: ShopOffer[] = [];
+    const isEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
-    for (let slotIndex = 0; slotIndex < SHOP_SIZE; slotIndex += 1) {
+    // 噂勢力: eligibleプレイヤーの最初のスロットに確定ユニットを設定
+    if (this.enableRumorInfluence && isEligible) {
+      const rumorUnit = getRumorUnitForRound(roundIndex);
+      if (rumorUnit) {
+        offers.push({
+          unitType: rumorUnit.unitType,
+          rarity: rumorUnit.rarity,
+          cost: rumorUnit.rarity,
+        });
+      }
+    }
+
+    // 残りのスロットを通常生成
+    const remainingSlots = SHOP_SIZE - offers.length;
+    for (let slotIndex = 0; slotIndex < remainingSlots; slotIndex += 1) {
       offers.push(
         this.buildSingleShopOffer(
           playerId,
@@ -1543,6 +1739,25 @@ export class MatchRoomController {
           purchaseCount + slotIndex,
         ),
       );
+    }
+
+    return offers;
+  }
+
+  /**
+   * ボス専用ショップのオファーを生成
+   * 紅魔館ユニットのみが出現（常時2枠）
+   */
+  private buildBossShopOffers(): ShopOffer[] {
+    const offers: ShopOffer[] = [];
+
+    for (let slotIndex = 0; slotIndex < BOSS_SHOP_SIZE; slotIndex += 1) {
+      const unit = getRandomScarletMansionUnit();
+      offers.push({
+        unitType: unit.unitType,
+        rarity: unit.cost as UnitRarity,
+        cost: unit.cost,
+      });
     }
 
     return offers;
@@ -1811,6 +2026,17 @@ export class MatchRoomController {
     this.phaseDamageDealt = totalDamage;
     this.phaseResult = totalDamage >= targetHp ? "success" : "failed";
     this.phaseCompletionRate = targetHp > 0 ? totalDamage / targetHp : 0;
+
+    // 噂勢力: フェーズ成功時、全レイドプレイヤーを次ラウンド eligible に設定
+    if (this.enableRumorInfluence && this.phaseResult === "success") {
+      const bossPlayerId = state.bossPlayerId;
+      for (const playerId of state.alivePlayerIds) {
+        // ボス以外（レイド側）全員が対象
+        if (playerId !== bossPlayerId) {
+          this.rumorInfluenceEligibleByPlayer.set(playerId, true);
+        }
+      }
+    }
   }
 
   private resetPhaseProgressForRound(roundIndex: number): void {

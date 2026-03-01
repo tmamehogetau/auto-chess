@@ -7,10 +7,13 @@ import {
   type UnitSkillRule,
 } from "./unit-effect-definitions";
 import { getStarCombatMultiplier } from "../star-level-config";
+import {
+  COMBAT_CELL_COUNT,
+  COMBAT_CELL_MAX_INDEX,
+  COMBAT_CELL_MIN_INDEX,
+} from "../../shared/board-geometry";
 
-const MAX_BOARD_UNITS = 8;
-const MIN_CELL_INDEX = 0;
-const MAX_CELL_INDEX = 7;
+const MAX_BOARD_UNITS = COMBAT_CELL_COUNT;
 
 interface UnitEffectOptions {
   setId?: UnitEffectSetId;
@@ -33,8 +36,8 @@ export function normalizeBoardPlacements(
 
     if (
       !Number.isInteger(placement.cell) ||
-      placement.cell < MIN_CELL_INDEX ||
-      placement.cell > MAX_CELL_INDEX
+      placement.cell < COMBAT_CELL_MIN_INDEX ||
+      placement.cell > COMBAT_CELL_MAX_INDEX
     ) {
       return null;
     }

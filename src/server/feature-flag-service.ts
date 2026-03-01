@@ -23,6 +23,9 @@ class FeatureFlagService {
       enablePhaseExpansion: this.parseEnvBoolean("FEATURE_ENABLE_PHASE_EXPANSION"),
       enableEmblemCells: this.parseEnvBoolean("FEATURE_ENABLE_EMBLEM_CELLS"),
       enableSpellCard: this.parseEnvBoolean("FEATURE_ENABLE_SPELL_CARD"),
+      enableRumorInfluence: this.parseEnvBoolean("FEATURE_ENABLE_RUMOR_INFLUENCE"),
+      enableBossExclusiveShop: this.parseEnvBoolean("FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP"),
+      enableSharedBoardShadow: this.parseEnvBoolean("FEATURE_ENABLE_SHARED_BOARD_SHADOW"),
     };
   }
 

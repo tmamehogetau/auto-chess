@@ -36,6 +36,15 @@ export async function withFlags(
     if (flags.enableSpellCard !== undefined) {
       process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
     }
+    if (flags.enableRumorInfluence !== undefined) {
+      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = String(flags.enableRumorInfluence);
+    }
+    if (flags.enableBossExclusiveShop !== undefined) {
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = String(flags.enableBossExclusiveShop);
+    }
+    if (flags.enableSharedBoardShadow !== undefined) {
+      process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = String(flags.enableSharedBoardShadow);
+    }
 
     // Reset singleton instance to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
@@ -76,6 +85,9 @@ export async function createRoomWithFlags(
     );
     process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
     process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
+    process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = String(flags.enableRumorInfluence);
+    process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = String(flags.enableBossExclusiveShop);
+    process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = String(flags.enableSharedBoardShadow);
 
     // Reset singleton instance to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
@@ -104,6 +116,9 @@ export const FLAG_CONFIGURATIONS = {
     enablePhaseExpansion: false,
     enableEmblemCells: false,
     enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
   } satisfies FeatureFlags,
 
   /** All feature flags enabled (Phase2 behavior) */
@@ -113,6 +128,9 @@ export const FLAG_CONFIGURATIONS = {
     enablePhaseExpansion: true,
     enableEmblemCells: true,
     enableSpellCard: true,
+    enableRumorInfluence: true,
+    enableBossExclusiveShop: true,
+    enableSharedBoardShadow: true,
   } satisfies FeatureFlags,
 
   /** Only hero system enabled */
@@ -122,6 +140,9 @@ export const FLAG_CONFIGURATIONS = {
     enablePhaseExpansion: false,
     enableEmblemCells: false,
     enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
   } satisfies FeatureFlags,
 
   /** Only shared pool enabled */
@@ -131,6 +152,9 @@ export const FLAG_CONFIGURATIONS = {
     enablePhaseExpansion: false,
     enableEmblemCells: false,
     enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
   } satisfies FeatureFlags,
 
   /** Only phase expansion enabled */
@@ -140,6 +164,9 @@ export const FLAG_CONFIGURATIONS = {
     enablePhaseExpansion: true,
     enableEmblemCells: false,
     enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
   } satisfies FeatureFlags,
 
   /** Only spell card enabled */
@@ -149,5 +176,44 @@ export const FLAG_CONFIGURATIONS = {
     enablePhaseExpansion: false,
     enableEmblemCells: false,
     enableSpellCard: true,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+  } satisfies FeatureFlags,
+
+  /** Only rumor influence enabled */
+  RUMOR_INFLUENCE_ONLY: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: true,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+  } satisfies FeatureFlags,
+
+  /** Only boss exclusive shop enabled */
+  BOSS_EXCLUSIVE_SHOP_ONLY: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: true,
+    enableSharedBoardShadow: false,
+  } satisfies FeatureFlags,
+
+  /** Only shared board shadow enabled */
+  SHARED_BOARD_SHADOW_ONLY: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: true,
   } satisfies FeatureFlags,
 } as const;

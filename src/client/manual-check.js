@@ -6,18 +6,60 @@ import {
   parsePlacementsSpec,
 } from "./manual-check-utils.js";
 
+import {
+  withTimeout,
+  isRoomConnectionOpen,
+  parsePhaseResult,
+  shortPlayerId,
+  readPhase,
+  mapEntries,
+  mapGet,
+  normalizeSetId,
+  buildRejectHint,
+  buildRoundDamageRanking,
+  createCorrelationId,
+  CONNECTION_OPEN_STATE,
+  PHASE_RESULT_LABELS,
+} from "./utils/pure-utils.js";
+
+import {
+  initAdminMonitor,
+  startMonitorPolling,
+  stopMonitorPolling,
+  requestAdminMonitorSnapshot,
+  handleAdminResponse,
+  handleShadowDiff,
+  resetShadowDiffMonitor,
+} from "./admin-monitor.js";
+
+import {
+  initSharedBoardClient,
+  connectSharedBoard,
+  leaveSharedBoardRoom,
+  getSharedBoardRoom,
+  getSharedBoardState,
+  getSelectedSharedUnitId,
+  sendSharedCursorMove,
+  sendSharedDragState,
+  sendSharedPlaceUnit,
+  handleSharedDrop,
+  handleSharedCellClick,
+} from "./shared-board-client.js";
+
 const VALID_SET_IDS = new Set(["set1", "set2"]);
 const DEFAULT_ROOM_NAME = "game";
-const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 
 const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
   PREP_COMMAND: "prep_command",
+  ADMIN_QUERY: "admin_query",
 };
 
 const SERVER_MESSAGE_TYPES = {
   COMMAND_RESULT: "command_result",
   ROUND_STATE: "round_state",
+  SHADOW_DIFF: "shadow_diff",
+  ADMIN_RESPONSE: "admin_response",
 };
 
 // Unit type icons
@@ -95,10 +137,22 @@ const selectionModeIndicator = document.querySelector("[data-selection-mode]");
 const combatLogContainer = document.querySelector("[data-combat-log]");
 const sharedBoardGrid = document.querySelector("[data-shared-board-grid]");
 const sharedCursorList = document.querySelector("[data-shared-cursor-list]");
+const phaseTransitionOverlay = document.querySelector("[data-phase-transition-overlay]");
 const roundSummaryOverlay = document.querySelector("[data-round-summary-overlay]");
 const roundSummaryRound = document.querySelector("[data-round-summary-round]");
 const roundSummaryList = document.querySelector("[data-round-summary-list]");
 const roundSummaryClose = document.querySelector("[data-round-summary-close]");
+const monitorRefreshBtn = document.querySelector("[data-monitor-refresh-btn]");
+const monitorEventsValue = document.querySelector("[data-monitor-events]");
+const monitorFailureValue = document.querySelector("[data-monitor-failure]");
+const monitorConflictValue = document.querySelector("[data-monitor-conflict]");
+const monitorLatencyValue = document.querySelector("[data-monitor-latency]");
+const monitorShadowStatusValue = document.querySelector("[data-monitor-shadow-status]");
+const monitorShadowMismatchValue = document.querySelector("[data-monitor-shadow-mismatch]");
+const monitorAlertValue = document.querySelector("[data-monitor-alert]");
+const monitorTopErrorsValue = document.querySelector("[data-monitor-top-errors]");
+const monitorTraceValue = document.querySelector("[data-monitor-trace]");
+const monitorLogList = document.querySelector("[data-monitor-log]");
 
 // Hero selection elements
 const heroSelectionOverlay = document.querySelector("[data-hero-selection-overlay]");
@@ -114,18 +168,15 @@ const heroAttackDisplay = document.querySelector("[data-hero-attack]");
 
 // Game state
 let activeRoom = null;
-let sharedBoardRoom = null;
 let connecting = false;
 let currentPhase = null;
 let currentGold = 0;
 let currentPlayerState = null;
 let currentGameState = null;
-let currentSharedBoardState = null;
 let sessionId = null;
 let latestPhaseHpProgress = null;
 let lastShownSummaryRound = -1;
 let roundSummaryAutoHideTimeout = null;
-let sharedBoardSpectatorNoticeShown = false;
 let currentSharedPoolInventory = null;
 
 // Hero selection state
@@ -137,8 +188,6 @@ let selectedBenchIndex = null;
 let selectedBoardCell = null;
 let selectedInventoryIndex = null;
 let selectedShopSlot = null;
-let sharedDraggedUnitId = null;
-let selectedSharedUnitId = null;
 
 // Timer state
 let timerInterval = null;
@@ -149,6 +198,7 @@ let pendingAutoPrepTimeout = null;
 const autoFillRooms = [];
 let autoReadyCompleted = false;
 let autoPrepCompleted = false;
+let lastMonitorTraceId = null;
 
 const autoConfig = {
   autoConnect: false,
@@ -161,58 +211,48 @@ const autoConfig = {
 // Command sequence for prep commands
 let nextCmdSeq = 1;
 
-const PHASE_RESULT_LABELS = {
-  pending: "Pending",
-  success: "Success",
-  failed: "Failed",
-};
 
-const CONNECTION_OPEN_STATE = 1;
-
-function withTimeout(promise, timeoutMs, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      promise.finally(() => {
-        clearTimeout(timeoutId);
-      }).catch(() => {
-        // handled by the race reject path
-      });
-    }),
-  ]);
-}
-
-function isRoomConnectionOpen(room) {
-  if (!room) {
-    return false;
-  }
-
-  const connection = room.connection;
-
-  if (!connection) {
-    return false;
-  }
-
-  if (typeof connection.isOpen === "boolean") {
-    return connection.isOpen;
-  }
-
-  if (typeof connection.readyState === "number") {
-    return connection.readyState === CONNECTION_OPEN_STATE;
-  }
-
-  if (connection.ws && typeof connection.ws.readyState === "number") {
-    return connection.ws.readyState === CONNECTION_OPEN_STATE;
-  }
-
-  return true;
-}
 
 initializeDefaults();
+
+// Admin monitor initialization
+initAdminMonitor(
+  {
+    monitorRefreshBtn,
+    monitorEventsValue,
+    monitorFailureValue,
+    monitorConflictValue,
+    monitorLatencyValue,
+    monitorShadowStatusValue,
+    monitorShadowMismatchValue,
+    monitorAlertValue,
+    monitorTopErrorsValue,
+    monitorTraceValue,
+    monitorLogList,
+  },
+  {
+    getActiveRoom: () => activeRoom,
+    addCombatLogEntry,
+    setTraceId: (id) => {
+      lastMonitorTraceId = id;
+    },
+  },
+);
+resetShadowDiffMonitor();
+
+// Shared board client initialization
+initSharedBoardClient(
+  {
+    gridElement: sharedBoardGrid,
+    cursorListElement: sharedCursorList,
+  },
+  {
+    client: null, // Will be set during connect
+    gamePlayerId: "", // Will be set during connect
+    onLog: addCombatLogEntry,
+    showMessage,
+  },
+);
 
 // Hero selection event listeners
 heroConfirmBtn?.addEventListener("click", () => {
@@ -220,7 +260,6 @@ heroConfirmBtn?.addEventListener("click", () => {
 });
 
 syncButtonAvailability();
-renderSharedBoardState(null);
 
 // Event listeners
 connectButton?.addEventListener("click", () => {
@@ -379,8 +418,20 @@ async function connect() {
       handleCommandResult(result);
     });
 
+    room.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, (message) => {
+      handleShadowDiff(message);
+    });
+
+    room.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, (response) => {
+      handleAdminResponse(response);
+    });
+
+    startMonitorPolling();
+    requestAdminMonitorSnapshot();
+
     room.onLeave(() => {
       clearPendingAutoActions();
+      stopMonitorPolling();
       void leaveAutoFillRooms();
       activeRoom = null;
       sessionId = null;
@@ -390,6 +441,7 @@ async function connect() {
       renderPhaseHpProgress(null);
       lastShownSummaryRound = -1;
       hideRoundSummary();
+      resetShadowDiffMonitor();
       gameContainer?.classList.remove("connected");
       showMessage("Disconnected", "error");
       syncButtonAvailability();
@@ -420,6 +472,7 @@ async function leave() {
   const room = activeRoom;
 
   clearPendingAutoActions();
+  stopMonitorPolling();
   await leaveAutoFillRooms();
   leaveSharedBoardRoom();
   activeRoom = null;
@@ -429,6 +482,7 @@ async function leave() {
   renderPhaseHpProgress(null);
   lastShownSummaryRound = -1;
   hideRoundSummary();
+  resetShadowDiffMonitor();
   syncButtonAvailability();
 
   try {
@@ -480,9 +534,13 @@ function sendPrepCommand(payload) {
   }
 
   const cmdSeq = nextCmdSeq;
-  const fullPayload = { cmdSeq, ...payload };
+  const correlationId = createCorrelationId("prep", cmdSeq);
+  const fullPayload = { cmdSeq, correlationId, ...payload };
 
   activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, fullPayload);
+  lastMonitorTraceId = correlationId;
+  setMonitorText(monitorTraceValue, correlationId);
+  addCombatLogEntry(`Trace ${correlationId} sent`, "info");
   nextCmdSeq++;
 }
 
@@ -491,6 +549,13 @@ function handleBuyUnit(shopSlot) {
   if (currentPhase !== "Prep") {
     showMessage("Can only buy during prep phase", "error");
     return;
+  }
+
+  // Purchase animation
+  const shopCard = unitShopGrid?.querySelector(`[data-shop-slot="${shopSlot}"]`);
+  if (shopCard) {
+    shopCard.classList.add("purchased");
+    setTimeout(() => shopCard.classList.remove("purchased"), 500);
   }
 
   sendPrepCommand({ shopBuySlotIndex: shopSlot });
@@ -503,6 +568,13 @@ function handleBuyItem(shopSlot) {
     return;
   }
 
+  // Purchase animation
+  const shopCard = itemShopGrid?.querySelector(`[data-item-shop-slot="${shopSlot}"]`);
+  if (shopCard) {
+    shopCard.classList.add("purchased");
+    setTimeout(() => shopCard.classList.remove("purchased"), 500);
+  }
+
   sendPrepCommand({ itemBuySlotIndex: shopSlot });
   showMessage(`Buying item from slot ${shopSlot}...`, "success");
 }
@@ -512,6 +584,12 @@ function handleRefreshShop() {
     showMessage("Can only refresh during prep phase", "error");
     return;
   }
+
+  // Refresh animation
+  unitShopGrid?.querySelectorAll("[data-shop-slot]").forEach((card) => {
+    card.classList.add("refreshing");
+    setTimeout(() => card.classList.remove("refreshing"), 600);
+  });
 
   sendPrepCommand({ shopRefreshCount: 1 });
   showMessage("Refreshing shop...", "success");
@@ -696,13 +774,38 @@ function updateGameUI(state) {
   if (!player) return;
 
   currentPlayerState = player;
+  const previousGold = currentGold;
+  const previousHp = Number(hpDisplay.textContent) || 0;
   currentGold = Number(player.gold) || 0;
   currentSharedPoolInventory = player.sharedPoolInventory;
 
   // Update status displays
   roundDisplay.textContent = (Number(state.roundIndex) || 0) + 1;
-  goldDisplay.textContent = currentGold;
-  hpDisplay.textContent = Number(player.hp) || 0;
+  
+  // Gold animation
+  if (goldDisplay) {
+    const goldChanged = previousGold !== currentGold;
+    goldDisplay.textContent = currentGold;
+    if (goldChanged) {
+      goldDisplay.classList.add("changed");
+      setTimeout(() => goldDisplay.classList.remove("changed"), 400);
+    }
+  }
+  
+  // HP animation
+  if (hpDisplay) {
+    const newHp = Number(player.hp) || 0;
+    const hpDiff = newHp - previousHp;
+    hpDisplay.textContent = newHp;
+    if (hpDiff < 0) {
+      hpDisplay.classList.add("damage");
+      setTimeout(() => hpDisplay.classList.remove("damage"), 600);
+    } else if (hpDiff > 0) {
+      hpDisplay.classList.add("heal");
+      setTimeout(() => hpDisplay.classList.remove("heal"), 600);
+    }
+  }
+  
   levelDisplay.textContent = Number(player.level) || 1;
   xpDisplay.textContent = Number(player.xp) || 0;
 
@@ -827,6 +930,32 @@ function updatePhaseDisplay(phase) {
     phaseDisplay.classList.add("waiting");
   }
   
+  // Phase change animation
+  if (previousPhase !== phase && phaseTransitionOverlay) {
+    // Remove existing animation class
+    phaseTransitionOverlay.classList.remove("active");
+    
+    // Set phase color
+    const phaseColorMap = {
+      'Prep': '#27ae60',
+      'Battle': '#e74c3c',
+      'Settle': '#f39c12',
+      'Elimination': '#9b59b6',
+      'End': '#3498db',
+    };
+    phaseTransitionOverlay.style.setProperty('--phase-color', phaseColorMap[phase] || '#27ae60');
+    
+    // Trigger reflow and add animation class
+    void phaseTransitionOverlay.offsetWidth;
+    phaseTransitionOverlay.classList.add("active");
+    
+    // Pulse animation on phase indicator
+    phaseDisplay.classList.add("phase-changed");
+    setTimeout(() => {
+      phaseDisplay.classList.remove("phase-changed");
+    }, 600);
+  }
+  
   // Log phase changes
   if (previousPhase !== phase) {
     if (phase === 'Prep') {
@@ -862,14 +991,6 @@ function updatePhaseHpProgressFromMessage(message) {
   };
 
   renderPhaseHpProgress(latestPhaseHpProgress);
-}
-
-function parsePhaseResult(value) {
-  if (value === "success" || value === "failed" || value === "pending") {
-    return value;
-  }
-
-  return "pending";
 }
 
 function renderPhaseHpProgress(progress) {
@@ -1279,23 +1400,11 @@ function handleCommandResult(result) {
   }
 }
 
-function buildRejectHint(code) {
-  switch (code) {
-    case "INSUFFICIENT_GOLD":
-      return "Not enough gold";
-    case "BENCH_FULL":
-      return "Bench is full";
-    case "PHASE_MISMATCH":
-      return "Wrong phase";
-    case "LATE_INPUT":
-      return "Too late";
-    case "DUPLICATE_CMD":
-      return "Command already sent";
-    case "INVALID_PAYLOAD":
-      return "Invalid action";
-    default:
-      return "";
-  }
+function createCorrelationId(scope, sequence = 0) {
+  const nowMs = Date.now();
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const shortSession = sessionId ? shortPlayerId(sessionId) : "anon";
+  return `corr_${scope}_${shortSession}_${sequence}_${nowMs}_${suffix}`;
 }
 
 function showMessage(text, type) {
@@ -1482,456 +1591,6 @@ function shortPlayerId(value) {
   }
 
   return String(value).slice(0, 6);
-}
-
-function getSharedPlayerColor(state, playerId) {
-  const player = mapGet(state?.players, playerId);
-  return player?.color ?? "#999999";
-}
-
-function sendSharedCursorMove(cellIndex) {
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  sharedBoardRoom.send("shared_cursor_move", { cellIndex });
-}
-
-function sendSharedSelectUnit(unitId) {
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  sharedBoardRoom.send("shared_select_unit", { unitId });
-}
-
-function sendSharedDragState(isDragging, unitId) {
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  const payload = unitId
-    ? {
-        isDragging,
-        unitId,
-      }
-    : {
-        isDragging,
-      };
-
-  sharedBoardRoom.send("shared_drag_state", payload);
-}
-
-function sendSharedPlaceUnit(unitId, toCell) {
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  sharedBoardRoom.send("shared_place_unit", { unitId, toCell });
-}
-
-function selectSharedUnit(unitId, shouldNotify = true) {
-  if (!unitId) {
-    return;
-  }
-
-  selectedSharedUnitId = unitId;
-  sendSharedSelectUnit(unitId);
-
-  if (currentSharedBoardState) {
-    renderSharedBoardState(currentSharedBoardState);
-  }
-
-  if (shouldNotify) {
-    showMessage(`Shared unit selected (${shortPlayerId(unitId)})`, "success");
-  }
-}
-
-function isSharedSpectator(state) {
-  if (!sharedBoardRoom) {
-    return true;
-  }
-
-  const ownCursor = mapGet(state?.cursors, sharedBoardRoom.sessionId);
-
-  if (ownCursor && typeof ownCursor.isSpectator === "boolean") {
-    return ownCursor.isSpectator;
-  }
-
-  const ownPlayer = mapGet(state?.players, sharedBoardRoom.sessionId);
-
-  return ownPlayer?.isSpectator === true;
-}
-
-function renderSharedCursorChips(state, cellElement, cellIndex) {
-  const chips = document.createElement("div");
-  chips.className = "shared-cursor-chips";
-
-  for (const [playerId, cursor] of mapEntries(state?.cursors)) {
-    if (!cursor || Number(cursor.cellIndex) !== cellIndex) {
-      continue;
-    }
-
-    const chip = document.createElement("span");
-    chip.className = "shared-cursor-chip";
-    chip.style.backgroundColor = cursor.color || getSharedPlayerColor(state, playerId);
-    chip.title = `${shortPlayerId(playerId)} @ ${cursor.cellIndex}`;
-    chips.appendChild(chip);
-  }
-
-  if (chips.children.length > 0) {
-    cellElement.appendChild(chips);
-  }
-}
-
-function renderSharedCursorList(state) {
-  if (!sharedCursorList) {
-    return;
-  }
-
-  sharedCursorList.innerHTML = "";
-
-  const entries = mapEntries(state?.cursors).sort((left, right) => left[0].localeCompare(right[0]));
-
-  if (entries.length === 0) {
-    sharedCursorList.textContent = "Waiting for cursors...";
-    return;
-  }
-
-  for (const [playerId, cursor] of entries) {
-    const item = document.createElement("div");
-    item.className = "shared-cursor-item";
-
-    const dot = document.createElement("span");
-    dot.className = "shared-cursor-dot";
-    dot.style.backgroundColor = cursor?.color || getSharedPlayerColor(state, playerId);
-
-    const suffix = sharedBoardRoom && sharedBoardRoom.sessionId === playerId ? " (you)" : "";
-    const spectatorText = cursor?.isSpectator ? " spectator" : "";
-    item.append(dot, `${shortPlayerId(playerId)} @ ${cursor?.cellIndex ?? -1}${suffix}${spectatorText}`);
-    sharedCursorList.appendChild(item);
-  }
-}
-
-function handleSharedDragStart(event, state, cellIndex) {
-  if (!sharedBoardRoom) {
-    event.preventDefault();
-    return;
-  }
-
-  const cell = mapGet(state?.cells, cellIndex);
-  if (!cell || cell.ownerId !== sharedBoardRoom.sessionId || cell.unitId === "" || cell.unitId === "dummy-boss") {
-    event.preventDefault();
-    return;
-  }
-
-  sharedDraggedUnitId = cell.unitId;
-  selectSharedUnit(cell.unitId, false);
-  sendSharedDragState(true, cell.unitId);
-
-  if (event.dataTransfer) {
-    event.dataTransfer.setData("text/plain", cell.unitId);
-    event.dataTransfer.effectAllowed = "move";
-  }
-}
-
-function handleSharedDragEnd() {
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  sendSharedDragState(false, sharedDraggedUnitId ?? undefined);
-  sharedDraggedUnitId = null;
-}
-
-function handleSharedDrop(event, cellIndex) {
-  event.preventDefault();
-  event.currentTarget.classList.remove("drag-over");
-
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  const unitIdFromTransfer = event.dataTransfer?.getData("text/plain") || "";
-  const unitId = unitIdFromTransfer || sharedDraggedUnitId || selectedSharedUnitId;
-
-  if (!unitId) {
-    showMessage("Shared board: select your unit first", "error");
-    return;
-  }
-
-  sendSharedPlaceUnit(unitId, cellIndex);
-}
-
-function handleSharedCellClick(state, cellIndex) {
-  if (!sharedBoardRoom) {
-    showMessage("Shared board disconnected", "error");
-    return;
-  }
-
-  if (isSharedSpectator(state)) {
-    showMessage("Shared board: spectator cannot move units", "error");
-    return;
-  }
-
-  const cell = mapGet(state?.cells, cellIndex);
-
-  if (!cell) {
-    showMessage("Shared board syncing... try again", "error");
-    return;
-  }
-
-  if (cell.unitId === "dummy-boss") {
-    showMessage("Boss cell cannot be used", "error");
-    return;
-  }
-
-  if (cell.ownerId === sharedBoardRoom.sessionId && cell.unitId !== "") {
-    selectSharedUnit(cell.unitId, true);
-    return;
-  }
-
-  if (!selectedSharedUnitId) {
-    if (cell.unitId !== "") {
-      showMessage("Select your own shared unit", "error");
-      return;
-    }
-
-    showMessage("Select your unit, then click destination", "error");
-    return;
-  }
-
-  if (cell.unitId !== "") {
-    showMessage("Target cell is occupied", "error");
-    return;
-  }
-
-  sendSharedPlaceUnit(selectedSharedUnitId, cellIndex);
-  showMessage(`Move request sent to cell ${cellIndex}`, "success");
-}
-
-function renderSharedBoard(state) {
-  if (!sharedBoardGrid) {
-    return;
-  }
-
-  const width = Number(state?.boardWidth ?? 6);
-  const height = Number(state?.boardHeight ?? 4);
-  const totalCells = width * height;
-
-  sharedBoardGrid.style.gridTemplateColumns = `repeat(${width}, 1fr)`;
-  sharedBoardGrid.innerHTML = "";
-
-  for (let cellIndex = 0; cellIndex < totalCells; cellIndex += 1) {
-    const cell = mapGet(state?.cells, cellIndex);
-    const unitId = cell?.unitId ?? "";
-    const ownerId = cell?.ownerId ?? "";
-    const isBossCell = unitId === "dummy-boss";
-
-    const cellElement = document.createElement("div");
-    cellElement.className = "shared-board-cell";
-
-    const indexBadge = document.createElement("span");
-    indexBadge.className = "shared-board-cell-index";
-    indexBadge.textContent = String(cellIndex);
-    cellElement.appendChild(indexBadge);
-
-    const handleCellPointerDown = (event) => {
-      if (event && typeof event.button === "number" && event.button > 0) {
-        return;
-      }
-
-      handleSharedCellClick(currentSharedBoardState, cellIndex);
-    };
-
-    if (typeof window !== "undefined" && "PointerEvent" in window) {
-      cellElement.onpointerdown = handleCellPointerDown;
-    } else {
-      cellElement.onmousedown = handleCellPointerDown;
-    }
-
-    cellElement.onmouseenter = () => {
-      sendSharedCursorMove(cellIndex);
-    };
-
-    cellElement.ondragover = (event) => {
-      event.preventDefault();
-      cellElement.classList.add("drag-over");
-    };
-
-    cellElement.ondragleave = () => {
-      cellElement.classList.remove("drag-over");
-    };
-
-    cellElement.ondrop = (event) => {
-      handleSharedDrop(event, cellIndex);
-    };
-
-    if (isBossCell) {
-      cellElement.classList.add("boss");
-      const boss = document.createElement("div");
-      boss.className = "shared-board-unit";
-      boss.innerHTML = '<div>👑</div><span class="shared-board-unit-id">boss</span>';
-      cellElement.appendChild(boss);
-    } else if (unitId !== "") {
-      cellElement.classList.add("has-unit");
-
-      if (selectedSharedUnitId && unitId === selectedSharedUnitId) {
-        cellElement.classList.add("selected");
-      }
-
-      if (sharedBoardRoom && ownerId === sharedBoardRoom.sessionId) {
-        cellElement.draggable = true;
-        cellElement.classList.add("draggable");
-        cellElement.onpointerdown = () => {
-          selectSharedUnit(unitId, false);
-        };
-        cellElement.ondragstart = (event) => {
-          handleSharedDragStart(event, state, cellIndex);
-        };
-        cellElement.ondragend = () => {
-          handleSharedDragEnd();
-        };
-      }
-
-      const unit = document.createElement("div");
-      unit.className = "shared-board-unit";
-
-      const ownerDot = document.createElement("span");
-      ownerDot.className = "shared-board-owner";
-      ownerDot.style.backgroundColor = getSharedPlayerColor(state, ownerId);
-
-      const unitIdLabel = document.createElement("span");
-      unitIdLabel.className = "shared-board-unit-id";
-      unitIdLabel.textContent = shortPlayerId(unitId);
-
-      unit.append(ownerDot, unitIdLabel);
-      cellElement.appendChild(unit);
-    } else {
-      cellElement.classList.add("empty");
-    }
-
-    renderSharedCursorChips(state, cellElement, cellIndex);
-    sharedBoardGrid.appendChild(cellElement);
-  }
-}
-
-function renderSharedBoardState(state) {
-  if (!state) {
-    sharedDraggedUnitId = null;
-    selectedSharedUnitId = null;
-    renderSharedBoard({ boardWidth: 6, boardHeight: 4, cells: {}, cursors: {}, players: {} });
-
-    if (sharedCursorList) {
-      sharedCursorList.textContent = "Shared board disconnected";
-    }
-
-    return;
-  }
-
-  renderSharedBoard(state);
-  renderSharedCursorList(state);
-
-  if (!sharedBoardRoom) {
-    return;
-  }
-
-  const ownCursor = mapGet(state?.cursors, sharedBoardRoom.sessionId);
-  const isSpectator = ownCursor?.isSpectator === true;
-
-  if (isSpectator && !sharedBoardSpectatorNoticeShown) {
-    addCombatLogEntry("Shared board is spectator mode. Wait for an active slot.", "info");
-    sharedBoardSpectatorNoticeShown = true;
-    return;
-  }
-
-  if (!isSpectator) {
-    sharedBoardSpectatorNoticeShown = false;
-  }
-}
-
-async function connectSharedBoard(client) {
-  if (!client || sharedBoardRoom) {
-    return;
-  }
-
-  try {
-    sharedBoardRoom = await client.joinOrCreate(DEFAULT_SHARED_BOARD_ROOM_NAME);
-    currentSharedBoardState = null;
-    sharedBoardSpectatorNoticeShown = false;
-    sharedDraggedUnitId = null;
-    selectedSharedUnitId = null;
-
-    sharedBoardRoom.onMessage("shared_role", (message) => {
-      if (message?.isSpectator === true && !sharedBoardSpectatorNoticeShown) {
-        addCombatLogEntry("Shared board role: spectator", "info");
-      }
-    });
-
-    sharedBoardRoom.onMessage("shared_action_result", (message) => {
-      if (message?.accepted === true && message.action === "place_unit") {
-        selectedSharedUnitId = null;
-        renderSharedBoardState(currentSharedBoardState);
-        showMessage("Shared board move applied", "success");
-      }
-
-      if (message?.accepted === false) {
-        addCombatLogEntry(
-          `[Shared board] ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}`,
-          "info",
-        );
-        showMessage(
-          `Shared board ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}`,
-          "error",
-        );
-      }
-    });
-
-    sharedBoardRoom.onStateChange((state) => {
-      currentSharedBoardState = state;
-      renderSharedBoardState(state);
-    });
-
-    sharedBoardRoom.onLeave(() => {
-      sharedBoardRoom = null;
-      currentSharedBoardState = null;
-      sharedDraggedUnitId = null;
-      selectedSharedUnitId = null;
-      renderSharedBoardState(null);
-    });
-  } catch (error) {
-    currentSharedBoardState = null;
-    renderSharedBoardState(null);
-    const message = error instanceof Error ? error.message : String(error);
-    addCombatLogEntry(`Shared board unavailable: ${message}`, "info");
-  }
-}
-
-function leaveSharedBoardRoom() {
-  if (!sharedBoardRoom) {
-    currentSharedBoardState = null;
-    sharedDraggedUnitId = null;
-    selectedSharedUnitId = null;
-    renderSharedBoardState(null);
-    sharedBoardSpectatorNoticeShown = false;
-    return;
-  }
-
-  const roomToLeave = sharedBoardRoom;
-  sharedBoardRoom = null;
-  currentSharedBoardState = null;
-  sharedDraggedUnitId = null;
-  selectedSharedUnitId = null;
-  sharedBoardSpectatorNoticeShown = false;
-  renderSharedBoardState(null);
-
-  if (typeof roomToLeave.removeAllListeners === "function") {
-    roomToLeave.removeAllListeners();
-  }
-
-  if (typeof roomToLeave.leave === "function") {
-    void roomToLeave.leave();
-  }
 }
 
 // Auto-fill functions

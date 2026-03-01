@@ -79,7 +79,9 @@ describe("battle-simulator", () => {
         defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        buffModifiers: {
+          physicalReduction: undefined,
+          magicReduction: undefined,
+          buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -105,7 +107,9 @@ describe("battle-simulator", () => {
         defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        buffModifiers: {
+          physicalReduction: undefined,
+          magicReduction: undefined,
+          buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -131,7 +135,9 @@ describe("battle-simulator", () => {
         defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        buffModifiers: {
+          physicalReduction: undefined,
+          magicReduction: undefined,
+          buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -153,6 +159,8 @@ describe("battle-simulator", () => {
           defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -179,7 +187,9 @@ describe("battle-simulator", () => {
         defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        buffModifiers: {
+          physicalReduction: undefined,
+          magicReduction: undefined,
+          buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -201,6 +211,8 @@ describe("battle-simulator", () => {
           defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -222,6 +234,8 @@ describe("battle-simulator", () => {
           defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -243,6 +257,8 @@ describe("battle-simulator", () => {
           defense: 3,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -271,7 +287,9 @@ describe("battle-simulator", () => {
         defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        buffModifiers: {
+          physicalReduction: undefined,
+          magicReduction: undefined,
+          buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -293,6 +311,8 @@ describe("battle-simulator", () => {
           defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,

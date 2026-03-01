@@ -35,6 +35,8 @@ export interface BattleUnit {
   defense: number; // ベース防御力（被ダメージを軽減）
   critRate: number; // 0.0-1.0, クリティカルヒット率
   critDamageMultiplier: number; // 1.5 = 150% クリティカルダメージ
+  physicalReduction: number | undefined; // 物理ダメージ軽減率（0-100）
+  magicReduction: number | undefined; // 魔法ダメージ軽減率（0-100）
   buffModifiers: {
     attackMultiplier: number; // デフォルト 1.0
     defenseMultiplier: number; // デフォルト 1.0
@@ -80,6 +82,7 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
  * BattleUnit を作成するヘルパー関数
  * BoardUnitPlacement から BattleUnit を生成し、星レベルに応じたステータスを適用
  * Scarlet Mansionユニットの場合は特殊ステータスを適用
+ * ボス（remilia）の場合はボスステータスを適用
  */
 export function createBattleUnit(
   placement: BoardUnitPlacement,
@@ -96,8 +99,19 @@ export function createBattleUnit(
   let finalAttackSpeed: number;
   let finalRange: number;
   let finalDefense: number;
+  let finalPhysicalReduction: number | undefined = undefined;
+  let finalMagicReduction: number | undefined = undefined;
 
-  if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
+  if (isBoss && archetype === "remilia") {
+    // ボス（remilia）の場合、ボスステータスを適用
+    finalHp = 3200;
+    finalAttack = 280;
+    finalAttackSpeed = 0.95;
+    finalRange = 3;
+    finalDefense = 0; // ボスは reduction を使用
+    finalPhysicalReduction = 15;
+    finalMagicReduction = 10;
+  } else if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
     // Scarlet Mansionユニットの場合、特殊ステータスを適用
     const scarletUnit = getScarletMansionUnitById(archetype);
     if (scarletUnit) {
@@ -107,6 +121,8 @@ export function createBattleUnit(
       finalRange = scarletUnit.range;
       // 物理軽減と魔法軽減の平均を防御力として適用
       finalDefense = (scarletUnit.physicalReduction + scarletUnit.magicReduction) / 2;
+      finalPhysicalReduction = scarletUnit.physicalReduction;
+      finalMagicReduction = scarletUnit.magicReduction;
     } else {
       // フォールバック: 通常ステータスを使用
       const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
@@ -142,6 +158,8 @@ export function createBattleUnit(
     defense: finalDefense,
     critRate: 0,
     critDamageMultiplier: 1.5,
+    physicalReduction: finalPhysicalReduction,
+    magicReduction: finalMagicReduction,
     buffModifiers: {
       attackMultiplier: 1.0,
       defenseMultiplier: 1.0,
@@ -463,7 +481,17 @@ export class BattleSimulator {
           // 防御力とバフモディファイアとクリティカルとボスパッシブを適用したダメージ計算
           const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier * bossAtkMultiplier;
           const defense = target.defense * target.buffModifiers.defenseMultiplier;
-          const actualDamage = Math.max(1, Math.floor(baseDamage - defense));
+          let actualDamage = Math.max(1, Math.floor(baseDamage - defense));
+
+          // 物理軽減と魔法軽減を適用（ボスユニットの場合）
+          if (action.unit.type === "mage" && target.magicReduction !== undefined) {
+            // 魔法攻撃の場合は魔法軽減を適用
+            actualDamage = Math.max(1, Math.floor(actualDamage * (1 - target.magicReduction / 100)));
+          } else if (target.physicalReduction !== undefined) {
+            // 物理攻撃の場合は物理軽減を適用
+            actualDamage = Math.max(1, Math.floor(actualDamage * (1 - target.physicalReduction / 100)));
+          }
+
           target.hp -= actualDamage;
 
           // ボスパッシブ「紅色の世界」の回復効果（与えたダメージの5%回復）

@@ -10,6 +10,14 @@
     {"id": "dragon", "name": "竜", "type": "ranger", "cost": 5, "hp": 120, "attack": 35, "attackSpeed": 0.8, "range": 3, "synergy": ["archer"]}
   ],
   "boss": {
-    "id": "remilia", "name": "レミリア", "hp": 2000, "attack": 50, "attackSpeed": 0.5, "range": 3, "healOnPhaseFail": 100
+    "id": "remilia",
+    "name": "レミリア",
+    "hp": 3200,
+    "attack": 280,
+    "attackSpeed": 0.95,
+    "range": 3,
+    "healOnPhaseFail": 100,
+    "physicalReduction": 15,
+    "magicReduction": 10
   }
 }

@@ -18,21 +18,15 @@ describe("Boss Raid Simulation", () => {
 
   /**
    * Create boss unit (Remilia)
-   * Tuned for Phase1 target validation using representative compositions.
+   * Uses boss stats from JSON (hp: 3200, attack: 280, attackSpeed: 0.95, range: 3)
    */
   function createBossUnit(): BattleUnit {
     const boss = createBattleUnit(
-      { cell: 0, unitType: "vanguard", starLevel: 1 },
+      { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
       "right",
       0,
       true, // isBoss = true
     );
-
-    boss.hp = 750;
-    boss.maxHp = 750;
-    boss.attackPower = 35;
-    boss.attackSpeed = 0.5;
-    boss.attackRange = 3;
 
     return boss;
   }
@@ -366,13 +360,15 @@ describe("Boss Raid Simulation", () => {
     test("ボスステータス検証（バランス調整後）", () => {
       const boss = createBossUnit();
 
-      // Balanced stats for representative composition set validation
-      expect(boss.hp).toBe(750);
-      expect(boss.maxHp).toBe(750);
-      expect(boss.attackPower).toBe(35);
-      expect(boss.attackSpeed).toBe(0.5);
+      // Boss stats from JSON
+      expect(boss.hp).toBe(3200);
+      expect(boss.maxHp).toBe(3200);
+      expect(boss.attackPower).toBe(280);
+      expect(boss.attackSpeed).toBe(0.95);
       expect(boss.attackRange).toBe(3);
       expect(boss.isBoss).toBe(true);
+      expect(boss.physicalReduction).toBe(15);
+      expect(boss.magicReduction).toBe(10);
     });
 
     test("レイドチームの総ステータス検証", () => {

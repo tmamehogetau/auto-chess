@@ -48,10 +48,18 @@ export interface MvpPhase1Boss {
   attackSpeed: number;
   range: number;
   healOnPhaseFail: number;
+  physicalReduction: number;
+  magicReduction: number;
 }
 
 // Load MVP Phase 1 Units from JSON
 export async function loadMvpPhase1Units(): Promise<MvpPhase1Unit[]> {
   const data = await import('../data/mvp_phase1_units.json');
   return data.units as MvpPhase1Unit[];
+}
+
+// Load MVP Phase 1 Boss from JSON
+export async function loadMvpPhase1Boss(): Promise<MvpPhase1Boss> {
+  const data = await import('../data/mvp_phase1_units.json');
+  return data.boss as MvpPhase1Boss;
 }

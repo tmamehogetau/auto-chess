@@ -2265,6 +2265,8 @@ export class MatchRoomController {
           defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1,
             defenseMultiplier: 1,
@@ -2293,6 +2295,8 @@ export class MatchRoomController {
           defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
+          physicalReduction: undefined,
+          magicReduction: undefined,
           buffModifiers: {
             attackMultiplier: 1,
             defenseMultiplier: 1,

@@ -85,6 +85,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableHeroSystem = flags.enableHeroSystem;
     this.state.featureFlagsEnableSharedPool = flags.enableSharedPool;
     this.state.featureFlagsEnablePhaseExpansion = flags.enablePhaseExpansion;
+    this.state.featureFlagsEnableSpellCard = flags.enableSpellCard;
+    this.state.featureFlagsEnableRumorInfluence = flags.enableRumorInfluence;
+    this.state.featureFlagsEnableBossExclusiveShop = flags.enableBossExclusiveShop;
     this.state.featureFlagsEnableSharedBoardShadow = flags.enableSharedBoardShadow;
     this.enableSharedBoardShadow = flags.enableSharedBoardShadow;
 
@@ -727,8 +730,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     // スペルカード関連の同期
     const flagService = FeatureFlagService.getInstance();
     this.state.featureFlagsEnableSpellCard = flagService.isFeatureEnabled('enableSpellCard');
+    this.state.featureFlagsEnableRumorInfluence = flagService.isFeatureEnabled('enableRumorInfluence');
+    this.state.featureFlagsEnableBossExclusiveShop = flagService.isFeatureEnabled('enableBossExclusiveShop');
     const declaredSpell = this.controller.getDeclaredSpell();
     this.state.declaredSpellId = declaredSpell?.id ?? "";
+    this.state.bossPlayerId = this.controller.getBossPlayerId() ?? "";
 
     this.syncRanking(this.controller.rankingTopToBottom);
 
@@ -788,6 +794,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       nextOffer.unitType = offer.unitType;
       nextOffer.cost = offer.cost;
       nextOffer.rarity = offer.rarity;
+      nextOffer.isRumorUnit = offer.isRumorUnit === true;
       playerState.shopOffers.push(nextOffer);
     }
 
@@ -809,6 +816,21 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       nextOffer.cost = offer.cost;
       playerState.itemShopOffers.push(nextOffer);
     }
+
+    // Sync boss shop offers
+    while (playerState.bossShopOffers.length > 0) {
+      playerState.bossShopOffers.pop();
+    }
+    for (const offer of status.bossShopOffers || []) {
+      const nextOffer = new ShopOfferState();
+      nextOffer.unitType = offer.unitType;
+      nextOffer.cost = offer.cost;
+      nextOffer.rarity = offer.rarity;
+      nextOffer.isRumorUnit = offer.isRumorUnit === true;
+      playerState.bossShopOffers.push(nextOffer);
+    }
+
+    playerState.isRumorEligible = status.isRumorEligible;
 
     // Sync item inventory
     while (playerState.itemInventory.length > 0) {

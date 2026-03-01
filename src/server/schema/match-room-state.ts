@@ -11,11 +11,14 @@ export class ShopOfferState extends Schema {
 
   declare public rarity: number;
 
+  declare public isRumorUnit: boolean;
+
   public constructor() {
     super();
     this.unitType = "vanguard";
     this.cost = 1;
     this.rarity = 1;
+    this.isRumorUnit = false;
   }
 }
 
@@ -100,6 +103,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public itemShopOffers: ArraySchema<ShopItemOfferState>;
 
+  declare public bossShopOffers: ArraySchema<ShopOfferState>;
+
   declare public itemInventory: ArraySchema<string>;
 
   declare public lastBattleResult: BattleResultSchema;
@@ -107,6 +112,8 @@ export class PlayerPresenceState extends Schema {
   declare public activeSynergies: ArraySchema<SynergySchema>;
 
   declare public selectedHeroId: string;
+
+  declare public isRumorEligible: boolean;
 
   public constructor() {
     super();
@@ -128,10 +135,12 @@ export class PlayerPresenceState extends Schema {
     this.ownedAssassin = 0;
     this.lastCmdSeq = 0;
     this.itemShopOffers = new ArraySchema<ShopItemOfferState>();
+    this.bossShopOffers = new ArraySchema<ShopOfferState>();
     this.itemInventory = new ArraySchema<string>();
     this.lastBattleResult = new BattleResultSchema();
     this.activeSynergies = new ArraySchema<SynergySchema>();
     this.selectedHeroId = "";
+    this.isRumorEligible = false;
   }
 }
 
@@ -158,9 +167,15 @@ export class MatchRoomState extends Schema {
 
   declare public featureFlagsEnableSpellCard: boolean;
 
+  declare public featureFlagsEnableRumorInfluence: boolean;
+
+  declare public featureFlagsEnableBossExclusiveShop: boolean;
+
   declare public featureFlagsEnableSharedBoardShadow: boolean;
 
   declare public declaredSpellId: string;
+
+  declare public bossPlayerId: string;
 
   public constructor() {
     super();
@@ -175,8 +190,11 @@ export class MatchRoomState extends Schema {
     this.featureFlagsEnableSharedPool = false;
     this.featureFlagsEnablePhaseExpansion = false;
     this.featureFlagsEnableSpellCard = false;
+    this.featureFlagsEnableRumorInfluence = false;
+    this.featureFlagsEnableBossExclusiveShop = false;
     this.featureFlagsEnableSharedBoardShadow = false;
     this.declaredSpellId = "";
+    this.bossPlayerId = "";
   }
 }
 
@@ -184,6 +202,7 @@ defineTypes(ShopOfferState, {
   unitType: "string",
   cost: "number",
   rarity: "number",
+  isRumorUnit: "boolean",
 });
 
 defineTypes(ShopItemOfferState, {
@@ -225,10 +244,12 @@ defineTypes(PlayerPresenceState, {
   ownedAssassin: "number",
   lastCmdSeq: "number",
   itemShopOffers: [ShopItemOfferState],
+  bossShopOffers: [ShopOfferState],
   itemInventory: ["string"],
   lastBattleResult: BattleResultSchema,
   activeSynergies: [SynergySchema],
   selectedHeroId: "string",
+  isRumorEligible: "boolean",
 });
 
 defineTypes(MatchRoomState, {
@@ -246,6 +267,9 @@ defineTypes(MatchRoomState, {
   featureFlagsEnableSharedPool: "boolean",
   featureFlagsEnablePhaseExpansion: "boolean",
   featureFlagsEnableSpellCard: "boolean",
+  featureFlagsEnableRumorInfluence: "boolean",
+  featureFlagsEnableBossExclusiveShop: "boolean",
   featureFlagsEnableSharedBoardShadow: "boolean",
   declaredSpellId: "string",
+  bossPlayerId: "string",
 });

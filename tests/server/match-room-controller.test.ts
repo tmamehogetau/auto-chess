@@ -761,10 +761,10 @@ describe("MatchRoomController", () => {
     const phaseProgress = controller.getPhaseProgress();
 
     expect(controller.phase).toBe("Settle");
-    expect(phaseProgress.targetHp).toBe(400);
+    expect(phaseProgress.targetHp).toBe(600);
     expect(phaseProgress.damageDealt).toBe(400);
-    expect(phaseProgress.result).toBe("success");
-    expect(phaseProgress.completionRate).toBe(1);
+    expect(phaseProgress.result).toBe("failed");
+    expect(phaseProgress.completionRate).toBeCloseTo(400 / 600);
   });
 
   test("phase HP未達時はfailedになり次ラウンドPrepでリセットされる", () => {
@@ -790,10 +790,10 @@ describe("MatchRoomController", () => {
 
     const failedPhaseProgress = controller.getPhaseProgress();
 
-    expect(failedPhaseProgress.targetHp).toBe(400);
+    expect(failedPhaseProgress.targetHp).toBe(600);
     expect(failedPhaseProgress.damageDealt).toBe(150);
     expect(failedPhaseProgress.result).toBe("failed");
-    expect(failedPhaseProgress.completionRate).toBeCloseTo(0.375);
+    expect(failedPhaseProgress.completionRate).toBeCloseTo(0.25);
 
     controller.advanceByTime(47_000);
     controller.advanceByTime(49_000);
@@ -802,7 +802,7 @@ describe("MatchRoomController", () => {
 
     expect(controller.phase).toBe("Prep");
     expect(controller.roundIndex).toBe(2);
-    expect(nextRoundProgress.targetHp).toBe(500);
+    expect(nextRoundProgress.targetHp).toBe(750);
     expect(nextRoundProgress.damageDealt).toBe(0);
     expect(nextRoundProgress.result).toBe("pending");
     expect(nextRoundProgress.completionRate).toBe(0);

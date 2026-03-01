@@ -86,17 +86,17 @@ const MAX_BOARD_CELL_INDEX = COMBAT_CELL_MAX_INDEX;
 const MAX_LEVEL = 6;
 
 const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
-  1: 400,
-  2: 500,
-  3: 600,
-  4: 700,
-  5: 800,
-  6: 900,
-  7: 1000,
-  8: 1200,
-  9: 1400,
-  10: 1600,
-  11: 1800,
+  1: 600,
+  2: 750,
+  3: 900,
+  4: 1050,
+  5: 1250,
+  6: 1450,
+  7: 1650,
+  8: 1850,
+  9: 2100,
+  10: 2400,
+  11: 2700,
 };
 
 const ITEM_SHOP_SIZE = 5;
@@ -116,6 +116,7 @@ interface ShopOffer {
   unitType: BoardUnitType;
   rarity: UnitRarity;
   cost: number;
+  isRumorUnit?: boolean;
 }
 
 interface OwnedUnits {
@@ -645,9 +646,11 @@ export class MatchRoomController {
     ownedUnits: OwnedUnits;
     itemInventory: ItemType[];
     itemShopOffers: ShopItemOffer[];
+    bossShopOffers: ShopOffer[];
     lastBattleResult: BattleResult | undefined;
     activeSynergies?: { unitType: string; count: number; tier: number }[];
     selectedHeroId: string;
+    isRumorEligible: boolean;
     sharedPoolInventory?: ReadonlyMap<BoardUnitType, number>;
   } {
     const state = this.ensureStarted();
@@ -656,6 +659,8 @@ export class MatchRoomController {
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
     const itemInventory = this.itemInventoryByPlayer.get(playerId) ?? [];
     const itemShopOffers = this.itemShopOffersByPlayer.get(playerId) ?? [];
+    const bossShopOffers = this.bossShopOffersByPlayer.get(playerId) ?? [];
+    const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
     // Debug log for shop offers (Bug #1 fix)
     const shopOffers = this.shopOffersByPlayer.get(playerId) ?? [];
@@ -695,9 +700,11 @@ export class MatchRoomController {
       },
       itemInventory: [...itemInventory],
       itemShopOffers: [...itemShopOffers],
+      bossShopOffers: [...bossShopOffers],
       lastBattleResult: this.battleResultsByPlayer.get(playerId),
       activeSynergies,
       selectedHeroId: this.selectedHeroByPlayer.get(playerId) ?? "",
+      isRumorEligible,
     };
 
     // 共有プールの在庫情報を追加（Feature Flagが有効な場合のみ）
@@ -1738,6 +1745,7 @@ export class MatchRoomController {
           unitType: rumorUnit.unitType,
           rarity: rumorUnit.rarity,
           cost: rumorUnit.rarity,
+          isRumorUnit: true,
         });
       }
     }

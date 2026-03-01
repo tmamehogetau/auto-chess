@@ -712,6 +712,41 @@
         transform: none;
       }
 
+      .shop-card.depleted {
+        border-color: #e74c3c;
+        background: rgba(231, 76, 60, 0.12);
+      }
+
+      .shop-card .pool-badge,
+      .shop-card .rumor-badge {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        font-size: 10px;
+        line-height: 1;
+        padding: 3px 6px;
+        border-radius: 999px;
+        font-weight: 700;
+      }
+
+      .shop-card .pool-badge {
+        background: rgba(52, 152, 219, 0.2);
+        color: #9bd2ff;
+      }
+
+      .shop-card .rumor-badge {
+        background: rgba(155, 89, 182, 0.22);
+        color: #d5a6ff;
+      }
+
+      .boss-shop-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .shop-card.boss {
+        border-color: rgba(155, 89, 182, 0.6);
+      }
+
       .shop-card .icon {
         font-size: 32px;
         margin-bottom: 5px;
@@ -1618,6 +1653,23 @@
             <div class="cost">0G</div>
           </div>
           <div class="shop-card item" data-item-shop-slot="4">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Boss Exclusive Shop -->
+      <div class="shop-section" data-boss-shop-section style="display: none;">
+        <div class="shop-title">Boss Exclusive Shop</div>
+        <div class="shop-grid boss-shop-grid" data-boss-shop>
+          <div class="shop-card boss" data-boss-shop-slot="0">
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+          </div>
+          <div class="shop-card boss" data-boss-shop-slot="1">
             <div class="icon">❓</div>
             <div class="name">-</div>
             <div class="cost">0G</div>

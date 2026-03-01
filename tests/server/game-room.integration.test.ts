@@ -216,7 +216,7 @@ describe("GameRoom integration", () => {
     expect(roundState.roundIndex).toBe(1);
     expect(roundState.ranking.length).toBe(4);
     expect(roundState.phaseDeadlineAtMs).toBeGreaterThan(0);
-    expect(roundState.phaseHpTarget).toBe(400);
+    expect(roundState.phaseHpTarget).toBe(600);
     expect(roundState.phaseDamageDealt).toBe(0);
     expect(roundState.phaseResult).toBe("pending");
     expect(roundState.phaseCompletionRate).toBe(0);

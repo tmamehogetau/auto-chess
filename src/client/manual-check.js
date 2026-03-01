@@ -134,6 +134,8 @@ const phaseHpResult = document.querySelector("[data-phase-hp-result]");
 const readyBtn = document.querySelector("[data-ready-btn]");
 const unitShopGrid = document.querySelector("[data-unit-shop]");
 const itemShopGrid = document.querySelector("[data-item-shop]");
+const bossShopGrid = document.querySelector("[data-boss-shop]");
+const bossShopSection = document.querySelector("[data-boss-shop-section]");
 const boardRowFront = document.querySelector("[data-board-row-front]");
 const boardRowBack = document.querySelector("[data-board-row-back]");
 const benchGrid = document.querySelector("[data-bench]");
@@ -858,6 +860,12 @@ function updateGameUI(state) {
   // Update item shop
   updateItemShop(player.itemShopOffers);
 
+  // Update boss shop
+  updateBossShop(
+    player.bossShopOffers,
+    state.featureFlagsEnableBossExclusiveShop === true && state.bossPlayerId === sessionId,
+  );
+
   // Update board
   updateBoard(player.boardUnits);
 
@@ -927,8 +935,8 @@ function updateGameUI(state) {
   }
 
   // Update spell card display
-  if (state.featureFlagsEnableSpellCard && player.declaredSpellCardId) {
-    const spell = SPELL_CARDS.find((s) => s.id === player.declaredSpellCardId);
+  if (state.featureFlagsEnableSpellCard && state.declaredSpellId) {
+    const spell = SPELL_CARDS.find((s) => s.id === state.declaredSpellId);
     if (spell && spellCardSection) {
       spellCardSection.style.display = "block";
       if (spellNameDisplay) spellNameDisplay.textContent = spell.name;
@@ -1256,6 +1264,7 @@ function updateUnitShop(offers) {
       const icon = UNIT_ICONS[offer.unitType] || "❓";
       const cost = offer.cost || 0;
       const canAfford = currentGold >= cost;
+      const rumorBadge = offer.isRumorUnit === true ? '<div class="rumor-badge">Rumor</div>' : "";
 
       // 共有プールの在庫チェック
       let isDepleted = false;
@@ -1270,6 +1279,7 @@ function updateUnitShop(offers) {
         <div class="name">${offer.unitType}</div>
         <div class="cost">${cost}G</div>
         ${remainingCount !== null ? `<div class="pool-badge">残り${remainingCount}枚</div>` : ''}
+        ${rumorBadge}
       `;
       card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep" || isDepleted);
       card.classList.toggle("depleted", isDepleted);
@@ -1311,6 +1321,44 @@ function updateItemShop(offers) {
       card.classList.add("disabled");
     }
   });
+}
+
+function updateBossShop(offers, visible) {
+  if (!bossShopSection || !bossShopGrid) {
+    return;
+  }
+
+  bossShopSection.style.display = visible ? "block" : "none";
+  if (!visible) {
+    return;
+  }
+
+  for (let index = 0; index < 2; index += 1) {
+    const card = bossShopGrid.querySelector(`[data-boss-shop-slot="${index}"]`);
+    if (!card) {
+      continue;
+    }
+
+    const offer = Array.isArray(offers) ? offers[index] : offers?.[index];
+    if (!offer) {
+      card.innerHTML = `
+        <div class="icon">❓</div>
+        <div class="name">-</div>
+        <div class="cost">-</div>
+      `;
+      card.classList.add("disabled");
+      continue;
+    }
+
+    const icon = UNIT_ICONS[offer.unitType] || "🦇";
+    const cost = offer.cost || 0;
+    card.innerHTML = `
+      <div class="icon">${icon}</div>
+      <div class="name">${offer.unitType}</div>
+      <div class="cost">${cost}G</div>
+    `;
+    card.classList.add("disabled");
+  }
 }
 
 function updateBoard(boardUnits) {

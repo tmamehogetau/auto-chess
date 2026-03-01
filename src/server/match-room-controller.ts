@@ -138,6 +138,14 @@ interface BenchUnit {
 
 type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
 
+// ユニットタイプとコストのマッピング（コスト=レアリティ）
+const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
+  vanguard: 1,
+  ranger: 1,
+  mage: 2,
+  assassin: 3,
+};
+
 const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<UnitRarity, readonly BoardUnitType[]>> = {
   1: ["vanguard", "ranger"],
   2: ["mage", "assassin"],
@@ -653,7 +661,7 @@ export class MatchRoomController {
     activeSynergies?: { unitType: string; count: number; tier: number }[];
     selectedHeroId: string;
     isRumorEligible: boolean;
-    sharedPoolInventory?: ReadonlyMap<BoardUnitType, number>;
+    sharedPoolInventory?: ReadonlyMap<number, number>;
   } {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
@@ -1240,7 +1248,7 @@ export class MatchRoomController {
       }
 
       // 共有プールの在庫チェック（Feature Flagが有効な場合）
-      if (this.enableSharedPool && this.sharedPool && this.sharedPool.isDepleted(targetOffer.unitType)) {
+      if (this.enableSharedPool && this.sharedPool && this.sharedPool.isDepleted(targetOffer.cost)) {
         return { accepted: false, code: "POOL_DEPLETED" };
       }
 
@@ -1596,7 +1604,7 @@ export class MatchRoomController {
 
     // 共有プールから在庫を減らす（Feature Flagが有効な場合）
     if (this.enableSharedPool && this.sharedPool) {
-      this.sharedPool.decrease(boughtOffer.unitType);
+      this.sharedPool.decrease(boughtOffer.cost);
     }
 
     offers.splice(slotIndex, 1);
@@ -1747,7 +1755,7 @@ export class MatchRoomController {
 
     // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
     if (this.enableSharedPool && this.sharedPool) {
-      this.sharedPool.increase(benchUnit.unitType);
+      this.sharedPool.increase(benchUnit.cost);
     }
   }
 
@@ -1802,7 +1810,7 @@ export class MatchRoomController {
 
     // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
     if (this.enableSharedPool && this.sharedPool) {
-      this.sharedPool.increase(soldPlacement.unitType);
+      this.sharedPool.increase(soldPlacement.sellValue ?? 1);
     }
   }
 
@@ -1901,13 +1909,13 @@ export class MatchRoomController {
 
     // 共有プールが有効な場合、枯渇したユニットを除外
     if (this.enableSharedPool && this.sharedPool) {
-      unitPool = unitPool.filter((unitType) => !this.sharedPool!.isDepleted(unitType));
+      unitPool = unitPool.filter((unitType) => !this.sharedPool!.isDepleted(UNIT_TYPE_TO_COST[unitType]));
 
       // すべてのユニットが枯渇している場合は、代わりに低レアリティを試行
       if (unitPool.length === 0 && rarity > 1) {
         const lowerRarity = (rarity - 1) as UnitRarity;
         unitPool = SHOP_UNIT_POOL_BY_RARITY[lowerRarity].filter(
-          (unitType) => !this.sharedPool!.isDepleted(unitType),
+          (unitType) => !this.sharedPool!.isDepleted(UNIT_TYPE_TO_COST[unitType]),
         );
       }
     }
@@ -2008,17 +2016,19 @@ export class MatchRoomController {
 
       // 盤面のユニットを返却
       for (const placement of boardPlacements) {
+        const unitCost = placement.sellValue ?? UNIT_TYPE_TO_COST[placement.unitType] ?? 1;
         const unitCount = placement.unitCount ?? placement.starLevel ?? 1;
         for (let i = 0; i < unitCount; i++) {
-          this.sharedPool.increase(placement.unitType);
+          this.sharedPool.increase(unitCost);
         }
       }
 
       // ベンチのユニットを返却
       for (const benchUnit of benchUnits) {
+        const unitCost = benchUnit.cost ?? 1;
         const unitCount = benchUnit.unitCount ?? 1;
         for (let i = 0; i < unitCount; i++) {
-          this.sharedPool.increase(benchUnit.unitType);
+          this.sharedPool.increase(unitCost);
         }
       }
     }

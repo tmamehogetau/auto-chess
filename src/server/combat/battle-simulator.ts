@@ -458,7 +458,7 @@ export class BattleSimulator {
 
           // ボスパッシブ「紅き夜の王」の判定とATKバフ適用
           const bossPassiveActive = isBossPassiveActive(action.unit);
-          const bossAtkMultiplier = bossPassiveActive ? 1.2 : 1.0;
+          const bossAtkMultiplier = bossPassiveActive ? 1.1 : 1.0;
 
           // 防御力とバフモディファイアとクリティカルとボスパッシブを適用したダメージ計算
           const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier * bossAtkMultiplier;
@@ -466,9 +466,9 @@ export class BattleSimulator {
           const actualDamage = Math.max(1, Math.floor(baseDamage - defense));
           target.hp -= actualDamage;
 
-          // ボスパッシブ「紅き夜の王」の回復効果（与えたダメージの10%回復）
+          // ボスパッシブ「紅き夜の王」の回復効果（与えたダメージの5%回復）
           if (bossPassiveActive && actualDamage > 0) {
-            const healAmount = Math.floor(actualDamage * 0.1);
+            const healAmount = Math.floor(actualDamage * 0.05);
             action.unit.hp = Math.min(action.unit.maxHp, action.unit.hp + healAmount);
             if (healAmount > 0) {
               combatLog.push(

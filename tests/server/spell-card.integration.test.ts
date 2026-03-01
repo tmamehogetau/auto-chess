@@ -48,10 +48,10 @@ describe("SpellCard Integration", () => {
       expect(SPELL_CARDS.length).toBeGreaterThan(0);
     });
 
-    it("スカーレットデスレーザーが定義されている", () => {
+    it("紅符「スカーレットシュート」が定義されている", () => {
       const spell = SPELL_CARDS.find((s) => s.id === "sdl-1");
       expect(spell).toBeDefined();
-      expect(spell?.name).toBe("スカーレットデスレーザー");
+      expect(spell?.name).toBe("紅符「スカーレットシュート」");
       expect(spell?.roundRange).toEqual([1, 4]);
       expect(spell?.effect.type).toBe("damage");
       expect(spell?.effect.target).toBe("raid");
@@ -70,20 +70,22 @@ describe("SpellCard Integration", () => {
       expect(spells4.some((s) => s.id === "sdl-1")).toBe(true);
     });
 
-    it("R5-8ではスペルが返されない（実装済みスペルがないため）", () => {
+    it("R5-8では必殺「ハートブレイク」が取得できる", () => {
       const spells = getAvailableSpellsForRound(5);
-      expect(spells.length).toBe(0);
+      expect(spells.length).toBeGreaterThan(0);
+      expect(spells.some((s) => s.id === "sdl-2")).toBe(true);
 
       const spells8 = getAvailableSpellsForRound(8);
-      expect(spells8.length).toBe(0);
+      expect(spells8.length).toBeGreaterThan(0);
     });
 
-    it("R9-11ではスペルが返されない（実装済みスペルがないため）", () => {
+    it("R9-11では神槍「スピア・ザ・グングニル」が取得できる", () => {
       const spells = getAvailableSpellsForRound(9);
-      expect(spells.length).toBe(0);
+      expect(spells.length).toBeGreaterThan(0);
+      expect(spells.some((s) => s.id === "sdl-3")).toBe(true);
 
       const spells11 = getAvailableSpellsForRound(11);
-      expect(spells11.length).toBe(0);
+      expect(spells11.length).toBeGreaterThan(0);
     });
   });
 

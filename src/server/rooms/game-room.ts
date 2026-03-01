@@ -1,6 +1,7 @@
 import { CloseCode, type Client, Room } from "colyseus";
 
 import { MatchRoomController } from "../match-room-controller";
+import { FeatureFlagService } from "../feature-flag-service";
 import {
   MatchRoomState,
   PlayerPresenceState,
@@ -67,6 +68,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       options.eliminationDurationMs ?? this.eliminationDurationMs;
     this.setId = rawSetId ?? this.setId;
     this.state.setId = this.setId;
+
+    // Load feature flags
+    const flagService = FeatureFlagService.getInstance();
+    this.state.featureFlags = flagService.getFlags();
 
     this.onMessage<ReadyMessage>(CLIENT_MESSAGE_TYPES.READY, async (client, message) => {
       await this.handleReady(client, message);

@@ -2,6 +2,7 @@ import { ArraySchema, MapSchema, Schema, defineTypes } from "@colyseus/schema";
 
 import type { BoardUnitType, UnitEffectSetId } from "../../shared/room-messages";
 import type { ItemType } from "../../shared/types";
+import type { FeatureFlags } from "../../shared/feature-flags";
 
 export class ShopOfferState extends Schema {
   declare public unitType: BoardUnitType;
@@ -146,6 +147,8 @@ export class MatchRoomState extends Schema {
 
   declare public players: MapSchema<PlayerPresenceState>;
 
+  declare public featureFlags: FeatureFlags;
+
   public constructor() {
     super();
     this.phase = "Waiting";
@@ -155,6 +158,11 @@ export class MatchRoomState extends Schema {
     this.roundIndex = 0;
     this.ranking = new ArraySchema<string>();
     this.players = new MapSchema<PlayerPresenceState>();
+    this.featureFlags = {
+      enableHeroSystem: false,
+      enableSharedPool: false,
+      enablePhaseExpansion: false,
+    };
   }
 }
 
@@ -218,5 +226,10 @@ defineTypes(MatchRoomState, {
   players: {
     map: PlayerPresenceState,
     default: new MapSchema<PlayerPresenceState>(),
+  },
+  featureFlags: {
+    enableHeroSystem: "boolean",
+    enableSharedPool: "boolean",
+    enablePhaseExpansion: "boolean",
   },
 });

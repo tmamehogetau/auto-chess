@@ -3,6 +3,7 @@ import { CloseCode, type Client, Room } from "colyseus";
 import { MatchRoomController } from "../match-room-controller";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
+import { MatchLogger } from "../match-logger";
 import {
   MatchRoomState,
   PlayerPresenceState,
@@ -55,6 +56,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private controller: MatchRoomController | null = null;
 
   private sharedBoardBridge: SharedBoardBridge | null = null;
+
+  private matchLogger: MatchLogger | null = null;
 
   private enableSharedBoardShadow = false;
 
@@ -360,6 +363,83 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         latencyMs: submitLatencyMs,
         correlationId,
       });
+
+      // Log player action for match summary
+      if (this.matchLogger && commandPayload) {
+        const player = this.state.players.get(client.sessionId);
+        const goldBefore = player?.gold ?? 0;
+
+        if (commandPayload.shopBuySlotIndex !== undefined) {
+          const offers = this.controller.getShopOffersForPlayer(client.sessionId);
+          const offer = offers[commandPayload.shopBuySlotIndex];
+          if (offer) {
+            this.matchLogger.logAction(
+              client.sessionId,
+              this.controller.roundIndex,
+              "buy_unit",
+              {
+                unitType: offer.unitType,
+                cost: offer.cost,
+                goldBefore,
+                goldAfter: goldBefore - offer.cost,
+              },
+            );
+          }
+        }
+
+        if (commandPayload.benchSellIndex !== undefined) {
+          this.matchLogger.logAction(
+            client.sessionId,
+            this.controller.roundIndex,
+            "sell_unit",
+            {
+              benchIndex: commandPayload.benchSellIndex,
+              goldBefore,
+              goldAfter: goldBefore + 1, // Approximate
+            },
+          );
+        }
+
+        if (commandPayload.benchToBoardCell !== undefined) {
+          this.matchLogger.logAction(
+            client.sessionId,
+            this.controller.roundIndex,
+            "deploy",
+            {
+              benchIndex: commandPayload.benchToBoardCell.benchIndex,
+              toCell: commandPayload.benchToBoardCell.cell,
+              goldBefore,
+              goldAfter: goldBefore,
+            },
+          );
+        }
+
+        if (commandPayload.shopRefreshCount !== undefined) {
+          this.matchLogger.logAction(
+            client.sessionId,
+            this.controller.roundIndex,
+            "shop_refresh",
+            {
+              itemCount: commandPayload.shopRefreshCount,
+              goldBefore,
+              goldAfter: goldBefore - 2, // Refresh cost
+            },
+          );
+        }
+
+        if (commandPayload.xpPurchaseCount !== undefined) {
+          this.matchLogger.logAction(
+            client.sessionId,
+            this.controller.roundIndex,
+            "buy_xp",
+            {
+              itemCount: commandPayload.xpPurchaseCount,
+              goldBefore,
+              goldAfter: goldBefore - 4, // XP cost
+            },
+          );
+        }
+      }
     } else {
       this.sharedBoardBridge?.logGameCommandEvent({
         playerId: client.sessionId,
@@ -591,6 +671,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
+    // Initialize match logger
+    this.matchLogger = new MatchLogger(this.roomId, this.roomId);
+    for (const playerId of connectedPlayerIds) {
+      this.matchLogger.registerPlayer(playerId);
+    }
+
     this.syncStateFromController();
     await this.lock();
   }
@@ -785,6 +871,26 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   public onDispose(): void {
+    // Output match summary log
+    if (this.matchLogger && this.controller) {
+      const ranking = this.controller.rankingTopToBottom;
+      const winner = ranking.length > 0 ? (ranking[0] ?? null) : null;
+      const flags = FeatureFlagService.getInstance().getFlags();
+
+      this.matchLogger.outputSummary(
+        winner,
+        ranking,
+        this.controller.roundIndex,
+        {
+          enableHeroSystem: flags.enableHeroSystem,
+          enableSharedPool: flags.enableSharedPool,
+          enableSpellCard: flags.enableSpellCard,
+          enableRumorInfluence: flags.enableRumorInfluence,
+          enableBossExclusiveShop: flags.enableBossExclusiveShop,
+        },
+      );
+    }
+
     // SharedBoardBridgeの破棄
     if (this.sharedBoardBridge) {
       this.sharedBoardBridge.dispose();

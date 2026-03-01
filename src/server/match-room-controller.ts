@@ -38,6 +38,7 @@ import {
 import { HEROES, type Hero } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
+import { SPELL_CARDS, getAvailableSpellsForRound, type SpellCard } from "../data/spell-cards";
 
 interface MatchRoomControllerOptions {
   readyAutoStartMs: number;
@@ -236,6 +237,10 @@ export class MatchRoomController {
 
   private readonly enableSharedPool: boolean;
 
+  private readonly enableSpellCard: boolean;
+
+  private declaredSpell: SpellCard | null;
+
   public constructor(
     playerIds: string[],
     createdAtMs: number,
@@ -311,6 +316,10 @@ export class MatchRoomController {
     // Feature Flagに基づいて共有プールを初期化
     this.enableSharedPool = FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool');
     this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
+
+    // Feature Flagに基づいてスペルカードを初期化
+    this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
+    this.declaredSpell = null;
   }
 
   public get phase(): Phase | "Waiting" {
@@ -582,6 +591,7 @@ export class MatchRoomController {
       case "Prep":
         if (this.prepDeadlineAtMs !== null && nowMs >= this.prepDeadlineAtMs) {
           this.captureBattleStartHp();
+          this.declareSpell(); // スペル宣言
           this.gameLoopState.transitionTo("Battle");
           this.prepDeadlineAtMs = null;
           this.battleDeadlineAtMs = nowMs + this.battleDurationMs;
@@ -595,6 +605,7 @@ export class MatchRoomController {
           this.capturePhaseProgressFromPendingDamage();
           this.applyPendingRoundDamage();
           this.capturePostBattleHp();
+          this.applySpellEffect(); // スペル効果を適用
           this.gameLoopState.transitionTo("Settle");
           this.battleDeadlineAtMs = null;
           this.settleDeadlineAtMs = nowMs + this.settleDurationMs;
@@ -2258,5 +2269,59 @@ export class MatchRoomController {
     }
 
     return pairings;
+  }
+
+  /**
+   * ラウンド開始時にスペルを宣言
+   * Feature Flagが有効な場合のみ実行
+   */
+  private declareSpell(): void {
+    if (!this.enableSpellCard) {
+      return;
+    }
+
+    const state = this.ensureStarted();
+    const roundIndex = state.roundIndex;
+    const availableSpells = getAvailableSpellsForRound(roundIndex);
+
+    if (availableSpells.length === 0) {
+      this.declaredSpell = null;
+      return;
+    }
+
+    // 簡易版：最初のスペルを選択（後で拡張可能）
+    this.declaredSpell = availableSpells[0] ?? null;
+  }
+
+  /**
+   * 戦闘フェーズ終了時にスペル効果を適用
+   * Feature Flagが有効な場合のみ実行
+   */
+  private applySpellEffect(): void {
+    if (!this.enableSpellCard || !this.declaredSpell) {
+      return;
+    }
+
+    const state = this.ensureStarted();
+    const spell = this.declaredSpell;
+
+    if (spell.effect.type === "damage") {
+      if (spell.effect.target === "raid" || spell.effect.target === "all") {
+        // レイドメンバー全員にダメージを与える
+        for (const playerId of state.alivePlayerIds) {
+          const currentHp = state.getPlayerHp(playerId);
+          state.setPlayerHp(playerId, currentHp - spell.effect.value);
+        }
+      }
+    }
+
+    // 他の効果タイプ（heal, buff, debuff）は後で実装
+  }
+
+  /**
+   * 現在宣言中のスペルカードを取得
+   */
+  public getDeclaredSpell(): SpellCard | null {
+    return this.declaredSpell;
   }
 }

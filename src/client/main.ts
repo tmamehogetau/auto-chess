@@ -1,6 +1,10 @@
 import type { RoomMessageSubscriber } from "./round-state-receiver";
 import { createDomTextDisplayTarget } from "./ui/dom-text-display-target";
 import { SetIdDisplayApp } from "./ui/set-id-display-app";
+import {
+  createSpellCardDisplayTarget,
+  SpellCardDisplayApp,
+} from "./ui/spell-card-display";
 
 interface QueryRoot {
   querySelector(selector: string): unknown;
@@ -12,6 +16,11 @@ export interface AttachSetIdDisplayOptions {
 }
 
 export interface SetIdDisplayBinding {
+  stop(): void;
+  renderNow(): void;
+}
+
+export interface SpellCardDisplayBinding {
   stop(): void;
   renderNow(): void;
 }
@@ -46,6 +55,8 @@ export interface ConnectedSetIdDisplayBinding extends SetIdDisplayBinding {
 
 export const DEFAULT_SET_ID_SELECTOR = "[data-set-id-display]";
 
+export const DEFAULT_SPELL_CARD_SELECTOR = "[data-spell-card-display]";
+
 export const DEFAULT_ROOM_NAME = "game";
 
 export function attachSetIdDisplay(
@@ -66,6 +77,36 @@ export function attachSetIdDisplay(
   }
 
   const app = new SetIdDisplayApp(displayTarget);
+  app.start(room);
+
+  return {
+    stop: () => {
+      app.stop();
+    },
+    renderNow: () => {
+      app.renderNow();
+    },
+  };
+}
+
+export function attachSpellCardDisplay(
+  room: RoomMessageSubscriber,
+  options: AttachSetIdDisplayOptions = {},
+): SpellCardDisplayBinding | null {
+  const root = resolveQueryRoot(options.root);
+
+  if (!root) {
+    return null;
+  }
+
+  const selector = options.selector ?? DEFAULT_SPELL_CARD_SELECTOR;
+  const displayTarget = createSpellCardDisplayTarget(root, selector);
+
+  if (!displayTarget) {
+    return null;
+  }
+
+  const app = new SpellCardDisplayApp(displayTarget);
   app.start(room);
 
   return {

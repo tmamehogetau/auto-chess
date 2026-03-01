@@ -22,6 +22,7 @@ class FeatureFlagService {
       enableSharedPool: this.parseEnvBoolean("FEATURE_ENABLE_SHARED_POOL"),
       enablePhaseExpansion: this.parseEnvBoolean("FEATURE_ENABLE_PHASE_EXPANSION"),
       enableEmblemCells: this.parseEnvBoolean("FEATURE_ENABLE_EMBLEM_CELLS"),
+      enableSpellCard: this.parseEnvBoolean("FEATURE_ENABLE_SPELL_CARD"),
     };
   }
 

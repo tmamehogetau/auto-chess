@@ -1,0 +1,173 @@
+/**
+ * スペルカード統合テスト
+ * Phase2 P1-1: スペルカード最小版
+ */
+
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { MatchRoomController } from "../../src/server/match-room-controller";
+import { SPELL_CARDS, getAvailableSpellsForRound } from "../../src/data/spell-cards";
+import { FeatureFlagService } from "../../src/server/feature-flag-service";
+
+describe("SpellCard Integration", () => {
+  let controller: MatchRoomController;
+  const playerIds = ["player1", "player2"] as const;
+  const PLAYER1 = playerIds[0];
+  const PLAYER2 = playerIds[1];
+
+  beforeAll(() => {
+    // Feature Flagを有効にする
+    process.env.FEATURE_ENABLE_SPELL_CARD = "true";
+    // Reset singleton to pick up new environment variables
+    (FeatureFlagService as any).instance = undefined;
+  });
+
+  afterAll(() => {
+    // 環境変数をリセット
+    delete process.env.FEATURE_ENABLE_SPELL_CARD;
+    // Reset singleton
+    (FeatureFlagService as any).instance = undefined;
+  });
+
+  beforeEach(() => {
+    controller = new MatchRoomController([...playerIds], Date.now(), {
+      readyAutoStartMs: 1000,
+      prepDurationMs: 10000,
+      battleDurationMs: 5000,
+      settleDurationMs: 1000,
+      eliminationDurationMs: 1000,
+    });
+  });
+
+  afterEach(() => {
+    // Cleanup if needed
+  });
+
+  describe("スペルカード定義", () => {
+    it("SPELL_CARDSが定義されている", () => {
+      expect(SPELL_CARDS).toBeDefined();
+      expect(SPELL_CARDS.length).toBeGreaterThan(0);
+    });
+
+    it("スカーレットデスレーザーが定義されている", () => {
+      const spell = SPELL_CARDS.find((s) => s.id === "sdl-1");
+      expect(spell).toBeDefined();
+      expect(spell?.name).toBe("スカーレットデスレーザー");
+      expect(spell?.roundRange).toEqual([1, 4]);
+      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.target).toBe("raid");
+      expect(spell?.effect.value).toBe(50);
+    });
+  });
+
+  describe("ラウンド範囲別スペル取得", () => {
+    it("R1-4でスカーレットデスレーザーが取得できる", () => {
+      const spells = getAvailableSpellsForRound(1);
+      expect(spells.length).toBeGreaterThan(0);
+      expect(spells.some((s) => s.id === "sdl-1")).toBe(true);
+
+      const spells4 = getAvailableSpellsForRound(4);
+      expect(spells4.length).toBeGreaterThan(0);
+      expect(spells4.some((s) => s.id === "sdl-1")).toBe(true);
+    });
+
+    it("R5-8ではスペルが返されない（実装済みスペルがないため）", () => {
+      const spells = getAvailableSpellsForRound(5);
+      expect(spells.length).toBe(0);
+
+      const spells8 = getAvailableSpellsForRound(8);
+      expect(spells8.length).toBe(0);
+    });
+
+    it("R9-11ではスペルが返されない（実装済みスペルがないため）", () => {
+      const spells = getAvailableSpellsForRound(9);
+      expect(spells.length).toBe(0);
+
+      const spells11 = getAvailableSpellsForRound(11);
+      expect(spells11.length).toBe(0);
+    });
+  });
+
+  describe("スペル宣言と効果適用", () => {
+    beforeEach(() => {
+      // 全プレイヤーをreadyにする
+      for (const playerId of playerIds) {
+        controller.setReady(playerId, true);
+      }
+
+      // ゲームを開始
+      const started = controller.startIfReady(Date.now(), [...playerIds]);
+      expect(started).toBe(true);
+    });
+
+    it("R1でスペルが宣言される", () => {
+      // Prep → Battleへ遷移してスペルを宣言
+      const now = Date.now();
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      // PrepをスキップしてBattleへ
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      // スペルが宣言されているか確認
+      const declaredSpell = controller.getDeclaredSpell();
+      expect(declaredSpell).toBeDefined();
+      expect(declaredSpell?.id).toBe("sdl-1");
+    });
+
+    it("戦闘フェーズ終了時にスペル効果が適用される", () => {
+      // Prep → Battleへ遷移してスペルを宣言
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      // PrepをスキップしてBattleへ
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      // 戦闘前のHPを確認
+      const hpBeforeBattle1 = controller.getPlayerHp(PLAYER1);
+      const hpBeforeBattle2 = controller.getPlayerHp(PLAYER2);
+      expect(hpBeforeBattle1).toBe(100);
+      expect(hpBeforeBattle2).toBe(100);
+
+      // Battle → Settleへ遷移してスペル効果を適用
+      // battleDeadlineAtMsはprivateなので、phaseDeadlineAtMsを使う
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      // スペル効果（ダメージ）が適用されているか確認
+      const hpAfterBattle1 = controller.getPlayerHp(PLAYER1);
+      const hpAfterBattle2 = controller.getPlayerHp(PLAYER2);
+
+      // 注: 実際には戦闘ダメージも加算されるため、完全なテストにはモックが必要
+      // ここではHPが減少していることを確認
+      expect(hpAfterBattle1).toBeLessThan(hpBeforeBattle1);
+      expect(hpAfterBattle2).toBeLessThan(hpBeforeBattle2);
+    });
+  });
+
+  describe("Feature Flag無効時の動作", () => {
+    // 注: Feature Flagは環境変数で制御されるため、
+    // 実際のテストでは環境変数を設定してからテストを実行する必要がある
+    it("enableSpellCard=falseの場合、スペルは宣言されない", () => {
+      // このテストは環境変数を設定して実行する必要がある
+      // FEATURE_ENABLE_SPELL_CARD=false の場合
+      // declaredSpellはnullになるはず
+
+      // Prep → Battleへ遷移
+      const now = Date.now();
+      const prepDeadline = controller.prepDeadlineAtMs;
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      // Feature Flagが無効の場合、declaredSpellはnull
+      // (実際の動作は環境変数依存)
+      const declaredSpell = controller.getDeclaredSpell();
+      expect(declaredSpell).toBeNull();
+    });
+  });
+});

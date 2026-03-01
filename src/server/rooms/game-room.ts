@@ -447,6 +447,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.controller.phase === "Prep" ? this.controller.prepDeadlineAtMs ?? 0 : 0;
     this.state.roundIndex = this.controller.roundIndex;
     this.state.setId = this.setId;
+
+    // スペルカード関連の同期
+    const flagService = FeatureFlagService.getInstance();
+    this.state.featureFlagsEnableSpellCard = flagService.isFeatureEnabled('enableSpellCard');
+    const declaredSpell = this.controller.getDeclaredSpell();
+    this.state.declaredSpellId = declaredSpell?.id ?? "";
+
     this.syncRanking(this.controller.rankingTopToBottom);
 
     for (const [playerId, playerState] of this.state.players.entries()) {

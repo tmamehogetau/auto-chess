@@ -30,6 +30,12 @@ export async function withFlags(
         flags.enablePhaseExpansion,
       );
     }
+    if (flags.enableEmblemCells !== undefined) {
+      process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
+    }
+    if (flags.enableSpellCard !== undefined) {
+      process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
+    }
 
     // Reset singleton instance to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
@@ -68,6 +74,8 @@ export async function createRoomWithFlags(
     process.env.FEATURE_ENABLE_PHASE_EXPANSION = String(
       flags.enablePhaseExpansion,
     );
+    process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
+    process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
 
     // Reset singleton instance to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
@@ -95,6 +103,7 @@ export const FLAG_CONFIGURATIONS = {
     enableSharedPool: false,
     enablePhaseExpansion: false,
     enableEmblemCells: false,
+    enableSpellCard: false,
   } satisfies FeatureFlags,
 
   /** All feature flags enabled (Phase2 behavior) */
@@ -103,6 +112,7 @@ export const FLAG_CONFIGURATIONS = {
     enableSharedPool: true,
     enablePhaseExpansion: true,
     enableEmblemCells: true,
+    enableSpellCard: true,
   } satisfies FeatureFlags,
 
   /** Only hero system enabled */
@@ -111,6 +121,7 @@ export const FLAG_CONFIGURATIONS = {
     enableSharedPool: false,
     enablePhaseExpansion: false,
     enableEmblemCells: false,
+    enableSpellCard: false,
   } satisfies FeatureFlags,
 
   /** Only shared pool enabled */
@@ -119,6 +130,7 @@ export const FLAG_CONFIGURATIONS = {
     enableSharedPool: true,
     enablePhaseExpansion: false,
     enableEmblemCells: false,
+    enableSpellCard: false,
   } satisfies FeatureFlags,
 
   /** Only phase expansion enabled */
@@ -127,5 +139,15 @@ export const FLAG_CONFIGURATIONS = {
     enableSharedPool: false,
     enablePhaseExpansion: true,
     enableEmblemCells: false,
+    enableSpellCard: false,
+  } satisfies FeatureFlags,
+
+  /** Only spell card enabled */
+  SPELL_CARD_ONLY: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableEmblemCells: false,
+    enableSpellCard: true,
   } satisfies FeatureFlags,
 } as const;

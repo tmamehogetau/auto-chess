@@ -3,6 +3,7 @@ export interface FeatureFlags {
   enableSharedPool: boolean;
   enablePhaseExpansion: boolean;
   enableEmblemCells: boolean;
+  enableSpellCard: boolean;
 }
 
 export const DEFAULT_FLAGS: FeatureFlags = {
@@ -10,4 +11,5 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   enableSharedPool: false,
   enablePhaseExpansion: false,
   enableEmblemCells: false,
+  enableSpellCard: false,
 };

@@ -457,6 +457,41 @@
         color: #e74c3c;
       }
 
+      /* Spell Card Section */
+      .spell-card-section {
+        margin-bottom: 15px;
+        padding: 10px;
+        background: rgba(155, 89, 182, 0.1);
+        border: 1px solid rgba(155, 89, 182, 0.3);
+        border-radius: 8px;
+      }
+
+      .spell-card-display {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .spell-card-display .spell-icon {
+        font-size: 32px;
+      }
+
+      .spell-card-display .spell-info {
+        flex: 1;
+      }
+
+      .spell-card-display .spell-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: #bb8fce;
+        margin-bottom: 2px;
+      }
+
+      .spell-card-display .spell-desc {
+        font-size: 12px;
+        color: #aab3c5;
+      }
+
       .phase-hp-result.pending {
         color: #f39c12;
       }
@@ -1610,6 +1645,18 @@
               <span class="hero-stat-label">ATK</span>
               <span class="hero-stat-value" data-hero-attack>-</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spell Card Display -->
+      <div class="spell-card-section" data-spell-card-section style="display: none;">
+        <div class="shop-title">🔮 Spell Card</div>
+        <div class="spell-card-display">
+          <div class="spell-icon">🔮</div>
+          <div class="spell-info">
+            <div class="spell-name" data-spell-name>-</div>
+            <div class="spell-desc" data-spell-desc>-</div>
           </div>
         </div>
       </div>

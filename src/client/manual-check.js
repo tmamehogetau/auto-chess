@@ -101,6 +101,15 @@ const HERO_ROLE_ICONS = {
   support: "✨",
 };
 
+// Spell cards (client-side copy)
+const SPELL_CARDS = [
+  {
+    id: 'sdl-1',
+    name: 'スカーレットデスレーザー',
+    description: 'レイドメンバー全員に50ダメージを与える',
+  },
+];
+
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -165,6 +174,11 @@ const heroNameDisplay = document.querySelector("[data-hero-name]");
 const heroRoleDisplay = document.querySelector("[data-hero-role]");
 const heroHpDisplay = document.querySelector("[data-hero-hp]");
 const heroAttackDisplay = document.querySelector("[data-hero-attack]");
+
+// Spell card elements
+const spellCardSection = document.querySelector("[data-spell-card-section]");
+const spellNameDisplay = document.querySelector("[data-spell-name]");
+const spellDescDisplay = document.querySelector("[data-spell-desc]");
 
 // Game state
 let activeRoom = null;
@@ -910,6 +924,18 @@ function updateGameUI(state) {
     }
   } else if (heroSection) {
     heroSection.style.display = "none";
+  }
+
+  // Update spell card display
+  if (state.featureFlagsEnableSpellCard && player.declaredSpellCardId) {
+    const spell = SPELL_CARDS.find((s) => s.id === player.declaredSpellCardId);
+    if (spell && spellCardSection) {
+      spellCardSection.style.display = "block";
+      if (spellNameDisplay) spellNameDisplay.textContent = spell.name;
+      if (spellDescDisplay) spellDescDisplay.textContent = spell.description;
+    }
+  } else if (spellCardSection) {
+    spellCardSection.style.display = "none";
   }
 
     nextCmdSeq = player.lastCmdSeq + 1;

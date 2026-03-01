@@ -1,4 +1,4 @@
-import type { FeatureFlags, DEFAULT_FLAGS } from "../../shared/feature-flags";
+import type { FeatureFlags } from "../shared/feature-flags";
 
 class FeatureFlagService {
   private static instance: FeatureFlagService;

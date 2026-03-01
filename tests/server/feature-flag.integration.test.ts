@@ -1,21 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { setup, cleanup, type ServerInstance } from "@colyseus/testing";
 import { MatchRoomState } from "../../src/server/schema/match-room-state";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
 
 describe("Feature Flag Integration", () => {
-  let server: ServerInstance;
-
-  beforeEach(async () => {
-    server = await setup({
-      serverOptions: { greet: false },
-    });
-  });
-
-  afterEach(async () => {
-    await cleanup();
-  });
-
   describe("FeatureFlagService", () => {
     it("should load default flags when no env vars set", () => {
       const originalEnv = process.env;
@@ -97,22 +84,21 @@ describe("Feature Flag Integration", () => {
     it("should initialize with default feature flags", () => {
       const state = new MatchRoomState();
 
-      expect(state.featureFlags).toBeDefined();
-      expect(state.featureFlags.enableHeroSystem).toBe(false);
-      expect(state.featureFlags.enableSharedPool).toBe(false);
-      expect(state.featureFlags.enablePhaseExpansion).toBe(false);
+      expect(state.featureFlagsEnableHeroSystem).toBe(false);
+      expect(state.featureFlagsEnableSharedPool).toBe(false);
+      expect(state.featureFlagsEnablePhaseExpansion).toBe(false);
     });
 
     it("should allow updating feature flags", () => {
       const state = new MatchRoomState();
 
-      state.featureFlags.enableHeroSystem = true;
-      state.featureFlags.enableSharedPool = true;
-      state.featureFlags.enablePhaseExpansion = true;
+      state.featureFlagsEnableHeroSystem = true;
+      state.featureFlagsEnableSharedPool = true;
+      state.featureFlagsEnablePhaseExpansion = true;
 
-      expect(state.featureFlags.enableHeroSystem).toBe(true);
-      expect(state.featureFlags.enableSharedPool).toBe(true);
-      expect(state.featureFlags.enablePhaseExpansion).toBe(true);
+      expect(state.featureFlagsEnableHeroSystem).toBe(true);
+      expect(state.featureFlagsEnableSharedPool).toBe(true);
+      expect(state.featureFlagsEnablePhaseExpansion).toBe(true);
     });
   });
 

@@ -147,7 +147,11 @@ export class MatchRoomState extends Schema {
 
   declare public players: MapSchema<PlayerPresenceState>;
 
-  declare public featureFlags: FeatureFlags;
+  declare public featureFlagsEnableHeroSystem: boolean;
+
+  declare public featureFlagsEnableSharedPool: boolean;
+
+  declare public featureFlagsEnablePhaseExpansion: boolean;
 
   public constructor() {
     super();
@@ -158,11 +162,9 @@ export class MatchRoomState extends Schema {
     this.roundIndex = 0;
     this.ranking = new ArraySchema<string>();
     this.players = new MapSchema<PlayerPresenceState>();
-    this.featureFlags = {
-      enableHeroSystem: false,
-      enableSharedPool: false,
-      enablePhaseExpansion: false,
-    };
+    this.featureFlagsEnableHeroSystem = false;
+    this.featureFlagsEnableSharedPool = false;
+    this.featureFlagsEnablePhaseExpansion = false;
   }
 }
 
@@ -227,9 +229,7 @@ defineTypes(MatchRoomState, {
     map: PlayerPresenceState,
     default: new MapSchema<PlayerPresenceState>(),
   },
-  featureFlags: {
-    enableHeroSystem: "boolean",
-    enableSharedPool: "boolean",
-    enablePhaseExpansion: "boolean",
-  },
+  featureFlagsEnableHeroSystem: "boolean",
+  featureFlagsEnableSharedPool: "boolean",
+  featureFlagsEnablePhaseExpansion: "boolean",
 });

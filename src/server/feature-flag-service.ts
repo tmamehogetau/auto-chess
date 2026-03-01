@@ -21,6 +21,7 @@ class FeatureFlagService {
       enableHeroSystem: this.parseEnvBoolean("FEATURE_ENABLE_HERO_SYSTEM"),
       enableSharedPool: this.parseEnvBoolean("FEATURE_ENABLE_SHARED_POOL"),
       enablePhaseExpansion: this.parseEnvBoolean("FEATURE_ENABLE_PHASE_EXPANSION"),
+      enableEmblemCells: this.parseEnvBoolean("FEATURE_ENABLE_EMBLEM_CELLS"),
     };
   }
 

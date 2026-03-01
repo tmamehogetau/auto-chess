@@ -6,6 +6,8 @@ export class SharedBoardCellState extends Schema {
   declare public ownerId: string;
   declare public lockedBy: string;
   declare public lockUntilMs: number;
+  // 紋章マス用拡張スロット（将来実装予約）
+  // emblemType?: 'attack' | 'defense' | 'speed';
 
   public constructor() {
     super();

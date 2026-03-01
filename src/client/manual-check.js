@@ -321,6 +321,13 @@ itemShopGrid?.querySelectorAll("[data-item-shop-slot]").forEach((card) => {
   });
 });
 
+bossShopGrid?.querySelectorAll("[data-boss-shop-slot]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const slot = Number.parseInt(card.dataset.bossShopSlot, 10);
+    handleBuyBossShopUnit(slot);
+  });
+});
+
 // Bench slot click handlers
 benchGrid?.querySelectorAll("[data-bench-slot]").forEach((slot) => {
   slot.addEventListener("click", () => {
@@ -593,6 +600,23 @@ function handleBuyItem(shopSlot) {
 
   sendPrepCommand({ itemBuySlotIndex: shopSlot });
   showMessage(`Buying item from slot ${shopSlot}...`, "success");
+}
+
+function handleBuyBossShopUnit(shopSlot) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only buy during prep phase", "error");
+    return;
+  }
+
+  // Purchase animation
+  const shopCard = bossShopGrid?.querySelector(`[data-boss-shop-slot="${shopSlot}"]`);
+  if (shopCard) {
+    shopCard.classList.add("purchased");
+    setTimeout(() => shopCard.classList.remove("purchased"), 500);
+  }
+
+  sendPrepCommand({ bossShopBuySlotIndex: shopSlot });
+  showMessage(`Buying unit from boss shop slot ${shopSlot}...`, "success");
 }
 
 function handleRefreshShop() {
@@ -1352,12 +1376,15 @@ function updateBossShop(offers, visible) {
 
     const icon = UNIT_ICONS[offer.unitType] || "🦇";
     const cost = offer.cost || 0;
+    const isPurchased = offer.purchased === true;
+    const canAfford = currentGold >= cost && !isPurchased;
     card.innerHTML = `
       <div class="icon">${icon}</div>
       <div class="name">${offer.unitType}</div>
       <div class="cost">${cost}G</div>
+      ${isPurchased ? '<div class="purchased-badge">Purchased</div>' : ''}
     `;
-    card.classList.add("disabled");
+    card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
   }
 }
 

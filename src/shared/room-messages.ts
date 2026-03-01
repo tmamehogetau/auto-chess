@@ -50,6 +50,7 @@ export interface PrepCommandMessage {
     itemSlotIndex: number;             // Item slot on unit (0-2)
   };
   itemSellInventoryIndex?: number;     // Sell item from inventory
+  bossShopBuySlotIndex?: number;       // Buy unit from boss shop
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
@@ -68,6 +69,7 @@ export interface BoardUnitPlacement {
   sellValue?: number;
   unitCount?: number;
   items?: ItemType[];  // Max 3 items per unit
+  archetype?: string;  // 特殊ユニットのアーキタイプ（例: meiling, sakuya, patchouli）
 }
 
 export type CommandRejectCode =

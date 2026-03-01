@@ -3,6 +3,7 @@ import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS } from "./skill-definitions";
 import { SYNERGY_DEFINITIONS, calculateSynergyDetails, SynergyTier } from "./synergy-definitions";
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
+import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 
 /**
  * アクションインターフェース
@@ -78,6 +79,7 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
 /**
  * BattleUnit を作成するヘルパー関数
  * BoardUnitPlacement から BattleUnit を生成し、星レベルに応じたステータスを適用
+ * Scarlet Mansionユニットの場合は特殊ステータスを適用
  */
 export function createBattleUnit(
   placement: BoardUnitPlacement,
@@ -85,31 +87,61 @@ export function createBattleUnit(
   index: number,
   isBoss: boolean = false,
 ): BattleUnit {
-  const { unitType, starLevel = 1, cell } = placement;
+  const { unitType, starLevel = 1, cell, archetype } = placement;
   const baseStats = BASE_STATS[unitType];
-  
-  // ボスの場合、星レベル倍率をスキップ（常に基本値）
-  const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
 
-  const scaledHp = baseStats.hp * starMultiplier;
-  const scaledAttack = baseStats.attack * starMultiplier;
+  // Scarlet Mansionユニットの特殊ステータスをチェック
+  let finalHp: number;
+  let finalAttack: number;
+  let finalAttackSpeed: number;
+  let finalRange: number;
+  let finalDefense: number;
+
+  if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
+    // Scarlet Mansionユニットの場合、特殊ステータスを適用
+    const scarletUnit = getScarletMansionUnitById(archetype);
+    if (scarletUnit) {
+      finalHp = scarletUnit.hp;
+      finalAttack = scarletUnit.attack;
+      finalAttackSpeed = scarletUnit.attackSpeed;
+      finalRange = scarletUnit.range;
+      // 物理軽減と魔法軽減の平均を防御力として適用
+      finalDefense = (scarletUnit.physicalReduction + scarletUnit.magicReduction) / 2;
+    } else {
+      // フォールバック: 通常ステータスを使用
+      const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
+      finalHp = baseStats.hp * starMultiplier;
+      finalAttack = baseStats.attack * starMultiplier;
+      finalAttackSpeed = baseStats.attackSpeed;
+      finalRange = baseStats.range;
+      finalDefense = unitType === "vanguard" ? 3 : 0;
+    }
+  } else {
+    // 通常ユニット: 星レベル倍率を適用
+    const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
+    finalHp = baseStats.hp * starMultiplier;
+    finalAttack = baseStats.attack * starMultiplier;
+    finalAttackSpeed = baseStats.attackSpeed;
+    finalRange = baseStats.range;
+    finalDefense = unitType === "vanguard" ? 3 : 0;
+  }
 
   return {
     id: `${side}-${unitType}-${index}`,
     type: unitType,
     starLevel,
-    hp: scaledHp,
-    maxHp: scaledHp,
-    attackPower: scaledAttack,
-    attackSpeed: baseStats.attackSpeed,
-    attackRange: baseStats.range,
+    hp: finalHp,
+    maxHp: finalHp,
+    attackPower: finalAttack,
+    attackSpeed: finalAttackSpeed,
+    attackRange: finalRange,
     cell,
     isDead: false,
-    isBoss, // ボスフラグを設定
+    isBoss,
     attackCount: 0,
-    defense: unitType === "vanguard" ? 3 : 0, // Vanguard はタフなので防御力が高い
-    critRate: 0, // ベース 0%（シナジーで追加）
-    critDamageMultiplier: 1.5, // ベース 150%
+    defense: finalDefense,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
     buffModifiers: {
       attackMultiplier: 1.0,
       defenseMultiplier: 1.0,
@@ -124,6 +156,19 @@ export function createBattleUnit(
  */
 export function calculateCellDistance(cell1: number, cell2: number): number {
   return Math.abs(cell1 - cell2);
+}
+
+/**
+ * ボスパッシブ「紅き夜の王」が有効かどうかを判定
+ * 条件: ボスユニットかつ HP ≥ 70%
+ * @param unit ユニット
+ * @returns パッシブが有効な場合は true
+ */
+function isBossPassiveActive(unit: BattleUnit): boolean {
+  if (!unit.isBoss) {
+    return false;
+  }
+  return unit.hp >= unit.maxHp * 0.7;
 }
 
 /**
@@ -411,11 +456,26 @@ export class BattleSimulator {
           const isCrit = Math.random() < action.unit.critRate;
           const critMultiplier = isCrit ? action.unit.critDamageMultiplier : 1.0;
 
-          // 防御力とバフモディファイアとクリティカルを適用したダメージ計算
-          const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier;
+          // ボスパッシブ「紅き夜の王」の判定とATKバフ適用
+          const bossPassiveActive = isBossPassiveActive(action.unit);
+          const bossAtkMultiplier = bossPassiveActive ? 1.2 : 1.0;
+
+          // 防御力とバフモディファイアとクリティカルとボスパッシブを適用したダメージ計算
+          const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier * bossAtkMultiplier;
           const defense = target.defense * target.buffModifiers.defenseMultiplier;
           const actualDamage = Math.max(1, Math.floor(baseDamage - defense));
           target.hp -= actualDamage;
+
+          // ボスパッシブ「紅き夜の王」の回復効果（与えたダメージの10%回復）
+          if (bossPassiveActive && actualDamage > 0) {
+            const healAmount = Math.floor(actualDamage * 0.1);
+            action.unit.hp = Math.min(action.unit.maxHp, action.unit.hp + healAmount);
+            if (healAmount > 0) {
+              combatLog.push(
+                `${generateUnitName(action.unit)} Boss Passive heals for ${healAmount} HP (${action.unit.hp}/${action.unit.maxHp})`,
+              );
+            }
+          }
 
           // ダメージ追跡
           const isAttackerLeft = action.unit.id.startsWith("left");

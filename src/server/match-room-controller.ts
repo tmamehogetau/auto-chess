@@ -117,6 +117,8 @@ interface ShopOffer {
   rarity: UnitRarity;
   cost: number;
   isRumorUnit?: boolean;
+  purchased?: boolean;
+  starLevel?: number;
 }
 
 interface OwnedUnits {
@@ -860,6 +862,7 @@ export class MatchRoomController {
         itemSlotIndex: number;
       };
       itemSellInventoryIndex?: number;
+      bossShopBuySlotIndex?: number;
     },
   ): CommandResult {
     if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
@@ -929,6 +932,7 @@ export class MatchRoomController {
         }
       | null = null;
     let itemSellInventoryIndex: number | null = null;
+    let bossShopBuySlotIndex: number | null = null;
 
     if (commandPayload?.xpPurchaseCount !== undefined) {
       xpPurchaseCount = commandPayload.xpPurchaseCount;
@@ -1118,6 +1122,34 @@ export class MatchRoomController {
       itemSellInventoryIndex = index;
     }
 
+    if (commandPayload?.bossShopBuySlotIndex !== undefined) {
+      bossShopBuySlotIndex = commandPayload.bossShopBuySlotIndex;
+
+      if (
+        !Number.isInteger(bossShopBuySlotIndex!) ||
+        bossShopBuySlotIndex! < 0 ||
+        bossShopBuySlotIndex! > 1
+      ) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      // Boss shop is only available to boss player
+      if (!this.isBossPlayer(playerId)) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      // Check if offer exists and is not already purchased
+      const bossOffers = this.getBossShopOffersForPlayer(playerId);
+      if (!bossOffers || bossShopBuySlotIndex! >= bossOffers.length) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      const bossOffer = bossOffers[bossShopBuySlotIndex!];
+      if (!bossOffer || bossOffer.purchased) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    }
+
     if (benchToBoardCell && benchSellIndex !== null) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
@@ -1238,13 +1270,37 @@ export class MatchRoomController {
       itemBuyCost = offer.cost;
     }
 
-    if (xpPurchaseCount > 0 || shopRefreshCount > 0 || shopBuyCost > 0 || itemBuyCost > 0) {
+    let bossShopBuyCost = 0;
+
+    if (bossShopBuySlotIndex !== null) {
+      const bossOffers = this.getBossShopOffersForPlayer(playerId);
+      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+
+      if (!bossOffers || bossShopBuySlotIndex! >= bossOffers.length) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      const bossOffer = bossOffers[bossShopBuySlotIndex!];
+      if (!bossOffer || bossOffer.purchased) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      if (benchUnits.length >= MAX_BENCH_SIZE) {
+        return { accepted: false, code: "BENCH_FULL" };
+      }
+
+      // Boss shop offers have cost 0 (special units for boss player)
+      bossShopBuyCost = 0;
+    }
+
+    if (xpPurchaseCount > 0 || shopRefreshCount > 0 || shopBuyCost > 0 || itemBuyCost > 0 || bossShopBuyCost > 0) {
       const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
       const requiredGold =
         XP_PURCHASE_COST * xpPurchaseCount +
         SHOP_REFRESH_COST * shopRefreshCount +
         shopBuyCost +
-        itemBuyCost;
+        itemBuyCost +
+        bossShopBuyCost;
 
       if (currentGold < requiredGold) {
         return { accepted: false, code: "INSUFFICIENT_GOLD" };
@@ -1272,6 +1328,28 @@ export class MatchRoomController {
           const offer = itemShop[itemBuySlotIndex];
           if (offer) {
             inventory.push(offer.itemType);
+          }
+        }
+      }
+
+      if (bossShopBuySlotIndex !== null) {
+        const bossOffers = this.getBossShopOffersForPlayer(playerId);
+        const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+
+        if (bossOffers && bossShopBuySlotIndex! < bossOffers.length) {
+          const bossOffer = bossOffers[bossShopBuySlotIndex!];
+          if (bossOffer && !bossOffer.purchased) {
+            // Add unit to bench as BenchUnit object
+            benchUnits.push({
+              unitType: bossOffer.unitType,
+              cost: bossOffer.cost,
+              starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
+              unitCount: 1,
+            });
+            this.benchUnitsByPlayer.set(playerId, benchUnits);
+
+            // Mark offer as purchased
+            bossOffer.purchased = true;
           }
         }
       }

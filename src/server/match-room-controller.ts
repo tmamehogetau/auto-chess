@@ -53,6 +53,9 @@ interface MatchRoomControllerOptions {
   settleDurationMs: number;
   eliminationDurationMs: number;
   setId?: UnitEffectSetId;
+  featureFlags?: {
+    enablePhaseExpansion?: boolean;
+  };
 }
 
 type PhaseResult = "pending" | "success" | "failed";
@@ -91,6 +94,9 @@ const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   6: 900,
   7: 1000,
   8: 1200,
+  9: 1400,
+  10: 1600,
+  11: 1800,
 };
 
 const ITEM_SHOP_SIZE = 5;
@@ -256,6 +262,10 @@ export class MatchRoomController {
 
   private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
 
+  private readonly featureFlags: {
+    enablePhaseExpansion: boolean;
+  };
+
   public constructor(
     playerIds: string[],
     createdAtMs: number,
@@ -300,6 +310,9 @@ export class MatchRoomController {
     this.currentRoundPairings = [];
     this.eliminatedFromBottom = [];
     this.setId = options.setId ?? DEFAULT_UNIT_EFFECT_SET_ID;
+    this.featureFlags = {
+      enablePhaseExpansion: options.featureFlags?.enablePhaseExpansion ?? false,
+    };
     this.phaseHpTarget = this.resolvePhaseHpTarget(1);
     this.phaseDamageDealt = 0;
     this.phaseResult = "pending";
@@ -786,7 +799,8 @@ export class MatchRoomController {
         ) {
           this.eliminationDeadlineAtMs = null;
 
-          if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === 8) {
+          const maxRounds = this.featureFlags.enablePhaseExpansion ? 11 : 8;
+          if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === maxRounds) {
             this.gameLoopState.transitionTo("End");
             return true;
           }
@@ -2055,7 +2069,7 @@ export class MatchRoomController {
       return PHASE_HP_TARGET_BY_ROUND[roundIndex];
     }
 
-    return PHASE_HP_TARGET_BY_ROUND[8] ?? 1200;
+    return PHASE_HP_TARGET_BY_ROUND[11] ?? 1800;
   }
 
   private resolveMissingRoundDamage(): void {

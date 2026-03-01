@@ -132,6 +132,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         settleDurationMs: this.settleDurationMs,
         eliminationDurationMs: this.eliminationDurationMs,
         setId: this.setId,
+        featureFlags: {
+          enablePhaseExpansion: this.state.featureFlagsEnablePhaseExpansion,
+        },
       },
     );
 

@@ -57,6 +57,45 @@ describe("SpellCard Integration", () => {
       expect(spell?.effect.target).toBe("raid");
       expect(spell?.effect.value).toBe(50);
     });
+
+    it("必殺「ハートブレイク」が定義されている", () => {
+      const spell = SPELL_CARDS.find((s) => s.id === "sdl-2");
+      expect(spell).toBeDefined();
+      expect(spell?.name).toBe("必殺「ハートブレイク」");
+      expect(spell?.roundRange).toEqual([5, 8]);
+      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.target).toBe("raid");
+      expect(spell?.effect.value).toBe(65);
+    });
+
+    it("神槍「スピア・ザ・グングニル」が定義されている", () => {
+      const spell = SPELL_CARDS.find((s) => s.id === "sdl-3");
+      expect(spell).toBeDefined();
+      expect(spell?.name).toBe("神槍「スピア・ザ・グングニル」");
+      expect(spell?.roundRange).toEqual([9, 11]);
+      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.target).toBe("raid");
+      expect(spell?.effect.value).toBe(80);
+    });
+
+    it("「紅色の幻想郷」が定義されている", () => {
+      const spell = SPELL_CARDS.find((s) => s.id === "sdl-4");
+      expect(spell).toBeDefined();
+      expect(spell?.name).toBe("「紅色の幻想郷」");
+      expect(spell?.roundRange).toEqual([12, 12]);
+      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.target).toBe("raid");
+      expect(spell?.effect.value).toBe(100);
+    });
+
+    it("R5以降のスペルが未実装値0ではない", () => {
+      const spellIds = ["sdl-2", "sdl-3", "sdl-4"];
+      for (const spellId of spellIds) {
+        const spell = SPELL_CARDS.find((s) => s.id === spellId);
+        expect(spell).toBeDefined();
+        expect(spell?.effect.value).toBeGreaterThan(0);
+      }
+    });
   });
 
   describe("ラウンド範囲別スペル取得", () => {
@@ -77,6 +116,7 @@ describe("SpellCard Integration", () => {
 
       const spells8 = getAvailableSpellsForRound(8);
       expect(spells8.length).toBeGreaterThan(0);
+      expect(spells8.some((s) => s.id === "sdl-2")).toBe(true);
     });
 
     it("R9-11では神槍「スピア・ザ・グングニル」が取得できる", () => {
@@ -86,6 +126,13 @@ describe("SpellCard Integration", () => {
 
       const spells11 = getAvailableSpellsForRound(11);
       expect(spells11.length).toBeGreaterThan(0);
+      expect(spells11.some((s) => s.id === "sdl-3")).toBe(true);
+    });
+
+    it("R12では「紅色の幻想郷」が取得できる", () => {
+      const spells = getAvailableSpellsForRound(12);
+      expect(spells.length).toBeGreaterThan(0);
+      expect(spells.some((s) => s.id === "sdl-4")).toBe(true);
     });
   });
 

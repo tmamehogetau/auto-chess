@@ -49,40 +49,40 @@ export const SPELL_CARDS: SpellCard[] = [
       value: 50,
     },
   },
-  // R5-8: 必殺「ハートブレイク」(未実装)
+  // R5-8: 必殺「ハートブレイク」
   {
     id: 'sdl-2',
     name: '必殺「ハートブレイク」',
-    description: 'レイドメンバー全員にダメージを与える（未実装）',
+    description: 'レイドメンバー全員に65ダメージを与える',
     roundRange: [5, 8],
     effect: {
       type: 'damage',
       target: 'raid',
-      value: 0,
+      value: 65,
     },
   },
-  // R9-11: 神槍「スピア・ザ・グングニル」(未実装)
+  // R9-11: 神槍「スピア・ザ・グングニル」
   {
     id: 'sdl-3',
     name: '神槍「スピア・ザ・グングニル」',
-    description: 'レイドメンバー全員にダメージを与える（未実装）',
+    description: 'レイドメンバー全員に80ダメージを与える',
     roundRange: [9, 11],
     effect: {
       type: 'damage',
       target: 'raid',
-      value: 0,
+      value: 80,
     },
   },
-  // R12: 「紅色の幻想郷」(未実装)
+  // R12: 「紅色の幻想郷」
   {
     id: 'sdl-4',
     name: '「紅色の幻想郷」',
-    description: 'ラストスペル（未実装）',
+    description: 'レイドメンバー全員に100ダメージを与える',
     roundRange: [12, 12],
     effect: {
       type: 'damage',
       target: 'raid',
-      value: 0,
+      value: 100,
     },
   },
 ];

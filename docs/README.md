@@ -13,10 +13,17 @@ This directory contains project documentation for the Auto-Chess MVP project.
 - [`plans/full-game-simulation-test-design.md`](plans/full-game-simulation-test-design.md) - Full game simulation test design
 
 ### Checklists & Notes
-- [`shared-board-day2-checklist.md`](shared-board-day2-checklist.md) - Day 2 shared board checklist
+- [`archive/shared-board-day2-checklist.md`](archive/shared-board-day2-checklist.md) - Day 2 shared board checklist (archived)
 
 ## Documentation Conventions
 - All documentation files use Markdown format
 - ADRs follow numbered naming convention
 - Plans use YYYY-MM-DD prefix for dated documents
 - Test designs are organized under `plans/` directory
+
+## Source Of Truth Boundary
+- Code-coupled docs (contracts, ADRs, technical designs) are managed in this `docs/` directory.
+- Project planning/progress docs are managed in:
+  `C:\Users\kou-1\Dev_Workspace\00_Obsidian_Vault\Projects\auto-chess-mvp_Docs`
+- MVP master spec remains at:
+  `C:\Users\kou-1\Dev_Workspace\00_Source_Codes\auto-chess-mvp\mvp_spec_unified_v0_1_2.md`

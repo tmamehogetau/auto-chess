@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 *.log
+.serena/
 .env
 .env.*
 !.env.example

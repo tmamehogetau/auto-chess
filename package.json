@@ -9,6 +9,8 @@
     "test:run": "vitest run",
     "test:all-flags": "npm run test:run && cross-env FEATURE_ENABLE_HERO_SYSTEM=true FEATURE_ENABLE_SHARED_POOL=true FEATURE_ENABLE_PHASE_EXPANSION=true npm run test:run",
     "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck",
+    "verify:ci": "npm run lint && npm run test:run",
     "client:check": "node scripts/serve-client-check.mjs",
     "server": "tsx server.ts",
     "play": "npm-run-all --parallel server client:check"

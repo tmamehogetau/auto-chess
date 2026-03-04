@@ -323,101 +323,96 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     const player = this.state.players.get(client.sessionId);
 
     if (result.accepted && player) {
-      player.lastCmdSeq = message.cmdSeq;
-
-      const latestStatus = this.controller.getPlayerStatus(client.sessionId);
-      player.boardUnitCount = latestStatus.boardUnitCount;
-      player.gold = latestStatus.gold;
-      player.xp = latestStatus.xp;
-      player.level = latestStatus.level;
-      player.shopLocked = latestStatus.shopLocked;
-      player.ownedVanguard = latestStatus.ownedUnits.vanguard;
-      player.ownedRanger = latestStatus.ownedUnits.ranger;
-      player.ownedMage = latestStatus.ownedUnits.mage;
-      player.ownedAssassin = latestStatus.ownedUnits.assassin;
-
-      while (player.shopOffers.length > 0) {
-        player.shopOffers.pop();
-      }
-
-      while (player.benchUnits.length > 0) {
-        player.benchUnits.pop();
-      }
-
-      while (player.boardUnits.length > 0) {
-        player.boardUnits.pop();
-      }
-
-      for (const offer of latestStatus.shopOffers) {
-        const nextOffer = new ShopOfferState();
-
-        nextOffer.unitType = offer.unitType;
-        nextOffer.cost = offer.cost;
-        nextOffer.rarity = offer.rarity;
-        player.shopOffers.push(nextOffer);
-      }
-
-      for (const benchUnit of latestStatus.benchUnits) {
-        player.benchUnits.push(benchUnit);
-      }
-
-      for (const boardUnit of latestStatus.boardUnits) {
-        player.boardUnits.push(boardUnit);
-      }
-
-      // Sync item shop offers
-      while (player.itemShopOffers.length > 0) {
-        player.itemShopOffers.pop();
-      }
-      for (const offer of latestStatus.itemShopOffers || []) {
-        const nextOffer = new ShopItemOfferState();
-        nextOffer.itemType = offer.itemType;
-        nextOffer.cost = offer.cost;
-        player.itemShopOffers.push(nextOffer);
-      }
-
-      // Sync item inventory
-      while (player.itemInventory.length > 0) {
-        player.itemInventory.pop();
-      }
-      for (const item of latestStatus.itemInventory || []) {
-        player.itemInventory.push(item);
-      }
-
-      // Sync last battle result
-      if (latestStatus.lastBattleResult) {
-        player.lastBattleResult.opponentId = latestStatus.lastBattleResult.opponentId;
-        player.lastBattleResult.won = latestStatus.lastBattleResult.won;
-        player.lastBattleResult.damageDealt = latestStatus.lastBattleResult.damageDealt;
-        player.lastBattleResult.damageTaken = latestStatus.lastBattleResult.damageTaken;
-        player.lastBattleResult.survivors = latestStatus.lastBattleResult.survivors;
-        player.lastBattleResult.opponentSurvivors = latestStatus.lastBattleResult.opponentSurvivors;
-      } else {
-        player.lastBattleResult.opponentId = "";
-        player.lastBattleResult.won = false;
-        player.lastBattleResult.damageDealt = 0;
-        player.lastBattleResult.damageTaken = 0;
-        player.lastBattleResult.survivors = 0;
-        player.lastBattleResult.opponentSurvivors = 0;
-      }
-
-      // Sync active synergies
-      while (player.activeSynergies.length > 0) {
-        player.activeSynergies.pop();
-      }
-      for (const synergy of latestStatus.activeSynergies || []) {
-        const nextSynergy = new SynergySchema();
-        nextSynergy.unitType = synergy.unitType;
-        nextSynergy.count = synergy.count;
-        nextSynergy.tier = synergy.tier;
-        player.activeSynergies.push(nextSynergy);
-      }
-
+      this.syncPlayerFromCommandResult(player, client.sessionId, message.cmdSeq);
       const latestBoardPlacements = this.controller.getBoardPlacementsForPlayer(client.sessionId);
       void this.sharedBoardBridge?.sendPlacementToSharedBoard(client.sessionId, latestBoardPlacements);
     }
 
     client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);
+  }
+
+  private syncPlayerFromCommandResult(
+    player: PlayerPresenceState,
+    sessionId: string,
+    cmdSeq: number,
+  ): void {
+    if (!this.controller) return;
+
+    player.lastCmdSeq = cmdSeq;
+
+    const latestStatus = this.controller.getPlayerStatus(sessionId);
+    player.boardUnitCount = latestStatus.boardUnitCount;
+    player.gold = latestStatus.gold;
+    player.xp = latestStatus.xp;
+    player.level = latestStatus.level;
+    player.shopLocked = latestStatus.shopLocked;
+    player.ownedVanguard = latestStatus.ownedUnits.vanguard;
+    player.ownedRanger = latestStatus.ownedUnits.ranger;
+    player.ownedMage = latestStatus.ownedUnits.mage;
+    player.ownedAssassin = latestStatus.ownedUnits.assassin;
+
+    // Sync shop offers
+    player.shopOffers.length = 0;
+    for (const offer of latestStatus.shopOffers) {
+      const nextOffer = new ShopOfferState();
+      nextOffer.unitType = offer.unitType;
+      nextOffer.cost = offer.cost;
+      nextOffer.rarity = offer.rarity;
+      player.shopOffers.push(nextOffer);
+    }
+
+    // Sync bench and board units
+    player.benchUnits.length = 0;
+    for (const benchUnit of latestStatus.benchUnits) {
+      player.benchUnits.push(benchUnit);
+    }
+
+    player.boardUnits.length = 0;
+    for (const boardUnit of latestStatus.boardUnits) {
+      player.boardUnits.push(boardUnit);
+    }
+
+    // Sync item shop offers
+    player.itemShopOffers.length = 0;
+    for (const offer of latestStatus.itemShopOffers || []) {
+      const nextOffer = new ShopItemOfferState();
+      nextOffer.itemType = offer.itemType;
+      nextOffer.cost = offer.cost;
+      player.itemShopOffers.push(nextOffer);
+    }
+
+    // Sync item inventory
+    player.itemInventory.length = 0;
+    for (const item of latestStatus.itemInventory || []) {
+      player.itemInventory.push(item);
+    }
+
+    // Sync last battle result
+    if (latestStatus.lastBattleResult) {
+      player.lastBattleResult.opponentId = latestStatus.lastBattleResult.opponentId;
+      player.lastBattleResult.won = latestStatus.lastBattleResult.won;
+      player.lastBattleResult.damageDealt = latestStatus.lastBattleResult.damageDealt;
+      player.lastBattleResult.damageTaken = latestStatus.lastBattleResult.damageTaken;
+      player.lastBattleResult.survivors = latestStatus.lastBattleResult.survivors;
+      player.lastBattleResult.opponentSurvivors = latestStatus.lastBattleResult.opponentSurvivors;
+    } else {
+      player.lastBattleResult.opponentId = "";
+      player.lastBattleResult.won = false;
+      player.lastBattleResult.damageDealt = 0;
+      player.lastBattleResult.damageTaken = 0;
+      player.lastBattleResult.survivors = 0;
+      player.lastBattleResult.opponentSurvivors = 0;
+    }
+
+    // Sync active synergies
+    player.activeSynergies.length = 0;
+    for (const synergy of latestStatus.activeSynergies || []) {
+      const nextSynergy = new SynergySchema();
+      nextSynergy.unitType = synergy.unitType;
+      nextSynergy.count = synergy.count;
+      nextSynergy.tier = synergy.tier;
+      player.activeSynergies.push(nextSynergy);
+    }
   }
 
   private buildPrepCommandPayload(

@@ -90,15 +90,19 @@ describe("SharedBoardRoom integration", () => {
 
   test("最初の3接続がactiveで4人目がspectatorになる", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
-    const clients = await Promise.all([
+
+    // Set up message waiting before connecting (server sends ROLE via setTimeout)
+    const clientPromises = [
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
-    ]);
+    ];
+
+    const clients = await Promise.all(clientPromises);
 
     const rolePromises = clients.map((client) =>
-      client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE),
+      client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE, 5000),
     );
 
     const roles = await Promise.all(rolePromises);

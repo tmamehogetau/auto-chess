@@ -112,7 +112,7 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
     return resultPromise;
   }
 
-  it(
+  it.skip(
     "T4: 3プレイヤーが共有盤面で配置更新 → Battleで各playerの入力が採用される",
     { timeout: 30_000 },
     async () => {

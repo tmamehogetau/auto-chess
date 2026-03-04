@@ -52,6 +52,7 @@ describe("SharedBoardRoom integration", () => {
     DRAG_STATE: "shared_drag_state",
     PLACE_UNIT: "shared_place_unit",
     RESET: "shared_reset",
+    REQUEST_ROLE: "shared_request_role",
   } as const;
 
   const SERVER_MESSAGE_TYPES = {
@@ -101,6 +102,8 @@ describe("SharedBoardRoom integration", () => {
 
     const clients = await Promise.all(clientPromises);
 
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
+
     const rolePromises = clients.map((client) =>
       client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE, 5000),
     );
@@ -129,6 +132,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
     ]);
 
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
+
     const roles = await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
     );
@@ -152,6 +157,7 @@ describe("SharedBoardRoom integration", () => {
     await waitForCondition(() => !serverRoom.state.players.get(leavingSessionId), 1_000);
 
     const newClient = await testServer.connectTo(serverRoom);
+    newClient.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
     const newRole = await newClient.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
 
     expect(newRole.isSpectator).toBe(false);
@@ -166,6 +172,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
     ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
 
     const roles = await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
@@ -184,6 +192,7 @@ describe("SharedBoardRoom integration", () => {
     }, 1_000);
 
     const reconnectedClient = await testServer.sdk.reconnect(reconnectionToken);
+    reconnectedClient.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
     const roleAfterReconnect =
       await reconnectedClient.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
 
@@ -205,6 +214,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
     ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
 
     const roles = await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
@@ -267,6 +278,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
     ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
 
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
@@ -333,6 +346,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
     ]);
 
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
+
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
     );
@@ -391,6 +406,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
     ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
 
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
@@ -468,6 +485,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
     ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
 
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
@@ -577,6 +596,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
     ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
 
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
@@ -704,6 +725,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
     ]);
 
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
+
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
     );
@@ -799,6 +822,8 @@ describe("SharedBoardRoom integration", () => {
       testServer.connectTo(serverRoom),
     ]);
 
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
+
     await Promise.all(
       clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE)),
     );
@@ -856,6 +881,7 @@ describe("SharedBoardRoom integration", () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const client = await testServer.connectTo(serverRoom);
 
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
     await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
 
     const targetCellIndex = combatCellToRaidBoardIndex(0);
@@ -881,6 +907,7 @@ describe("SharedBoardRoom integration", () => {
       gamePlayerId: mappedGamePlayerId,
     });
 
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
     await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
 
     let unitId = "";

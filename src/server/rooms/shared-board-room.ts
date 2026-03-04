@@ -72,6 +72,7 @@ const CLIENT_MESSAGE_TYPES = {
   DRAG_STATE: "shared_drag_state",
   PLACE_UNIT: "shared_place_unit",
   RESET: "shared_reset",
+  REQUEST_ROLE: "shared_request_role",
 } as const;
 
 const SERVER_MESSAGE_TYPES = {
@@ -140,6 +141,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       this.handleReset(client);
     });
 
+    this.onMessage(CLIENT_MESSAGE_TYPES.REQUEST_ROLE, (client) => {
+      this.sendRole(client);
+    });
+
     this.clock.setInterval(() => {
       this.cleanupExpiredLocks(Date.now());
     }, 100);
@@ -175,21 +180,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     cursor.updatedAtMs = Date.now();
     this.state.cursors.set(sessionId, cursor);
 
-    this.clock.setTimeout(() => {
-      const latestPlayer = this.state.players.get(sessionId);
-
-      if (!latestPlayer) {
-        return;
-      }
-
-      const roleMessage: SharedBoardRoleMessage = {
-        isSpectator: latestPlayer.isSpectator,
-        slotIndex: latestPlayer.slotIndex,
-        color: latestPlayer.color,
-      };
-
-      client.send(SERVER_MESSAGE_TYPES.ROLE, roleMessage);
-    }, 0);
+    this.sendRole(client);
 
     if (!isSpectator) {
       this.activePlayerIds.push(sessionId);
@@ -237,21 +228,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
     player.connected = true;
 
-    this.clock.setTimeout(() => {
-      const latestPlayer = this.state.players.get(client.sessionId);
-
-      if (!latestPlayer) {
-        return;
-      }
-
-      const roleMessage: SharedBoardRoleMessage = {
-        isSpectator: latestPlayer.isSpectator,
-        slotIndex: latestPlayer.slotIndex,
-        color: latestPlayer.color,
-      };
-
-      client.send(SERVER_MESSAGE_TYPES.ROLE, roleMessage);
-    }, 0);
+    this.sendRole(client);
 
     const cursor = this.state.cursors.get(client.sessionId);
     if (cursor) {
@@ -474,6 +451,17 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
     this.sendActionResult(client, "reset", true);
     this.appendEvent(`${client.sessionId.slice(0, 8)} reset board`);
+  }
+
+  private sendRole(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+    const roleMessage: SharedBoardRoleMessage = {
+      isSpectator: player.isSpectator,
+      slotIndex: player.slotIndex,
+      color: player.color,
+    };
+    client.send(SERVER_MESSAGE_TYPES.ROLE, roleMessage);
   }
 
   private ensureActivePlayer(client: Client, action: string): boolean {

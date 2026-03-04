@@ -315,6 +315,51 @@
         }
       }
 
+      /* Unit death animation */
+      .unit-defeated {
+        animation: unitDeath 0.5s ease-out forwards;
+        pointer-events: none;
+      }
+
+      @keyframes unitDeath {
+        0% {
+          opacity: 1;
+          transform: scale(1) rotate(0deg);
+          filter: brightness(1);
+        }
+        30% {
+          transform: scale(1.1) rotate(-5deg);
+          filter: brightness(1.5) sepia(0.5) hue-rotate(-30deg);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(0.3) rotate(15deg);
+          filter: brightness(0.5) grayscale(1);
+        }
+      }
+
+      /* Death particle effect */
+      .death-particle {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: #e74c3c;
+        border-radius: 50%;
+        pointer-events: none;
+        animation: particleFade 0.4s ease-out forwards;
+      }
+
+      @keyframes particleFade {
+        0% {
+          transform: translate(0, 0) scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: translate(var(--tx), var(--ty)) scale(0);
+          opacity: 0;
+        }
+      }
+
       /* Deploy success animation */
       .board-cell.deployed {
         animation: deploySuccess 0.5s ease-out;
@@ -379,6 +424,54 @@
         0% { transform: scale(1); }
         50% { transform: scale(1.08); }
         100% { transform: scale(1.05); }
+      }
+
+      /* Damage Number Popups */
+      @keyframes damageFloat {
+        0% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-40px) scale(0.85);
+        }
+      }
+
+      @keyframes damagePulse {
+        0% { transform: scale(1); }
+        20% { transform: scale(1.3); }
+        40% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+      }
+
+      .damage-popup {
+        position: absolute;
+        pointer-events: none;
+        font-weight: 900;
+        font-size: 20px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        animation: damageFloat 1.2s ease-out forwards;
+        white-space: nowrap;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      .damage-popup.damage {
+        color: #ff4757;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 15px rgba(255, 71, 87, 0.6);
+      }
+
+      .damage-popup.heal {
+        color: #2ecc71;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 15px rgba(46, 204, 113, 0.6);
+      }
+
+      .damage-popup.critical {
+        color: #ff6b35;
+        font-size: 28px;
+        animation: damageFloat 1.4s ease-out forwards, damagePulse 0.3s ease-out;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 107, 53, 0.8);
       }
 
       .ready-count {

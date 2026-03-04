@@ -248,6 +248,10 @@ let currentSharedPoolInventory = null;
 let lastShownBattleRound = -1;
 let battleResultAutoHideTimeout = null;
 
+// Unit death animation state
+let previousBoardUnits = new Map(); // Track previous board state for death detection
+const DEFEATED_UNITS = new Set(); // Track units currently being animated as defeated
+
 // Hero selection state
 let selectedHeroId = null;
 let heroSelectionConfirmed = false;
@@ -460,6 +464,10 @@ async function connect() {
     lastShownBattleRound = -1;
     hideBattleResult();
 
+    // Reset unit death animation tracking
+    previousBoardUnits.clear();
+    DEFEATED_UNITS.clear();
+
     // Show game container
     gameContainer?.classList.add("connected");
 
@@ -522,6 +530,9 @@ async function connect() {
       lastShownBattleRound = -1;
       hideBattleResult();
       resetShadowDiffMonitor();
+      // Reset unit death animation tracking
+      previousBoardUnits.clear();
+      DEFEATED_UNITS.clear();
       gameContainer?.classList.remove("connected");
       showMessage("Disconnected", "error");
       syncButtonAvailability();
@@ -567,6 +578,9 @@ async function leave() {
   lastShownBattleRound = -1;
   hideBattleResult();
   resetShadowDiffMonitor();
+  // Reset unit death animation tracking
+  previousBoardUnits.clear();
+  DEFEATED_UNITS.clear();
   syncButtonAvailability();
 
   try {
@@ -893,7 +907,7 @@ function updateGameUI(state) {
     }
   }
   
-  // HP animation
+  // HP animation and damage popup
   if (hpDisplay) {
     const newHp = Number(player.hp) || 0;
     const hpDiff = newHp - previousHp;
@@ -901,9 +915,13 @@ function updateGameUI(state) {
     if (hpDiff < 0) {
       hpDisplay.classList.add("damage");
       setTimeout(() => hpDisplay.classList.remove("damage"), 600);
+      // Show damage popup
+      showPlayerDamagePopup(hpDiff);
     } else if (hpDiff > 0) {
       hpDisplay.classList.add("heal");
       setTimeout(() => hpDisplay.classList.remove("heal"), 600);
+      // Show heal popup
+      showPlayerDamagePopup(hpDiff);
     }
   }
   
@@ -1516,12 +1534,128 @@ function updateBossShop(offers, visible) {
   }
 }
 
-function updateBoard(boardUnits) {
-  // Clear all cells
-  document.querySelectorAll("[data-board-cell]").forEach((cell) => {
-    cell.innerHTML = `<span class="cell-number">${cell.dataset.boardCell}</span>`;
-    cell.classList.add("empty");
+/**
+ * Creates particle effects for unit death animation
+ * @param {HTMLElement} element - The element to create particles around
+ */
+function createDeathParticles(element) {
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const particleCount = 8;
+
+  for (let i = 0; i < particleCount; i++) {
+    const particle = document.createElement('div');
+    particle.className = 'death-particle';
+
+    // Calculate random direction
+    const angle = (i / particleCount) * Math.PI * 2;
+    const distance = 30 + Math.random() * 20;
+    const tx = Math.cos(angle) * distance;
+    const ty = Math.sin(angle) * distance;
+
+    particle.style.setProperty('--tx', `${tx}px`);
+    particle.style.setProperty('--ty', `${ty}px`);
+    particle.style.left = `${centerX}px`;
+    particle.style.top = `${centerY}px`;
+
+    // Random color variation
+    const colors = ['#e74c3c', '#c0392b', '#e67e22', '#d35400'];
+    particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+
+    document.body.appendChild(particle);
+
+    // Remove particle after animation
+    setTimeout(() => {
+      particle.remove();
+    }, 400);
+  }
+}
+
+/**
+ * Applies death animation to a unit element
+ * @param {HTMLElement} cellElement - The board cell containing the unit
+ * @param {string} unitId - Unique identifier for the unit
+ */
+function animateUnitDeath(cellElement, unitId) {
+  if (DEFEATED_UNITS.has(unitId)) {
+    return; // Already animating
+  }
+
+  DEFEATED_UNITS.add(unitId);
+
+  // Create particle effects
+  const unitIcon = cellElement.querySelector('.unit-icon');
+  if (unitIcon) {
+    createDeathParticles(unitIcon);
+  }
+
+  // Apply death animation class to the entire cell content
+  const content = cellElement.querySelector('.unit-icon, .unit-stars, .sub-unit-badge');
+  if (content) {
+    content.classList.add('unit-defeated');
+  }
+
+  // Remove from tracking after animation completes
+  setTimeout(() => {
+    DEFEATED_UNITS.delete(unitId);
+  }, 500);
+}
+
+/**
+ * Detects removed units and triggers death animations
+ * @param {Array} currentUnits - Current board units
+ * @returns {Set} Set of cell indices that had units removed
+ */
+function detectDefeatedUnits(currentUnits) {
+  const currentUnitMap = new Map();
+  const removedCells = new Set();
+
+  // Build map of current units by cell index
+  if (currentUnits) {
+    const units = Array.isArray(currentUnits) ? currentUnits : Array.from(currentUnits);
+    units.forEach((unit) => {
+      const unitStr = String(unit);
+      const parsedToken = parseBoardUnitToken(unitStr);
+      if (parsedToken) {
+        currentUnitMap.set(parsedToken.cell, parsedToken);
+      }
+    });
+  }
+
+  // Check previous units for removals
+  previousBoardUnits.forEach((prevUnit, cellIndex) => {
+    if (!currentUnitMap.has(cellIndex)) {
+      // Unit was removed - trigger death animation
+      const cellElement = document.querySelector(`[data-board-cell="${cellIndex}"]`);
+      if (cellElement && !cellElement.classList.contains('empty')) {
+        const unitId = `${cellIndex}-${prevUnit.unitType}-${Date.now()}`;
+        animateUnitDeath(cellElement, unitId);
+        removedCells.add(cellIndex);
+      }
+    }
   });
+
+  return removedCells;
+}
+
+function updateBoard(boardUnits) {
+  // Detect defeated units before clearing
+  const removedCells = detectDefeatedUnits(boardUnits);
+
+  // Clear cells that don't have defeated units animating
+  document.querySelectorAll("[data-board-cell]").forEach((cell) => {
+    const cellIndex = Number.parseInt(cell.dataset.boardCell, 10);
+
+    // Skip cells with active death animation
+    if (!removedCells.has(cellIndex)) {
+      cell.innerHTML = `<span class="cell-number">${cell.dataset.boardCell}</span>`;
+      cell.classList.add("empty");
+    }
+  });
+
+  // Update previous board state
+  previousBoardUnits.clear();
 
   if (!boardUnits) return;
 
@@ -1536,6 +1670,9 @@ function updateBoard(boardUnits) {
 
     const { cell: parsedCell, unitType, starLevel, subUnitActive } = parsedToken;
     const cellIndex = parsedCell;
+
+    // Store in previous board state
+    previousBoardUnits.set(cellIndex, parsedToken);
 
     const boardCell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
     if (!boardCell) return;
@@ -1821,6 +1958,67 @@ function shortPlayerId(value) {
   }
 
   return String(value).slice(0, 6);
+}
+
+/**
+ * Creates and displays a floating damage/heal popup
+ * @param {number} amount - The amount to display (positive for heal, negative for damage)
+ * @param {HTMLElement} targetElement - The element to position the popup near
+ * @param {boolean} isCritical - Whether this is a critical hit (optional)
+ */
+function showDamagePopup(amount, targetElement, isCritical = false) {
+  if (!targetElement || !document.body) return;
+
+  const popup = document.createElement("div");
+  popup.className = "damage-popup";
+  
+  // Determine type and styling
+  if (amount > 0) {
+    popup.classList.add("heal");
+    popup.textContent = `+${amount}`;
+  } else if (amount < 0) {
+    popup.classList.add("damage");
+    popup.textContent = `${amount}`;
+  } else {
+    // Zero damage, don't show
+    return;
+  }
+
+  // Add critical styling for big damage
+  if (isCritical || Math.abs(amount) >= 30) {
+    popup.classList.add("critical");
+  }
+
+  // Calculate position relative to the target element
+  const rect = targetElement.getBoundingClientRect();
+  const randomOffsetX = (Math.random() - 0.5) * 30; // Random horizontal offset
+  
+  // Position popup centered above the target with some randomness
+  popup.style.left = `${rect.left + rect.width / 2 + randomOffsetX}px`;
+  popup.style.top = `${rect.top}px`;
+
+  // Append to body
+  document.body.appendChild(popup);
+
+  // Remove after animation completes
+  const animationDuration = isCritical || Math.abs(amount) >= 30 ? 1400 : 1200;
+  setTimeout(() => {
+    if (popup.parentNode) {
+      popup.parentNode.removeChild(popup);
+    }
+  }, animationDuration);
+}
+
+/**
+ * Shows damage popup for player HP changes
+ * @param {number} amount - HP change amount (positive for heal, negative for damage)
+ */
+function showPlayerDamagePopup(amount) {
+  // Find the HP display element
+  const hpDisplayElement = document.querySelector("[data-hp-display]");
+  if (hpDisplayElement) {
+    showDamagePopup(amount, hpDisplayElement, Math.abs(amount) >= 20);
+  }
 }
 
 // Auto-fill functions

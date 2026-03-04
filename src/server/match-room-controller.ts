@@ -35,7 +35,7 @@ import {
   UNIT_SELL_VALUE_BY_TYPE,
   calculateSellValue,
 } from "./star-level-config";
-import { HEROES, type Hero } from "../data/heroes";
+import { HEROES } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
 import { SPELL_CARDS, getAvailableSpellsForRound, type SpellCard } from "../data/spell-cards";
@@ -677,7 +677,8 @@ export class MatchRoomController {
     console.log(`Shop offers for ${playerId}:`, shopOffers);
 
     // Calculate active synergies
-    const activeSynergies = this.calculateActiveSynergies(boardPlacements);
+    const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
+    const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType);
 
     const baseStatus = {
       hp: state.getPlayerHp(playerId),
@@ -2035,7 +2036,8 @@ export class MatchRoomController {
   }
 
   private calculateActiveSynergies(
-    placements: BoardUnitPlacement[]
+    placements: BoardUnitPlacement[],
+    heroSynergyBonusType: BoardUnitType | null = null,
   ): { unitType: string; count: number; tier: number }[] {
     const counts: { [key in BoardUnitType]: number } = { vanguard: 0, ranger: 0, mage: 0, assassin: 0 };
 
@@ -2064,6 +2066,10 @@ export class MatchRoomController {
       }
     }
 
+    if (heroSynergyBonusType) {
+      counts[heroSynergyBonusType] += 1;
+    }
+
     const result: { unitType: string; count: number; tier: number }[] = [];
 
     const unitTypes: BoardUnitType[] = ["vanguard", "ranger", "mage", "assassin"];
@@ -2082,6 +2088,17 @@ export class MatchRoomController {
     }
 
     return result;
+  }
+
+  private resolveHeroSynergyBonusType(playerId: string): BoardUnitType | null {
+    const selectedHeroId = this.selectedHeroByPlayer.get(playerId);
+
+    if (!selectedHeroId) {
+      return null;
+    }
+
+    const selectedHero = HEROES.find((hero) => hero.id === selectedHeroId);
+    return selectedHero?.synergyBonusType ?? null;
   }
 
   private captureBattleStartHp(): void {
@@ -2257,64 +2274,63 @@ export class MatchRoomController {
 
     // 主人公を追加（選択されている場合）
     const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
-    if (leftHeroId) {
-      const leftHero = HEROES.find((h) => h.id === leftHeroId);
-      if (leftHero) {
-        leftBattleUnits.push({
-          id: `hero-${leftPlayerId}`,
-          type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
-          starLevel: 1,
-          hp: leftHero.hp,
-          maxHp: leftHero.hp,
-          attackPower: leftHero.attack,
-          attackSpeed: 0.5,
-          attackRange: 1,
-          cell: 8, // 主人公固定セル（盤面外）
-          isDead: false,
-          attackCount: 0,
-          defense: 0,
-          critRate: 0,
-          critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
-            attackMultiplier: 1,
-            defenseMultiplier: 1,
-            attackSpeedMultiplier: 1,
-          },
-        });
-      }
+    const leftHero = leftHeroId ? HEROES.find((h) => h.id === leftHeroId) : null;
+    if (leftHero) {
+      leftBattleUnits.push({
+        id: `hero-${leftPlayerId}`,
+        type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
+        starLevel: 1,
+        hp: leftHero.hp,
+        maxHp: leftHero.hp,
+        attackPower: leftHero.attack,
+        attackSpeed: 0.5,
+        attackRange: 1,
+        cell: 8, // 主人公固定セル（盤面外）
+        isDead: false,
+        attackCount: 0,
+        defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: undefined,
+        magicReduction: undefined,
+        buffModifiers: {
+          attackMultiplier: 1,
+          defenseMultiplier: 1,
+          attackSpeedMultiplier: 1,
+        },
+      });
     }
 
     const rightHeroId = this.selectedHeroByPlayer.get(rightPlayerId);
-    if (rightHeroId) {
-      const rightHero = HEROES.find((h) => h.id === rightHeroId);
-      if (rightHero) {
-        rightBattleUnits.push({
-          id: `hero-${rightPlayerId}`,
-          type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
-          starLevel: 1,
-          hp: rightHero.hp,
-          maxHp: rightHero.hp,
-          attackPower: rightHero.attack,
-          attackSpeed: 0.5,
-          attackRange: 1,
-          cell: 8, // 主人公固定セル（盤面外）
-          isDead: false,
-          attackCount: 0,
-          defense: 0,
-          critRate: 0,
-          critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
-            attackMultiplier: 1,
-            defenseMultiplier: 1,
-            attackSpeedMultiplier: 1,
-          },
-        });
-      }
+    const rightHero = rightHeroId ? HEROES.find((h) => h.id === rightHeroId) : null;
+    if (rightHero) {
+      rightBattleUnits.push({
+        id: `hero-${rightPlayerId}`,
+        type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
+        starLevel: 1,
+        hp: rightHero.hp,
+        maxHp: rightHero.hp,
+        attackPower: rightHero.attack,
+        attackSpeed: 0.5,
+        attackRange: 1,
+        cell: 8, // 主人公固定セル（盤面外）
+        isDead: false,
+        attackCount: 0,
+        defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: undefined,
+        magicReduction: undefined,
+        buffModifiers: {
+          attackMultiplier: 1,
+          defenseMultiplier: 1,
+          attackSpeedMultiplier: 1,
+        },
+      });
     }
+
+    const leftHeroSynergyBonusType = leftHero?.synergyBonusType ?? null;
+    const rightHeroSynergyBonusType = rightHero?.synergyBonusType ?? null;
 
     // バトルシミュレーターで戦闘を実行
     const battleSimulator = new BattleSimulator();
@@ -2324,6 +2340,8 @@ export class MatchRoomController {
       leftPlacements,
       rightPlacements,
       30000, // 30秒の最大戦闘時間
+      leftHeroSynergyBonusType,
+      rightHeroSynergyBonusType,
     );
 
     // 戦闘結果から勝者と生存ユニット数を判定

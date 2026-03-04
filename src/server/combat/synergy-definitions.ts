@@ -82,7 +82,8 @@ export interface SynergyDetails {
 }
 
 export function calculateSynergyDetails(
-  boardPlacements: Array<{ unitType: BoardUnitType }>
+  boardPlacements: Array<{ unitType: BoardUnitType }>,
+  heroSynergyBonusType: BoardUnitType | null = null,
 ): SynergyDetails {
   const countsByType: Record<BoardUnitType, number> = {
     vanguard: 0,
@@ -109,6 +110,10 @@ export function calculateSynergyDetails(
       // If no specific synergies, count by unit type directly
       countsByType[unitType]++;
     }
+  }
+
+  if (heroSynergyBonusType) {
+    countsByType[heroSynergyBonusType] += 1;
   }
 
   const activeTiers: Record<BoardUnitType, SynergyTier> = {

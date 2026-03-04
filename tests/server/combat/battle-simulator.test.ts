@@ -366,6 +366,38 @@ describe("battle-simulator", () => {
       expect(result1.combatLog).toEqual(result2.combatLog);
     });
 
+    test("hero synergy bonus typeが指定された側のシナジーが強化される", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 4, unitType: "ranger", starLevel: 1 },
+        { cell: 5, unitType: "ranger", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 4, unitType: "ranger", starLevel: 1 },
+        { cell: 5, unitType: "ranger", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "left", 0),
+      ];
+      const rightUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "right", 0),
+      ];
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        30_000,
+        "ranger",
+        null,
+      );
+
+      expect(result.winner).toBe("left");
+    });
+
     test("戦闘ログにダメージ情報が記録される", () => {
       const simulator = new BattleSimulator();
 

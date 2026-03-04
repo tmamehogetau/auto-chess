@@ -242,9 +242,10 @@ function calculateTeamPower(units: BattleUnit[]): number {
  */
 function applySynergyBuffs(
   units: BattleUnit[],
-  boardPlacements: BoardUnitPlacement[]
+  boardPlacements: BoardUnitPlacement[],
+  heroSynergyBonusType: BoardUnitType | null = null,
 ): void {
-  const synergyDetails = calculateSynergyDetails(boardPlacements);
+  const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType);
 
   for (const unit of units) {
     const tier = synergyDetails.activeTiers[unit.type];
@@ -378,6 +379,8 @@ export class BattleSimulator {
     leftPlacements: BoardUnitPlacement[] = [],
     rightPlacements: BoardUnitPlacement[] = [],
     maxDurationMs: number = 30000,
+    leftHeroSynergyBonusType: BoardUnitType | null = null,
+    rightHeroSynergyBonusType: BoardUnitType | null = null,
   ): BattleResult {
     try {
       // Bug #3 fix: Validate input teams
@@ -404,8 +407,8 @@ export class BattleSimulator {
       combatLog.push(`Right units: ${rightUnits.length}`);
 
       // シナジーバフを適用
-      applySynergyBuffs(leftUnits, leftPlacements);
-      applySynergyBuffs(rightUnits, rightPlacements);
+      applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType);
+      applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType);
 
       // アイテム効果を適用
       for (let i = 0; i < leftUnits.length; i++) {

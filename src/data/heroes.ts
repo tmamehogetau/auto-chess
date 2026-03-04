@@ -1,9 +1,11 @@
 import type { BattleUnit } from "../server/combat/battle-simulator";
+import type { BoardUnitType } from "../shared/types";
 
 export interface Hero {
   id: string;
   name: string;
   role: 'tank' | 'dps' | 'support' | 'control' | 'balance' | 'economy';
+  synergyBonusType: BoardUnitType;
   hp: number;
   attack: number;
   skill: {
@@ -19,6 +21,7 @@ export const HEROES: Hero[] = [
     id: 'reimu',
     name: '霊夢',
     role: 'balance',
+    synergyBonusType: 'vanguard',
     hp: 120,
     attack: 18,
     skill: {
@@ -39,6 +42,7 @@ export const HEROES: Hero[] = [
     id: 'marisa',
     name: '魔理沙',
     role: 'dps',
+    synergyBonusType: 'ranger',
     hp: 100,
     attack: 25,
     skill: {
@@ -60,6 +64,7 @@ export const HEROES: Hero[] = [
     id: 'okina',
     name: '隠岐奈',
     role: 'support',
+    synergyBonusType: 'mage',
     hp: 110,
     attack: 16,
     skill: {
@@ -80,6 +85,7 @@ export const HEROES: Hero[] = [
     id: 'keiki',
     name: '袿姫',
     role: 'tank',
+    synergyBonusType: 'vanguard',
     hp: 180,
     attack: 12,
     skill: {
@@ -107,6 +113,7 @@ export const HEROES: Hero[] = [
     id: 'megumu',
     name: '女苑',
     role: 'economy',
+    synergyBonusType: 'assassin',
     hp: 90,
     attack: 14,
     skill: {

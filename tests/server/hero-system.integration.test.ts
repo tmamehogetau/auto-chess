@@ -74,6 +74,30 @@ describe("Hero System Integration Tests", () => {
       const status = controller.getPlayerStatus("player1");
       expect(status.selectedHeroId).toBe("");
     });
+
+    it("selected hero should grant +1 synergy count for player status", () => {
+      controller.selectHero("player1", "reimu");
+      controller.selectHero("player2", "reimu");
+
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+
+      const placementResult = controller.submitPrepCommand("player1", 1, createdAtMs + 1_000, {
+        boardPlacements: [
+          { cell: 0, unitType: "vanguard" },
+          { cell: 1, unitType: "vanguard" },
+        ],
+      });
+
+      expect(placementResult).toEqual({ accepted: true });
+
+      const status = controller.getPlayerStatus("player1");
+      const vanguardSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "vanguard");
+
+      expect(vanguardSynergy).toBeDefined();
+      expect(vanguardSynergy?.count).toBe(3);
+      expect(vanguardSynergy?.tier).toBe(1);
+    });
   });
 
   describe("Hero System Disabled (Feature Flag OFF)", () => {

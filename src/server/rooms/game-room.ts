@@ -307,82 +307,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         correlationId,
       });
 
-      // Log player action for match summary
-      if (this.matchLogger && commandPayload) {
-        const player = this.state.players.get(client.sessionId);
-        const goldBefore = player?.gold ?? 0;
-
-        if (commandPayload.shopBuySlotIndex !== undefined) {
-          const offers = this.controller.getShopOffersForPlayer(client.sessionId);
-          const offer = offers[commandPayload.shopBuySlotIndex];
-          if (offer) {
-            this.matchLogger.logAction(
-              client.sessionId,
-              this.controller.roundIndex,
-              "buy_unit",
-              {
-                unitType: offer.unitType,
-                cost: offer.cost,
-                goldBefore,
-                goldAfter: goldBefore - offer.cost,
-              },
-            );
-          }
-        }
-
-        if (commandPayload.benchSellIndex !== undefined) {
-          this.matchLogger.logAction(
-            client.sessionId,
-            this.controller.roundIndex,
-            "sell_unit",
-            {
-              benchIndex: commandPayload.benchSellIndex,
-              goldBefore,
-              goldAfter: goldBefore + 1, // Approximate
-            },
-          );
-        }
-
-        if (commandPayload.benchToBoardCell !== undefined) {
-          this.matchLogger.logAction(
-            client.sessionId,
-            this.controller.roundIndex,
-            "deploy",
-            {
-              benchIndex: commandPayload.benchToBoardCell.benchIndex,
-              toCell: commandPayload.benchToBoardCell.cell,
-              goldBefore,
-              goldAfter: goldBefore,
-            },
-          );
-        }
-
-        if (commandPayload.shopRefreshCount !== undefined) {
-          this.matchLogger.logAction(
-            client.sessionId,
-            this.controller.roundIndex,
-            "shop_refresh",
-            {
-              itemCount: commandPayload.shopRefreshCount,
-              goldBefore,
-              goldAfter: goldBefore - 2, // Refresh cost
-            },
-          );
-        }
-
-        if (commandPayload.xpPurchaseCount !== undefined) {
-          this.matchLogger.logAction(
-            client.sessionId,
-            this.controller.roundIndex,
-            "buy_xp",
-            {
-              itemCount: commandPayload.xpPurchaseCount,
-              goldBefore,
-              goldAfter: goldBefore - 4, // XP cost
-            },
-          );
-        }
-      }
+      this.logPrepCommandActions(client.sessionId, commandPayload);
     } else {
       this.sharedBoardBridge?.logGameCommandEvent({
         playerId: client.sessionId,
@@ -535,6 +460,76 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
       ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
     };
+  }
+
+  private logPrepCommandActions(
+    sessionId: string,
+    commandPayload:
+      | {
+          boardUnitCount?: number;
+          boardPlacements?: NonNullable<PrepCommandMessage["boardPlacements"]>;
+          xpPurchaseCount?: number;
+          shopRefreshCount?: number;
+          shopBuySlotIndex?: number;
+          shopLock?: boolean;
+          benchToBoardCell?: { benchIndex: number; cell: number };
+          benchSellIndex?: number;
+          boardSellIndex?: number;
+        }
+      | undefined,
+  ): void {
+    if (!this.matchLogger || !commandPayload) {
+      return;
+    }
+
+    const player = this.state.players.get(sessionId);
+    const goldBefore = player?.gold ?? 0;
+
+    if (commandPayload.shopBuySlotIndex !== undefined) {
+      const offers = this.controller?.getShopOffersForPlayer(sessionId);
+      const offer = offers?.[commandPayload.shopBuySlotIndex];
+      if (offer) {
+        this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_unit", {
+          unitType: offer.unitType,
+          cost: offer.cost,
+          goldBefore,
+          goldAfter: goldBefore - offer.cost,
+        });
+      }
+    }
+
+    if (commandPayload.benchSellIndex !== undefined) {
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "sell_unit", {
+        benchIndex: commandPayload.benchSellIndex,
+        goldBefore,
+        goldAfter: goldBefore + 1,
+      });
+    }
+
+    if (commandPayload.benchToBoardCell !== undefined) {
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "deploy", {
+        benchIndex: commandPayload.benchToBoardCell.benchIndex,
+        toCell: commandPayload.benchToBoardCell.cell,
+        goldBefore,
+        goldAfter: goldBefore,
+      });
+    }
+
+    if (commandPayload.shopRefreshCount !== undefined) {
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "shop_refresh", {
+        itemCount: commandPayload.shopRefreshCount,
+        goldBefore,
+        goldAfter: goldBefore - 2,
+      });
+    }
+
+    if (commandPayload.xpPurchaseCount !== undefined) {
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_xp", {
+        itemCount: commandPayload.xpPurchaseCount,
+        goldBefore,
+        goldAfter: goldBefore - 4,
+      });
+    }
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {

@@ -175,12 +175,21 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     cursor.updatedAtMs = Date.now();
     this.state.cursors.set(sessionId, cursor);
 
-    const roleMessage: SharedBoardRoleMessage = {
-      isSpectator,
-      slotIndex,
-      color,
-    };
-    client.send(SERVER_MESSAGE_TYPES.ROLE, roleMessage);
+    this.clock.setTimeout(() => {
+      const latestPlayer = this.state.players.get(sessionId);
+
+      if (!latestPlayer) {
+        return;
+      }
+
+      const roleMessage: SharedBoardRoleMessage = {
+        isSpectator: latestPlayer.isSpectator,
+        slotIndex: latestPlayer.slotIndex,
+        color: latestPlayer.color,
+      };
+
+      client.send(SERVER_MESSAGE_TYPES.ROLE, roleMessage);
+    }, 0);
 
     if (!isSpectator) {
       this.activePlayerIds.push(sessionId);

@@ -1,8 +1,12 @@
 import { defineServer, defineRoom } from "colyseus";
 import { GameRoom } from "./src/server/rooms/game-room";
 import { SharedBoardRoom } from "./src/server/rooms/shared-board-room";
+import { FeatureFlagService } from "./src/server/feature-flag-service";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 2567;
+
+// T5: 起動時にフラグ構成を検証
+FeatureFlagService.getInstance().validateFlagConfiguration();
 
 const server = defineServer({
   rooms: {

@@ -2332,6 +2332,21 @@ export class MatchRoomController {
     const leftHeroSynergyBonusType = leftHero?.synergyBonusType ?? null;
     const rightHeroSynergyBonusType = rightHero?.synergyBonusType ?? null;
 
+    // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
+    const battleTraceLog = {
+      type: "battle_trace",
+      roundIndex: this.roundIndex,
+      leftPlayerId,
+      rightPlayerId,
+      leftPlacements,
+      rightPlacements,
+      leftHeroId: leftHeroId ?? null,
+      rightHeroId: rightHeroId ?? null,
+      timestamp: Date.now(),
+    };
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(battleTraceLog));
+
     // バトルシミュレーターで戦闘を実行
     const battleSimulator = new BattleSimulator();
     const battleResult = battleSimulator.simulateBattle(
@@ -2424,6 +2439,22 @@ export class MatchRoomController {
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
 
+      // T3: 戦闘結果トレースログ（引き分け）
+      const drawResultTraceLog = {
+        type: "battle_result_trace",
+        roundIndex: this.roundIndex,
+        leftPlayerId,
+        rightPlayerId,
+        winner: "draw",
+        leftSurvivors: battleResult.leftSurvivors.length,
+        rightSurvivors: battleResult.rightSurvivors.length,
+        leftDamageTaken: 0,
+        rightDamageTaken: 0,
+        timestamp: Date.now(),
+      };
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify(drawResultTraceLog));
+
       return {
         winnerId: null,
         loserId: null,
@@ -2432,6 +2463,29 @@ export class MatchRoomController {
         isDraw: true,
       };
     }
+
+    // T3: 戦闘結果トレースログ（勝敗あり）
+    const isLeftWinner = battleResult.winner === "left";
+    const resultTraceLog = {
+      type: "battle_result_trace",
+      roundIndex: this.roundIndex,
+      leftPlayerId,
+      rightPlayerId,
+      winner: battleResult.winner,
+      leftSurvivors: battleResult.leftSurvivors.length,
+      rightSurvivors: battleResult.rightSurvivors.length,
+      leftDamageTaken: isLeftWinner ? 0 : this.buildLoserDamage(
+        battleResult.rightSurvivors.length,
+        battleResult.leftSurvivors.length,
+      ),
+      rightDamageTaken: isLeftWinner ? this.buildLoserDamage(
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      ) : 0,
+      timestamp: Date.now(),
+    };
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(resultTraceLog));
   }
 
   private resolveUnitCount(playerId: string): number {

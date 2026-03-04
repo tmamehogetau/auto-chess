@@ -1,4 +1,5 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
+import type { SubUnitConfig } from "../../shared/types";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import { SYNERGY_DEFINITIONS, calculateSynergyDetails, SynergyTier } from "./synergy-definitions";
@@ -343,6 +344,57 @@ function applyItemEffects(unit: BattleUnit, items: ItemType[]): void {
 }
 
 /**
+ * サブユニット補助効果をユニットへ適用
+ */
+function applySubUnitAssist(
+  units: BattleUnit[],
+  placements: BoardUnitPlacement[],
+  subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig>,
+  combatLog: string[],
+): void {
+  const entryCount = Math.min(units.length, placements.length);
+
+  for (let index = 0; index < entryCount; index += 1) {
+    const unit = units[index];
+    const placement = placements[index];
+
+    if (!unit || !placement) {
+      continue;
+    }
+
+    const subUnitConfig = subUnitAssistConfigByType.get(placement.unitType);
+    if (!subUnitConfig || subUnitConfig.mode !== "assist") {
+      continue;
+    }
+
+    const appliedLabels: string[] = [];
+
+    if (subUnitConfig.bonusHpPct !== undefined && subUnitConfig.bonusHpPct > 0) {
+      const bonusHp = Math.floor(unit.maxHp * subUnitConfig.bonusHpPct);
+      if (bonusHp > 0) {
+        unit.maxHp += bonusHp;
+        unit.hp += bonusHp;
+        appliedLabels.push(`+${bonusHp} HP`);
+      }
+    }
+
+    if (subUnitConfig.bonusAttackPct !== undefined && subUnitConfig.bonusAttackPct > 0) {
+      const bonusAttack = Math.floor(unit.attackPower * subUnitConfig.bonusAttackPct);
+      if (bonusAttack > 0) {
+        unit.attackPower += bonusAttack;
+        appliedLabels.push(`+${bonusAttack} ATK`);
+      }
+    }
+
+    if (appliedLabels.length > 0) {
+      combatLog.push(
+        `${generateUnitName(unit)} gains sub-unit assist (${subUnitConfig.unitId}): ${appliedLabels.join(", ")}`,
+      );
+    }
+  }
+}
+
+/**
  * ユニット名を生成（戦闘ログ用）
  */
 function generateUnitName(unit: BattleUnit): string {
@@ -381,6 +433,7 @@ export class BattleSimulator {
     maxDurationMs: number = 30000,
     leftHeroSynergyBonusType: BoardUnitType | null = null,
     rightHeroSynergyBonusType: BoardUnitType | null = null,
+    subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null = null,
   ): BattleResult {
     try {
       // Bug #3 fix: Validate input teams
@@ -424,6 +477,21 @@ export class BattleSimulator {
           const items = rightPlacements[i]?.items || [];
           applyItemEffects(unit, items);
         }
+      }
+
+      if (subUnitAssistConfigByType && subUnitAssistConfigByType.size > 0) {
+        applySubUnitAssist(
+          leftUnits,
+          leftPlacements,
+          subUnitAssistConfigByType,
+          combatLog,
+        );
+        applySubUnitAssist(
+          rightUnits,
+          rightPlacements,
+          subUnitAssistConfigByType,
+          combatLog,
+        );
       }
 
       const allUnits = [...leftUnits, ...rightUnits];

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
+import type { BoardUnitPlacement, BoardUnitType } from "../../../src/shared/room-messages";
+import type { SubUnitConfig } from "../../../src/shared/types";
 import {
   BattleSimulator,
   calculateCellDistance,
@@ -413,6 +414,56 @@ describe("battle-simulator", () => {
       const damageLogs = result.combatLog.filter((log) => log.includes("damage"));
       expect(damageLogs.length).toBeGreaterThan(0);
       expect(damageLogs[0]).toMatch(/attacks.*for \d+ damage \(\d+\/\d+\)|CRITICAL HIT on.*for \d+ damage!/);
+    });
+
+    test("sub-unit assist設定がある場合はHPボーナスが適用されログに記録される", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "ranger", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+      ];
+      const rightUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
+      ];
+
+      const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map<
+        BoardUnitType,
+        SubUnitConfig
+      >([
+        [
+          "vanguard",
+          {
+            unitId: "warrior_a_sub",
+            mode: "assist",
+            bonusHpPct: 0.1,
+          },
+        ],
+      ]);
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        5_000,
+        null,
+        null,
+        subUnitAssistConfigByType,
+      );
+
+      expect(leftUnits[0]?.maxHp).toBe(88);
+      expect(
+        result.combatLog.some((log) =>
+          log.includes("sub-unit assist (warrior_a_sub)"),
+        ),
+      ).toBe(true);
     });
 
     test("時間制限に達した場合はHPで勝敗が決まる", () => {

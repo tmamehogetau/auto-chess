@@ -65,7 +65,7 @@ export function parseBoardUnitToken(token) {
     return null;
   }
 
-  const match = trimmedToken.match(/^(\d+):([^:]+?)(?::(\d+))?$/);
+  const match = trimmedToken.match(/^(\d+):([^:]+?)(?::(\d+))?(?::(sub))?$/);
 
   if (!match) {
     return null;
@@ -84,16 +84,30 @@ export function parseBoardUnitToken(token) {
   }
 
   const parsedStarLevel = match[3] ? Number.parseInt(match[3], 10) : 1;
+  const subUnitMarker = match[4];
+
+  if (subUnitMarker && !match[3]) {
+    return null;
+  }
 
   if (!Number.isInteger(parsedStarLevel) || parsedStarLevel < 1) {
     return null;
   }
 
-  return {
+  const parsed = {
     cell,
     unitType,
     starLevel: parsedStarLevel,
   };
+
+  if (subUnitMarker) {
+    return {
+      ...parsed,
+      subUnitActive: true,
+    };
+  }
+
+  return parsed;
 }
 
 export function parseAutoFlag(value) {

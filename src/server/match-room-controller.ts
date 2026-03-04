@@ -41,6 +41,8 @@ import { SharedPool } from "./shared-pool";
 import { SPELL_CARDS, getAvailableSpellsForRound, type SpellCard } from "../data/spell-cards";
 import { getRumorUnitForRound, type RumorUnit } from "../data/rumor-units";
 import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansionUnit } from "../data/scarlet-mansion-units";
+import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
+import type { SubUnitConfig } from "../shared/types";
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
@@ -169,6 +171,63 @@ interface MatchupOutcome {
   isDraw: boolean;
 }
 
+interface MvpPhase1UnitForSubUnit {
+  type: BoardUnitType;
+  subUnit?: SubUnitConfig;
+}
+
+const SUPPORTED_SUB_UNIT_IDS = new Set(["warrior_a_sub"]);
+
+function resolveSubUnitAssistConfigByType(): ReadonlyMap<BoardUnitType, SubUnitConfig> {
+  const configByType = new Map<BoardUnitType, SubUnitConfig>();
+  const unitRows = (mvpPhase1UnitsData as { units: MvpPhase1UnitForSubUnit[] }).units;
+
+  for (const unitRow of unitRows) {
+    const subUnit = unitRow.subUnit;
+
+    if (!subUnit) {
+      continue;
+    }
+
+    if (subUnit.mode !== "assist") {
+      throw new Error(`Unsupported sub-unit mode: ${subUnit.mode}`);
+    }
+
+    if (!SUPPORTED_SUB_UNIT_IDS.has(subUnit.unitId)) {
+      throw new Error(`Unsupported sub-unit id: ${subUnit.unitId}`);
+    }
+
+    if (subUnit.bonusAttackPct !== undefined && subUnit.bonusAttackPct <= 0) {
+      throw new Error(`Invalid bonusAttackPct for ${subUnit.unitId}`);
+    }
+
+    if (subUnit.bonusHpPct !== undefined && subUnit.bonusHpPct <= 0) {
+      throw new Error(`Invalid bonusHpPct for ${subUnit.unitId}`);
+    }
+
+    if (configByType.has(unitRow.type)) {
+      continue;
+    }
+
+    const normalizedConfig: SubUnitConfig = {
+      unitId: subUnit.unitId,
+      mode: "assist",
+    };
+
+    if (subUnit.bonusAttackPct !== undefined) {
+      normalizedConfig.bonusAttackPct = subUnit.bonusAttackPct;
+    }
+
+    if (subUnit.bonusHpPct !== undefined) {
+      normalizedConfig.bonusHpPct = subUnit.bonusHpPct;
+    }
+
+    configByType.set(unitRow.type, normalizedConfig);
+  }
+
+  return configByType;
+}
+
 interface BattleResult {
   opponentId: string;
   won: boolean;
@@ -261,6 +320,8 @@ export class MatchRoomController {
 
   private readonly enableSharedPool: boolean;
 
+  private readonly enableSubUnitSystem: boolean;
+
   private readonly enableSpellCard: boolean;
 
   private readonly enableRumorInfluence: boolean;
@@ -272,6 +333,8 @@ export class MatchRoomController {
   private readonly rumorInfluenceEligibleByPlayer: Map<string, boolean>;
 
   private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
+
+  private readonly subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig>;
 
   private readonly featureFlags: {
     enablePhaseExpansion: boolean;
@@ -355,6 +418,12 @@ export class MatchRoomController {
     // Feature Flagに基づいて共有プールを初期化
     this.enableSharedPool = FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool');
     this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
+
+    // Feature Flagに基づいてサブユニットシステムを初期化
+    this.enableSubUnitSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableSubUnitSystem');
+    this.subUnitAssistConfigByType = this.enableSubUnitSystem
+      ? resolveSubUnitAssistConfigByType()
+      : new Map<BoardUnitType, SubUnitConfig>();
 
     // Feature Flagに基づいてスペルカードを初期化
     this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
@@ -696,9 +765,16 @@ export class MatchRoomController {
       ),
       boardUnits: boardPlacements.map((placement) => {
         const starLevel = placement.starLevel ?? 1;
+        const hasSubUnitAssist =
+          this.enableSubUnitSystem &&
+          this.subUnitAssistConfigByType.has(placement.unitType);
 
-        if (starLevel > 1) {
-          return `${placement.cell}:${placement.unitType}:${starLevel}`;
+        if (starLevel > 1 || hasSubUnitAssist) {
+          const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;
+          if (hasSubUnitAssist) {
+            return `${tokenWithStarLevel}:sub`;
+          }
+          return tokenWithStarLevel;
         }
 
         return `${placement.cell}:${placement.unitType}`;
@@ -2357,6 +2433,7 @@ export class MatchRoomController {
       30000, // 30秒の最大戦闘時間
       leftHeroSynergyBonusType,
       rightHeroSynergyBonusType,
+      this.enableSubUnitSystem ? this.subUnitAssistConfigByType : null,
     );
 
     // 戦闘結果から勝者と生存ユニット数を判定

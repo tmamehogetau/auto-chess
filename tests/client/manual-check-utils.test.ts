@@ -66,8 +66,18 @@ describe("parseBoardUnitToken", () => {
     });
   });
 
+  test("cell:unitType:starLevel:subを正しく解析する", () => {
+    expect(parseBoardUnitToken("0:vanguard:1:sub")).toEqual({
+      cell: 0,
+      unitType: "vanguard",
+      starLevel: 1,
+      subUnitActive: true,
+    });
+  });
+
   test("不正フォーマットはnullを返す", () => {
     expect(parseBoardUnitToken("vanguard:2")).toBeNull();
+    expect(parseBoardUnitToken("0:vanguard:sub")).toBeNull();
     expect(parseBoardUnitToken("8:vanguard:2")).toBeNull();
     expect(parseBoardUnitToken("0:vanguard:0")).toBeNull();
     expect(parseBoardUnitToken("")).toBeNull();

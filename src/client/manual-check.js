@@ -1451,7 +1451,7 @@ function updateBoard(boardUnits) {
 
     if (!parsedToken) return;
 
-    const { cell: parsedCell, unitType, starLevel } = parsedToken;
+    const { cell: parsedCell, unitType, starLevel, subUnitActive } = parsedToken;
     const cellIndex = parsedCell;
 
     const boardCell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
@@ -1464,6 +1464,7 @@ function updateBoard(boardUnits) {
       <span class="cell-number">${cellIndex}</span>
       <div class="unit-icon">${icon}</div>
       <div class="unit-stars ${starClass}">${"★".repeat(starLevel)}</div>
+      ${subUnitActive ? '<div class="sub-unit-badge">SUB</div>' : ''}
     `;
     boardCell.classList.remove("empty");
   });

@@ -466,6 +466,29 @@ describe("battle-simulator", () => {
       ).toBe(true);
     });
 
+    test("sub-unit assist設定がない場合はHPボーナスもログ出力も発生しない", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "ranger", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+      ];
+      const rightUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
+      ];
+
+      const result = simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 5_000);
+
+      expect(leftUnits[0]?.maxHp).toBe(80);
+      expect(result.combatLog.some((log) => log.includes("sub-unit assist"))).toBe(false);
+    });
+
     test("時間制限に達した場合はHPで勝敗が決まる", () => {
       const simulator = new BattleSimulator();
 

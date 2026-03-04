@@ -198,6 +198,12 @@ const roundSummaryOverlay = document.querySelector("[data-round-summary-overlay]
 const roundSummaryRound = document.querySelector("[data-round-summary-round]");
 const roundSummaryList = document.querySelector("[data-round-summary-list]");
 const roundSummaryClose = document.querySelector("[data-round-summary-close]");
+
+// Battle result elements
+const battleResultOverlay = document.querySelector("[data-battle-result-overlay]");
+const battleResultTitle = document.querySelector("[data-battle-result-title]");
+const battleDamageDealt = document.querySelector("[data-battle-damage-dealt]");
+const battleDamageTaken = document.querySelector("[data-battle-damage-taken]");
 const monitorRefreshBtn = document.querySelector("[data-monitor-refresh-btn]");
 const monitorEventsValue = document.querySelector("[data-monitor-events]");
 const monitorFailureValue = document.querySelector("[data-monitor-failure]");
@@ -239,6 +245,8 @@ let latestPhaseHpProgress = null;
 let lastShownSummaryRound = -1;
 let roundSummaryAutoHideTimeout = null;
 let currentSharedPoolInventory = null;
+let lastShownBattleRound = -1;
+let battleResultAutoHideTimeout = null;
 
 // Hero selection state
 let selectedHeroId = null;
@@ -449,6 +457,8 @@ async function connect() {
     currentPhase = readPhase(room.state?.phase);
     lastShownSummaryRound = -1;
     hideRoundSummary();
+    lastShownBattleRound = -1;
+    hideBattleResult();
 
     // Show game container
     gameContainer?.classList.add("connected");
@@ -509,6 +519,8 @@ async function connect() {
       renderPhaseHpProgress(null);
       lastShownSummaryRound = -1;
       hideRoundSummary();
+      lastShownBattleRound = -1;
+      hideBattleResult();
       resetShadowDiffMonitor();
       gameContainer?.classList.remove("connected");
       showMessage("Disconnected", "error");
@@ -525,6 +537,8 @@ async function connect() {
     renderPhaseHpProgress(null);
     lastShownSummaryRound = -1;
     hideRoundSummary();
+    lastShownBattleRound = -1;
+    hideBattleResult();
     showMessage(`Connection failed: ${message}`, "error");
   } finally {
     connecting = false;
@@ -550,6 +564,8 @@ async function leave() {
   renderPhaseHpProgress(null);
   lastShownSummaryRound = -1;
   hideRoundSummary();
+  lastShownBattleRound = -1;
+  hideBattleResult();
   resetShadowDiffMonitor();
   syncButtonAvailability();
 
@@ -961,16 +977,22 @@ function updateGameUI(state) {
   const battleResult = player.lastBattleResult;
   if (battleResult) {
     // Only show once per round (track last shown round)
-    if (!window.lastShownBattleRound || window.lastShownBattleRound !== state.roundIndex) {
-      window.lastShownBattleRound = state.roundIndex;
+    if (lastShownBattleRound !== state.roundIndex) {
+      lastShownBattleRound = state.roundIndex;
       
-      const resultText = battleResult.won ? '🏆 VICTORY!' : '💀 DEFEAT';
-      const type = battleResult.won ? 'win' : 'lose';
+      const isVictory = battleResult.won === true;
+      
+      // Show battle result overlay
+      showBattleResult(isVictory, battleResult);
+      
+      // Also log to combat log
+      const resultText = isVictory ? '🏆 VICTORY!' : '💀 DEFEAT';
+      const type = isVictory ? 'win' : 'lose';
       
       addCombatLogEntry(`--- Round ${state.roundIndex} ---`, 'info');
       addCombatLogEntry(`${resultText} vs Player`, type);
       addCombatLogEntry(`Survivors: ${battleResult.survivors} vs ${battleResult.opponentSurvivors}`, 'info');
-      addCombatLogEntry(`Damage: ${battleResult.won ? '+' : '-'}${battleResult.damageTaken} HP`, type);
+      addCombatLogEntry(`Damage: ${isVictory ? '+' : '-'}${battleResult.damageTaken} HP`, type);
     }
   }
 
@@ -1139,6 +1161,67 @@ function hideRoundSummary() {
   if (roundSummaryAutoHideTimeout !== null) {
     clearTimeout(roundSummaryAutoHideTimeout);
     roundSummaryAutoHideTimeout = null;
+  }
+}
+
+/**
+ * Shows battle result overlay with victory/defeat status and damage stats
+ * @param {boolean} isVictory - Whether the player won
+ * @param {Object} battleResult - Battle result data with damageDealt and damageTaken
+ */
+function showBattleResult(isVictory, battleResult) {
+  if (!battleResultOverlay || !battleResultTitle || !battleDamageDealt || !battleDamageTaken) {
+    return;
+  }
+
+  // Clear any existing auto-hide timeout
+  if (battleResultAutoHideTimeout !== null) {
+    clearTimeout(battleResultAutoHideTimeout);
+    battleResultAutoHideTimeout = null;
+  }
+
+  // Remove any existing animation classes
+  battleResultOverlay.classList.remove("hiding");
+  
+  // Set title and styling based on result
+  battleResultTitle.textContent = isVictory ? "🏆 VICTORY" : "💀 DEFEAT";
+  battleResultOverlay.classList.remove("victory", "defeat");
+  battleResultOverlay.classList.add(isVictory ? "victory" : "defeat");
+  
+  // Set damage statistics
+  const damageDealt = Math.round(battleResult?.damageDealt || 0);
+  const damageTaken = Math.round(battleResult?.damageTaken || 0);
+  battleDamageDealt.textContent = damageDealt;
+  battleDamageTaken.textContent = damageTaken;
+  
+  // Show the overlay
+  battleResultOverlay.classList.add("visible");
+  
+  // Auto-hide after 3 seconds
+  battleResultAutoHideTimeout = setTimeout(() => {
+    hideBattleResult();
+  }, 3000);
+}
+
+/**
+ * Hides the battle result overlay with exit animation
+ */
+function hideBattleResult() {
+  if (!battleResultOverlay) {
+    return;
+  }
+  
+  // Add exit animation
+  battleResultOverlay.classList.add("hiding");
+  
+  // Remove visible class after animation completes
+  setTimeout(() => {
+    battleResultOverlay.classList.remove("visible", "hiding", "victory", "defeat");
+  }, 300);
+  
+  if (battleResultAutoHideTimeout !== null) {
+    clearTimeout(battleResultAutoHideTimeout);
+    battleResultAutoHideTimeout = null;
   }
 }
 
@@ -1824,6 +1907,10 @@ function clearPendingAutoActions() {
   if (pendingAutoPrepTimeout !== null) {
     clearTimeout(pendingAutoPrepTimeout);
     pendingAutoPrepTimeout = null;
+  }
+  if (battleResultAutoHideTimeout !== null) {
+    clearTimeout(battleResultAutoHideTimeout);
+    battleResultAutoHideTimeout = null;
   }
   autoReadyCompleted = false;
   autoPrepCompleted = false;

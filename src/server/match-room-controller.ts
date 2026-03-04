@@ -950,24 +950,9 @@ export class MatchRoomController {
       bossShopBuySlotIndex?: number;
     },
   ): CommandResult {
-    if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
-      return { accepted: false, code: "PHASE_MISMATCH" };
-    }
-
-    if (!this.lastCmdSeqByPlayer.has(playerId)) {
-      return { accepted: false, code: "UNKNOWN_PLAYER" };
-    }
-
-    const deadline = this.prepDeadlineAtMs;
-
-    if (deadline === null || receivedAtMs >= deadline) {
-      return { accepted: false, code: "LATE_INPUT" };
-    }
-
-    const previousCmdSeq = this.lastCmdSeqByPlayer.get(playerId);
-
-    if (previousCmdSeq === undefined || cmdSeq <= previousCmdSeq) {
-      return { accepted: false, code: "DUPLICATE_CMD" };
+    const validationResult = this.validatePrepCommandBasic(playerId, cmdSeq, receivedAtMs);
+    if (validationResult) {
+      return validationResult;
     }
 
     if (commandPayload?.boardUnitCount !== undefined) {
@@ -2823,5 +2808,36 @@ export class MatchRoomController {
    */
   public getDeclaredSpell(): SpellCard | null {
     return this.declaredSpell;
+  }
+
+  /**
+   * PrepCommandの基本バリデーション（フェーズ、プレイヤー、タイミング、コマンド順序）
+   */
+  private validatePrepCommandBasic(
+    playerId: string,
+    cmdSeq: number,
+    receivedAtMs: number,
+  ): CommandResult | null {
+    if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
+      return { accepted: false, code: "PHASE_MISMATCH" };
+    }
+
+    if (!this.lastCmdSeqByPlayer.has(playerId)) {
+      return { accepted: false, code: "UNKNOWN_PLAYER" };
+    }
+
+    const deadline = this.prepDeadlineAtMs;
+
+    if (deadline === null || receivedAtMs >= deadline) {
+      return { accepted: false, code: "LATE_INPUT" };
+    }
+
+    const previousCmdSeq = this.lastCmdSeqByPlayer.get(playerId);
+
+    if (previousCmdSeq === undefined || cmdSeq <= previousCmdSeq) {
+      return { accepted: false, code: "DUPLICATE_CMD" };
+    }
+
+    return null; // バリデーション通過
   }
 }

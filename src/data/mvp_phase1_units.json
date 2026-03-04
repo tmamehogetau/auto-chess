@@ -1,6 +1,6 @@
 {
   "units": [
-    {"id": "warrior_a", "name": "戦士A", "type": "vanguard", "cost": 1, "hp": 100, "attack": 10, "attackSpeed": 0.5, "range": 1, "synergy": ["warrior"]},
+    {"id": "warrior_a", "name": "戦士A", "type": "vanguard", "cost": 1, "hp": 100, "attack": 10, "attackSpeed": 0.5, "range": 1, "synergy": ["warrior"], "subUnit": {"unitId": "warrior_a_sub", "mode": "assist", "bonusHpPct": 0.1}},
     {"id": "warrior_b", "name": "戦士B", "type": "vanguard", "cost": 1, "hp": 100, "attack": 10, "attackSpeed": 0.5, "range": 1, "synergy": ["warrior"]},
     {"id": "archer_a", "name": "射手A", "type": "ranger", "cost": 2, "hp": 60, "attack": 15, "attackSpeed": 0.8, "range": 3, "synergy": ["archer"]},
     {"id": "archer_b", "name": "射手B", "type": "ranger", "cost": 2, "hp": 60, "attack": 15, "attackSpeed": 0.8, "range": 3, "synergy": ["archer"]},

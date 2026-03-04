@@ -10,6 +10,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = undefined;
       process.env.FEATURE_ENABLE_SHARED_POOL = undefined;
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = undefined;
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = undefined;
 
       // Reset singleton instance
       (FeatureFlagService as any).instance = undefined;
@@ -20,6 +21,7 @@ describe("Feature Flag Integration", () => {
       expect(flags.enableHeroSystem).toBe(false);
       expect(flags.enableSharedPool).toBe(false);
       expect(flags.enablePhaseExpansion).toBe(false);
+      expect(flags.enableSubUnitSystem).toBe(false);
 
       process.env = originalEnv;
     });
@@ -30,6 +32,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "1";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "1";
 
       // Reset singleton instance
       (FeatureFlagService as any).instance = undefined;
@@ -40,6 +43,7 @@ describe("Feature Flag Integration", () => {
       expect(flags.enableHeroSystem).toBe(true);
       expect(flags.enableSharedPool).toBe(true);
       expect(flags.enablePhaseExpansion).toBe(false);
+      expect(flags.enableSubUnitSystem).toBe(true);
 
       process.env = originalEnv;
     });
@@ -67,6 +71,7 @@ describe("Feature Flag Integration", () => {
 
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "true";
 
       // Reset singleton instance
       (FeatureFlagService as any).instance = undefined;
@@ -75,6 +80,7 @@ describe("Feature Flag Integration", () => {
       expect(service.isFeatureEnabled("enableHeroSystem")).toBe(true);
       expect(service.isFeatureEnabled("enableSharedPool")).toBe(false);
       expect(service.isFeatureEnabled("enablePhaseExpansion")).toBe(false);
+      expect(service.isFeatureEnabled("enableSubUnitSystem")).toBe(true);
 
       process.env = originalEnv;
     });
@@ -85,6 +91,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "false";
       process.env.FEATURE_ENABLE_EMBLEM_CELLS = "false";
       process.env.FEATURE_ENABLE_SPELL_CARD = "false";
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
@@ -105,6 +112,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "true";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "false";
       process.env.FEATURE_ENABLE_EMBLEM_CELLS = "false";
       process.env.FEATURE_ENABLE_SPELL_CARD = "false";
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
@@ -127,6 +135,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "false";
       process.env.FEATURE_ENABLE_EMBLEM_CELLS = "true";
       process.env.FEATURE_ENABLE_SPELL_CARD = "false";
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
@@ -149,6 +158,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "true";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "true";
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "true";
       process.env.FEATURE_ENABLE_EMBLEM_CELLS = "true";
       process.env.FEATURE_ENABLE_SPELL_CARD = "true";
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "true";
@@ -171,6 +181,7 @@ describe("Feature Flag Integration", () => {
       expect(state.featureFlagsEnableHeroSystem).toBe(false);
       expect(state.featureFlagsEnableSharedPool).toBe(false);
       expect(state.featureFlagsEnablePhaseExpansion).toBe(false);
+      expect(state.featureFlagsEnableSubUnitSystem).toBe(false);
     });
 
     it("should allow updating feature flags", () => {
@@ -179,10 +190,12 @@ describe("Feature Flag Integration", () => {
       state.featureFlagsEnableHeroSystem = true;
       state.featureFlagsEnableSharedPool = true;
       state.featureFlagsEnablePhaseExpansion = true;
+      state.featureFlagsEnableSubUnitSystem = true;
 
       expect(state.featureFlagsEnableHeroSystem).toBe(true);
       expect(state.featureFlagsEnableSharedPool).toBe(true);
       expect(state.featureFlagsEnablePhaseExpansion).toBe(true);
+      expect(state.featureFlagsEnableSubUnitSystem).toBe(true);
     });
   });
 

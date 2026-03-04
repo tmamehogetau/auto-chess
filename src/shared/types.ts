@@ -25,6 +25,15 @@ export interface BuffSkill {
 
 export type UnitSkill = AoeSkill | BuffSkill;
 
+export type SubUnitMode = "assist";
+
+export interface SubUnitConfig {
+  unitId: string;
+  mode: SubUnitMode;
+  bonusAttackPct?: number;
+  bonusHpPct?: number;
+}
+
 // MVP Phase 1 Unit Definition
 export interface MvpPhase1Unit {
   id: string;
@@ -36,6 +45,7 @@ export interface MvpPhase1Unit {
   attackSpeed: number;
   range: number;
   synergy: string[];
+  subUnit?: SubUnitConfig;
   skill?: UnitSkill;
 }
 

@@ -86,6 +86,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableHeroSystem = flags.enableHeroSystem;
     this.state.featureFlagsEnableSharedPool = flags.enableSharedPool;
     this.state.featureFlagsEnablePhaseExpansion = flags.enablePhaseExpansion;
+    this.state.featureFlagsEnableSubUnitSystem = flags.enableSubUnitSystem;
     this.state.featureFlagsEnableSpellCard = flags.enableSpellCard;
     this.state.featureFlagsEnableRumorInfluence = flags.enableRumorInfluence;
     this.state.featureFlagsEnableBossExclusiveShop = flags.enableBossExclusiveShop;
@@ -730,6 +731,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     // スペルカード関連の同期
     const flagService = FeatureFlagService.getInstance();
+    this.state.featureFlagsEnableSubUnitSystem = flagService.isFeatureEnabled(
+      "enableSubUnitSystem",
+    );
     this.state.featureFlagsEnableSpellCard = flagService.isFeatureEnabled('enableSpellCard');
     this.state.featureFlagsEnableRumorInfluence = flagService.isFeatureEnabled('enableRumorInfluence');
     this.state.featureFlagsEnableBossExclusiveShop = flagService.isFeatureEnabled('enableBossExclusiveShop');

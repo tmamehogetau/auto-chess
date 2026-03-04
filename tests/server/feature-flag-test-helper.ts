@@ -30,6 +30,11 @@ export async function withFlags(
         flags.enablePhaseExpansion,
       );
     }
+    if (flags.enableSubUnitSystem !== undefined) {
+      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = String(
+        flags.enableSubUnitSystem,
+      );
+    }
     if (flags.enableEmblemCells !== undefined) {
       process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
     }
@@ -83,6 +88,7 @@ export async function createRoomWithFlags(
     process.env.FEATURE_ENABLE_PHASE_EXPANSION = String(
       flags.enablePhaseExpansion,
     );
+    process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = String(flags.enableSubUnitSystem);
     process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
     process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
     process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = String(flags.enableRumorInfluence);
@@ -114,6 +120,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: false,
@@ -126,6 +133,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: true,
     enableSharedPool: true,
     enablePhaseExpansion: true,
+    enableSubUnitSystem: true,
     enableEmblemCells: true,
     enableSpellCard: true,
     enableRumorInfluence: true,
@@ -138,6 +146,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: true,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: false,
@@ -150,6 +159,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: true,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: false,
@@ -162,6 +172,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: true,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: false,
@@ -174,6 +185,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: true,
     enableRumorInfluence: false,
@@ -186,6 +198,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: true,
@@ -198,10 +211,24 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: false,
     enableBossExclusiveShop: true,
+    enableSharedBoardShadow: false,
+  } satisfies FeatureFlags,
+
+  /** Only sub-unit system enabled */
+  SUB_UNIT_SYSTEM_ONLY: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableSubUnitSystem: true,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
   } satisfies FeatureFlags,
 
@@ -210,6 +237,7 @@ export const FLAG_CONFIGURATIONS = {
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
     enableRumorInfluence: false,

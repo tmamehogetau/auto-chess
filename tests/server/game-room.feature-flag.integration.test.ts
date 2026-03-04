@@ -98,6 +98,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(false);
           expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(false);
           expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(false);
+          expect(serverRoom.state.featureFlagsEnableSubUnitSystem).toBe(false);
         });
       });
 
@@ -244,6 +245,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(true);
           expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(true);
           expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
+          expect(serverRoom.state.featureFlagsEnableSubUnitSystem).toBe(true);
         });
       });
 
@@ -398,6 +400,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(false);
           expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(false);
           expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(false);
+          expect(serverRoom.state.featureFlagsEnableSubUnitSystem).toBe(false);
         });
       }, 50_000);
 
@@ -434,6 +437,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(true);
           expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(true);
           expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
+          expect(serverRoom.state.featureFlagsEnableSubUnitSystem).toBe(true);
         });
       }, 50_000);
     });

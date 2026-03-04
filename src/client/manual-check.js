@@ -204,6 +204,10 @@ const battleResultOverlay = document.querySelector("[data-battle-result-overlay]
 const battleResultTitle = document.querySelector("[data-battle-result-title]");
 const battleDamageDealt = document.querySelector("[data-battle-damage-dealt]");
 const battleDamageTaken = document.querySelector("[data-battle-damage-taken]");
+
+// Battle start overlay
+const battleStartOverlay = document.querySelector("[data-battle-start-overlay]");
+
 const monitorRefreshBtn = document.querySelector("[data-monitor-refresh-btn]");
 const monitorEventsValue = document.querySelector("[data-monitor-events]");
 const monitorFailureValue = document.querySelector("[data-monitor-failure]");
@@ -1105,10 +1109,54 @@ function updatePhaseDisplay(phase) {
       addCombatLogEntry('🛒 Prep phase started - Buy and deploy units!', 'info');
     } else if (phase === 'Battle') {
       addCombatLogEntry('⚔️ Battle phase started!', 'info');
+      // Trigger battle start animation
+      triggerBattleStartAnimation();
     } else if (phase === 'Settle') {
       addCombatLogEntry('📊 Settling scores...', 'info');
     }
   }
+}
+
+/**
+ * Shows the battle start animation overlay with text and board effects
+ * Animation lasts 1.2 seconds and auto-hides
+ */
+function triggerBattleStartAnimation() {
+  if (!battleStartOverlay) {
+    return;
+  }
+
+  // Show the overlay
+  battleStartOverlay.classList.add('visible');
+
+  // Add shake effect to board sections
+  const boardSection = document.querySelector('.board-section');
+  const sharedBoardSection = document.querySelector('.shared-board-section');
+
+  if (boardSection) {
+    boardSection.classList.remove('battle-start');
+    void boardSection.offsetWidth; // Trigger reflow
+    boardSection.classList.add('battle-start');
+  }
+
+  if (sharedBoardSection) {
+    sharedBoardSection.classList.remove('battle-start');
+    void sharedBoardSection.offsetWidth; // Trigger reflow
+    sharedBoardSection.classList.add('battle-start');
+  }
+
+  // Auto-hide after animation completes (1.2s)
+  setTimeout(() => {
+    battleStartOverlay.classList.remove('visible');
+    
+    // Clean up board shake classes
+    if (boardSection) {
+      boardSection.classList.remove('battle-start');
+    }
+    if (sharedBoardSection) {
+      sharedBoardSection.classList.remove('battle-start');
+    }
+  }, 1200);
 }
 
 function updatePhaseHpProgressFromMessage(message) {

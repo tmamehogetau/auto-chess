@@ -428,6 +428,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         benchToBoardCell?: { benchIndex: number; cell: number };
         benchSellIndex?: number;
         boardSellIndex?: number;
+        itemBuySlotIndex?: number;
+        itemEquipToBench?: { inventoryItemIndex: number; benchIndex: number };
+        itemUnequipFromBench?: { benchIndex: number; itemSlotIndex: number };
+        itemSellInventoryIndex?: number;
+        bossShopBuySlotIndex?: number;
       }
     | undefined {
     if (
@@ -439,7 +444,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       message.shopLock === undefined &&
       message.benchToBoardCell === undefined &&
       message.benchSellIndex === undefined &&
-      message.boardSellIndex === undefined
+      message.boardSellIndex === undefined &&
+      message.itemBuySlotIndex === undefined &&
+      message.itemEquipToBench === undefined &&
+      message.itemUnequipFromBench === undefined &&
+      message.itemSellInventoryIndex === undefined &&
+      message.bossShopBuySlotIndex === undefined
     ) {
       return undefined;
     }
@@ -454,6 +464,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       ...(message.benchToBoardCell !== undefined && { benchToBoardCell: message.benchToBoardCell }),
       ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
       ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
+      ...(message.itemBuySlotIndex !== undefined && { itemBuySlotIndex: message.itemBuySlotIndex }),
+      ...(message.itemEquipToBench !== undefined && { itemEquipToBench: message.itemEquipToBench }),
+      ...(message.itemUnequipFromBench !== undefined && { itemUnequipFromBench: message.itemUnequipFromBench }),
+      ...(message.itemSellInventoryIndex !== undefined && { itemSellInventoryIndex: message.itemSellInventoryIndex }),
+      ...(message.bossShopBuySlotIndex !== undefined && { bossShopBuySlotIndex: message.bossShopBuySlotIndex }),
     };
   }
 
@@ -470,6 +485,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           benchToBoardCell?: { benchIndex: number; cell: number };
           benchSellIndex?: number;
           boardSellIndex?: number;
+          itemBuySlotIndex?: number;
+          itemEquipToBench?: { inventoryItemIndex: number; benchIndex: number };
+          itemUnequipFromBench?: { benchIndex: number; itemSlotIndex: number };
+          itemSellInventoryIndex?: number;
+          bossShopBuySlotIndex?: number;
         }
       | undefined,
   ): void {

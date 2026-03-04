@@ -78,6 +78,90 @@ describe("Feature Flag Integration", () => {
 
       process.env = originalEnv;
     });
+
+    it("should accept all disabled configuration", () => {
+      const originalEnv = process.env;
+
+      process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
+      process.env.FEATURE_ENABLE_SHARED_POOL = "false";
+      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_EMBLEM_CELLS = "false";
+      process.env.FEATURE_ENABLE_SPELL_CARD = "false";
+      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "false";
+      process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "false";
+
+      (FeatureFlagService as any).instance = undefined;
+      const service = FeatureFlagService.getInstance();
+
+      expect(() => service.validateFlagConfiguration()).not.toThrow();
+
+      process.env = originalEnv;
+    });
+
+    it("should reject unsupported multi-feature partial configuration", () => {
+      const originalEnv = process.env;
+
+      process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
+      process.env.FEATURE_ENABLE_SHARED_POOL = "true";
+      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_EMBLEM_CELLS = "false";
+      process.env.FEATURE_ENABLE_SPELL_CARD = "false";
+      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "false";
+      process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "false";
+
+      (FeatureFlagService as any).instance = undefined;
+      const service = FeatureFlagService.getInstance();
+
+      expect(() => service.validateFlagConfiguration()).toThrow(
+        /MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration/,
+      );
+
+      process.env = originalEnv;
+    });
+
+    it("should reject emblem-only configuration", () => {
+      const originalEnv = process.env;
+
+      process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
+      process.env.FEATURE_ENABLE_SHARED_POOL = "false";
+      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_EMBLEM_CELLS = "true";
+      process.env.FEATURE_ENABLE_SPELL_CARD = "false";
+      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "false";
+      process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "false";
+
+      (FeatureFlagService as any).instance = undefined;
+      const service = FeatureFlagService.getInstance();
+
+      expect(() => service.validateFlagConfiguration()).toThrow(
+        /enableEmblemCells is only allowed in ALL_ENABLED configuration/,
+      );
+
+      process.env = originalEnv;
+    });
+
+    it("should accept all enabled configuration", () => {
+      const originalEnv = process.env;
+
+      process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
+      process.env.FEATURE_ENABLE_SHARED_POOL = "true";
+      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "true";
+      process.env.FEATURE_ENABLE_EMBLEM_CELLS = "true";
+      process.env.FEATURE_ENABLE_SPELL_CARD = "true";
+      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "true";
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
+      process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "true";
+
+      (FeatureFlagService as any).instance = undefined;
+      const service = FeatureFlagService.getInstance();
+
+      expect(() => service.validateFlagConfiguration()).not.toThrow();
+
+      process.env = originalEnv;
+    });
   });
 
   describe("MatchRoomState Feature Flags", () => {

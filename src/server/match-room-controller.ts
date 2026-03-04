@@ -2383,6 +2383,16 @@ export class MatchRoomController {
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
 
+      this.logBattleResultTrace({
+        leftPlayerId,
+        rightPlayerId,
+        winner: "right",
+        leftSurvivors: battleResult.leftSurvivors.length,
+        rightSurvivors: battleResult.rightSurvivors.length,
+        leftDamageTaken: damageToLeft,
+        rightDamageTaken: 0,
+      });
+
       return {
         winnerId: rightPlayerId,
         loserId: leftPlayerId,
@@ -2413,6 +2423,16 @@ export class MatchRoomController {
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
 
+      this.logBattleResultTrace({
+        leftPlayerId,
+        rightPlayerId,
+        winner: "left",
+        leftSurvivors: battleResult.leftSurvivors.length,
+        rightSurvivors: battleResult.rightSurvivors.length,
+        leftDamageTaken: 0,
+        rightDamageTaken: damageToRight,
+      });
+
       return {
         winnerId: leftPlayerId,
         loserId: rightPlayerId,
@@ -2439,10 +2459,7 @@ export class MatchRoomController {
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
 
-      // T3: 戦闘結果トレースログ（引き分け）
-      const drawResultTraceLog = {
-        type: "battle_result_trace",
-        roundIndex: this.roundIndex,
+      this.logBattleResultTrace({
         leftPlayerId,
         rightPlayerId,
         winner: "draw",
@@ -2450,10 +2467,7 @@ export class MatchRoomController {
         rightSurvivors: battleResult.rightSurvivors.length,
         leftDamageTaken: 0,
         rightDamageTaken: 0,
-        timestamp: Date.now(),
-      };
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(drawResultTraceLog));
+      });
 
       return {
         winnerId: null,
@@ -2463,27 +2477,24 @@ export class MatchRoomController {
         isDraw: true,
       };
     }
+  }
 
-    // T3: 戦闘結果トレースログ（勝敗あり）
-    const isLeftWinner = battleResult.winner === "left";
+  private logBattleResultTrace(params: {
+    leftPlayerId: string;
+    rightPlayerId: string;
+    winner: "left" | "right" | "draw";
+    leftSurvivors: number;
+    rightSurvivors: number;
+    leftDamageTaken: number;
+    rightDamageTaken: number;
+  }): void {
     const resultTraceLog = {
       type: "battle_result_trace",
       roundIndex: this.roundIndex,
-      leftPlayerId,
-      rightPlayerId,
-      winner: battleResult.winner,
-      leftSurvivors: battleResult.leftSurvivors.length,
-      rightSurvivors: battleResult.rightSurvivors.length,
-      leftDamageTaken: isLeftWinner ? 0 : this.buildLoserDamage(
-        battleResult.rightSurvivors.length,
-        battleResult.leftSurvivors.length,
-      ),
-      rightDamageTaken: isLeftWinner ? this.buildLoserDamage(
-        battleResult.leftSurvivors.length,
-        battleResult.rightSurvivors.length,
-      ) : 0,
+      ...params,
       timestamp: Date.now(),
     };
+
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(resultTraceLog));
   }

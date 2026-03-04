@@ -51,22 +51,35 @@ class FeatureFlagService {
    */
   public validateFlagConfiguration(): void {
     const flags = this.flags;
+    const enabledFeatures = Object.entries(flags)
+      .filter(([, enabled]) => enabled)
+      .map(([featureName]) => featureName);
+    const enabledCount = enabledFeatures.length;
+    const totalFeatureCount = Object.keys(flags).length;
+    const isAllDisabled = enabledCount === 0;
+    const isAllEnabled = enabledCount === totalFeatureCount;
+    const isSingleFeatureMode = enabledCount === 1;
 
     // 非許可組み合わせの検証
     const invalidCombinations: string[] = [];
 
-    // 例: enableSharedBoardShadow=true の場合、他の関連フラグも必要
-    // 現時点ではMVP範囲で厳密な制約は少ないが、将来追加予定
+    // MVP運用では「ALL_DISABLED / ALL_ENABLED / 単機能ON」のみ許可する
+    if (!isAllDisabled && !isAllEnabled && !isSingleFeatureMode) {
+      invalidCombinations.push(
+        "MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration",
+      );
+    }
 
-    // PhaseExpansionが有効な場合は、PhaseExpansion用の追加検証が必要
-    if (flags.enablePhaseExpansion) {
-      // PhaseExpansionは他の機能と同時に有効化する場合、検証が必要
-      // 現時点では警告のみ
+    // エンブレムセルは未実装領域が残るため、MVPでは ALL_ENABLED のみ許可
+    if (flags.enableEmblemCells && !isAllEnabled) {
+      invalidCombinations.push(
+        "enableEmblemCells is only allowed in ALL_ENABLED configuration",
+      );
     }
 
     if (invalidCombinations.length > 0) {
       throw new Error(
-        `Invalid Feature Flag configuration: ${invalidCombinations.join(", ")}`
+        `Invalid Feature Flag configuration: ${invalidCombinations.join("; ")} (enabled: ${enabledFeatures.join(",") || "none"})`,
       );
     }
 

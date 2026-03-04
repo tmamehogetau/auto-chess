@@ -81,6 +81,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     // Load feature flags
     const flagService = FeatureFlagService.getInstance();
+    flagService.validateFlagConfiguration();
     const flags = flagService.getFlags();
     this.state.featureFlagsEnableHeroSystem = flags.enableHeroSystem;
     this.state.featureFlagsEnableSharedPool = flags.enableSharedPool;

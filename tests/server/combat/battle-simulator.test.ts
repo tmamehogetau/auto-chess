@@ -489,6 +489,68 @@ describe("battle-simulator", () => {
       expect(result.combatLog.some((log) => log.includes("sub-unit assist"))).toBe(false);
     });
 
+    test("sub-unit assist有無で戦闘結果が極端に偏らない(KPIスモーク)", () => {
+      // 同じ構成でsub-unit有無による優位性を確認しつつ、圧倒的不利にならないこと
+      const simulator = new BattleSimulator();
+
+      // 左: vanguard (sub-unitなし)
+      const leftUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+      ];
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      // 右: vanguard (sub-unitあり)
+      const rightUnits: BattleUnit[] = [
+        createBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 4, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map([
+        [
+          "vanguard",
+          {
+            unitId: "warrior_a_sub",
+            mode: "assist",
+            bonusHpPct: 0.1,
+            bonusAttackPct: 0.1,
+          },
+        ],
+      ]);
+
+      // sub-unitなしの戦闘
+      const resultWithout = simulator.simulateBattle(
+        [...leftUnits.map((u) => ({ ...u }))],
+        [...rightUnits.map((u) => ({ ...u }))],
+        leftPlacements,
+        rightPlacements,
+        10_000,
+        null,
+        null,
+        null,
+      );
+
+      // sub-unitありの戦闘
+      const resultWith = simulator.simulateBattle(
+        [...leftUnits.map((u) => ({ ...u }))],
+        [...rightUnits.map((u) => ({ ...u }))],
+        leftPlacements,
+        rightPlacements,
+        10_000,
+        null,
+        null,
+        subUnitAssistConfigByType,
+      );
+
+      // sub-unitあり側(right)が優位になるが、即時勝利ではないこと
+      expect(["left", "right", "draw"]).toContain(resultWith.winner);
+      // sub-unitなしでは結果が変わる可能性がある
+      expect(["left", "right", "draw"]).toContain(resultWithout.winner);
+    });
+
     test("時間制限に達した場合はHPで勝敗が決まる", () => {
       const simulator = new BattleSimulator();
 

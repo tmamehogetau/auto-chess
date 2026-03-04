@@ -2335,63 +2335,23 @@ export class MatchRoomController {
 
     // 主人公を追加（選択されている場合）
     const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
-    const leftHero = leftHeroId ? HEROES.find((h) => h.id === leftHeroId) : null;
-    if (leftHero) {
-      leftBattleUnits.push({
-        id: `hero-${leftPlayerId}`,
-        type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
-        starLevel: 1,
-        hp: leftHero.hp,
-        maxHp: leftHero.hp,
-        attackPower: leftHero.attack,
-        attackSpeed: 0.5,
-        attackRange: 1,
-        cell: 8, // 主人公固定セル（盤面外）
-        isDead: false,
-        attackCount: 0,
-        defense: 0,
-        critRate: 0,
-        critDamageMultiplier: 1.5,
-        physicalReduction: undefined,
-        magicReduction: undefined,
-        buffModifiers: {
-          attackMultiplier: 1,
-          defenseMultiplier: 1,
-          attackSpeedMultiplier: 1,
-        },
-      });
+    const leftHeroBattleUnit = this.createHeroBattleUnit(leftHeroId, leftPlayerId);
+    if (leftHeroBattleUnit) {
+      leftBattleUnits.push(leftHeroBattleUnit);
     }
 
     const rightHeroId = this.selectedHeroByPlayer.get(rightPlayerId);
-    const rightHero = rightHeroId ? HEROES.find((h) => h.id === rightHeroId) : null;
-    if (rightHero) {
-      rightBattleUnits.push({
-        id: `hero-${rightPlayerId}`,
-        type: "vanguard" as BoardUnitType, // 主人公は一時的にvanguardタイプ
-        starLevel: 1,
-        hp: rightHero.hp,
-        maxHp: rightHero.hp,
-        attackPower: rightHero.attack,
-        attackSpeed: 0.5,
-        attackRange: 1,
-        cell: 8, // 主人公固定セル（盤面外）
-        isDead: false,
-        attackCount: 0,
-        defense: 0,
-        critRate: 0,
-        critDamageMultiplier: 1.5,
-        physicalReduction: undefined,
-        magicReduction: undefined,
-        buffModifiers: {
-          attackMultiplier: 1,
-          defenseMultiplier: 1,
-          attackSpeedMultiplier: 1,
-        },
-      });
+    const rightHeroBattleUnit = this.createHeroBattleUnit(rightHeroId, rightPlayerId);
+    if (rightHeroBattleUnit) {
+      rightBattleUnits.push(rightHeroBattleUnit);
     }
 
-    const leftHeroSynergyBonusType = leftHero?.synergyBonusType ?? null;
-    const rightHeroSynergyBonusType = rightHero?.synergyBonusType ?? null;
+    const leftHeroSynergyBonusType = leftHeroId
+      ? HEROES.find((h) => h.id === leftHeroId)?.synergyBonusType ?? null
+      : null;
+    const rightHeroSynergyBonusType = rightHeroId
+      ? HEROES.find((h) => h.id === rightHeroId)?.synergyBonusType ?? null
+      : null;
 
     // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
     const battleTraceLog = {
@@ -2839,5 +2799,42 @@ export class MatchRoomController {
     }
 
     return null; // バリデーション通過
+  }
+
+  /**
+   * 主人公をBattleUnitに変換
+   */
+  private createHeroBattleUnit(
+    heroId: string | undefined,
+    playerId: string,
+  ): BattleUnit | null {
+    if (!heroId) return null;
+
+    const hero = HEROES.find((h) => h.id === heroId);
+    if (!hero) return null;
+
+    return {
+      id: `hero-${playerId}`,
+      type: "vanguard" as BoardUnitType,
+      starLevel: 1,
+      hp: hero.hp,
+      maxHp: hero.hp,
+      attackPower: hero.attack,
+      attackSpeed: 0.5,
+      attackRange: 1,
+      cell: 8,
+      isDead: false,
+      attackCount: 0,
+      defense: 0,
+      critRate: 0,
+      critDamageMultiplier: 1.5,
+      physicalReduction: undefined,
+      magicReduction: undefined,
+      buffModifiers: {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      },
+    };
   }
 }

@@ -767,6 +767,15 @@ describe("SharedBoardRoom integration", () => {
       throw new Error("Expected an empty cell");
     }
 
+    const firstResultPromise = firstClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.ACTION_RESULT,
+      5_000,
+    );
+    const secondResultPromise = secondClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.ACTION_RESULT,
+      5_000,
+    );
+
     await sendConcurrently([
       () => {
         firstClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
@@ -783,10 +792,10 @@ describe("SharedBoardRoom integration", () => {
     ]);
 
     // 両方のアクション結果を待機
-    const firstResult =
-      await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
-    const secondResult =
-      await secondClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    const [firstResult, secondResult] = await Promise.all([
+      firstResultPromise,
+      secondResultPromise,
+    ]);
 
     // 1件は成功、もう1件はTARGET_LOCKEDであること
     const acceptedResult = firstResult.accepted ? firstResult : secondResult;
@@ -849,6 +858,15 @@ describe("SharedBoardRoom integration", () => {
       throw new Error("Expected first player to have a unit");
     }
 
+    const firstResultPromise = firstClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.ACTION_RESULT,
+      5_000,
+    );
+    const secondResultPromise = secondClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.ACTION_RESULT,
+      5_000,
+    );
+
     await sendConcurrently([
       () => {
         firstClient.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, {
@@ -863,10 +881,10 @@ describe("SharedBoardRoom integration", () => {
     ]);
 
     // 両方のアクション結果を待機
-    const firstResult =
-      await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
-    const secondResult =
-      await secondClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    const [firstResult, secondResult] = await Promise.all([
+      firstResultPromise,
+      secondResultPromise,
+    ]);
 
     // 所有者（firstClient）は成功、他方（secondClient）はUNIT_NOT_OWNEDであること
     expect(firstResult).toEqual({ accepted: true, action: "select_unit" });

@@ -61,6 +61,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private enableSharedBoardShadow = false;
 
+  private playerHpCache: Map<string, number> = new Map();
+
+  private lastRoundIndex = 0;
+
   public onCreate(options: GameRoomOptions = {}): void {
     this.maxClients = GameRoom.MAX_PLAYERS;
     this.state = new MatchRoomState();
@@ -545,6 +549,83 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         goldAfter: goldBefore - 4,
       });
     }
+
+    if (commandPayload.boardSellIndex !== undefined) {
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "board_sell", {
+        cell: commandPayload.boardSellIndex,
+        goldBefore,
+        goldAfter: goldBefore + 1,
+      });
+    }
+
+    if (commandPayload.itemBuySlotIndex !== undefined) {
+      const playerStatus = this.controller?.getPlayerStatus(sessionId);
+      const itemOffer = playerStatus?.itemShopOffers[commandPayload.itemBuySlotIndex];
+      if (itemOffer) {
+        this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_item", {
+          itemType: itemOffer.itemType,
+          cost: itemOffer.cost,
+          goldBefore,
+          goldAfter: goldBefore - itemOffer.cost,
+        });
+      }
+    }
+
+    if (commandPayload.itemEquipToBench !== undefined) {
+      const playerStatus = this.controller?.getPlayerStatus(sessionId);
+      const item = playerStatus?.itemInventory[commandPayload.itemEquipToBench.inventoryItemIndex];
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "equip_item", {
+        inventoryIndex: commandPayload.itemEquipToBench.inventoryItemIndex,
+        benchIndex: commandPayload.itemEquipToBench.benchIndex,
+        ...(item !== undefined && { itemType: item }),
+        goldBefore,
+        goldAfter: goldBefore,
+      });
+    }
+
+    if (commandPayload.itemUnequipFromBench !== undefined) {
+      const playerStatus = this.controller?.getPlayerStatus(sessionId);
+      const benchUnit = playerStatus?.benchUnits[commandPayload.itemUnequipFromBench.benchIndex];
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "unequip_item", {
+        benchIndex: commandPayload.itemUnequipFromBench.benchIndex,
+        itemSlotIndex: commandPayload.itemUnequipFromBench.itemSlotIndex,
+        ...(benchUnit !== undefined && { benchUnit }),
+        goldBefore,
+        goldAfter: goldBefore,
+      });
+    }
+
+    if (commandPayload.itemSellInventoryIndex !== undefined) {
+      const playerStatus = this.controller?.getPlayerStatus(sessionId);
+      const item = playerStatus?.itemInventory[commandPayload.itemSellInventoryIndex];
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "sell_item", {
+        inventoryIndex: commandPayload.itemSellInventoryIndex,
+        ...(item !== undefined && { itemType: item }),
+        goldBefore,
+        goldAfter: goldBefore + 1,
+      });
+    }
+
+    if (commandPayload.bossShopBuySlotIndex !== undefined) {
+      const bossOffers = this.controller?.getBossShopOffersForPlayer(sessionId);
+      const offer = bossOffers?.[commandPayload.bossShopBuySlotIndex];
+      if (offer) {
+        this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_boss_unit", {
+          unitType: offer.unitType,
+          cost: offer.cost,
+          goldBefore,
+          goldAfter: goldBefore - offer.cost,
+        });
+      }
+    }
+
+    if (commandPayload.shopLock !== undefined) {
+      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "shop_lock", {
+        locked: commandPayload.shopLock,
+        goldBefore,
+        goldAfter: goldBefore,
+      });
+    }
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
@@ -672,6 +753,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.matchLogger.registerPlayer(playerId);
     }
 
+    // Set match logger in controller
+    this.controller?.setMatchLogger(this.matchLogger);
+
     this.syncStateFromController();
     await this.lock();
   }
@@ -716,6 +800,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.roundIndex = this.controller.roundIndex;
     this.state.setId = this.setId;
 
+    // Track rounds survived for logging
+    if (this.state.roundIndex > this.lastRoundIndex) {
+      // Round has advanced, increment survival count for all non-eliminated players
+      for (const [playerId, playerState] of this.state.players) {
+        if (!playerState.eliminated) {
+          this.matchLogger?.incrementRoundsSurvived(playerId);
+        }
+      }
+      this.lastRoundIndex = this.state.roundIndex;
+    }
+
     // スペルカード関連の同期
     const flagService = FeatureFlagService.getInstance();
     this.state.featureFlagsEnableSubUnitSystem = flagService.isFeatureEnabled(
@@ -756,6 +851,14 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     const status = this.controller.getPlayerStatus(playerId);
+
+    // Track HP changes for logging
+    const previousHp = this.playerHpCache.get(playerId);
+    if (previousHp !== undefined && previousHp !== status.hp) {
+      this.matchLogger?.updatePlayerHp(playerId, status.hp);
+    }
+    this.playerHpCache.set(playerId, status.hp);
+
     playerState.hp = status.hp;
     playerState.eliminated = status.eliminated;
     playerState.boardUnitCount = status.boardUnitCount;

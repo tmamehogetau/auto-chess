@@ -85,12 +85,18 @@ export interface PlayerActionLog {
     | "buy_unit"
     | "buy_item"
     | "sell_unit"
+    | "board_sell"
     | "deploy"
     | "undeploy"
     | "merge"
     | "hero_select"
     | "shop_refresh"
-    | "buy_xp";
+    | "buy_xp"
+    | "equip_item"
+    | "unequip_item"
+    | "sell_item"
+    | "buy_boss_unit"
+    | "shop_lock";
   timestamp: number;
   details: {
     unitType?: string;
@@ -98,9 +104,15 @@ export interface PlayerActionLog {
     cost?: number;
     fromCell?: number;
     toCell?: number;
+    cell?: number;
     benchIndex?: number;
     heroId?: string;
     itemCount?: number;
+    itemType?: string;
+    inventoryIndex?: number;
+    itemSlotIndex?: number;
+    locked?: boolean;
+    benchUnit?: string;
     goldBefore: number;
     goldAfter: number;
   };
@@ -210,6 +222,76 @@ export class MatchLogger {
       } else if (winner === "left") {
         rightStats.battleLosses += 1;
       }
+    }
+
+    // Store battle result in round logs
+    const roundLog = this.roundLogs.find((log) => log.roundIndex === roundIndex);
+    if (roundLog) {
+      roundLog.battles.push({
+        matchId: this.matchId,
+        roundIndex,
+        battleIndex,
+        leftPlayerId,
+        rightPlayerId,
+        winner,
+        leftDamageDealt,
+        rightDamageDealt,
+        leftSurvivors,
+        rightSurvivors,
+      });
+    } else {
+      // Create new round log if it doesn't exist
+      const newRoundLog: RoundSummaryLog = {
+        matchId: this.matchId,
+        roundIndex,
+        phase: "Battle",
+        timestamp: Date.now(),
+        durationMs: 0,
+        battles: [
+          {
+            matchId: this.matchId,
+            roundIndex,
+            battleIndex,
+            leftPlayerId,
+            rightPlayerId,
+            winner,
+            leftDamageDealt,
+            rightDamageDealt,
+            leftSurvivors,
+            rightSurvivors,
+          },
+        ],
+        eliminations: [],
+      };
+      this.roundLogs.push(newRoundLog);
+    }
+  }
+
+  logRoundTransition(
+    phase: "Prep" | "Battle" | "Settle" | "Elimination",
+    roundIndex: number,
+    timestamp: number,
+  ): void {
+    let roundLog = this.roundLogs.find((log) => log.roundIndex === roundIndex);
+
+    if (!roundLog) {
+      roundLog = {
+        matchId: this.matchId,
+        roundIndex,
+        phase,
+        timestamp,
+        durationMs: 0,
+        battles: [],
+        eliminations: [],
+      };
+      this.roundLogs.push(roundLog);
+    } else {
+      roundLog.phase = phase;
+      // Calculate duration if this is a transition
+      if (timestamp > roundLog.timestamp) {
+        roundLog.durationMs = timestamp - roundLog.timestamp;
+      }
+      roundLog.timestamp = timestamp;
     }
   }
 

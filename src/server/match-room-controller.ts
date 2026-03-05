@@ -5,6 +5,7 @@ import type {
   CommandResult,
   ShopItemOffer,
 } from "../shared/room-messages";
+import { MatchLogger } from "./match-logger";
 import {
   normalizeBoardPlacements,
   resolveBoardPowerFromState,
@@ -340,10 +341,13 @@ export class MatchRoomController {
     enablePhaseExpansion: boolean;
   };
 
+  private matchLogger: MatchLogger | null;
+
   public constructor(
     playerIds: string[],
     createdAtMs: number,
     options: MatchRoomControllerOptions,
+    matchLogger: MatchLogger | null = null,
   ) {
     if (playerIds.length < 2) {
       throw new Error("At least 2 players are required");
@@ -391,6 +395,7 @@ export class MatchRoomController {
     this.phaseDamageDealt = 0;
     this.phaseResult = "pending";
     this.phaseCompletionRate = 0;
+    this.matchLogger = matchLogger;
 
     for (const playerId of playerIds) {
       this.lastCmdSeqByPlayer.set(playerId, 0);
@@ -613,6 +618,9 @@ export class MatchRoomController {
       this.gameLoopState.setRandomBoss();
     }
 
+    // Log initial Prep phase transition
+    this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
+
     this.initializeShopsForPrep();
     this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
     this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
@@ -671,6 +679,14 @@ export class MatchRoomController {
       return [];
     }
     return [...(this.bossShopOffersByPlayer.get(playerId) ?? [])];
+  }
+
+  /**
+   * マッチロガーを設定
+   * @param logger MatchLoggerインスタンス
+   */
+  public setMatchLogger(logger: MatchLogger | null): void {
+    this.matchLogger = logger;
   }
 
   /**
@@ -857,6 +873,7 @@ export class MatchRoomController {
           this.gameLoopState.transitionTo("Battle");
           this.prepDeadlineAtMs = null;
           this.battleDeadlineAtMs = nowMs + this.battleDurationMs;
+          this.matchLogger?.logRoundTransition("Battle", this.gameLoopState.roundIndex, nowMs);
           return true;
         }
 
@@ -871,6 +888,7 @@ export class MatchRoomController {
           this.gameLoopState.transitionTo("Settle");
           this.battleDeadlineAtMs = null;
           this.settleDeadlineAtMs = nowMs + this.settleDurationMs;
+          this.matchLogger?.logRoundTransition("Settle", this.gameLoopState.roundIndex, nowMs);
           return true;
         }
 
@@ -882,6 +900,7 @@ export class MatchRoomController {
           this.captureEliminationResult(aliveBeforeElimination);
           this.settleDeadlineAtMs = null;
           this.eliminationDeadlineAtMs = nowMs + this.eliminationDurationMs;
+          this.matchLogger?.logRoundTransition("Elimination", this.gameLoopState.roundIndex, nowMs);
           return true;
         }
 
@@ -909,6 +928,7 @@ export class MatchRoomController {
           this.gameLoopState.transitionTo("Prep");
           this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
           this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
+          this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
           return true;
         }
 
@@ -2405,6 +2425,21 @@ export class MatchRoomController {
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
 
+      // Log battle result to MatchLogger
+      this.matchLogger?.logBattleResult(
+        this.roundIndex,
+        this.currentRoundPairings.findIndex(
+          (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
+        ),
+        leftPlayerId,
+        rightPlayerId,
+        "right",
+        0,
+        damageToLeft,
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+
       this.logBattleResultTrace({
         leftPlayerId,
         rightPlayerId,
@@ -2445,6 +2480,21 @@ export class MatchRoomController {
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
 
+      // Log battle result to MatchLogger
+      this.matchLogger?.logBattleResult(
+        this.roundIndex,
+        this.currentRoundPairings.findIndex(
+          (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
+        ),
+        leftPlayerId,
+        rightPlayerId,
+        "left",
+        damageToRight,
+        0,
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+
       this.logBattleResultTrace({
         leftPlayerId,
         rightPlayerId,
@@ -2480,6 +2530,21 @@ export class MatchRoomController {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
       });
+
+      // Log battle result to MatchLogger
+      this.matchLogger?.logBattleResult(
+        this.roundIndex,
+        this.currentRoundPairings.findIndex(
+          (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
+        ),
+        leftPlayerId,
+        rightPlayerId,
+        "draw",
+        0,
+        0,
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
 
       this.logBattleResultTrace({
         leftPlayerId,

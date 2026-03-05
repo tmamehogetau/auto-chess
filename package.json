@@ -8,6 +8,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:all-flags": "npm run test:run && cross-env FEATURE_ENABLE_HERO_SYSTEM=true FEATURE_ENABLE_SHARED_POOL=true FEATURE_ENABLE_PHASE_EXPANSION=true npm run test:run",
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:watch": "vitest --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
     "verify:ci": "npm run lint && npm run test:run",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@colyseus/testing": "^0.17.11",
     "@types/node": "^25.3.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "cross-env": "^10.1.0",
     "npm-run-all": "^4.1.5",
     "tsx": "^4.21.0",

@@ -800,17 +800,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.roundIndex = this.controller.roundIndex;
     this.state.setId = this.setId;
 
-    // Track rounds survived for logging
-    if (this.state.roundIndex > this.lastRoundIndex) {
-      // Round has advanced, increment survival count for all non-eliminated players
-      for (const [playerId, playerState] of this.state.players) {
-        if (!playerState.eliminated) {
-          this.matchLogger?.incrementRoundsSurvived(playerId);
-        }
-      }
-      this.lastRoundIndex = this.state.roundIndex;
-    }
-
     // スペルカード関連の同期
     const flagService = FeatureFlagService.getInstance();
     this.state.featureFlagsEnableSubUnitSystem = flagService.isFeatureEnabled(
@@ -832,6 +821,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     for (const playerId of targetPlayerIds) {
       this.syncSinglePlayerStateFromController(playerId);
+    }
+
+    // Track rounds survived for logging after state sync
+    if (this.state.roundIndex > this.lastRoundIndex) {
+      for (const playerId of this.state.players.keys()) {
+        const status = this.controller.getPlayerStatus(playerId);
+        if (!status.eliminated) {
+          this.matchLogger?.incrementRoundsSurvived(playerId);
+        }
+      }
+      this.lastRoundIndex = this.state.roundIndex;
     }
 
     this.broadcast(

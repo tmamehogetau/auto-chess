@@ -757,9 +757,12 @@ export class MatchRoomController {
     const bossShopOffers = this.bossShopOffersByPlayer.get(playerId) ?? [];
     const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
-    // Debug log for shop offers (Bug #1 fix)
+    // Debug log for shop offers (enabled only when MATCH_DEBUG_LOGS=1)
     const shopOffers = this.shopOffersByPlayer.get(playerId) ?? [];
-    console.log(`Shop offers for ${playerId}:`, shopOffers);
+    if (process.env.MATCH_DEBUG_LOGS === "1") {
+      // eslint-disable-next-line no-console
+      console.log(`Shop offers for ${playerId}:`, shopOffers);
+    }
 
     // Calculate active synergies
     const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
@@ -2385,8 +2388,10 @@ export class MatchRoomController {
       rightHeroId: rightHeroId ?? null,
       timestamp: Date.now(),
     };
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(battleTraceLog));
+    if (process.env.MATCH_DEBUG_LOGS === "1") {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify(battleTraceLog));
+    }
 
     // バトルシミュレーターで戦闘を実行
     const battleSimulator = new BattleSimulator();
@@ -2582,8 +2587,10 @@ export class MatchRoomController {
       timestamp: Date.now(),
     };
 
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(resultTraceLog));
+    if (process.env.MATCH_DEBUG_LOGS === "1") {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify(resultTraceLog));
+    }
   }
 
   private resolveUnitCount(playerId: string): number {

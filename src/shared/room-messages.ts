@@ -81,7 +81,16 @@ export type CommandRejectCode =
   | "INSUFFICIENT_GOLD"
   | "BENCH_FULL"
   | "INVENTORY_FULL"
-  | "POOL_DEPLETED";
+  | "POOL_DEPLETED"
+  | "INVALID_ARRAY"
+  | "INVALID_PLACEMENT"
+  | "INVALID_CELL"
+  | "INVALID_UNIT_TYPE"
+  | "INVALID_STAR_LEVEL"
+  | "INVALID_SELL_VALUE"
+  | "INVALID_UNIT_COUNT"
+  | "DUPLICATE_CELL"
+  | "TOO_MANY_UNITS";
 
 export type CommandResult =
   | { accepted: true }

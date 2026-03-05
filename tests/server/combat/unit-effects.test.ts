@@ -14,21 +14,23 @@ describe("unit-effects", () => {
       { cell: 4, unitType: "ranger" },
     ];
 
-    const normalized = normalizeBoardPlacements(placements);
+    const result = normalizeBoardPlacements(placements);
 
-    expect(normalized).toEqual([
+    expect(result.normalized).toEqual([
       { cell: 1, unitType: "vanguard", starLevel: 1 },
       { cell: 4, unitType: "ranger", starLevel: 1 },
       { cell: 5, unitType: "mage", starLevel: 1 },
     ]);
+    expect(result.errorCode).toBeUndefined();
   });
 
   test("starLevelが不正な配置はrejectする", () => {
     const placements: BoardUnitPlacement[] = [{ cell: 0, unitType: "mage", starLevel: 0 }];
 
-    const normalized = normalizeBoardPlacements(placements);
+    const result = normalizeBoardPlacements(placements);
 
-    expect(normalized).toBeNull();
+    expect(result.normalized).toBeNull();
+    expect(result.errorCode).toBe("INVALID_STAR_LEVEL");
   });
 
   test("starLevel=2は同じ配置のstarLevel=1より火力が高い", () => {
@@ -48,9 +50,72 @@ describe("unit-effects", () => {
       { cell: 0, unitType: "mage" },
     ];
 
-    const normalized = normalizeBoardPlacements(placements);
+    const result = normalizeBoardPlacements(placements);
 
-    expect(normalized).toBeNull();
+    expect(result.normalized).toBeNull();
+    expect(result.errorCode).toBe("DUPLICATE_CELL");
+  });
+
+  describe("T2: エラーコード検証", () => {
+    test("範囲外セルはINVALID_CELLを返す", () => {
+      const placements: BoardUnitPlacement[] = [
+        { cell: -1, unitType: "vanguard" },
+      ];
+
+      const result = normalizeBoardPlacements(placements);
+
+      expect(result.normalized).toBeNull();
+      expect(result.errorCode).toBe("INVALID_CELL");
+    });
+
+    test("無効なユニットタイプはINVALID_UNIT_TYPEを返す", () => {
+      const placements = [
+        { cell: 0, unitType: "invalid" },
+      ];
+
+      const result = normalizeBoardPlacements(placements as unknown as BoardUnitPlacement[]);
+
+      expect(result.normalized).toBeNull();
+      expect(result.errorCode).toBe("INVALID_UNIT_TYPE");
+    });
+
+    test("不正なsellValueはINVALID_SELL_VALUEを返す", () => {
+      const placements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "vanguard", sellValue: 0 },
+      ];
+
+      const result = normalizeBoardPlacements(placements);
+
+      expect(result.normalized).toBeNull();
+      expect(result.errorCode).toBe("INVALID_SELL_VALUE");
+    });
+
+    test("不正なunitCountはINVALID_UNIT_COUNTを返す", () => {
+      const placements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "vanguard", unitCount: 0 },
+      ];
+
+      const result = normalizeBoardPlacements(placements);
+
+      expect(result.normalized).toBeNull();
+      expect(result.errorCode).toBe("INVALID_UNIT_COUNT");
+    });
+
+    test("非配列入力はINVALID_ARRAYを返す", () => {
+      const result = normalizeBoardPlacements(null as unknown as BoardUnitPlacement[]);
+
+      expect(result.normalized).toBeNull();
+      expect(result.errorCode).toBe("INVALID_ARRAY");
+    });
+
+    test("nullのplacementはINVALID_PLACEMENTを返す", () => {
+      const placements = [null];
+
+      const result = normalizeBoardPlacements(placements as unknown as BoardUnitPlacement[]);
+
+      expect(result.normalized).toBeNull();
+      expect(result.errorCode).toBe("INVALID_PLACEMENT");
+    });
   });
 
   test("後列mage2体でスキルボーナスが発動する", () => {

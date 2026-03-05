@@ -518,14 +518,21 @@ export class MatchRoomController {
       }
 
       // 配置の正規化とバリデーション
-      const normalizedPlacements = normalizeBoardPlacements(placements);
-      if (!normalizedPlacements) {
-        return { success: false, code: "INVALID_PAYLOAD", error: "Invalid placements" };
+      const validationResult = normalizeBoardPlacements(placements);
+      if (!validationResult.normalized) {
+        const errorCode = validationResult.errorCode ?? "INVALID_PAYLOAD";
+        return {
+          success: false,
+          code: errorCode,
+          error: `Invalid placements: ${errorCode}`,
+        };
       }
+
+      const normalizedPlacements = validationResult.normalized;
 
       // 配置上限チェック（8枠）
       if (normalizedPlacements.length > 8) {
-        return { success: false, code: "INVALID_PAYLOAD", error: "Too many units (max 8)" };
+        return { success: false, code: "TOO_MANY_UNITS", error: "Too many units (max 8)" };
       }
 
       // 配置を適用
@@ -995,14 +1002,15 @@ export class MatchRoomController {
     }
 
     if (commandPayload?.boardPlacements !== undefined) {
-      const normalizedPlacements = normalizeBoardPlacements(commandPayload.boardPlacements);
+      const validationResult = normalizeBoardPlacements(commandPayload.boardPlacements);
 
-      if (!normalizedPlacements) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
+      if (!validationResult.normalized) {
+        const errorCode = validationResult.errorCode ?? "INVALID_PAYLOAD";
+        return { accepted: false, code: errorCode };
       }
 
-      this.boardPlacementsByPlayer.set(playerId, normalizedPlacements);
-      this.boardUnitCountByPlayer.set(playerId, normalizedPlacements.length);
+      this.boardPlacementsByPlayer.set(playerId, validationResult.normalized);
+      this.boardUnitCountByPlayer.set(playerId, validationResult.normalized.length);
     }
 
     let xpPurchaseCount = 0;

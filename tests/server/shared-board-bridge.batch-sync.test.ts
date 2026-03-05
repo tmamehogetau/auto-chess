@@ -166,14 +166,14 @@ describe("SharedBoardBridge batch sync", () => {
     expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledTimes(1);
   });
 
-  it("上限超過配置はcontrollerのINVALID_PAYLOADを返す", async () => {
+  it("上限超過配置はcontrollerのTOO_MANY_UNITSを返す", async () => {
     const { bridge, controller } = createBridge();
 
     controller.applyPrepPlacementForPlayer.mockImplementation((_playerId, placements) => {
       if (placements.length > 8) {
         return {
           success: false,
-          code: "INVALID_PAYLOAD",
+          code: "TOO_MANY_UNITS",
           error: "Too many units (max 8)",
         };
       }
@@ -197,7 +197,7 @@ describe("SharedBoardBridge batch sync", () => {
     });
 
     expect(result.success).toBe(false);
-    expect((result as { code: string }).code).toBe("INVALID_PAYLOAD");
+    expect((result as { code: string }).code).toBe("TOO_MANY_UNITS");
     expect(result.error).toBe("Too many units (max 8)");
   });
 

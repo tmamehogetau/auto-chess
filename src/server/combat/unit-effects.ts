@@ -19,11 +19,30 @@ interface UnitEffectOptions {
   setId?: UnitEffectSetId;
 }
 
+export type PlacementValidationErrorCode =
+  | "INVALID_ARRAY"
+  | "INVALID_PLACEMENT"
+  | "INVALID_CELL"
+  | "INVALID_UNIT_TYPE"
+  | "INVALID_STAR_LEVEL"
+  | "INVALID_SELL_VALUE"
+  | "INVALID_UNIT_COUNT"
+  | "DUPLICATE_CELL";
+
+export interface PlacementValidationResult {
+  normalized: BoardUnitPlacement[] | null;
+  errorCode?: PlacementValidationErrorCode;
+}
+
 export function normalizeBoardPlacements(
   boardPlacements: BoardUnitPlacement[],
-): BoardUnitPlacement[] | null {
-  if (!Array.isArray(boardPlacements) || boardPlacements.length > MAX_BOARD_UNITS) {
-    return null;
+): PlacementValidationResult {
+  if (!Array.isArray(boardPlacements)) {
+    return { normalized: null, errorCode: "INVALID_ARRAY" };
+  }
+
+  if (boardPlacements.length > MAX_BOARD_UNITS) {
+    return { normalized: null, errorCode: "INVALID_ARRAY" };
   }
 
   const usedCells = new Set<number>();
@@ -31,7 +50,7 @@ export function normalizeBoardPlacements(
 
   for (const placement of boardPlacements) {
     if (!placement) {
-      return null;
+      return { normalized: null, errorCode: "INVALID_PLACEMENT" };
     }
 
     if (
@@ -39,35 +58,35 @@ export function normalizeBoardPlacements(
       placement.cell < COMBAT_CELL_MIN_INDEX ||
       placement.cell > COMBAT_CELL_MAX_INDEX
     ) {
-      return null;
+      return { normalized: null, errorCode: "INVALID_CELL" };
     }
 
     if (!VALID_UNIT_TYPES.has(placement.unitType)) {
-      return null;
+      return { normalized: null, errorCode: "INVALID_UNIT_TYPE" };
     }
 
     const starLevel = placement.starLevel ?? 1;
 
     if (!Number.isInteger(starLevel) || starLevel < 1 || starLevel > 3) {
-      return null;
+      return { normalized: null, errorCode: "INVALID_STAR_LEVEL" };
     }
 
     if (
       placement.sellValue !== undefined &&
       (!Number.isInteger(placement.sellValue) || placement.sellValue < 1)
     ) {
-      return null;
+      return { normalized: null, errorCode: "INVALID_SELL_VALUE" };
     }
 
     if (
       placement.unitCount !== undefined &&
       (!Number.isInteger(placement.unitCount) || placement.unitCount < 1)
     ) {
-      return null;
+      return { normalized: null, errorCode: "INVALID_UNIT_COUNT" };
     }
 
     if (usedCells.has(placement.cell)) {
-      return null;
+      return { normalized: null, errorCode: "DUPLICATE_CELL" };
     }
 
     usedCells.add(placement.cell);
@@ -89,7 +108,7 @@ export function normalizeBoardPlacements(
   }
 
   normalized.sort((left, right) => left.cell - right.cell);
-  return normalized;
+  return { normalized };
 }
 
 export function resolveUnitCountFromState(

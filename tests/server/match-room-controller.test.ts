@@ -1216,7 +1216,7 @@ describe("MatchRoomController", () => {
     expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
-  test("boardPlacementsで不正セル重複はINVALID_PAYLOADで却下される", () => {
+  test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1236,7 +1236,7 @@ describe("MatchRoomController", () => {
       ],
     });
 
-    expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    expect(result).toEqual({ accepted: false, code: "DUPLICATE_CELL" });
   });
 
   test("ゴースト対戦で敗北側にダメージが適用される", () => {

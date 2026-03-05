@@ -249,6 +249,8 @@ export class MatchRoomController {
 
   private readonly boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
 
+  private readonly battleInputSnapshotByPlayer: Map<string, BoardUnitPlacement[]>;
+
   private readonly goldByPlayer: Map<string, number>;
 
   private readonly xpByPlayer: Map<string, number>;
@@ -358,6 +360,7 @@ export class MatchRoomController {
     this.lastCmdSeqByPlayer = new Map<string, number>();
     this.boardUnitCountByPlayer = new Map<string, number>();
     this.boardPlacementsByPlayer = new Map<string, BoardUnitPlacement[]>();
+    this.battleInputSnapshotByPlayer = new Map<string, BoardUnitPlacement[]>();
     this.goldByPlayer = new Map<string, number>();
     this.xpByPlayer = new Map<string, number>();
     this.levelByPlayer = new Map<string, number>();
@@ -872,6 +875,7 @@ export class MatchRoomController {
       case "Prep":
         if (this.prepDeadlineAtMs !== null && nowMs >= this.prepDeadlineAtMs) {
           this.captureBattleStartHp();
+          this.captureBattleInputSnapshot();
           this.declareSpell(); // スペル宣言
           this.gameLoopState.transitionTo("Battle");
           this.prepDeadlineAtMs = null;
@@ -928,6 +932,7 @@ export class MatchRoomController {
           this.hpAfterBattleByPlayer = new Map<string, number>();
           this.battleParticipantIds = [];
           this.currentRoundPairings = [];
+          this.battleInputSnapshotByPlayer.clear();
           this.gameLoopState.transitionTo("Prep");
           this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
           this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
@@ -2213,6 +2218,20 @@ export class MatchRoomController {
     this.hpAfterBattleByPlayer = snapshot;
   }
 
+  private captureBattleInputSnapshot(): void {
+    const state = this.ensureStarted();
+
+    this.battleInputSnapshotByPlayer.clear();
+
+    for (const playerId of state.alivePlayerIds) {
+      const placements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+      this.battleInputSnapshotByPlayer.set(
+        playerId,
+        placements.map((placement) => ({ ...placement })),
+      );
+    }
+  }
+
   private applyPendingRoundDamage(): void {
     const state = this.ensureStarted();
 
@@ -2344,8 +2363,8 @@ export class MatchRoomController {
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
-    const leftPlacements = this.boardPlacementsByPlayer.get(leftPlayerId) ?? [];
-    const rightPlacements = this.boardPlacementsByPlayer.get(rightPlayerId) ?? [];
+    const leftPlacements = this.battleInputSnapshotByPlayer.get(leftPlayerId) ?? [];
+    const rightPlacements = this.battleInputSnapshotByPlayer.get(rightPlayerId) ?? [];
 
     // ボード配置をBattleUnitに変換
     const leftBattleUnits: BattleUnit[] = leftPlacements.map((placement, index) =>

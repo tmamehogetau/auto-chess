@@ -15,6 +15,7 @@ type MockedController = {
   applyPrepPlacementForPlayer: ReturnType<typeof vi.fn>;
   getGameState: ReturnType<typeof vi.fn>;
   getBoardPlacementsForPlayer: ReturnType<typeof vi.fn>;
+  getPlayerIds: ReturnType<typeof vi.fn>;
 };
 
 describe("SharedBoardBridge batch sync", () => {
@@ -59,6 +60,7 @@ describe("SharedBoardBridge batch sync", () => {
       applyPrepPlacementForPlayer: vi.fn(() => ({ success: true, code: "SUCCESS" })),
       getGameState: vi.fn(() => ({ phase: "Prep", roundIndex: 1 })),
       getBoardPlacementsForPlayer: vi.fn(() => []),
+      getPlayerIds: vi.fn(() => ["player-a", "player-b", "player-c"]),
     };
 
     const bridge = new SharedBoardBridge(
@@ -124,6 +126,79 @@ describe("SharedBoardBridge batch sync", () => {
 
     expect(playerId).toBe("player-a");
     expect(placements[0]?.unitType).toBe("ranger");
+  });
+
+  it("古いbaseVersionの同期要求はconflictで拒否される", async () => {
+    const { bridge, controller } = createBridge();
+
+    const first = await bridge.applySharedBoardPlacement({
+      opId: "op-1",
+      correlationId: "corr-1",
+      baseVersion: 0,
+      timestamp: Date.now(),
+      actorId: "player-a",
+      playerId: "player-a",
+      placements: [{ cell: 0, unitType: "vanguard" }],
+    });
+
+    expect(first).toMatchObject({
+      success: true,
+      code: "success",
+      currentVersion: 1,
+    });
+
+    const second = await bridge.applySharedBoardPlacement({
+      opId: "op-2",
+      correlationId: "corr-2",
+      baseVersion: 0,
+      timestamp: Date.now(),
+      actorId: "player-a",
+      playerId: "player-a",
+      placements: [{ cell: 1, unitType: "ranger" }],
+    });
+
+    expect(second).toMatchObject({
+      success: false,
+      code: "conflict",
+      currentVersion: 1,
+      currentPlacements: [],
+    });
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledTimes(1);
+  });
+
+  it("上限超過配置はcontrollerのINVALID_PAYLOADを返す", async () => {
+    const { bridge, controller } = createBridge();
+
+    controller.applyPrepPlacementForPlayer.mockImplementation((_playerId, placements) => {
+      if (placements.length > 8) {
+        return {
+          success: false,
+          code: "INVALID_PAYLOAD",
+          error: "Too many units (max 8)",
+        };
+      }
+
+      return { success: true, code: "SUCCESS" };
+    });
+
+    const overLimitPlacements = Array.from({ length: 9 }, (_, index) => ({
+      cell: index,
+      unitType: "vanguard" as const,
+    }));
+
+    const result = await bridge.applySharedBoardPlacement({
+      opId: "op-over-limit",
+      correlationId: "corr-over-limit",
+      baseVersion: 0,
+      timestamp: Date.now(),
+      actorId: "player-a",
+      playerId: "player-a",
+      placements: overLimitPlacements,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result as { code: string }).code).toBe("INVALID_PAYLOAD");
+    expect(result.error).toBe("Too many units (max 8)");
   });
 
   it("P4: correlationId付きログとdashboard/alert APIを取得できる", async () => {

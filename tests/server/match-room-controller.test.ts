@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
 
@@ -829,6 +829,118 @@ describe("MatchRoomController", () => {
     expect(controller.getPlayerHp("p2")).toBe(100);
     expect(controller.getPlayerHp("p3")).toBe(100);
     expect(controller.getPlayerHp("p4")).toBe(100);
+  });
+
+  test("Battle開始時スナップショットが戦闘入力として固定される", () => {
+    const originalDebugLogs = process.env.MATCH_DEBUG_LOGS;
+    process.env.MATCH_DEBUG_LOGS = "1";
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      const controller = new MatchRoomController(
+        ["p1", "p2"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.startIfReady(2_000);
+
+      const setP1 = controller.submitPrepCommand("p1", 1, 3_000, {
+        boardPlacements: [{ cell: 0, unitType: "vanguard" }],
+      });
+      const setP2 = controller.submitPrepCommand("p2", 1, 3_000, {
+        boardPlacements: [{ cell: 0, unitType: "vanguard" }],
+      });
+
+      expect(setP1).toEqual({ accepted: true });
+      expect(setP2).toEqual({ accepted: true });
+
+      controller.advanceByTime(32_000);
+
+      const livePlacements = Reflect.get(controller as object, "boardPlacementsByPlayer") as
+        | Map<string, Array<{ cell: number; unitType: string; starLevel?: number }>>
+        | undefined;
+      if (!livePlacements) {
+        throw new Error("Expected boardPlacementsByPlayer to exist");
+      }
+
+      livePlacements.set("p1", [{ cell: 0, unitType: "mage" }]);
+
+      controller.advanceByTime(42_000);
+
+      const battleTraceLogs = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((entry): entry is string => typeof entry === "string")
+        .filter((entry) => entry.includes('"type":"battle_trace"'))
+        .map((entry) => JSON.parse(entry));
+
+      expect(battleTraceLogs.length).toBeGreaterThan(0);
+
+      const trace = battleTraceLogs[0] as {
+        leftPlayerId: string;
+        rightPlayerId: string;
+        leftPlacements: Array<{ unitType: string }>;
+        rightPlacements: Array<{ unitType: string }>;
+      };
+
+      const p1Placements =
+        trace.leftPlayerId === "p1" ? trace.leftPlacements : trace.rightPlacements;
+
+      expect(p1Placements).toEqual(
+        expect.arrayContaining([expect.objectContaining({ unitType: "vanguard" })]),
+      );
+      expect(p1Placements).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ unitType: "mage" })]),
+      );
+    } finally {
+      logSpy.mockRestore();
+      if (originalDebugLogs === undefined) {
+        delete process.env.MATCH_DEBUG_LOGS;
+      } else {
+        process.env.MATCH_DEBUG_LOGS = originalDebugLogs;
+      }
+    }
+  });
+
+  test("Prep中の適用配置はBattle開始時スナップショットへ反映される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.startIfReady(2_000);
+
+    const p1Result = controller.applyPrepPlacementForPlayer("p1", [
+      { cell: 2, unitType: "mage" },
+    ]);
+    const p2Result = controller.applyPrepPlacementForPlayer("p2", [
+      { cell: 3, unitType: "ranger" },
+    ]);
+
+    expect(p1Result).toEqual({ success: true, code: "SUCCESS" });
+    expect(p2Result).toEqual({ success: true, code: "SUCCESS" });
+
+    controller.advanceByTime(32_000);
+
+    const snapshotMap = Reflect.get(controller as object, "battleInputSnapshotByPlayer") as
+      | Map<string, Array<{ cell: number; unitType: string; starLevel?: number }>>
+      | undefined;
+
+    expect(snapshotMap?.get("p1")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ cell: 2, unitType: "mage" }),
+      ]),
+    );
+    expect(snapshotMap?.get("p2")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ cell: 3, unitType: "ranger" }),
+      ]),
+    );
   });
 
   test("同時脱落時はpostBattleHp->roundStartHp->playerIdで順位が決まる", () => {

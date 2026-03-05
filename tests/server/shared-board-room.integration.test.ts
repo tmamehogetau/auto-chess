@@ -399,6 +399,58 @@ describe("SharedBoardRoom integration", () => {
     });
   });
 
+  test("無効セルへのplaceでTARGET_OCCUPIED", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(client.sessionId);
+      return player !== undefined;
+    }, 1_000);
+
+    let unitId = "";
+    for (const cell of serverRoom.state.cells.values()) {
+      if (cell.ownerId === client.sessionId && cell.unitId !== "") {
+        unitId = cell.unitId;
+        break;
+      }
+    }
+
+    if (unitId === "") {
+      throw new Error("Expected player to have a unit");
+    }
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId,
+      toCell: -1,
+    });
+
+    const outOfRangeReject =
+      await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    expect(outOfRangeReject).toEqual({
+      accepted: false,
+      action: "place_unit",
+      code: "TARGET_OCCUPIED",
+    });
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId,
+      toCell: serverRoom.state.dummyBossCell,
+    });
+
+    const bossCellReject = await client.waitForMessage(
+      SERVER_MESSAGE_TYPES.ACTION_RESULT,
+    );
+    expect(bossCellReject).toEqual({
+      accepted: false,
+      action: "place_unit",
+      code: "TARGET_OCCUPIED",
+    });
+  });
+
   test("ロック中セルへの他プレイヤーplaceでTARGET_LOCKED", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const clients = await Promise.all([

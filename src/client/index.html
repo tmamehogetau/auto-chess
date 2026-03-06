@@ -161,6 +161,10 @@
         color: var(--xp-color);
       }
 
+      .status-value.domination {
+        color: #c0392b;
+      }
+
       .status-right {
         display: flex;
         flex-direction: column;
@@ -1931,12 +1935,16 @@
             <span class="status-label">Level</span>
             <span class="status-value" data-level-display>1</span>
           </div>
-          <div class="status-item">
-            <span class="status-label">XP</span>
-            <span class="status-value xp" data-xp-display>0</span>
-          </div>
-        </div>
-        <div class="status-right">
+           <div class="status-item">
+             <span class="status-label">XP</span>
+             <span class="status-value xp" data-xp-display>0</span>
+           </div>
+           <div class="status-item">
+             <span class="status-label">Dom</span>
+             <span class="status-value domination" data-domination-count-display>0/5</span>
+           </div>
+         </div>
+         <div class="status-right">
           <div class="phase-indicator waiting" data-phase-display>Waiting</div>
           <div class="ready-count" data-ready-count>0/0 Ready</div>
           <div class="phase-hp-section" data-phase-hp-section>

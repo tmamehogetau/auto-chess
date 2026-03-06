@@ -101,6 +101,7 @@ export interface RoundStateMessage {
   roundIndex: number;
   phaseDeadlineAtMs: number;
   ranking: string[];
+  dominationCount?: number;
 
   phaseHpTarget?: number;
   phaseDamageDealt?: number;

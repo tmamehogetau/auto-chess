@@ -181,6 +181,8 @@ export class MatchRoomState extends Schema {
 
   declare public bossPlayerId: string;
 
+  declare public dominationCount: number;
+
   public constructor() {
     super();
     this.phase = "Waiting";
@@ -201,6 +203,7 @@ export class MatchRoomState extends Schema {
     this.declaredSpellId = "";
     this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
+    this.dominationCount = 0;
   }
 }
 
@@ -280,4 +283,5 @@ defineTypes(MatchRoomState, {
   declaredSpellId: "string",
   usedSpellIds: ["string"],
   bossPlayerId: "string",
+  dominationCount: "number",
 });

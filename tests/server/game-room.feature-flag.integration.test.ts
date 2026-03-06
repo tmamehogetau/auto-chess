@@ -387,11 +387,39 @@ describe("GameRoom Integration with Feature Flags", () => {
             client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
+          // 各ラウンドでダメージを設定してフェーズ成功にする（dominationCount増加を回避）
+          const roundTargets: Record<number, number> = {
+            1: 600,
+            2: 750,
+            3: 900,
+            4: 1050,
+            5: 1250,
+            6: 1450,
+            7: 1650,
+            8: 1850,
+          };
+
           // Wait for game to complete
-          await waitForCondition(
-            () => serverRoom.state.phase === "End" && serverRoom.state.roundIndex === 8,
-            45_000,
-          );
+          while (
+            serverRoom.state.phase !== "End" &&
+            serverRoom.state.roundIndex < 9
+          ) {
+            // Prep → Battle の遷移を待機
+            await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
+
+            // Battle フェーズでダメージを設定してフェーズ成功にする
+            const target = roundTargets[serverRoom.state.roundIndex];
+            if (target !== undefined) {
+              serverRoom.setPendingRoundDamageForTest({ [clients[0].sessionId]: target });
+            }
+
+            // 次の Prep または End を待機
+            if (serverRoom.state.roundIndex < 8) {
+              await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
+            } else {
+              await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
+            }
+          }
 
           // Verify final state
           expect(serverRoom.state.phase).toBe("End");

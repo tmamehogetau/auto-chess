@@ -477,6 +477,10 @@ export class MatchRoomController {
     return this.gameLoopState?.roundIndex ?? 0;
   }
 
+  public get alivePlayerIds(): string[] {
+    return this.gameLoopState?.alivePlayerIds ?? [];
+  }
+
   public get phaseDeadlineAtMs(): number | null {
     if (!this.gameLoopState) {
       return null;
@@ -734,6 +738,15 @@ export class MatchRoomController {
   }
 
   /**
+   * 支配カウントを取得
+   * @returns 支配カウント
+   */
+  public getDominationCount(): number {
+    const state = this.ensureStarted();
+    return state.dominationCount;
+  }
+
+  /**
    * 全プレイヤーIDを取得
    * @returns プレイヤーID配列
    */
@@ -942,7 +955,7 @@ export class MatchRoomController {
           this.eliminationDeadlineAtMs = null;
 
           const maxRounds = this.featureFlags.enablePhaseExpansion ? 12 : 8;
-          if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === maxRounds) {
+          if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === maxRounds || this.gameLoopState.dominationCount >= 5) {
             this.gameLoopState.transitionTo("End");
             return true;
           }
@@ -2283,6 +2296,11 @@ export class MatchRoomController {
     this.phaseDamageDealt = totalDamage;
     this.phaseResult = totalDamage >= targetHp ? "success" : "failed";
     this.phaseCompletionRate = targetHp > 0 ? totalDamage / targetHp : 0;
+
+    // 支配カウント: ボス優勢（フェーズ失敗）時にカウントアップ（R12以外）
+    if (this.phaseResult === "failed" && state.roundIndex < 12) {
+      state.dominationCount += 1;
+    }
 
     const nextRoundRumorUnit = getRumorUnitForRound(state.roundIndex + 1);
     const rumorFactions = nextRoundRumorUnit ? [nextRoundRumorUnit.unitType] : [];

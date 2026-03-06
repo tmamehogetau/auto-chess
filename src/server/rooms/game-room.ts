@@ -815,6 +815,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.state.usedSpellIds.push(spellId);
     }
     this.state.bossPlayerId = this.controller.getBossPlayerId() ?? "";
+    this.state.dominationCount = this.controller.getDominationCount() ?? 0;
 
     this.syncRanking(this.controller.rankingTopToBottom);
 
@@ -987,6 +988,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
       ranking: Array.from(this.state.ranking),
+      dominationCount: this.state.dominationCount,
       phaseHpTarget: phaseProgress?.targetHp ?? 0,
       phaseDamageDealt: phaseProgress?.damageDealt ?? 0,
       phaseResult: phaseProgress?.result ?? "pending",
@@ -1020,5 +1022,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.sharedBoardBridge.dispose();
       this.sharedBoardBridge = null;
     }
+  }
+
+  /**
+   * テスト用：controllerからsetPendingRoundDamageを呼び出す
+   * @param damageByPlayer ダメージ値マップ
+   */
+  public setPendingRoundDamageForTest(damageByPlayer: Record<string, number>): void {
+    if (!this.controller) {
+      return;
+    }
+
+    this.controller.setPendingRoundDamage(damageByPlayer);
   }
 }

@@ -24,6 +24,9 @@ export class GameLoopState {
   /** ボスプレイヤーID（ボス専用ショップ用） */
   public bossPlayerId: string | null;
 
+  /** 支配カウント（ボス優勢時にカウントアップ、5でボス勝利） */
+  public dominationCount: number;
+
   public constructor(playerIds: string[]) {
     if (playerIds.length < 2) {
       throw new Error("At least 2 players are required");
@@ -42,6 +45,7 @@ export class GameLoopState {
     this.phase = "Prep";
     this.roundIndex = 1;
     this.bossPlayerId = null;
+    this.dominationCount = 0;
   }
 
   /**

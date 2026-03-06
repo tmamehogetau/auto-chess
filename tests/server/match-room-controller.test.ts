@@ -15,12 +15,35 @@ const advanceRoundWithMinimalDurations = (
   startTimeMs: number,
 ): number => {
   controller.advanceByTime(startTimeMs + 1);
+  // ダメージを設定してフェーズ成功にする（dominationCount増加を回避）
+  const roundIndex = controller.roundIndex;
+  const targetHp = getPhaseHpTarget(roundIndex);
+  controller.setPendingRoundDamage({ p1: targetHp });
   controller.advanceByTime(startTimeMs + 2);
   controller.advanceByTime(startTimeMs + 3);
   controller.advanceByTime(startTimeMs + 4);
 
   return startTimeMs + 4;
 };
+
+// 各ラウンドのフェーズHP目標値を取得
+function getPhaseHpTarget(roundIndex: number): number {
+  const targets: Record<number, number> = {
+    1: 600,
+    2: 750,
+    3: 900,
+    4: 1050,
+    5: 1250,
+    6: 1450,
+    7: 1650,
+    8: 1850,
+    9: 2100,
+    10: 2400,
+    11: 2700,
+    12: 0,
+  };
+  return targets[roundIndex] ?? 600;
+}
 
 describe("MatchRoomController", () => {
   test("4人全員Readyなら締切前でも試合開始できる", () => {

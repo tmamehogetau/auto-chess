@@ -95,12 +95,44 @@ describe("Full Game Simulation (R1-R8)", () => {
       // Verify all 4 players are in the game initially
       expect(serverRoom.state.players.size).toBe(4);
 
-      // Wait for game to complete R1-R8 and reach End phase
+      // 各ラウンドでダメージを設定してフェーズ成功にする（dominationCount増加を回避）
+      const roundTargets: Record<number, number> = {
+        1: 600,
+        2: 750,
+        3: 900,
+        4: 1050,
+        5: 1250,
+        6: 1450,
+        7: 1650,
+        8: 1850,
+      };
+
+      let currentRound = serverRoom.state.roundIndex;
       const maxDuration = 45_000;
-      await waitForCondition(
-        () => serverRoom.state.phase === "End" && serverRoom.state.roundIndex === 8,
-        maxDuration,
-      );
+      const startTime = Date.now();
+
+      // R1-R8 まで進行
+      while (
+        serverRoom.state.phase !== "End" &&
+        serverRoom.state.roundIndex < 9 &&
+        Date.now() - startTime < maxDuration
+      ) {
+        // Prep → Battle の遷移を待機
+        await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
+
+        // Battle フェーズでダメージを設定してフェーズ成功にする
+        const target = roundTargets[serverRoom.state.roundIndex];
+        if (target !== undefined) {
+          serverRoom.setPendingRoundDamageForTest({ [clients[0].sessionId]: target });
+        }
+
+        // 次の Prep または End を待機
+        if (serverRoom.state.roundIndex < 8) {
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
+        } else {
+          await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
+        }
+      }
 
       // Verify final state
       expect(serverRoom.state.phase).toBe("End");
@@ -200,10 +232,43 @@ describe("Full Game Simulation (R1-R8)", () => {
 
         expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
 
-        await waitForCondition(
-          () => serverRoom.state.phase === "End" && serverRoom.state.roundIndex === 12,
-          60_000,
-        );
+        // 各ラウンドでダメージを設定してフェーズ成功にする（dominationCount増加を回避）
+        const roundTargets: Record<number, number> = {
+          1: 600,
+          2: 750,
+          3: 900,
+          4: 1050,
+          5: 1250,
+          6: 1450,
+          7: 1650,
+          8: 1850,
+          9: 2100,
+          10: 2400,
+          11: 2700,
+          12: 0,
+        };
+
+        // R1-R12 まで進行
+        while (
+          serverRoom.state.phase !== "End" &&
+          serverRoom.state.roundIndex < 13
+        ) {
+          // Prep → Battle の遷移を待機
+          await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
+
+          // Battle フェーズでダメージを設定してフェーズ成功にする
+          const target = roundTargets[serverRoom.state.roundIndex];
+          if (target !== undefined && target > 0) {
+            serverRoom.setPendingRoundDamageForTest({ [clients[0].sessionId]: target });
+          }
+
+          // 次の Prep または End を待機
+          if (serverRoom.state.roundIndex < 12) {
+            await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
+          } else {
+            await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
+          }
+        }
 
         expect(serverRoom.state.phase).toBe("End");
         expect(serverRoom.state.roundIndex).toBe(12);

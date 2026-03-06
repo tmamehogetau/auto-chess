@@ -16,4 +16,12 @@ describe("boss shop ui contract", () => {
     expect(html.includes("data-boss-shop-slot=\"1\"")).toBe(true);
     expect(html.includes("Boss Exclusive")).toBe(true);
   });
+
+  test("boss専用ショップの2スロットが同じセクション内に並ぶ", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(
+      /data-boss-shop-section[\s\S]*data-boss-shop-slot="0"[\s\S]*data-boss-shop-slot="1"/.test(html),
+    ).toBe(true);
+  });
 });

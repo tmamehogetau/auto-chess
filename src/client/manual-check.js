@@ -186,6 +186,23 @@ const SCARLET_MANSION_DATA = {
   synergyDescription: 'HP70%以上でATK+10% / 吸血',
 };
 
+// ラウンドに応じたスペルカードセットを取得
+function getSpellSetForRound(roundIndex) {
+  if (roundIndex >= 1 && roundIndex <= 4) {
+    return SPELL_CARDS.filter(s => s.roundRange[0] === 1);
+  }
+  if (roundIndex >= 5 && roundIndex <= 8) {
+    return SPELL_CARDS.filter(s => s.roundRange[0] === 5);
+  }
+  if (roundIndex >= 9 && roundIndex <= 11) {
+    return SPELL_CARDS.filter(s => s.roundRange[0] === 9);
+  }
+  if (roundIndex === 12) {
+    return SPELL_CARDS.filter(s => s.id === 'last-word');
+  }
+  return [];
+}
+
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -269,6 +286,14 @@ const spellCardSection = document.querySelector("[data-spell-card-section]");
 const spellNameDisplay = document.querySelector("[data-spell-name]");
 const spellDescDisplay = document.querySelector("[data-spell-desc]");
 
+// Spell selection elements
+const spellSelectSection = document.querySelector("[data-spell-select-section]");
+const spellSelectRadios = document.querySelector("[data-spell-select-radios]");
+const declareSpellBtn = document.querySelector("[data-declare-spell-btn]");
+
+// Spell selection state
+let declaredSpellForRound = null;
+
 // Game state
 let activeRoom = null;
 let connecting = false;
@@ -277,6 +302,7 @@ let currentGold = 0;
 let currentPlayerState = null;
 let currentGameState = null;
 let sessionId = null;
+let currentRound = 0;
 let latestPhaseHpProgress = null;
 let lastShownSummaryRound = -1;
 let roundSummaryAutoHideTimeout = null;
@@ -397,6 +423,11 @@ buyXpBtn?.addEventListener("click", () => {
 
 roundSummaryClose?.addEventListener("click", () => {
   hideRoundSummary();
+});
+
+// Spell declaration button handler
+declareSpellBtn?.addEventListener("click", () => {
+  handleDeclareSpell();
 });
 
 // Shop card click handlers
@@ -759,6 +790,61 @@ function handleBuyXp() {
   showMessage("Buying XP...", "success");
 }
 
+// Spell card declaration handler
+function handleDeclareSpell() {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only declare spell during prep phase", "error");
+    return;
+  }
+
+  const selectedRadio = document.querySelector('input[name="spell-select"]:checked');
+  if (!selectedRadio) {
+    showMessage("Please select a spell card", "error");
+    return;
+  }
+
+  const spellId = selectedRadio.value;
+  declaredSpellForRound = spellId;
+
+  // Send spell declaration to server
+  if (activeRoom) {
+    activeRoom.send("declare_spell", { spellId });
+    showMessage(`Declared spell: ${spellId}`, "success");
+
+    // Hide selection UI after declaration
+    if (spellSelectSection) {
+      spellSelectSection.style.display = "none";
+    }
+  }
+}
+
+// Update spell selection UI based on current round
+function updateSpellSelectUI(roundIndex) {
+  const spellSet = getSpellSetForRound(roundIndex);
+
+  // Don't show for R12 (last word is auto-selected) or if no spells available
+  if (!spellSelectRadios || spellSet.length === 0 || roundIndex === 12) {
+    if (spellSelectSection) spellSelectSection.style.display = "none";
+    return;
+  }
+
+  // Don't show if already declared for this round
+  if (declaredSpellForRound) {
+    if (spellSelectSection) spellSelectSection.style.display = "none";
+    return;
+  }
+
+  if (spellSelectSection) spellSelectSection.style.display = "block";
+
+  spellSelectRadios.innerHTML = spellSet.map((spell, index) => `
+    <label>
+      <input type="radio" name="spell-select" value="${spell.id}" ${index === 0 ? "checked" : ""}>
+      <strong>${spell.name}</strong><br>
+      <small>${spell.description}</small>
+    </label>
+  `).join("");
+}
+
 // Selection and deployment handlers
 function handleBenchClick(index) {
   // If we have an item selected, try to equip it
@@ -930,11 +1016,18 @@ function updateGameUI(state) {
   currentPlayerState = player;
   const previousGold = currentGold;
   const previousHp = Number(hpDisplay.textContent) || 0;
+  const previousRound = currentRound;
   currentGold = Number(player.gold) || 0;
   currentSharedPoolInventory = player.sharedPoolInventory;
+  currentRound = Number(state.roundIndex) || 0;
+
+  // Reset declared spell when round changes
+  if (currentRound !== previousRound) {
+    declaredSpellForRound = null;
+  }
 
   // Update status displays
-  roundDisplay.textContent = (Number(state.roundIndex) || 0) + 1;
+  roundDisplay.textContent = currentRound + 1;
   
   // Gold animation
   if (goldDisplay) {
@@ -1092,6 +1185,13 @@ function updateGameUI(state) {
     }
   } else if (spellCardSection) {
     spellCardSection.style.display = "none";
+  }
+
+  // Update spell card selection UI (only in Prep phase)
+  if (state.featureFlagsEnableSpellCard && state.phase === "Prep") {
+    updateSpellSelectUI(state.roundIndex);
+  } else if (spellSelectSection) {
+    spellSelectSection.style.display = "none";
   }
 
     nextCmdSeq = player.lastCmdSeq + 1;

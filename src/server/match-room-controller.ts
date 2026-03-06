@@ -40,7 +40,7 @@ import {
 import { HEROES } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
-import { SPELL_CARDS, getAvailableSpellsForRound, type SpellCard } from "../data/spell-cards";
+import { SPELL_CARDS, getAvailableSpellsForRound, getSpellCardSetForRound, type SpellCard } from "../data/spell-cards";
 import { getRumorUnitForRound, type RumorUnit } from "../data/rumor-units";
 import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansionUnit } from "../data/scarlet-mansion-units";
 import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
@@ -3030,6 +3030,36 @@ export class MatchRoomController {
    */
   public getDeclaredSpell(): SpellCard | null {
     return this.declaredSpell;
+  }
+
+  /**
+   * 宣言中のスペルカードIDを取得
+   */
+  public getDeclaredSpellId(): string | null {
+    return this.declaredSpell?.id ?? null;
+  }
+
+  /**
+   * スペルカードを宣言
+   * @param spellId 宣言するスペルカードID
+   * @returns 宣言に成功した場合true
+   */
+  public declareSpellById(spellId: string): boolean {
+    if (!this.enableSpellCard) {
+      return false;
+    }
+
+    const state = this.ensureStarted();
+    const roundIndex = state.roundIndex;
+    const availableSpells = getSpellCardSetForRound(roundIndex);
+
+    const spell = availableSpells.find(s => s.id === spellId);
+    if (!spell) {
+      return false;
+    }
+
+    this.declaredSpell = spell;
+    return true;
   }
 
   public getUsedSpellIds(): string[] {

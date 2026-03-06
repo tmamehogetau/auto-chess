@@ -569,6 +569,61 @@
         border-radius: 8px;
       }
 
+      /* Spell Card Selection Section */
+      .spell-select-section {
+        margin-bottom: 15px;
+        padding: 15px;
+        background: rgba(155, 89, 182, 0.15);
+        border: 2px solid rgba(155, 89, 182, 0.4);
+        border-radius: 8px;
+      }
+
+      .spell-select-section [data-spell-select-radios] {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+
+      .spell-select-section label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .spell-select-section label:hover {
+        background: rgba(155, 89, 182, 0.2);
+      }
+
+      .spell-select-section input[type="radio"] {
+        width: 18px;
+        height: 18px;
+        accent-color: #9b59b6;
+      }
+
+      .spell-select-section [data-declare-spell-btn] {
+        width: 100%;
+        background: #9b59b6;
+        border-color: #9b59b6;
+        color: white;
+      }
+
+      .spell-select-section [data-declare-spell-btn]:hover {
+        background: #8e44ad;
+        border-color: #8e44ad;
+      }
+
+      .spell-select-section [data-declare-spell-btn]:disabled {
+        background: #555;
+        border-color: #555;
+        cursor: not-allowed;
+      }
+
       .spell-card-display {
         display: flex;
         align-items: center;
@@ -2075,6 +2130,15 @@
               <span class="hero-stat-value" data-hero-attack>-</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Spell Card Selection -->
+      <div class="spell-select-section" data-spell-select-section style="display: none;">
+        <div class="shop-title">🔮 Select Spell Card</div>
+        <div data-spell-select-container>
+          <div data-spell-select-radios></div>
+          <button class="action-btn" data-declare-spell-btn type="button">Declare Spell</button>
         </div>
       </div>
 

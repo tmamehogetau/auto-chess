@@ -271,6 +271,61 @@ describe("SpellCard Integration", () => {
       (FeatureFlagService as any).instance = undefined;
     });
 
+    it("boss target damageでボスHPが減少する", () => {
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
+      (FeatureFlagService as any).instance = undefined;
+
+      const bossDamageController = new MatchRoomController([...playerIds], Date.now(), {
+        readyAutoStartMs: 1000,
+        prepDurationMs: 10000,
+        battleDurationMs: 5000,
+        settleDurationMs: 1000,
+        eliminationDurationMs: 1000,
+      });
+
+      for (const playerId of playerIds) {
+        bossDamageController.setReady(playerId, true);
+      }
+
+      const started = bossDamageController.startIfReady(Date.now(), [...playerIds]);
+      expect(started).toBe(true);
+
+      const prepDeadline = bossDamageController.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      if (prepDeadline) {
+        bossDamageController.advanceByTime(prepDeadline + 100);
+      }
+
+      const bossId = bossDamageController.getBossPlayerId();
+      expect(bossId).not.toBeNull();
+
+      if (!bossId) {
+        return;
+      }
+
+      (bossDamageController as any).declaredSpell = {
+        id: "test-damage-boss",
+        name: "テストダメージ",
+        description: "ボスに30ダメージを与える",
+        roundRange: [1, 1],
+        effect: {
+          type: "damage",
+          target: "boss",
+          value: 30,
+        },
+      };
+
+      if (bossDamageController.phaseDeadlineAtMs) {
+        bossDamageController.advanceByTime(bossDamageController.phaseDeadlineAtMs + 100);
+      }
+
+      expect(bossDamageController.getPlayerHp(bossId)).toBe(70);
+
+      delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
+      (FeatureFlagService as any).instance = undefined;
+    });
+
     it("all target healはHP上限100を超えない", () => {
       const prepDeadline = controller.prepDeadlineAtMs;
       expect(prepDeadline).not.toBeNull();

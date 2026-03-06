@@ -2898,9 +2898,21 @@ export class MatchRoomController {
     const spell = this.declaredSpell;
 
     if (spell.effect.type === "damage") {
+      if (spell.effect.target === "boss" || spell.effect.target === "all") {
+        const bossPlayerId = state.bossPlayerId;
+        if (bossPlayerId) {
+          const currentHp = state.getPlayerHp(bossPlayerId);
+          state.setPlayerHp(bossPlayerId, currentHp - spell.effect.value);
+        }
+      }
+
       if (spell.effect.target === "raid" || spell.effect.target === "all") {
         // レイドメンバー全員にダメージを与える
         for (const playerId of state.alivePlayerIds) {
+          if (spell.effect.target === "all" && playerId === state.bossPlayerId) {
+            continue;
+          }
+
           const currentHp = state.getPlayerHp(playerId);
           state.setPlayerHp(playerId, currentHp - spell.effect.value);
         }

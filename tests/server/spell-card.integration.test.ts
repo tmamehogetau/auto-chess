@@ -196,6 +196,21 @@ describe("SpellCard Integration", () => {
       expect(hpAfterBattle1).toBeLessThan(hpBeforeBattle1);
       expect(hpAfterBattle2).toBeLessThan(hpBeforeBattle2);
     });
+
+    it("効果適用後は使用済みスペルIDを保持する", () => {
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      expect(controller.getUsedSpellIds()).toEqual(["sdl-1"]);
+    });
   });
 
   describe("Feature Flag無効時の動作", () => {

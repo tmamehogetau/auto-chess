@@ -177,6 +177,8 @@ export class MatchRoomState extends Schema {
 
   declare public declaredSpellId: string;
 
+  declare public usedSpellIds: ArraySchema<string>;
+
   declare public bossPlayerId: string;
 
   public constructor() {
@@ -197,6 +199,7 @@ export class MatchRoomState extends Schema {
     this.featureFlagsEnableBossExclusiveShop = false;
     this.featureFlagsEnableSharedBoardShadow = false;
     this.declaredSpellId = "";
+    this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
   }
 }
@@ -275,5 +278,6 @@ defineTypes(MatchRoomState, {
   featureFlagsEnableBossExclusiveShop: "boolean",
   featureFlagsEnableSharedBoardShadow: "boolean",
   declaredSpellId: "string",
+  usedSpellIds: ["string"],
   bossPlayerId: "string",
 });

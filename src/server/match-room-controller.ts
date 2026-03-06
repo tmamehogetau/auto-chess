@@ -334,6 +334,8 @@ export class MatchRoomController {
 
   private declaredSpell: SpellCard | null;
 
+  private readonly usedSpellIds: string[];
+
   private readonly rumorInfluenceEligibleByPlayer: Map<string, boolean>;
 
   private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
@@ -437,6 +439,7 @@ export class MatchRoomController {
     // Feature Flagに基づいてスペルカードを初期化
     this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
     this.declaredSpell = null;
+    this.usedSpellIds = [];
 
     // Feature Flagに基づいて噂勢力を初期化
     this.enableRumorInfluence = FeatureFlagService.getInstance().isFeatureEnabled('enableRumorInfluence');
@@ -2886,6 +2889,10 @@ export class MatchRoomController {
       }
     }
 
+    if (!this.usedSpellIds.includes(spell.id)) {
+      this.usedSpellIds.push(spell.id);
+    }
+
     // 他の効果タイプ（heal, buff, debuff）は後で実装
   }
 
@@ -2894,6 +2901,10 @@ export class MatchRoomController {
    */
   public getDeclaredSpell(): SpellCard | null {
     return this.declaredSpell;
+  }
+
+  public getUsedSpellIds(): string[] {
+    return [...this.usedSpellIds];
   }
 
   /**

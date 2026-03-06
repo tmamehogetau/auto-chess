@@ -810,6 +810,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableBossExclusiveShop = flagService.isFeatureEnabled('enableBossExclusiveShop');
     const declaredSpell = this.controller.getDeclaredSpell();
     this.state.declaredSpellId = declaredSpell?.id ?? "";
+    this.state.usedSpellIds.splice(0, this.state.usedSpellIds.length);
+    for (const spellId of this.controller.getUsedSpellIds()) {
+      this.state.usedSpellIds.push(spellId);
+    }
     this.state.bossPlayerId = this.controller.getBossPlayerId() ?? "";
 
     this.syncRanking(this.controller.rankingTopToBottom);

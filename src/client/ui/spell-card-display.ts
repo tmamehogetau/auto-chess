@@ -22,6 +22,7 @@ export interface SpellCardInfo {
 export interface SpellCardDisplayTarget {
   getElement(): HTMLElement | null;
   setSpellCard(spellCard: SpellCardInfo | null): void;
+  setUsedSpellCards(spellCards: SpellCardInfo[]): void;
 }
 
 /**
@@ -39,16 +40,33 @@ export function createSpellCardDisplayTarget(
 
   return {
     getElement: () => element,
+    setUsedSpellCards: (spellCards) => {
+      const usedSpellMarkup = spellCards.length > 0
+        ? `
+          <div class="spell-card-used-list">
+            <div class="spell-card-used-label">使用済み</div>
+            <div class="spell-card-used-items">${spellCards.map((spellCard) => `<span class="spell-card-used-item" data-used-spell-id="${spellCard.id}">${spellCard.name}</span>`).join("")}</div>
+          </div>
+        `
+        : "";
+
+      const currentMarkup = element.querySelector("[data-current-spell-card]")?.outerHTML
+        ?? '<div class="spell-card empty" data-current-spell-card>スペルなし</div>';
+
+      element.innerHTML = `${currentMarkup}${usedSpellMarkup}`;
+    },
     setSpellCard: (spellCard) => {
+      const usedSpellMarkup = element.querySelector(".spell-card-used-list")?.outerHTML ?? "";
       element.innerHTML = spellCard
         ? `
-          <div class="spell-card" data-spell-id="${spellCard.id}">
+          <div class="spell-card" data-current-spell-card data-spell-id="${spellCard.id}">
             <div class="spell-card-name">${spellCard.name}</div>
             <div class="spell-card-description">${spellCard.description}</div>
             <div class="spell-card-round">R${spellCard.roundRange[0]}-${spellCard.roundRange[1]}</div>
           </div>
+          ${usedSpellMarkup}
         `
-        : '<div class="spell-card empty">スペルなし</div>';
+        : `<div class="spell-card empty" data-current-spell-card>スペルなし</div>${usedSpellMarkup}`;
     },
   };
 }
@@ -89,6 +107,7 @@ export class SpellCardDisplayApp {
 
   public renderNow(): void {
     this.displayTarget.setSpellCard(null);
+    this.displayTarget.setUsedSpellCards([]);
   }
 
   private onStateChange(state: unknown): void {
@@ -97,8 +116,13 @@ export class SpellCardDisplayApp {
     }
 
     // Colyseus SchemaからdeclaredSpellIdを取得
-    const stateObj = state as { declaredSpellId?: string };
+    const stateObj = state as { declaredSpellId?: string; usedSpellIds?: string[] };
     const declaredSpellId = stateObj.declaredSpellId;
+    const usedSpellCards = (stateObj.usedSpellIds ?? [])
+      .map((spellId) => this.spellCardMap.get(spellId))
+      .filter((spellCard): spellCard is SpellCardInfo => spellCard !== undefined);
+
+    this.displayTarget.setUsedSpellCards(usedSpellCards);
 
     if (!declaredSpellId) {
       this.displayTarget.setSpellCard(null);

@@ -1412,7 +1412,14 @@ function updateSynergyDisplay(synergies) {
   
   if (!synergies || synergies.length === 0) return;
   
-  const icons = { vanguard: '🛡️', ranger: '🏹', mage: '✨', assassin: '🗡️' };
+  const icons = { vanguard: '🛡️', ranger: '🏹', mage: '✨', assassin: '🗡️', scarletMansion: '🦇' };
+  const labels = {
+    vanguard: 'vanguard',
+    ranger: 'ranger',
+    mage: 'mage',
+    assassin: 'assassin',
+    scarletMansion: '紅魔館',
+  };
   
   for (const syn of synergies) {
     const div = document.createElement('div');
@@ -1423,7 +1430,7 @@ function updateSynergyDisplay(synergies) {
       border-radius: 5px;
       font-size: 12px;
     `;
-    div.innerHTML = `${icons[syn.unitType] || '?'} ${syn.unitType}: ${syn.count} ${'★'.repeat(syn.tier)}`;
+    div.innerHTML = `${icons[syn.unitType] || '?'} ${labels[syn.unitType] || syn.unitType}: ${syn.count} ${'★'.repeat(syn.tier)}`;
     container.appendChild(div);
   }
 }

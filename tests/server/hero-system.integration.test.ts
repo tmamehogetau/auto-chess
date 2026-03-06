@@ -98,6 +98,27 @@ describe("Hero System Integration Tests", () => {
       expect(vanguardSynergy?.count).toBe(3);
       expect(vanguardSynergy?.tier).toBe(1);
     });
+
+    it("should include scarlet mansion synergy in player status", () => {
+      const started = controller.startIfReady(createdAtMs, playerIds);
+      expect(started).toBe(true);
+
+      const placementResult = controller.submitPrepCommand("player1", 1, createdAtMs + 1_000, {
+        boardPlacements: [
+          { cell: 0, unitType: "vanguard", archetype: "meiling" },
+          { cell: 1, unitType: "assassin", archetype: "sakuya" },
+        ],
+      });
+
+      expect(placementResult).toEqual({ accepted: true });
+
+      const status = controller.getPlayerStatus("player1");
+      const scarletSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "scarletMansion");
+
+      expect(scarletSynergy).toBeDefined();
+      expect(scarletSynergy?.count).toBe(2);
+      expect(scarletSynergy?.tier).toBe(1);
+    });
   });
 
   describe("Hero System Disabled (Feature Flag OFF)", () => {

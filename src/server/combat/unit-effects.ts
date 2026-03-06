@@ -104,6 +104,10 @@ export function normalizeBoardPlacements(
       normalizedPlacement.unitCount = placement.unitCount;
     }
 
+    if (placement.archetype !== undefined) {
+      normalizedPlacement.archetype = placement.archetype;
+    }
+
     normalized.push(normalizedPlacement);
   }
 

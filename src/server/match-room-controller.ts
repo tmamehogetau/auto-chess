@@ -26,6 +26,7 @@ import {
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
 import {
+  calculateScarletMansionSynergy,
   SYNERGY_TO_UNIT_TYPE,
   UNIT_TYPE_TO_SYNERGY_NAMES,
 } from "./combat/synergy-definitions";
@@ -2196,6 +2197,10 @@ export class MatchRoomController {
       if (count > 0) {
         result.push({ unitType: type, count, tier });
       }
+    }
+
+    if (calculateScarletMansionSynergy(placements)) {
+      result.push({ unitType: "scarletMansion", count: 2, tier: 1 });
     }
 
     return result;

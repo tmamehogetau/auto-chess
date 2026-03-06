@@ -23,4 +23,11 @@ describe("boss shop rendering contract", () => {
     expect(source.includes("boss-shop-role")).toBe(true);
     expect(source.includes("boss-shop-skill")).toBe(true);
   });
+
+  test("boss shop cards render scarlet flavor text", () => {
+    const source = readFileSync(manualCheckPath, "utf-8");
+
+    expect(source.includes("紅魔館の門番。悠々自適に勤務中。")).toBe(true);
+    expect(source.includes("boss-shop-flavor")).toBe(true);
+  });
 });

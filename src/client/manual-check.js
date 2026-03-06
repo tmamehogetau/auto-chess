@@ -165,14 +165,17 @@ const SCARLET_MANSION_CARD_DETAILS = {
   vanguard: {
     role: "序盤の壁",
     skillDescription: "彩華「虹色太極拳」- 周囲の敵攻撃を誘引し、被ダメージを軽減",
+    flavorText: "紅魔館の門番。悠々自適に勤務中。",
   },
   assassin: {
     role: "守護サポート",
     skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
+    flavorText: "紅魔館のメイド長。完璧で瀟洒な仕事人。",
   },
   mage: {
     role: "爆発補助",
     skillDescription: "火水木金土符「賢者の石」- ランダムな敵3体に大魔法ダメージ",
+    flavorText: "紅魔館の魔法使い。動きたくない。",
   },
 };
 
@@ -1615,6 +1618,7 @@ function updateBossShop(offers, visible) {
       ${details ? `<div class="boss-shop-role">${details.role}</div>` : ''}
       <div class="cost">${cost}G</div>
       ${details ? `<div class="boss-shop-skill">${details.skillDescription}</div>` : ''}
+      ${details ? `<div class="boss-shop-flavor">${details.flavorText}</div>` : ''}
       ${isPurchased ? '<div class="purchased-badge">Purchased</div>' : ''}
     `;
     card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");

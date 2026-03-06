@@ -943,6 +943,70 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("T3: 戦闘単位で入力と結果を追跡できるトレースログが常時出力される", () => {
+    // 環境変数を設定せずにテスト（常時出力の確認）
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      const controller = new MatchRoomController(
+        ["p1", "p2"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.startIfReady(2_000);
+
+      controller.submitPrepCommand("p1", 1, 3_000, {
+        boardPlacements: [{ cell: 0, unitType: "vanguard" }],
+      });
+      controller.submitPrepCommand("p2", 1, 3_000, {
+        boardPlacements: [{ cell: 0, unitType: "ranger" }],
+      });
+
+      controller.advanceByTime(32_000); // -> Battle
+      controller.advanceByTime(42_000); // -> Settle
+
+      const allLogs = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => JSON.parse(entry));
+
+      const battleTraces = allLogs.filter(
+        (log) => log.type === "battle_trace",
+      );
+      const resultTraces = allLogs.filter(
+        (log) => log.type === "battle_result_trace",
+      );
+
+      // 環境変数なしでログが出力される
+      expect(battleTraces.length).toBeGreaterThan(0);
+      expect(resultTraces.length).toBeGreaterThan(0);
+
+      // battle_trace と battle_result_trace に同じ battleId が含まれる
+      const battleTrace = battleTraces[0];
+      const resultTrace = resultTraces[0];
+
+      expect(battleTrace).toHaveProperty("battleId");
+      expect(resultTrace).toHaveProperty("battleId");
+      expect(battleTrace.battleId).toBe(resultTrace.battleId);
+
+      // 入力placementsが含まれる
+      expect(battleTrace).toHaveProperty("leftPlacements");
+      expect(battleTrace).toHaveProperty("rightPlacements");
+
+      // 結果が含まれる
+      expect(resultTrace).toHaveProperty("winner");
+      expect(resultTrace).toHaveProperty("leftSurvivors");
+      expect(resultTrace).toHaveProperty("rightSurvivors");
+      expect(resultTrace).toHaveProperty("leftDamageTaken");
+      expect(resultTrace).toHaveProperty("rightDamageTaken");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   test("同時脱落時はpostBattleHp->roundStartHp->playerIdで順位が決まる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

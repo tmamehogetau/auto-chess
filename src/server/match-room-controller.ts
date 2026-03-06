@@ -2404,8 +2404,10 @@ export class MatchRoomController {
       : null;
 
     // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
+    const battleId = `r${this.roundIndex}-${leftPlayerId}-${rightPlayerId}`;
     const battleTraceLog = {
       type: "battle_trace",
+      battleId,
       roundIndex: this.roundIndex,
       leftPlayerId,
       rightPlayerId,
@@ -2415,10 +2417,9 @@ export class MatchRoomController {
       rightHeroId: rightHeroId ?? null,
       timestamp: Date.now(),
     };
-    if (process.env.MATCH_DEBUG_LOGS === "1") {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(battleTraceLog));
-    }
+    // T3: 常時出力（環境変数依存を廃止）
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(battleTraceLog));
 
     // バトルシミュレーターで戦闘を実行
     const battleSimulator = new BattleSimulator();
@@ -2473,6 +2474,7 @@ export class MatchRoomController {
       );
 
       this.logBattleResultTrace({
+        battleId,
         leftPlayerId,
         rightPlayerId,
         winner: "right",
@@ -2528,6 +2530,7 @@ export class MatchRoomController {
       );
 
       this.logBattleResultTrace({
+        battleId,
         leftPlayerId,
         rightPlayerId,
         winner: "left",
@@ -2579,6 +2582,7 @@ export class MatchRoomController {
       );
 
       this.logBattleResultTrace({
+        battleId,
         leftPlayerId,
         rightPlayerId,
         winner: "draw",
@@ -2599,6 +2603,7 @@ export class MatchRoomController {
   }
 
   private logBattleResultTrace(params: {
+    battleId: string;
     leftPlayerId: string;
     rightPlayerId: string;
     winner: "left" | "right" | "draw";
@@ -2609,15 +2614,21 @@ export class MatchRoomController {
   }): void {
     const resultTraceLog = {
       type: "battle_result_trace",
+      battleId: params.battleId,
       roundIndex: this.roundIndex,
-      ...params,
+      leftPlayerId: params.leftPlayerId,
+      rightPlayerId: params.rightPlayerId,
+      winner: params.winner,
+      leftSurvivors: params.leftSurvivors,
+      rightSurvivors: params.rightSurvivors,
+      leftDamageTaken: params.leftDamageTaken,
+      rightDamageTaken: params.rightDamageTaken,
       timestamp: Date.now(),
     };
 
-    if (process.env.MATCH_DEBUG_LOGS === "1") {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(resultTraceLog));
-    }
+    // T3: 常時出力（環境変数依存を廃止）
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(resultTraceLog));
   }
 
   private resolveUnitCount(playerId: string): number {

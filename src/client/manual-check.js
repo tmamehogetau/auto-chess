@@ -1435,6 +1435,9 @@ function updateSynergyDisplay(synergies) {
     assassin: 'assassin',
     scarletMansion: '紅魔館',
   };
+  const descriptions = {
+    scarletMansion: 'HP70%以上でATK+10% / 吸血',
+  };
   
   for (const syn of synergies) {
     const div = document.createElement('div');
@@ -1445,7 +1448,10 @@ function updateSynergyDisplay(synergies) {
       border-radius: 5px;
       font-size: 12px;
     `;
-    div.innerHTML = `${icons[syn.unitType] || '?'} ${labels[syn.unitType] || syn.unitType}: ${syn.count} ${'★'.repeat(syn.tier)}`;
+    div.innerHTML = `
+      <div>${icons[syn.unitType] || '?'} ${labels[syn.unitType] || syn.unitType}: ${syn.count} ${'★'.repeat(syn.tier)}</div>
+      ${descriptions[syn.unitType] ? `<div class="scarlet-synergy-description">${descriptions[syn.unitType]}</div>` : ''}
+    `;
     container.appendChild(div);
   }
 }

@@ -1,4 +1,6 @@
+import type { BoardUnitPlacement } from '../../shared/room-messages';
 import { BoardUnitType } from '../../shared/types';
+import type { BattleUnit } from './battle-simulator';
 
 export type SynergyTier = 0 | 1 | 2 | 3;
 
@@ -62,6 +64,34 @@ export const SYNERGY_DEFINITIONS: Record<BoardUnitType, SynergyDefinition> = {
     },
   },
 };
+
+export const SCARLET_MANSION_ARCHETYPES = ["meiling", "sakuya", "patchouli"] as const;
+
+export function calculateScarletMansionSynergy(
+  boardPlacements: BoardUnitPlacement[],
+): boolean {
+  const scarletCount = boardPlacements.filter((placement) =>
+    placement.archetype !== undefined
+    && (SCARLET_MANSION_ARCHETYPES as readonly string[]).includes(placement.archetype),
+  ).length;
+
+  return scarletCount >= 2;
+}
+
+export function applyScarletMansionSynergyToBoss(
+  unit: BattleUnit,
+  synergyActive: boolean,
+): void {
+  if (!synergyActive || !unit.isBoss) {
+    return;
+  }
+
+  if (unit.hp < unit.maxHp * 0.7) {
+    return;
+  }
+
+  unit.buffModifiers.attackMultiplier *= 1.1;
+}
 
 /**
  * Get the synergy tier based on unit count

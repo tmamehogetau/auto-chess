@@ -9,8 +9,51 @@ import {
   findTarget,
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
+import {
+  applyScarletMansionSynergyToBoss,
+  calculateScarletMansionSynergy,
+} from "../../../src/server/combat/synergy-definitions";
 
 describe("battle-simulator", () => {
+  describe("scarlet mansion synergy", () => {
+    test("紅魔館ユニット2体でシナジーが有効になる", () => {
+      const active = calculateScarletMansionSynergy([
+        { cell: 0, unitType: "vanguard", archetype: "meiling" },
+        { cell: 1, unitType: "assassin", archetype: "sakuya" },
+      ]);
+
+      expect(active).toBe(true);
+    });
+
+    test("HP70%以上のレミリアにシナジーバフが適用される", () => {
+      const boss = createBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+      boss.hp = Math.floor(boss.maxHp * 0.8);
+
+      applyScarletMansionSynergyToBoss(boss, true);
+
+      expect(boss.buffModifiers.attackMultiplier).toBeGreaterThan(1);
+    });
+
+    test("HP70%未満のレミリアにはシナジーバフが適用されない", () => {
+      const boss = createBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+      boss.hp = Math.floor(boss.maxHp * 0.6);
+
+      applyScarletMansionSynergyToBoss(boss, true);
+
+      expect(boss.buffModifiers.attackMultiplier).toBe(1);
+    });
+  });
+
   describe("createBattleUnit", () => {
     test("単一のユニットが正しく作成される", () => {
       const placement: BoardUnitPlacement = {

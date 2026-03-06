@@ -2,7 +2,13 @@ import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messag
 import type { SubUnitConfig } from "../../shared/types";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
-import { SYNERGY_DEFINITIONS, calculateSynergyDetails, SynergyTier } from "./synergy-definitions";
+import {
+  SYNERGY_DEFINITIONS,
+  applyScarletMansionSynergyToBoss,
+  calculateScarletMansionSynergy,
+  calculateSynergyDetails,
+  SynergyTier,
+} from "./synergy-definitions";
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 import { HEROES } from "../../data/heroes";
@@ -247,8 +253,11 @@ function applySynergyBuffs(
   heroSynergyBonusType: BoardUnitType | null = null,
 ): void {
   const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType);
+  const scarletMansionSynergyActive = calculateScarletMansionSynergy(boardPlacements);
 
   for (const unit of units) {
+    applyScarletMansionSynergyToBoss(unit, scarletMansionSynergyActive);
+
     const tier = synergyDetails.activeTiers[unit.type];
     if (tier === 0) continue;
 

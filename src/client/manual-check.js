@@ -155,31 +155,31 @@ const SPELL_CARDS = [
   },
 ];
 
-const SCARLET_MANSION_DISPLAY_NAMES = {
-  vanguard: "紅美鈴",
-  assassin: "十六夜咲夜",
-  mage: "パチュリー・ノーレッジ",
+const SCARLET_MANSION_DATA = {
+  displayNames: {
+    vanguard: "紅美鈴",
+    assassin: "十六夜咲夜",
+    mage: "パチュリー・ノーレッジ",
+  },
+  cardDetails: {
+    vanguard: {
+      role: "序盤の壁",
+      skillDescription: "彩華「虹色太極拳」- 周囲の敵攻撃を誘引し、被ダメージを軽減",
+      flavorText: "紅魔館の門番。悠々自適に勤務中。",
+    },
+    assassin: {
+      role: "守護サポート",
+      skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
+      flavorText: "紅魔館のメイド長。完璧で瀟洒な仕事人。",
+    },
+    mage: {
+      role: "爆発補助",
+      skillDescription: "火水木金土符「賢者の石」- ランダムな敵3体に大魔法ダメージ",
+      flavorText: "紅魔館の魔法使い。動きたくない。",
+    },
+  },
+  synergyDescription: 'HP70%以上でATK+10% / 吸血',
 };
-
-const SCARLET_MANSION_CARD_DETAILS = {
-  vanguard: {
-    role: "序盤の壁",
-    skillDescription: "彩華「虹色太極拳」- 周囲の敵攻撃を誘引し、被ダメージを軽減",
-    flavorText: "紅魔館の門番。悠々自適に勤務中。",
-  },
-  assassin: {
-    role: "守護サポート",
-    skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
-    flavorText: "紅魔館のメイド長。完璧で瀟洒な仕事人。",
-  },
-  mage: {
-    role: "爆発補助",
-    skillDescription: "火水木金土符「賢者の石」- ランダムな敵3体に大魔法ダメージ",
-    flavorText: "紅魔館の魔法使い。動きたくない。",
-  },
-};
-
-const SCARLET_MANSION_SYNERGY_DESCRIPTION = 'HP70%以上でATK+10% / 吸血';
 
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
@@ -1441,7 +1441,7 @@ function updateSynergyDisplay(synergies) {
     scarletMansion: '紅魔館',
   };
   const descriptions = {
-    scarletMansion: SCARLET_MANSION_SYNERGY_DESCRIPTION,
+    scarletMansion: SCARLET_MANSION_DATA.synergyDescription,
   };
   
   for (const syn of synergies) {
@@ -1611,8 +1611,8 @@ function updateBossShop(offers, visible) {
     const cost = offer.cost || 0;
     const isPurchased = offer.purchased === true;
     const canAfford = currentGold >= cost && !isPurchased;
-    const displayName = SCARLET_MANSION_DISPLAY_NAMES[offer.unitType] || offer.unitType;
-    const details = SCARLET_MANSION_CARD_DETAILS[offer.unitType] || null;
+    const displayName = SCARLET_MANSION_DATA.displayNames[offer.unitType] || offer.unitType;
+    const details = SCARLET_MANSION_DATA.cardDetails[offer.unitType] || null;
     card.innerHTML = `
       <div class="scarlet-badge">紅魔館</div>
       <div class="icon">${icon}</div>

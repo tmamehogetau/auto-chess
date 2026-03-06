@@ -18,7 +18,7 @@ describe("scarlet synergy ui contract", () => {
   test("manual check renders scarlet mansion synergy description", () => {
     const source = readFileSync(manualCheckPath, "utf-8");
 
-    expect(source.includes("SCARLET_MANSION_SYNERGY_DESCRIPTION")).toBe(true);
+    expect(source.includes("SCARLET_MANSION_DATA.synergyDescription")).toBe(true);
     expect(source.includes("scarlet-synergy-description")).toBe(true);
     expect(source.includes("HP70%以上でATK+10% / 吸血")).toBe(true);
   });
@@ -27,5 +27,11 @@ describe("scarlet synergy ui contract", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 
     expect(html.includes(".scarlet-synergy-description")).toBe(true);
+  });
+
+  test("manual check uses consolidated scarlet mansion data object", () => {
+    const source = readFileSync(manualCheckPath, "utf-8");
+
+    expect(source.includes("SCARLET_MANSION_DATA")).toBe(true);
   });
 });

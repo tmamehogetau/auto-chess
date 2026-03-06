@@ -211,6 +211,160 @@ describe("SpellCard Integration", () => {
 
       expect(controller.getUsedSpellIds()).toEqual(["sdl-1"]);
     });
+
+    it("boss target healでボスHPが回復する", () => {
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
+      (FeatureFlagService as any).instance = undefined;
+
+      const bossHealController = new MatchRoomController([...playerIds], Date.now(), {
+        readyAutoStartMs: 1000,
+        prepDurationMs: 10000,
+        battleDurationMs: 5000,
+        settleDurationMs: 1000,
+        eliminationDurationMs: 1000,
+      });
+
+      for (const playerId of playerIds) {
+        bossHealController.setReady(playerId, true);
+      }
+
+      const started = bossHealController.startIfReady(Date.now(), [...playerIds]);
+      expect(started).toBe(true);
+
+      const prepDeadline = bossHealController.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      if (prepDeadline) {
+        bossHealController.advanceByTime(prepDeadline + 100);
+      }
+
+      const bossId = bossHealController.getBossPlayerId();
+      expect(bossId).not.toBeNull();
+
+      if (!bossId) {
+        return;
+      }
+
+      bossHealController.setPendingRoundDamage({
+        [bossId]: 40,
+      });
+
+      (bossHealController as any).declaredSpell = {
+        id: "test-heal-boss",
+        name: "テスト回復",
+        description: "ボスを30回復する",
+        roundRange: [1, 1],
+        effect: {
+          type: "heal",
+          target: "boss",
+          value: 30,
+        },
+      };
+
+      if (bossHealController.phaseDeadlineAtMs) {
+        bossHealController.advanceByTime(bossHealController.phaseDeadlineAtMs + 100);
+      }
+
+      expect(bossHealController.getPlayerHp(bossId)).toBe(90);
+
+      delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
+      (FeatureFlagService as any).instance = undefined;
+    });
+
+    it("all target healはHP上限100を超えない", () => {
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      controller.setPendingRoundDamage({
+        [PLAYER1]: 5,
+        [PLAYER2]: 15,
+      });
+
+      (controller as any).declaredSpell = {
+        id: "test-heal-all",
+        name: "全体回復",
+        description: "全員を20回復する",
+        roundRange: [1, 1],
+        effect: {
+          type: "heal",
+          target: "all",
+          value: 20,
+        },
+      };
+
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      expect(controller.getPlayerHp(PLAYER1)).toBe(100);
+      expect(controller.getPlayerHp(PLAYER2)).toBe(100);
+    });
+
+    it("attack buffは戦闘前の対象プレイヤー倍率として保持される", () => {
+      (controller as any).declaredSpell = {
+        id: "test-buff-attack",
+        name: "攻撃強化",
+        description: "レイドの攻撃力を25%上げる",
+        roundRange: [1, 1],
+        effect: {
+          type: "buff",
+          target: "raid",
+          value: 1.25,
+          buffStat: "attack",
+        },
+      };
+
+      (controller as any).gameLoopState.setBossPlayer(PLAYER1);
+      (controller as any).applyPreBattleSpellEffect();
+
+      const modifiers = (controller as any).spellCombatModifiersByPlayer as Map<string, {
+        attackMultiplier: number;
+        defenseMultiplier: number;
+        attackSpeedMultiplier: number;
+      }>;
+
+      expect(modifiers.get(PLAYER1)).toBeUndefined();
+      expect(modifiers.get(PLAYER2)).toEqual({
+        attackMultiplier: 1.25,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      });
+    });
+
+    it("attackSpeed debuffは戦闘前の対象プレイヤー倍率として保持される", () => {
+      (controller as any).declaredSpell = {
+        id: "test-debuff-speed",
+        name: "速度低下",
+        description: "ボスの攻撃速度を30%下げる",
+        roundRange: [1, 1],
+        effect: {
+          type: "debuff",
+          target: "boss",
+          value: 0.7,
+          buffStat: "attackSpeed",
+        },
+      };
+
+      (controller as any).gameLoopState.setBossPlayer(PLAYER2);
+      (controller as any).applyPreBattleSpellEffect();
+
+      const modifiers = (controller as any).spellCombatModifiersByPlayer as Map<string, {
+        attackMultiplier: number;
+        defenseMultiplier: number;
+        attackSpeedMultiplier: number;
+      }>;
+
+      expect(modifiers.get(PLAYER1)).toBeUndefined();
+      expect(modifiers.get(PLAYER2)).toEqual({
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 0.7,
+      });
+    });
   });
 
   describe("Feature Flag無効時の動作", () => {

@@ -13,6 +13,8 @@ export type SpellEffectType = 'damage' | 'heal' | 'buff' | 'debuff';
  */
 export type SpellEffectTarget = 'boss' | 'raid' | 'all';
 
+export type SpellEffectBuffStat = 'attack' | 'defense' | 'attackSpeed';
+
 /**
  * スペル効果定義
  */
@@ -20,6 +22,7 @@ export interface SpellEffect {
   type: SpellEffectType;
   target: SpellEffectTarget;
   value: number;
+  buffStat?: SpellEffectBuffStat;
 }
 
 /**

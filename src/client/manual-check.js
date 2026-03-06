@@ -155,6 +155,12 @@ const SPELL_CARDS = [
   },
 ];
 
+const SCARLET_MANSION_DISPLAY_NAMES = {
+  vanguard: "紅美鈴",
+  assassin: "十六夜咲夜",
+  mage: "パチュリー・ノーレッジ",
+};
+
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -1572,9 +1578,11 @@ function updateBossShop(offers, visible) {
     const cost = offer.cost || 0;
     const isPurchased = offer.purchased === true;
     const canAfford = currentGold >= cost && !isPurchased;
+    const displayName = SCARLET_MANSION_DISPLAY_NAMES[offer.unitType] || offer.unitType;
     card.innerHTML = `
+      <div class="scarlet-badge">紅魔館</div>
       <div class="icon">${icon}</div>
-      <div class="name">${offer.unitType}</div>
+      <div class="name">${displayName}</div>
       <div class="cost">${cost}G</div>
       ${isPurchased ? '<div class="purchased-badge">Purchased</div>' : ''}
     `;

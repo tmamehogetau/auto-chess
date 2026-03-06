@@ -61,6 +61,12 @@ interface MatchRoomControllerOptions {
   };
 }
 
+interface SpellCombatModifiers {
+  attackMultiplier: number;
+  defenseMultiplier: number;
+  attackSpeedMultiplier: number;
+}
+
 type PhaseResult = "pending" | "success" | "failed";
 
 type RoundDamageByPlayer = Partial<Record<string, number>>;
@@ -336,6 +342,8 @@ export class MatchRoomController {
 
   private readonly usedSpellIds: string[];
 
+  private readonly spellCombatModifiersByPlayer: Map<string, SpellCombatModifiers>;
+
   private readonly rumorInfluenceEligibleByPlayer: Map<string, boolean>;
 
   private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
@@ -440,6 +448,7 @@ export class MatchRoomController {
     this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
     this.declaredSpell = null;
     this.usedSpellIds = [];
+    this.spellCombatModifiersByPlayer = new Map<string, SpellCombatModifiers>();
 
     // Feature Flagに基づいて噂勢力を初期化
     this.enableRumorInfluence = FeatureFlagService.getInstance().isFeatureEnabled('enableRumorInfluence');
@@ -888,6 +897,7 @@ export class MatchRoomController {
           this.captureBattleStartHp();
           this.captureBattleInputSnapshot();
           this.declareSpell(); // スペル宣言
+          this.applyPreBattleSpellEffect();
           this.gameLoopState.transitionTo("Battle");
           this.prepDeadlineAtMs = null;
           this.battleDeadlineAtMs = nowMs + this.battleDurationMs;
@@ -2402,6 +2412,9 @@ export class MatchRoomController {
       createBattleUnit(placement, "right", index),
     );
 
+    this.applySpellCombatModifiersToUnits(leftPlayerId, leftBattleUnits);
+    this.applySpellCombatModifiersToUnits(rightPlayerId, rightBattleUnits);
+
     // 主人公を追加（選択されている場合）
     const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
     const leftHeroBattleUnit = this.createHeroBattleUnit(leftHeroId, leftPlayerId);
@@ -2889,11 +2902,92 @@ export class MatchRoomController {
       }
     }
 
+    if (spell.effect.type === "heal") {
+      if (spell.effect.target === "boss" || spell.effect.target === "all") {
+        const bossPlayerId = state.bossPlayerId;
+        if (bossPlayerId) {
+          const currentHp = state.getPlayerHp(bossPlayerId);
+          state.setPlayerHp(bossPlayerId, Math.min(100, currentHp + spell.effect.value));
+        }
+      }
+
+      if (spell.effect.target === "raid" || spell.effect.target === "all") {
+        for (const playerId of state.alivePlayerIds) {
+          if (spell.effect.target === "raid" && playerId === state.bossPlayerId) {
+            continue;
+          }
+
+          const currentHp = state.getPlayerHp(playerId);
+          state.setPlayerHp(playerId, Math.min(100, currentHp + spell.effect.value));
+        }
+      }
+    }
+
     if (!this.usedSpellIds.includes(spell.id)) {
       this.usedSpellIds.push(spell.id);
     }
 
+    this.spellCombatModifiersByPlayer.clear();
+
     // 他の効果タイプ（heal, buff, debuff）は後で実装
+  }
+
+  private applyPreBattleSpellEffect(): void {
+    const state = this.ensureStarted();
+
+    this.spellCombatModifiersByPlayer.clear();
+
+    if (!this.enableSpellCard || !this.declaredSpell) {
+      return;
+    }
+
+    const spell = this.declaredSpell;
+    if ((spell.effect.type !== "buff" && spell.effect.type !== "debuff") || !spell.effect.buffStat) {
+      return;
+    }
+
+    const targetPlayerIds = state.alivePlayerIds.filter((playerId) => {
+      if (spell.effect.target === "all") {
+        return true;
+      }
+
+      if (spell.effect.target === "boss") {
+        return playerId === state.bossPlayerId;
+      }
+
+      return playerId !== state.bossPlayerId;
+    });
+
+    for (const playerId of targetPlayerIds) {
+      const modifiers = this.spellCombatModifiersByPlayer.get(playerId) ?? {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      };
+
+      if (spell.effect.buffStat === "attack") {
+        modifiers.attackMultiplier *= spell.effect.value;
+      } else if (spell.effect.buffStat === "defense") {
+        modifiers.defenseMultiplier *= spell.effect.value;
+      } else if (spell.effect.buffStat === "attackSpeed") {
+        modifiers.attackSpeedMultiplier *= spell.effect.value;
+      }
+
+      this.spellCombatModifiersByPlayer.set(playerId, modifiers);
+    }
+  }
+
+  private applySpellCombatModifiersToUnits(playerId: string, battleUnits: BattleUnit[]): void {
+    const modifiers = this.spellCombatModifiersByPlayer.get(playerId);
+    if (!modifiers) {
+      return;
+    }
+
+    for (const battleUnit of battleUnits) {
+      battleUnit.buffModifiers.attackMultiplier *= modifiers.attackMultiplier;
+      battleUnit.buffModifiers.defenseMultiplier *= modifiers.defenseMultiplier;
+      battleUnit.buffModifiers.attackSpeedMultiplier *= modifiers.attackSpeedMultiplier;
+    }
   }
 
   /**

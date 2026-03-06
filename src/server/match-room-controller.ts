@@ -803,7 +803,7 @@ export class MatchRoomController {
 
     // Calculate active synergies
     const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
-    const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType);
+    const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
 
     const baseStatus = {
       hp: state.getPlayerHp(playerId),
@@ -1484,6 +1484,28 @@ export class MatchRoomController {
 
             // Mark offer as purchased
             bossOffer.purchased = true;
+
+            // ボスショップログを記録
+            const state = this.ensureStarted();
+            this.matchLogger?.logBossShop(
+              state.roundIndex,
+              playerId,
+              bossOffers.map((o) => {
+                const offer: { unitType: string; cost: number; isRumorUnit?: boolean } = {
+                  unitType: o.unitType,
+                  cost: o.cost,
+                };
+                if (o.isRumorUnit !== undefined) {
+                  offer.isRumorUnit = o.isRumorUnit;
+                }
+                return offer;
+              }),
+              {
+                slotIndex: bossShopBuySlotIndex,
+                unitType: bossOffer.unitType,
+                cost: bossOffer.cost,
+              },
+            );
           }
         }
       }
@@ -2163,6 +2185,7 @@ export class MatchRoomController {
   private calculateActiveSynergies(
     placements: BoardUnitPlacement[],
     heroSynergyBonusType: BoardUnitType | null = null,
+    playerId?: string, // ログ記録用
   ): { unitType: string; count: number; tier: number }[] {
     const counts: { [key in BoardUnitType]: number } = { vanguard: 0, ranger: 0, mage: 0, assassin: 0 };
 
@@ -2214,6 +2237,24 @@ export class MatchRoomController {
 
     if (calculateScarletMansionSynergy(placements)) {
       result.push({ unitType: "scarletMansion", count: 2, tier: 1 });
+    }
+
+    // シナジー発動ログを記録（playerIdが指定されている場合のみ）
+    if (playerId && this.matchLogger) {
+      const state = this.gameLoopState;
+      if (state) {
+        for (const synergy of result) {
+          if (synergy.tier > 0) {
+            this.matchLogger.logSynergyActivation(
+              state.roundIndex,
+              playerId,
+              synergy.unitType,
+              synergy.count,
+              [{ type: 'tier', value: synergy.tier }],
+            );
+          }
+        }
+      }
     }
 
     return result;
@@ -2274,10 +2315,15 @@ export class MatchRoomController {
 
   private applyPendingRoundDamage(): void {
     const state = this.ensureStarted();
+    const roundIndex = state.roundIndex;
 
     for (const [playerId, damageValue] of this.pendingRoundDamageByPlayer.entries()) {
       const currentHp = state.getPlayerHp(playerId);
-      state.setPlayerHp(playerId, currentHp - damageValue);
+      const hpBefore = currentHp;
+      const hpAfter = currentHp - damageValue;
+      state.setPlayerHp(playerId, hpAfter);
+      // HP変化ログを記録
+      this.matchLogger?.logHpChange(roundIndex, playerId, hpBefore, hpAfter, 'battle');
     }
 
     this.pendingRoundDamageByPlayer.clear();
@@ -2914,13 +2960,18 @@ export class MatchRoomController {
 
     const state = this.ensureStarted();
     const spell = this.declaredSpell;
+    const roundIndex = state.roundIndex;
 
     if (spell.effect.type === "damage") {
       if (spell.effect.target === "boss" || spell.effect.target === "all") {
         const bossPlayerId = state.bossPlayerId;
         if (bossPlayerId) {
           const currentHp = state.getPlayerHp(bossPlayerId);
-          state.setPlayerHp(bossPlayerId, currentHp - spell.effect.value);
+          const hpBefore = currentHp;
+          const hpAfter = currentHp - spell.effect.value;
+          state.setPlayerHp(bossPlayerId, hpAfter);
+          // HP変化ログを記録
+          this.matchLogger?.logHpChange(roundIndex, bossPlayerId, hpBefore, hpAfter, 'spell');
         }
       }
 
@@ -2932,9 +2983,24 @@ export class MatchRoomController {
           }
 
           const currentHp = state.getPlayerHp(playerId);
-          state.setPlayerHp(playerId, currentHp - spell.effect.value);
+          const hpBefore = currentHp;
+          const hpAfter = currentHp - spell.effect.value;
+          state.setPlayerHp(playerId, hpAfter);
+          // HP変化ログを記録
+          this.matchLogger?.logHpChange(roundIndex, playerId, hpBefore, hpAfter, 'spell');
         }
       }
+
+      // スペル効果ログを記録
+      this.matchLogger?.logSpellEffect(
+        roundIndex,
+        spell.id,
+        spell.name,
+        'damage',
+        spell.effect.target,
+        spell.effect.value,
+        spell.effect.value,
+      );
     }
 
     if (spell.effect.type === "heal") {
@@ -2942,7 +3008,11 @@ export class MatchRoomController {
         const bossPlayerId = state.bossPlayerId;
         if (bossPlayerId) {
           const currentHp = state.getPlayerHp(bossPlayerId);
-          state.setPlayerHp(bossPlayerId, Math.min(100, currentHp + spell.effect.value));
+          const hpBefore = currentHp;
+          const hpAfter = Math.min(100, currentHp + spell.effect.value);
+          state.setPlayerHp(bossPlayerId, hpAfter);
+          // HP変化ログを記録
+          this.matchLogger?.logHpChange(roundIndex, bossPlayerId, hpBefore, hpAfter, 'spell');
         }
       }
 
@@ -2953,9 +3023,24 @@ export class MatchRoomController {
           }
 
           const currentHp = state.getPlayerHp(playerId);
-          state.setPlayerHp(playerId, Math.min(100, currentHp + spell.effect.value));
+          const hpBefore = currentHp;
+          const hpAfter = Math.min(100, currentHp + spell.effect.value);
+          state.setPlayerHp(playerId, hpAfter);
+          // HP変化ログを記録
+          this.matchLogger?.logHpChange(roundIndex, playerId, hpBefore, hpAfter, 'spell');
         }
       }
+
+      // スペル効果ログを記録
+      this.matchLogger?.logSpellEffect(
+        roundIndex,
+        spell.id,
+        spell.name,
+        'heal',
+        spell.effect.target,
+        spell.effect.value,
+        spell.effect.value,
+      );
     }
 
     if (!this.usedSpellIds.includes(spell.id)) {
@@ -2964,7 +3049,7 @@ export class MatchRoomController {
 
     this.spellCombatModifiersByPlayer.clear();
 
-    // 他の効果タイプ（heal, buff, debuff）は後で実装
+    // 他の効果タイプ（buff, debuff）は後で実装
   }
 
   private applyPreBattleSpellEffect(): void {

@@ -120,6 +120,62 @@ export interface PlayerActionLog {
   };
 }
 
+// スペル効果ログ
+export interface SpellEffectLog {
+  matchId: string;
+  roundIndex: number;
+  timestamp: number;
+  declaredSpellId: string;
+  spellName: string;
+  effectType: 'damage' | 'heal' | 'buff' | 'debuff';
+  target: 'boss' | 'raid' | 'all';
+  value: number;
+  actualEffect: number; // 実際に適用された値
+}
+
+// ボスショップログ
+export interface BossShopLog {
+  matchId: string;
+  roundIndex: number;
+  playerId: string;
+  timestamp: number;
+  offers: Array<{
+    unitType: string;
+    cost: number;
+    isRumorUnit?: boolean;
+  }>;
+  purchased?: {
+    slotIndex: number;
+    unitType: string;
+    cost: number;
+  };
+}
+
+// シナジー発動ログ
+export interface SynergyActivationLog {
+  matchId: string;
+  roundIndex: number;
+  playerId: string;
+  timestamp: number;
+  synergyType: string; // 例: 'scarletMansion'
+  unitCount: number;
+  effects: Array<{
+    type: string;
+    value: number;
+  }>;
+}
+
+// HP変化ログ
+export interface HpChangeLog {
+  matchId: string;
+  roundIndex: number;
+  playerId: string;
+  hpBefore: number;
+  hpAfter: number;
+  hpChange: number; // マイナスは減少
+  reason: 'battle' | 'spell' | 'other';
+}
+
 /**
  * マッチロガー
  * 構造化ログを収集・出力
@@ -131,6 +187,10 @@ export class MatchLogger {
   private playerStats: Map<string, PlayerMatchSummaryBuilder> = new Map();
   private roundLogs: RoundSummaryLog[] = [];
   private actionLogs: PlayerActionLog[] = [];
+  private spellEffectLogs: SpellEffectLog[] = [];
+  private bossShopLogs: BossShopLog[] = [];
+  private synergyActivationLogs: SynergyActivationLog[] = [];
+  private hpChangeLogs: HpChangeLog[] = [];
 
   constructor(matchId: string, roomId: string) {
     this.matchId = matchId;
@@ -421,6 +481,104 @@ export class MatchLogger {
       type: "match_summary",
       data: summary,
     }));
+  }
+
+  // スペル効果ログ
+  logSpellEffect(
+    roundIndex: number,
+    declaredSpellId: string,
+    spellName: string,
+    effectType: SpellEffectLog['effectType'],
+    target: SpellEffectLog['target'],
+    value: number,
+    actualEffect: number,
+  ): void {
+    this.spellEffectLogs.push({
+      matchId: this.matchId,
+      roundIndex,
+      timestamp: Date.now(),
+      declaredSpellId,
+      spellName,
+      effectType,
+      target,
+      value,
+      actualEffect,
+    });
+  }
+
+  // ボスショップログ
+  logBossShop(
+    roundIndex: number,
+    playerId: string,
+    offers: BossShopLog['offers'],
+    purchased?: BossShopLog['purchased'],
+  ): void {
+    const log: BossShopLog = {
+      matchId: this.matchId,
+      roundIndex,
+      playerId,
+      timestamp: Date.now(),
+      offers,
+    };
+    if (purchased !== undefined) {
+      log.purchased = purchased;
+    }
+    this.bossShopLogs.push(log);
+  }
+
+  // シナジー発動ログ
+  logSynergyActivation(
+    roundIndex: number,
+    playerId: string,
+    synergyType: string,
+    unitCount: number,
+    effects: SynergyActivationLog['effects'],
+  ): void {
+    this.synergyActivationLogs.push({
+      matchId: this.matchId,
+      roundIndex,
+      playerId,
+      timestamp: Date.now(),
+      synergyType,
+      unitCount,
+      effects,
+    });
+  }
+
+  // HP変化ログ
+  logHpChange(
+    roundIndex: number,
+    playerId: string,
+    hpBefore: number,
+    hpAfter: number,
+    reason: HpChangeLog['reason'],
+  ): void {
+    this.hpChangeLogs.push({
+      matchId: this.matchId,
+      roundIndex,
+      playerId,
+      hpBefore,
+      hpAfter,
+      hpChange: hpAfter - hpBefore,
+      reason,
+    });
+  }
+
+  // ゲッターメソッド
+  getSpellEffectLogs(): SpellEffectLog[] {
+    return [...this.spellEffectLogs];
+  }
+
+  getBossShopLogs(): BossShopLog[] {
+    return [...this.bossShopLogs];
+  }
+
+  getSynergyActivationLogs(): SynergyActivationLog[] {
+    return [...this.synergyActivationLogs];
+  }
+
+  getHpChangeLogs(): HpChangeLog[] {
+    return [...this.hpChangeLogs];
   }
 }
 

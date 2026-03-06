@@ -17,6 +17,12 @@
         --gold: #ffd700;
         --text-color: #eee;
         --border-color: #2a2a4a;
+        --scarlet-badge-bg: rgba(192, 57, 43, 0.24);
+        --scarlet-text: #ffb3ad;
+        --scarlet-accent: #f5c16c;
+        --scarlet-accent-soft: #ffd6d1;
+        --scarlet-body-text: #d7e3f4;
+        --scarlet-muted-text: #9fb2c8;
       }
 
       * {
@@ -845,8 +851,8 @@
 
       .shop-card .scarlet-badge {
         top: 6px;
-        background: rgba(192, 57, 43, 0.24);
-        color: #ffb3ad;
+        background: var(--scarlet-badge-bg);
+        color: var(--scarlet-text);
       }
 
       .shop-card .purchased-badge {
@@ -876,7 +882,7 @@
 
       .shop-card .boss-shop-role {
         font-size: 10px;
-        color: #f5c16c;
+        color: var(--scarlet-accent);
         margin-bottom: 4px;
       }
 
@@ -888,14 +894,14 @@
       .shop-card .boss-shop-skill {
         font-size: 10px;
         line-height: 1.3;
-        color: #d7e3f4;
+        color: var(--scarlet-body-text);
         margin-top: 4px;
       }
 
       .shop-card .boss-shop-flavor {
         font-size: 9px;
         line-height: 1.3;
-        color: #9fb2c8;
+        color: var(--scarlet-muted-text);
         margin-top: 4px;
         font-style: italic;
       }
@@ -904,7 +910,7 @@
         margin-top: 4px;
         font-size: 10px;
         line-height: 1.3;
-        color: #ffd6d1;
+        color: var(--scarlet-accent-soft);
       }
 
       .shop-card .type {

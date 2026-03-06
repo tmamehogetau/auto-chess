@@ -27,6 +27,8 @@ describe("scarlet synergy ui contract", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 
     expect(html.includes(".scarlet-synergy-description")).toBe(true);
+    expect(html.includes("--scarlet-accent")).toBe(true);
+    expect(html.includes("var(--scarlet-accent-soft)")).toBe(true);
   });
 
   test("manual check uses consolidated scarlet mansion data object", () => {

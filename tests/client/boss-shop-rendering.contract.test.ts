@@ -30,4 +30,11 @@ describe("boss shop rendering contract", () => {
     expect(source.includes("紅魔館の門番。悠々自適に勤務中。")).toBe(true);
     expect(source.includes("boss-shop-flavor")).toBe(true);
   });
+
+  test("boss shop scarlet visuals use shared scarlet css variables", () => {
+    const html = readFileSync(resolve(process.cwd(), "src/client/index.html"), "utf-8");
+
+    expect(html.includes("var(--scarlet-badge-bg)")).toBe(true);
+    expect(html.includes("var(--scarlet-text)")).toBe(true);
+  });
 });

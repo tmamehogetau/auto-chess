@@ -984,7 +984,7 @@ describe("SharedBoardRoom integration", () => {
     let sourceCellIndex = -1;
 
     for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === client.sessionId && cell.unitId !== "") {
+      if (cell.ownerId === mappedGamePlayerId && cell.unitId !== "") {
         unitId = cell.unitId;
         sourceCellIndex = cell.index;
         break;

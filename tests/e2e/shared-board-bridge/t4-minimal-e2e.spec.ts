@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
@@ -8,6 +8,7 @@ import { FeatureFlagService } from "../../../src/server/feature-flag-service";
 import { withFlags, FLAG_CONFIGURATIONS } from "../../server/feature-flag-test-helper";
 import { waitForCondition } from "./helpers/wait";
 import { SERVER_MESSAGE_TYPES } from "../../../src/shared/room-messages";
+import { combatCellToRaidBoardIndex } from "../../../src/shared/board-geometry";
 
 interface TestClient {
   sessionId: string;
@@ -133,6 +134,8 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
       await withFlags(
         { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableSharedBoardShadow: true },
         async () => {
+          const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
           // 1. Setup: SharedBoardRoom作成
           const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
 
@@ -147,6 +150,7 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
 
           // RoundStateリスナー登録 + Ready
           for (const client of gameClients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {});
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
             client.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});
             client.send("ready", { ready: true });
@@ -168,39 +172,61 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
             10_000,
           );
 
-          // 4. Action: 3プレイヤーをSharedBoardRoomに接続して配置変更
-          const targetPlayers = gameClients.slice(0, 3);
+          const gameRoomWithController = gameRoom as unknown as {
+            controller?: {
+              getBoardPlacementsForPlayer: (playerId: string) => Array<{ cell: number; unitType: string }>;
+            };
+          };
 
-          for (const gameClient of targetPlayers) {
-            const sbClient = await joinAsActivePlayer(sharedBoardRoom, gameClient.sessionId);
-            const ownedUnitId = findOwnedUnitId(sharedBoardRoom, sbClient.sessionId);
+          const seededPlacements = [
+            [{ cell: 0, unitType: "vanguard" as const }],
+            [{ cell: 1, unitType: "ranger" as const }],
+            [{ cell: 2, unitType: "mage" as const }],
+          ];
 
-            // ユニットを選択
-            sbClient.send("shared_select_unit", { unitId: ownedUnitId });
-            await new Promise((resolve) => setTimeout(resolve, 50));
-
-            // 自分が所有する現在セルへ再配置（CIで衝突しない安定化パス）
-            const targetCell = findOwnedUnitCellIndex(
-              sharedBoardRoom,
-              sbClient.sessionId,
-              ownedUnitId,
-            );
-            const placeResult = await placeUnit(sbClient, ownedUnitId, targetCell);
-            expect(placeResult.accepted).toBe(true);
-
-            // Bridge経由でGameRoomに反映されることを確認
-            await waitForCondition(
-              () => {
-                const player = gameRoom.state.players.get(gameClient.sessionId);
-                return player !== undefined && player.boardUnitCount > 0;
-              },
-              3_000,
-            );
+          for (const [index, gameClient] of gameClients.slice(0, 3).entries()) {
+            gameClient.send("prep_command", {
+              cmdSeq: 1,
+              boardPlacements: seededPlacements[index],
+            });
           }
 
+          await waitForCondition(
+            () => gameClients.slice(0, 3).every((client, index) => {
+              const placements = gameRoomWithController.controller?.getBoardPlacementsForPlayer(client.sessionId) ?? [];
+              return placements[0]?.unitType === seededPlacements[index]?.[0]?.unitType;
+            }),
+            3_000,
+          );
+
+          // 4. Action: 3プレイヤーをSharedBoardRoomに接続して配置変更
+          const targetPlayers = gameClients.slice(0, 3);
+          const editedPlayer = targetPlayers[0]!;
+          const editedSbClient = await joinAsActivePlayer(sharedBoardRoom, editedPlayer.sessionId);
+          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, editedPlayer.sessionId);
+
+          editedSbClient.send("shared_select_unit", { unitId: ownedUnitId });
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          const movedCombatCell = 4;
+          const movedRaidCell = combatCellToRaidBoardIndex(movedCombatCell);
+          const placeResult = await placeUnit(editedSbClient, ownedUnitId, movedRaidCell);
+          expect(placeResult.accepted).toBe(true);
+
+          await waitForCondition(
+            () => {
+              const placements = gameRoomWithController.controller?.getBoardPlacementsForPlayer(editedPlayer.sessionId) ?? [];
+              return placements.some((placement) => placement.cell === movedCombatCell && placement.unitType === "vanguard");
+            },
+            3_000,
+          );
+
           // 5. 全員が配置完了したら準備完了
-          for (const client of gameClients) {
-            client.send("prep_command", { ready: true });
+          for (const [index, client] of gameClients.entries()) {
+            client.send("prep_command", {
+              cmdSeq: index + 2,
+              ready: true,
+            });
           }
 
           // 6. Battleフェーズへの遷移を待機
@@ -219,10 +245,39 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
             expect(player!.lastBattleResult.opponentId).not.toBe("");
           }
 
+          const battleTraces = logSpy.mock.calls
+            .map((call) => call[0])
+            .filter((entry): entry is string => typeof entry === "string")
+            .filter((entry) => entry.includes('"type":"battle_trace"'))
+            .map((entry) => JSON.parse(entry) as {
+              leftPlayerId: string;
+              rightPlayerId: string;
+              leftPlacements: Array<{ cell: number; unitType: string }>;
+              rightPlacements: Array<{ cell: number; unitType: string }>;
+            });
+
+          const editedPlayerTrace = battleTraces.find(
+            (trace) => trace.leftPlayerId === editedPlayer.sessionId || trace.rightPlayerId === editedPlayer.sessionId,
+          );
+
+          expect(editedPlayerTrace).toBeDefined();
+
+          const editedPlacements = editedPlayerTrace?.leftPlayerId === editedPlayer.sessionId
+            ? editedPlayerTrace.leftPlacements
+            : editedPlayerTrace?.rightPlacements ?? [];
+
+          expect(editedPlacements).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ cell: movedCombatCell, unitType: "vanguard" }),
+            ]),
+          );
+
           // 9. 次のPrepへの遷移を確認
           await waitForCondition(() => gameRoom.state.phase === "Prep", 10_000);
           expect(gameRoom.state.phase).toBe("Prep");
           expect(gameRoom.state.roundIndex).toBe(2); // R2から開始
+
+          logSpy.mockRestore();
         },
       );
     },

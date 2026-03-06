@@ -171,7 +171,7 @@ async function placeUnit(
           // 4. Action: 1人目のプレイヤーをSharedBoardRoomに接続
           const targetPlayerId = gameClients[0]!.sessionId;
           const sbClient = await joinAsActivePlayer(sharedBoardRoom, targetPlayerId);
-          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, sbClient.sessionId);
+          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, targetPlayerId);
 
           // ユニットを選択
           sbClient.send("shared_select_unit", { unitId: ownedUnitId });
@@ -184,7 +184,7 @@ async function placeUnit(
           // 6. Verify: SharedBoardRoomで配置が変更されたこと
           const targetCell = sharedBoardRoom.state.cells.get("5");
           expect(targetCell?.unitId).toBe(ownedUnitId);
-          expect(targetCell?.ownerId).toBe(sbClient.sessionId);
+          expect(targetCell?.ownerId).toBe(targetPlayerId);
 
           // 7. Verify: Bridgeがイベントを受け取ったこと（少し待機）
           await new Promise((resolve) => setTimeout(resolve, 200));
@@ -270,7 +270,7 @@ async function placeUnit(
           // 4. Action: プレイヤーをSharedBoardRoomに接続して操作
           const targetPlayerId = gameClients[0]!.sessionId;
           const sbClient = await joinAsActivePlayer(sharedBoardRoom, targetPlayerId);
-          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, sbClient.sessionId);
+          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, targetPlayerId);
 
           sbClient.send("shared_select_unit", { unitId: ownedUnitId });
           await new Promise((resolve) => setTimeout(resolve, 100));

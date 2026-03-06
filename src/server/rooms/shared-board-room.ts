@@ -527,7 +527,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.gamePlayerIdBySharedSessionId.delete(playerId);
 
     for (const cell of this.state.cells.values()) {
-      if (cell.ownerId === playerId) {
+      if (cell.ownerId === this.resolveOwnerId(playerId)) {
         cell.unitId = "";
         cell.ownerId = "";
       }
@@ -559,6 +559,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private placeInitialTokenForPlayer(playerId: string, slotIndex: number): void {
     const unitId = this.unitIdByPlayer.get(playerId) ?? `unit-${playerId.slice(0, 6)}`;
+    const ownerId = this.resolveOwnerId(playerId);
     this.unitIdByPlayer.set(playerId, unitId);
 
     const preferredCell = (this.boardHeight - 1) * this.boardWidth + slotIndex;
@@ -575,7 +576,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }
 
     cell.unitId = unitId;
-    cell.ownerId = playerId;
+    cell.ownerId = ownerId;
   }
 
   private findFirstAvailableCell(preferredCell: number): number | null {
@@ -613,8 +614,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   }
 
   private ownsUnit(playerId: string, unitId: string): boolean {
+    const ownerId = this.resolveOwnerId(playerId);
+
     for (const cell of this.state.cells.values()) {
-      if (cell.ownerId === playerId && cell.unitId === unitId) {
+      if (cell.ownerId === ownerId && cell.unitId === unitId) {
         return true;
       }
     }
@@ -727,10 +730,12 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return;
     }
 
+    const ownerId = this.resolveOwnerId(playerId);
+
     // 現在のセル状態を収集（ユニットがあるセルのみ）
     const cellsWithUnits: SharedBoardCellState[] = [];
     for (const cell of this.state.cells.values()) {
-      if (cell.unitId && cell.ownerId === playerId) {
+      if (cell.unitId && cell.ownerId === ownerId) {
         cellsWithUnits.push(cell);
       }
     }
@@ -743,6 +748,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   }
 
   private resolveBridgePlayerId(sharedPlayerId: string): string {
+    return this.gamePlayerIdBySharedSessionId.get(sharedPlayerId) ?? sharedPlayerId;
+  }
+
+  private resolveOwnerId(sharedPlayerId: string): string {
     return this.gamePlayerIdBySharedSessionId.get(sharedPlayerId) ?? sharedPlayerId;
   }
 

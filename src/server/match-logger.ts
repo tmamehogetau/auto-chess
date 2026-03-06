@@ -61,6 +61,8 @@ export interface RoundSummaryLog {
   durationMs: number;
   battles: BattleSummaryLog[];
   eliminations: string[];
+  rumorFactions?: string[];
+  guaranteedRumorSlotApplied?: boolean;
 }
 
 export interface BattleSummaryLog {
@@ -293,6 +295,46 @@ export class MatchLogger {
       }
       roundLog.timestamp = timestamp;
     }
+  }
+
+  logRumorInfluence(
+    roundIndex: number,
+    rumorFactions: string[],
+    guaranteedRumorSlotApplied: boolean,
+  ): void {
+    let roundLog = this.roundLogs.find((log) => log.roundIndex === roundIndex);
+
+    if (!roundLog) {
+      roundLog = {
+        matchId: this.matchId,
+        roundIndex,
+        phase: "Battle",
+        timestamp: Date.now(),
+        durationMs: 0,
+        battles: [],
+        eliminations: [],
+      };
+      this.roundLogs.push(roundLog);
+    }
+
+    roundLog.rumorFactions = [...rumorFactions];
+    roundLog.guaranteedRumorSlotApplied = guaranteedRumorSlotApplied;
+  }
+
+  getRoundLogs(): RoundSummaryLog[] {
+    return this.roundLogs.map((roundLog) => {
+      const clonedRoundLog: RoundSummaryLog = {
+        ...roundLog,
+        battles: [...roundLog.battles],
+        eliminations: [...roundLog.eliminations],
+      };
+
+      if (roundLog.rumorFactions) {
+        clonedRoundLog.rumorFactions = [...roundLog.rumorFactions];
+      }
+
+      return clonedRoundLog;
+    });
   }
 
   updatePlayerHp(playerId: string, hp: number): void {

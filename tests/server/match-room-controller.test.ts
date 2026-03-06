@@ -10,6 +10,18 @@ const controllerOptions = {
   eliminationDurationMs: 2_000,
 };
 
+const advanceRoundWithMinimalDurations = (
+  controller: MatchRoomController,
+  startTimeMs: number,
+): number => {
+  controller.advanceByTime(startTimeMs + 1);
+  controller.advanceByTime(startTimeMs + 2);
+  controller.advanceByTime(startTimeMs + 3);
+  controller.advanceByTime(startTimeMs + 4);
+
+  return startTimeMs + 4;
+};
+
 describe("MatchRoomController", () => {
   test("4人全員Readyなら締切前でも試合開始できる", () => {
     const controller = new MatchRoomController(
@@ -706,6 +718,113 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(49_000);
 
     expect(controller.phase).toBe("End");
+  });
+
+  test("phase expansion有効時はR11終了後もEndせずR12 Prepへ進む", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      0,
+      {
+        readyAutoStartMs: 1,
+        prepDurationMs: 1,
+        battleDurationMs: 1,
+        settleDurationMs: 1,
+        eliminationDurationMs: 1,
+        featureFlags: {
+          enablePhaseExpansion: true,
+        },
+      },
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(0);
+
+    let nowMs = 0;
+
+    for (let completedRounds = 0; completedRounds < 10; completedRounds += 1) {
+      nowMs = advanceRoundWithMinimalDurations(controller, nowMs);
+    }
+
+    expect(controller.phase).toBe("Prep");
+    expect(controller.roundIndex).toBe(11);
+
+    nowMs = advanceRoundWithMinimalDurations(controller, nowMs);
+
+    expect(controller.phase).toBe("Prep");
+    expect(controller.roundIndex).toBe(12);
+  });
+
+  test("phase expansion有効時はR12終了後にEndへ遷移する", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      0,
+      {
+        readyAutoStartMs: 1,
+        prepDurationMs: 1,
+        battleDurationMs: 1,
+        settleDurationMs: 1,
+        eliminationDurationMs: 1,
+        featureFlags: {
+          enablePhaseExpansion: true,
+        },
+      },
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(0);
+
+    let nowMs = 0;
+
+    for (let completedRounds = 0; completedRounds < 12; completedRounds += 1) {
+      nowMs = advanceRoundWithMinimalDurations(controller, nowMs);
+    }
+
+    expect(controller.phase).toBe("End");
+    expect(controller.roundIndex).toBe(12);
+  });
+
+  test("phase expansion有効時のR12 Prepではphase HP targetが0になる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      0,
+      {
+        readyAutoStartMs: 1,
+        prepDurationMs: 1,
+        battleDurationMs: 1,
+        settleDurationMs: 1,
+        eliminationDurationMs: 1,
+        featureFlags: {
+          enablePhaseExpansion: true,
+        },
+      },
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(0);
+
+    let nowMs = 0;
+
+    for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+      nowMs = advanceRoundWithMinimalDurations(controller, nowMs);
+    }
+
+    const phaseProgress = controller.getPhaseProgress();
+
+    expect(controller.phase).toBe("Prep");
+    expect(controller.roundIndex).toBe(12);
+    expect(phaseProgress.targetHp).toBe(0);
+    expect(phaseProgress.damageDealt).toBe(0);
+    expect(phaseProgress.result).toBe("pending");
+    expect(phaseProgress.completionRate).toBe(0);
   });
 
   test("Battle終了時にpendingダメージがHPへ反映される", () => {

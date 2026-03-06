@@ -4,6 +4,7 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
 import { GameRoom } from "../../src/server/rooms/game-room";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -170,6 +171,45 @@ describe("Full Game Simulation (R1-R8)", () => {
       expect(phases).toContain("Elimination");
     },
     15_000,
+  );
+
+  test(
+    "phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する",
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
+        const serverRoom = await testServer.createRoom<GameRoom>("game");
+        const clients = await Promise.all([
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+        ]);
+
+        for (const client of clients) {
+          client.onMessage(
+            SERVER_MESSAGE_TYPES.ROUND_STATE,
+            (_message: unknown) => {},
+          );
+        }
+
+        for (const client of clients) {
+          client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+        }
+
+        await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+        expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
+
+        await waitForCondition(
+          () => serverRoom.state.phase === "End" && serverRoom.state.roundIndex === 12,
+          60_000,
+        );
+
+        expect(serverRoom.state.phase).toBe("End");
+        expect(serverRoom.state.roundIndex).toBe(12);
+      });
+    },
+    65_000,
   );
 
   test(

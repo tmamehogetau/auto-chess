@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { getRumorUnitForRound, RUMOR_UNITS_BY_ROUND } from "../../src/data/rumor-units";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
+import { MatchLogger } from "../../src/server/match-logger";
 
 describe("Rumor Influence Integration", () => {
   let controller: MatchRoomController;
@@ -135,6 +136,33 @@ describe("Rumor Influence Integration", () => {
 
       // 注: フェーズ成功/失敗は戦闘ダメージに依存するため、
       // 実際のテストではより詳細なシミュレーションが必要
+    });
+
+    it("フェーズ成功時に噂勢力ログが記録される", () => {
+      const logger = new MatchLogger("match-rumor", "room-rumor");
+      controller.setMatchLogger(logger);
+
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      controller.setPendingRoundDamage({
+        [BOSS]: 300,
+        [RAID1]: 300,
+        [RAID2]: 300,
+        [RAID3]: 300,
+      });
+
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      const roundLog = logger.getRoundLogs().find((log) => log.roundIndex === 1);
+
+      expect(roundLog?.guaranteedRumorSlotApplied).toBe(true);
+      expect(roundLog?.rumorFactions).toEqual([getRumorUnitForRound(2)?.unitType]);
     });
   });
 

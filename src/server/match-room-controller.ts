@@ -100,6 +100,7 @@ const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   9: 2100,
   10: 2400,
   11: 2700,
+  12: 0,
 };
 
 const ITEM_SHOP_SIZE = 5;
@@ -926,7 +927,7 @@ export class MatchRoomController {
         ) {
           this.eliminationDeadlineAtMs = null;
 
-          const maxRounds = this.featureFlags.enablePhaseExpansion ? 11 : 8;
+          const maxRounds = this.featureFlags.enablePhaseExpansion ? 12 : 8;
           if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === maxRounds) {
             this.gameLoopState.transitionTo("End");
             return true;
@@ -2265,6 +2266,21 @@ export class MatchRoomController {
     this.phaseResult = totalDamage >= targetHp ? "success" : "failed";
     this.phaseCompletionRate = targetHp > 0 ? totalDamage / targetHp : 0;
 
+    const nextRoundRumorUnit = getRumorUnitForRound(state.roundIndex + 1);
+    const rumorFactions = nextRoundRumorUnit ? [nextRoundRumorUnit.unitType] : [];
+    const guaranteedRumorSlotApplied =
+      this.enableRumorInfluence &&
+      this.phaseResult === "success" &&
+      rumorFactions.length > 0;
+
+    if (this.matchLogger) {
+      this.matchLogger.logRumorInfluence(
+        state.roundIndex,
+        rumorFactions,
+        guaranteedRumorSlotApplied,
+      );
+    }
+
     // 噂勢力: フェーズ成功時、全レイドプレイヤーを次ラウンド eligible に設定
     if (this.enableRumorInfluence && this.phaseResult === "success") {
       const bossPlayerId = state.bossPlayerId;
@@ -2293,7 +2309,7 @@ export class MatchRoomController {
       return PHASE_HP_TARGET_BY_ROUND[roundIndex];
     }
 
-    return PHASE_HP_TARGET_BY_ROUND[11] ?? 1800;
+    return PHASE_HP_TARGET_BY_ROUND[12] ?? 0;
   }
 
   private resolveMissingRoundDamage(): void {

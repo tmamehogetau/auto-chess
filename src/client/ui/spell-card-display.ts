@@ -3,6 +3,7 @@
  * Phase2 P1-1: スペルカード最小版
  */
 
+import { SPELL_CARDS } from "../../data/spell-cards";
 import type { RoomMessageSubscriber } from "../round-state-receiver";
 
 /**
@@ -61,14 +62,17 @@ export class SpellCardDisplayApp {
 
   constructor(displayTarget: SpellCardDisplayTarget) {
     this.displayTarget = displayTarget;
-    this.spellCardMap = new Map([
-      ['sdl-1', {
-        id: 'sdl-1',
-        name: 'スカーレットデスレーザー',
-        description: 'レイドメンバー全員に50ダメージを与える',
-        roundRange: [1, 4],
-      }],
-    ]);
+    this.spellCardMap = new Map(
+      SPELL_CARDS.map((spellCard) => [
+        spellCard.id,
+        {
+          id: spellCard.id,
+          name: spellCard.name,
+          description: spellCard.description,
+          roundRange: spellCard.roundRange,
+        },
+      ]),
+    );
   }
 
   public start(subscriber: RoomMessageSubscriber): void {

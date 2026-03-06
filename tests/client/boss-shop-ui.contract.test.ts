@@ -24,4 +24,13 @@ describe("boss shop ui contract", () => {
       /data-boss-shop-section[\s\S]*data-boss-shop-slot="0"[\s\S]*data-boss-shop-slot="1"/.test(html),
     ).toBe(true);
   });
+
+  test("boss専用ショップのグリッドがセクション内に配置される", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    // data-boss-shop-section の中に data-boss-shop-grid が含まれているか
+    expect(
+      /data-boss-shop-section[^>]*>[\s\S]*?<[^>]*data-boss-shop-grid/.test(html),
+    ).toBe(true);
+  });
 });

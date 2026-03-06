@@ -179,6 +179,8 @@ const SCARLET_MANSION_CARD_DETAILS = {
   },
 };
 
+const SCARLET_MANSION_SYNERGY_DESCRIPTION = 'HP70%以上でATK+10% / 吸血';
+
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -1439,7 +1441,7 @@ function updateSynergyDisplay(synergies) {
     scarletMansion: '紅魔館',
   };
   const descriptions = {
-    scarletMansion: 'HP70%以上でATK+10% / 吸血',
+    scarletMansion: SCARLET_MANSION_SYNERGY_DESCRIPTION,
   };
   
   for (const syn of synergies) {

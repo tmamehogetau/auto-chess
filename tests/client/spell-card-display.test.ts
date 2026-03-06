@@ -95,7 +95,7 @@ describe("SpellCardDisplayApp", () => {
     const subscriber = new FakeSubscriber();
 
     app.start(subscriber);
-    subscriber.emitStateChange({ usedSpellIds: ["sdl-1", "sdl-3"] });
+    subscriber.emitStateChange({ usedSpellIds: ["instant-1", "instant-3"] });
 
     expect(displayTarget.usedSpellCards).toEqual([
       {

@@ -148,11 +148,16 @@ const HERO_ROLE_ICONS = {
 
 // Spell cards (client-side copy)
 const SPELL_CARDS = [
-  {
-    id: 'sdl-1',
-    name: 'スカーレットデスレーザー',
-    description: 'レイドメンバー全員に50ダメージを与える',
-  },
+  { id: 'instant-1', name: '紅符「スカーレットシュート」', description: 'レイドメンバー全員に50ダメージを与える' },
+  { id: 'instant-2', name: '必殺「ハートブレイク」', description: 'レイドメンバー全員に65ダメージを与える' },
+  { id: 'instant-3', name: '神槍「スピア・ザ・グングニル」', description: 'レイドメンバー全員に80ダメージを与える' },
+  { id: 'area-1', name: '紅符「不夜城レッド」', description: 'レイドメンバー全員に40ダメージを与える' },
+  { id: 'area-2', name: '紅魔「スカーレットデビル」', description: 'レイドメンバー全員に55ダメージを与える' },
+  { id: 'area-3', name: '魔符「全世界ナイトメア」', description: 'レイドメンバー全員に70ダメージを与える' },
+  { id: 'rush-1', name: '神鬼「レミリアストーカー」', description: 'レイドメンバー全員に45ダメージを与える' },
+  { id: 'rush-2', name: '夜符「デーモンキングクレイドル」', description: 'レイドメンバー全員に60ダメージを与える' },
+  { id: 'rush-3', name: '夜王「ドラキュラクレイドル」', description: 'レイドメンバー全員に75ダメージを与える' },
+  { id: 'last-word', name: '「紅色の幻想郷」', description: 'レイドメンバー全員に100ダメージを与える' },
 ];
 
 const SCARLET_MANSION_DATA = {
@@ -194,9 +199,10 @@ const gameContainer = document.querySelector("[data-game-container]");
 const roundDisplay = document.querySelector("[data-round-display]");
 const goldDisplay = document.querySelector("[data-gold-display]");
 const hpDisplay = document.querySelector("[data-hp-display]");
-const levelDisplay = document.querySelector("[data-level-display]");
-const xpDisplay = document.querySelector("[data-xp-display]");
-const phaseDisplay = document.querySelector("[data-phase-display]");
+  const levelDisplay = document.querySelector("[data-level-display]");
+  const xpDisplay = document.querySelector("[data-xp-display]");
+  const dominationCountDisplay = document.querySelector("[data-domination-count-display]");
+  const phaseDisplay = document.querySelector("[data-phase-display]");
 const readyCountDisplay = document.querySelector("[data-ready-count]");
 const phaseHpSection = document.querySelector("[data-phase-hp-section]");
 const phaseHpValue = document.querySelector("[data-phase-hp-value]");
@@ -523,6 +529,9 @@ async function connect() {
       updatePhaseDisplay(currentPhase);
       if (typeof message?.roundIndex === "number") {
         roundDisplay.textContent = message.roundIndex + 1;
+      }
+      if (typeof message?.dominationCount === "number") {
+        dominationCountDisplay.textContent = `${message.dominationCount}/5`;
       }
       updatePhaseHpProgressFromMessage(message);
       syncButtonAvailability();

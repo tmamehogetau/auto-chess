@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { MatchRoomController } from "../../src/server/match-room-controller";
-import { SPELL_CARDS, getAvailableSpellsForRound } from "../../src/data/spell-cards";
+import { SPELL_CARDS, getAvailableSpellsForRound, getSpellCardSetForRound } from "../../src/data/spell-cards";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
 
 describe("SpellCard Integration", () => {
@@ -49,47 +49,96 @@ describe("SpellCard Integration", () => {
     });
 
     it("紅符「スカーレットシュート」が定義されている", () => {
-      const spell = SPELL_CARDS.find((s) => s.id === "sdl-1");
+      const spell = SPELL_CARDS.find((s) => s.id === "instant-1");
       expect(spell).toBeDefined();
       expect(spell?.name).toBe("紅符「スカーレットシュート」");
       expect(spell?.roundRange).toEqual([1, 4]);
+      expect(spell?.category).toBe("instantLaser");
       expect(spell?.effect.type).toBe("damage");
       expect(spell?.effect.target).toBe("raid");
       expect(spell?.effect.value).toBe(50);
     });
 
     it("必殺「ハートブレイク」が定義されている", () => {
-      const spell = SPELL_CARDS.find((s) => s.id === "sdl-2");
+      const spell = SPELL_CARDS.find((s) => s.id === "instant-2");
       expect(spell).toBeDefined();
       expect(spell?.name).toBe("必殺「ハートブレイク」");
       expect(spell?.roundRange).toEqual([5, 8]);
+      expect(spell?.category).toBe("instantLaser");
       expect(spell?.effect.type).toBe("damage");
       expect(spell?.effect.target).toBe("raid");
       expect(spell?.effect.value).toBe(65);
     });
 
     it("神槍「スピア・ザ・グングニル」が定義されている", () => {
-      const spell = SPELL_CARDS.find((s) => s.id === "sdl-3");
+      const spell = SPELL_CARDS.find((s) => s.id === "instant-3");
       expect(spell).toBeDefined();
       expect(spell?.name).toBe("神槍「スピア・ザ・グングニル」");
       expect(spell?.roundRange).toEqual([9, 11]);
+      expect(spell?.category).toBe("instantLaser");
       expect(spell?.effect.type).toBe("damage");
       expect(spell?.effect.target).toBe("raid");
       expect(spell?.effect.value).toBe(80);
     });
 
     it("「紅色の幻想郷」が定義されている", () => {
-      const spell = SPELL_CARDS.find((s) => s.id === "sdl-4");
+      const spell = SPELL_CARDS.find((s) => s.id === "last-word");
       expect(spell).toBeDefined();
       expect(spell?.name).toBe("「紅色の幻想郷」");
       expect(spell?.roundRange).toEqual([12, 12]);
+      expect(spell?.category).toBe("lastWord");
       expect(spell?.effect.type).toBe("damage");
       expect(spell?.effect.target).toBe("raid");
       expect(spell?.effect.value).toBe(100);
     });
 
+    // 追加のスペルカード定義確認テスト
+    it("全10種のスペルカードが定義されている", () => {
+      expect(SPELL_CARDS.length).toBe(10);
+    });
+
+    it("範囲攻撃系スペルが定義されている", () => {
+      const area1 = SPELL_CARDS.find((s) => s.id === "area-1");
+      expect(area1).toBeDefined();
+      expect(area1?.name).toBe("紅符「不夜城レッド」");
+      expect(area1?.category).toBe("areaAttack");
+      expect(area1?.effect.value).toBe(40);
+
+      const area2 = SPELL_CARDS.find((s) => s.id === "area-2");
+      expect(area2).toBeDefined();
+      expect(area2?.name).toBe("紅魔「スカーレットデビル」");
+      expect(area2?.category).toBe("areaAttack");
+      expect(area2?.effect.value).toBe(55);
+
+      const area3 = SPELL_CARDS.find((s) => s.id === "area-3");
+      expect(area3).toBeDefined();
+      expect(area3?.name).toBe("魔符「全世界ナイトメア」");
+      expect(area3?.category).toBe("areaAttack");
+      expect(area3?.effect.value).toBe(70);
+    });
+
+    it("突進系スペルが定義されている", () => {
+      const rush1 = SPELL_CARDS.find((s) => s.id === "rush-1");
+      expect(rush1).toBeDefined();
+      expect(rush1?.name).toBe("神鬼「レミリアストーカー」");
+      expect(rush1?.category).toBe("rush");
+      expect(rush1?.effect.value).toBe(45);
+
+      const rush2 = SPELL_CARDS.find((s) => s.id === "rush-2");
+      expect(rush2).toBeDefined();
+      expect(rush2?.name).toBe("夜符「デーモンキングクレイドル」");
+      expect(rush2?.category).toBe("rush");
+      expect(rush2?.effect.value).toBe(60);
+
+      const rush3 = SPELL_CARDS.find((s) => s.id === "rush-3");
+      expect(rush3).toBeDefined();
+      expect(rush3?.name).toBe("夜王「ドラキュラクレイドル」");
+      expect(rush3?.category).toBe("rush");
+      expect(rush3?.effect.value).toBe(75);
+    });
+
     it("R5以降のスペルが未実装値0ではない", () => {
-      const spellIds = ["sdl-2", "sdl-3", "sdl-4"];
+      const spellIds = ["instant-2", "instant-3", "area-2", "area-3", "rush-2", "rush-3", "last-word"];
       for (const spellId of spellIds) {
         const spell = SPELL_CARDS.find((s) => s.id === spellId);
         expect(spell).toBeDefined();
@@ -99,40 +148,40 @@ describe("SpellCard Integration", () => {
   });
 
   describe("ラウンド範囲別スペル取得", () => {
-    it("R1-4でスカーレットデスレーザーが取得できる", () => {
+    it("R1-4で紅符「スカーレットシュート」が取得できる", () => {
       const spells = getAvailableSpellsForRound(1);
       expect(spells.length).toBeGreaterThan(0);
-      expect(spells.some((s) => s.id === "sdl-1")).toBe(true);
+      expect(spells.some((s) => s.id === "instant-1")).toBe(true);
 
       const spells4 = getAvailableSpellsForRound(4);
       expect(spells4.length).toBeGreaterThan(0);
-      expect(spells4.some((s) => s.id === "sdl-1")).toBe(true);
+      expect(spells4.some((s) => s.id === "instant-1")).toBe(true);
     });
 
     it("R5-8では必殺「ハートブレイク」が取得できる", () => {
       const spells = getAvailableSpellsForRound(5);
       expect(spells.length).toBeGreaterThan(0);
-      expect(spells.some((s) => s.id === "sdl-2")).toBe(true);
+      expect(spells.some((s) => s.id === "instant-2")).toBe(true);
 
       const spells8 = getAvailableSpellsForRound(8);
       expect(spells8.length).toBeGreaterThan(0);
-      expect(spells8.some((s) => s.id === "sdl-2")).toBe(true);
+      expect(spells8.some((s) => s.id === "instant-2")).toBe(true);
     });
 
     it("R9-11では神槍「スピア・ザ・グングニル」が取得できる", () => {
       const spells = getAvailableSpellsForRound(9);
       expect(spells.length).toBeGreaterThan(0);
-      expect(spells.some((s) => s.id === "sdl-3")).toBe(true);
+      expect(spells.some((s) => s.id === "instant-3")).toBe(true);
 
       const spells11 = getAvailableSpellsForRound(11);
       expect(spells11.length).toBeGreaterThan(0);
-      expect(spells11.some((s) => s.id === "sdl-3")).toBe(true);
+      expect(spells11.some((s) => s.id === "instant-3")).toBe(true);
     });
 
     it("R12では「紅色の幻想郷」が取得できる", () => {
       const spells = getAvailableSpellsForRound(12);
       expect(spells.length).toBeGreaterThan(0);
-      expect(spells.some((s) => s.id === "sdl-4")).toBe(true);
+      expect(spells.some((s) => s.id === "last-word")).toBe(true);
     });
   });
 
@@ -162,7 +211,7 @@ describe("SpellCard Integration", () => {
       // スペルが宣言されているか確認
       const declaredSpell = controller.getDeclaredSpell();
       expect(declaredSpell).toBeDefined();
-      expect(declaredSpell?.id).toBe("sdl-1");
+      expect(declaredSpell?.id).toBe("instant-1");
     });
 
     it("戦闘フェーズ終了時にスペル効果が適用される", () => {
@@ -209,7 +258,7 @@ describe("SpellCard Integration", () => {
         controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
       }
 
-      expect(controller.getUsedSpellIds()).toEqual(["sdl-1"]);
+      expect(controller.getUsedSpellIds()).toEqual(["instant-1"]);
     });
 
     it("boss target healでボスHPが回復する", () => {
@@ -441,6 +490,63 @@ describe("SpellCard Integration", () => {
       // (実際の動作は環境変数依存)
       const declaredSpell = controller.getDeclaredSpell();
       expect(declaredSpell).toBeNull();
+    });
+  });
+
+  describe("getSpellCardSetForRound", () => {
+    it("R1-4では3枚のスペルセットが返る", () => {
+      const spells1 = getSpellCardSetForRound(1);
+      expect(spells1.length).toBe(3);
+      const ids1 = spells1.map((s) => s.id).sort();
+      expect(ids1).toEqual(["area-1", "instant-1", "rush-1"]);
+
+      const spells4 = getSpellCardSetForRound(4);
+      expect(spells4.length).toBe(3);
+      const ids4 = spells4.map((s) => s.id).sort();
+      expect(ids4).toEqual(["area-1", "instant-1", "rush-1"]);
+    });
+
+    it("R5-8では3枚のスペルセットが返る", () => {
+      const spells5 = getSpellCardSetForRound(5);
+      expect(spells5.length).toBe(3);
+      const ids5 = spells5.map((s) => s.id).sort();
+      expect(ids5).toEqual(["area-2", "instant-2", "rush-2"]);
+
+      const spells8 = getSpellCardSetForRound(8);
+      expect(spells8.length).toBe(3);
+      const ids8 = spells8.map((s) => s.id).sort();
+      expect(ids8).toEqual(["area-2", "instant-2", "rush-2"]);
+    });
+
+    it("R9-11では3枚のスペルセットが返る", () => {
+      const spells9 = getSpellCardSetForRound(9);
+      expect(spells9.length).toBe(3);
+      const ids9 = spells9.map((s) => s.id).sort();
+      expect(ids9).toEqual(["area-3", "instant-3", "rush-3"]);
+
+      const spells11 = getSpellCardSetForRound(11);
+      expect(spells11.length).toBe(3);
+      const ids11 = spells11.map((s) => s.id).sort();
+      expect(ids11).toEqual(["area-3", "instant-3", "rush-3"]);
+    });
+
+    it("R12ではラストスペルのみが返る", () => {
+      const spells12 = getSpellCardSetForRound(12);
+      expect(spells12.length).toBe(1);
+      expect(spells12[0]!.id).toBe("last-word");
+      expect(spells12[0]!.name).toBe("「紅色の幻想郷」");
+      expect(spells12[0]!.category).toBe("lastWord");
+    });
+
+    it("範囲外のラウンドでは空配列が返る", () => {
+      const spells0 = getSpellCardSetForRound(0);
+      expect(spells0.length).toBe(0);
+
+      const spells13 = getSpellCardSetForRound(13);
+      expect(spells13.length).toBe(0);
+
+      const spells100 = getSpellCardSetForRound(100);
+      expect(spells100.length).toBe(0);
     });
   });
 });

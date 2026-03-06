@@ -13,4 +13,14 @@ describe("boss shop rendering contract", () => {
     expect(source.includes("SCARLET_MANSION_DISPLAY_NAMES")).toBe(true);
     expect(source.includes("紅魔館")).toBe(true);
   });
+
+  test("boss shop cards render scarlet role and skill description", () => {
+    const source = readFileSync(manualCheckPath, "utf-8");
+
+    expect(source.includes("SCARLET_MANSION_CARD_DETAILS")).toBe(true);
+    expect(source.includes("序盤の壁")).toBe(true);
+    expect(source.includes("虹色太極拳")).toBe(true);
+    expect(source.includes("boss-shop-role")).toBe(true);
+    expect(source.includes("boss-shop-skill")).toBe(true);
+  });
 });

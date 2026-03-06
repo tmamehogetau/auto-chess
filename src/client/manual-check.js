@@ -161,6 +161,21 @@ const SCARLET_MANSION_DISPLAY_NAMES = {
   mage: "パチュリー・ノーレッジ",
 };
 
+const SCARLET_MANSION_CARD_DETAILS = {
+  vanguard: {
+    role: "序盤の壁",
+    skillDescription: "彩華「虹色太極拳」- 周囲の敵攻撃を誘引し、被ダメージを軽減",
+  },
+  assassin: {
+    role: "守護サポート",
+    skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
+  },
+  mage: {
+    role: "爆発補助",
+    skillDescription: "火水木金土符「賢者の石」- ランダムな敵3体に大魔法ダメージ",
+  },
+};
+
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
@@ -1586,11 +1601,14 @@ function updateBossShop(offers, visible) {
     const isPurchased = offer.purchased === true;
     const canAfford = currentGold >= cost && !isPurchased;
     const displayName = SCARLET_MANSION_DISPLAY_NAMES[offer.unitType] || offer.unitType;
+    const details = SCARLET_MANSION_CARD_DETAILS[offer.unitType] || null;
     card.innerHTML = `
       <div class="scarlet-badge">紅魔館</div>
       <div class="icon">${icon}</div>
       <div class="name">${displayName}</div>
+      ${details ? `<div class="boss-shop-role">${details.role}</div>` : ''}
       <div class="cost">${cost}G</div>
+      ${details ? `<div class="boss-shop-skill">${details.skillDescription}</div>` : ''}
       ${isPurchased ? '<div class="purchased-badge">Purchased</div>' : ''}
     `;
     card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");

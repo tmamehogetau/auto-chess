@@ -52,6 +52,38 @@ describe("battle-simulator", () => {
 
       expect(boss.buffModifiers.attackMultiplier).toBe(1);
     });
+
+    test("HP70%以上かつシナジー有効時はレミリアが吸血する", () => {
+      const simulator = new BattleSimulator();
+      const raidUnit = createBattleUnit(
+        { cell: 3, unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const boss = createBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+      boss.hp = Math.floor(boss.maxHp * 0.8);
+
+      const result = simulator.simulateBattle(
+        [raidUnit],
+        [boss],
+        [{ cell: 3, unitType: "vanguard", starLevel: 1 }],
+        [
+          { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+          { cell: 1, unitType: "vanguard", archetype: "meiling" },
+          { cell: 2, unitType: "assassin", archetype: "sakuya" },
+        ],
+        5_000,
+      );
+
+      expect(
+        result.combatLog.some((log) => log.includes("Scarlet Mansion Synergy lifesteals")),
+      ).toBe(true);
+    });
   });
 
   describe("createBattleUnit", () => {

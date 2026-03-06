@@ -93,6 +93,13 @@ export function applyScarletMansionSynergyToBoss(
   unit.buffModifiers.attackMultiplier *= 1.1;
 }
 
+export function hasScarletMansionBossLifesteal(
+  boardPlacements: BoardUnitPlacement[],
+): boolean {
+  return calculateScarletMansionSynergy(boardPlacements)
+    && boardPlacements.some((placement) => placement.archetype === "remilia");
+}
+
 /**
  * Get the synergy tier based on unit count
  */

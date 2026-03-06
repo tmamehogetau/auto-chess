@@ -7,6 +7,7 @@ import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
   calculateSynergyDetails,
+  hasScarletMansionBossLifesteal,
   SynergyTier,
 } from "./synergy-definitions";
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
@@ -468,6 +469,9 @@ export class BattleSimulator {
       combatLog.push(`Left units: ${leftUnits.length}`);
       combatLog.push(`Right units: ${rightUnits.length}`);
 
+      const leftScarletBossLifestealActive = hasScarletMansionBossLifesteal(leftPlacements);
+      const rightScarletBossLifestealActive = hasScarletMansionBossLifesteal(rightPlacements);
+
       // シナジーバフを適用
       applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType);
       applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType);
@@ -599,6 +603,21 @@ export class BattleSimulator {
                 `${generateUnitName(action.unit)} Boss Passive heals for ${healAmount} HP (${action.unit.hp}/${action.unit.maxHp})`,
               );
             }
+          }
+
+          const scarletBossLifestealActive = action.unit.id.startsWith("left")
+            ? leftScarletBossLifestealActive
+            : rightScarletBossLifestealActive;
+          const canTriggerScarletBossLifesteal = scarletBossLifestealActive
+            && action.unit.isBoss
+            && actualDamage > 0;
+
+          if (canTriggerScarletBossLifesteal) {
+            const healAmount = Math.max(1, Math.floor(actualDamage * 0.1));
+            action.unit.hp = Math.min(action.unit.maxHp, action.unit.hp + healAmount);
+            combatLog.push(
+              `${generateUnitName(action.unit)} Scarlet Mansion Synergy lifesteals ${healAmount} HP (${action.unit.hp}/${action.unit.maxHp})`,
+            );
           }
 
           // ダメージ追跡

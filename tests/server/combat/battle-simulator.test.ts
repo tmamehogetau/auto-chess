@@ -86,6 +86,33 @@ describe("battle-simulator", () => {
     });
   });
 
+  describe("boss passive", () => {
+    test("HP70%以上のレミリアは紅き夜の王でATK+20%になる", () => {
+      const simulator = new BattleSimulator();
+      const boss = createBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "left",
+        0,
+        true,
+      );
+      const raidUnit = createBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const result = simulator.simulateBattle(
+        [boss],
+        [raidUnit],
+        [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
+        [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
+        1_500,
+      );
+
+      expect(result.damageDealt.left).toBe(333);
+    });
+  });
+
   describe("createBattleUnit", () => {
     test("単一のユニットが正しく作成される", () => {
       const placement: BoardUnitPlacement = {

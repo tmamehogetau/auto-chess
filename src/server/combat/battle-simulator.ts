@@ -576,7 +576,7 @@ export class BattleSimulator {
 
           // ボスパッシブ「紅色の世界」の判定とATKバフ適用
           const bossPassiveActive = isBossPassiveActive(action.unit);
-          const bossAtkMultiplier = bossPassiveActive ? 1.1 : 1.0;
+          const bossAtkMultiplier = bossPassiveActive ? 1.2 : 1.0;
 
           // 防御力とバフモディファイアとクリティカルとボスパッシブを適用したダメージ計算
           const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier * bossAtkMultiplier;

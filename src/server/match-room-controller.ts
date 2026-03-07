@@ -61,7 +61,11 @@ import {
 import { HEROES } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
-import { SPELL_CARDS, getAvailableSpellsForRound, getSpellCardSetForRound, type SpellCard } from "../data/spell-cards";
+import { type SpellCard } from "../data/spell-cards";
+import {
+  SpellCardHandler,
+  type SpellCombatModifiers,
+} from "./match-room-controller/spell-card-handler";
 import { getRumorUnitForRound, type RumorUnit } from "../data/rumor-units";
 import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansionUnit } from "../data/scarlet-mansion-units";
 import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
@@ -84,11 +88,7 @@ interface MatchRoomControllerOptions {
   };
 }
 
-interface SpellCombatModifiers {
-  attackMultiplier: number;
-  defenseMultiplier: number;
-  attackSpeedMultiplier: number;
-}
+
 
 type PhaseResult = "pending" | "success" | "failed";
 
@@ -357,15 +357,11 @@ export class MatchRoomController {
 
   private readonly enableSpellCard: boolean;
 
+  private readonly spellCardHandler: SpellCardHandler;
+
   private readonly enableRumorInfluence: boolean;
 
   private readonly enableBossExclusiveShop: boolean;
-
-  private declaredSpell: SpellCard | null;
-
-  private readonly usedSpellIds: string[];
-
-  private readonly spellCombatModifiersByPlayer: Map<string, SpellCombatModifiers>;
 
   private readonly rumorInfluenceEligibleByPlayer: Map<string, boolean>;
 
@@ -503,9 +499,10 @@ export class MatchRoomController {
 
     // Feature Flagに基づいてスペルカードを初期化
     this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
-    this.declaredSpell = null;
-    this.usedSpellIds = [];
-    this.spellCombatModifiersByPlayer = new Map<string, SpellCombatModifiers>();
+    this.spellCardHandler = new SpellCardHandler({
+      enableSpellCard: this.enableSpellCard,
+      matchLogger: this.matchLogger,
+    });
 
     // Feature Flagに基づいて噂勢力を初期化
     this.enableRumorInfluence = FeatureFlagService.getInstance().isFeatureEnabled('enableRumorInfluence');
@@ -1916,10 +1913,10 @@ export class MatchRoomController {
     );
 
     // スペル効果を適用
-    const leftModifiers = this.spellCombatModifiersByPlayer.get(leftPlayerId);
-    this.battleResolutionService.applySpellModifiers(leftBattleUnits, leftModifiers ?? null);
-    const rightModifiers = this.spellCombatModifiersByPlayer.get(rightPlayerId);
-    this.battleResolutionService.applySpellModifiers(rightBattleUnits, rightModifiers ?? null);
+    const leftModifiers = this.spellCardHandler.getCombatModifiersForPlayer(leftPlayerId);
+    this.battleResolutionService.applySpellModifiers(leftBattleUnits, leftModifiers);
+    const rightModifiers = this.spellCardHandler.getCombatModifiersForPlayer(rightPlayerId);
+    this.battleResolutionService.applySpellModifiers(rightBattleUnits, rightModifiers);
 
     // 主人公を追加（選択されている場合）
     const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
@@ -2227,15 +2224,7 @@ export class MatchRoomController {
 
     const state = this.ensureStarted();
     const roundIndex = state.roundIndex;
-    const availableSpells = getAvailableSpellsForRound(roundIndex);
-
-    if (availableSpells.length === 0) {
-      this.declaredSpell = null;
-      return;
-    }
-
-    // 簡易版：最初のスペルを選択（後で拡張可能）
-    this.declaredSpell = availableSpells[0] ?? null;
+    this.spellCardHandler.declareSpell(roundIndex);
   }
 
   /**
@@ -2243,161 +2232,48 @@ export class MatchRoomController {
    * Feature Flagが有効な場合のみ実行
    */
   private applySpellEffect(): void {
-    if (!this.enableSpellCard || !this.declaredSpell) {
-      return;
-    }
-
     const state = this.ensureStarted();
-    const spell = this.declaredSpell;
-    const roundIndex = state.roundIndex;
 
-    if (spell.effect.type === "damage") {
-      if (spell.effect.target === "boss" || spell.effect.target === "all") {
-        const bossPlayerId = state.bossPlayerId;
-        if (bossPlayerId) {
-          const currentHp = state.getPlayerHp(bossPlayerId);
-          const hpBefore = currentHp;
-          const hpAfter = currentHp - spell.effect.value;
-          state.setPlayerHp(bossPlayerId, hpAfter);
-          // HP変化ログを記録
-          this.matchLogger?.logHpChange(roundIndex, bossPlayerId, hpBefore, hpAfter, 'spell');
-        }
-      }
-
-      if (spell.effect.target === "raid" || spell.effect.target === "all") {
-        // レイドメンバー全員にダメージを与える
-        for (const playerId of state.alivePlayerIds) {
-          if (spell.effect.target === "all" && playerId === state.bossPlayerId) {
-            continue;
-          }
-
-          const currentHp = state.getPlayerHp(playerId);
-          const hpBefore = currentHp;
-          const hpAfter = currentHp - spell.effect.value;
-          state.setPlayerHp(playerId, hpAfter);
-          // HP変化ログを記録
-          this.matchLogger?.logHpChange(roundIndex, playerId, hpBefore, hpAfter, 'spell');
-        }
-      }
-
-      // スペル効果ログを記録
-      this.matchLogger?.logSpellEffect(
-        roundIndex,
-        spell.id,
-        spell.name,
-        'damage',
-        spell.effect.target,
-        spell.effect.value,
-        spell.effect.value,
-      );
+    // 現在のHP状態をMapに変換
+    const playerHps = new Map<string, number>();
+    for (const playerId of state.alivePlayerIds) {
+      playerHps.set(playerId, state.getPlayerHp(playerId));
     }
 
-    if (spell.effect.type === "heal") {
-      if (spell.effect.target === "boss" || spell.effect.target === "all") {
-        const bossPlayerId = state.bossPlayerId;
-        if (bossPlayerId) {
-          const currentHp = state.getPlayerHp(bossPlayerId);
-          const hpBefore = currentHp;
-          const hpAfter = Math.min(100, currentHp + spell.effect.value);
-          state.setPlayerHp(bossPlayerId, hpAfter);
-          // HP変化ログを記録
-          this.matchLogger?.logHpChange(roundIndex, bossPlayerId, hpBefore, hpAfter, 'spell');
-        }
-      }
+    this.spellCardHandler.applySpellEffect({
+      roundIndex: state.roundIndex,
+      playerHps,
+      alivePlayerIds: state.alivePlayerIds,
+      bossPlayerId: state.bossPlayerId,
+    });
 
-      if (spell.effect.target === "raid" || spell.effect.target === "all") {
-        for (const playerId of state.alivePlayerIds) {
-          if (spell.effect.target === "raid" && playerId === state.bossPlayerId) {
-            continue;
-          }
-
-          const currentHp = state.getPlayerHp(playerId);
-          const hpBefore = currentHp;
-          const hpAfter = Math.min(100, currentHp + spell.effect.value);
-          state.setPlayerHp(playerId, hpAfter);
-          // HP変化ログを記録
-          this.matchLogger?.logHpChange(roundIndex, playerId, hpBefore, hpAfter, 'spell');
-        }
-      }
-
-      // スペル効果ログを記録
-      this.matchLogger?.logSpellEffect(
-        roundIndex,
-        spell.id,
-        spell.name,
-        'heal',
-        spell.effect.target,
-        spell.effect.value,
-        spell.effect.value,
-      );
+    // HP変更をstateに反映
+    for (const [playerId, hp] of playerHps) {
+      state.setPlayerHp(playerId, hp);
     }
-
-    if (!this.usedSpellIds.includes(spell.id)) {
-      this.usedSpellIds.push(spell.id);
-    }
-
-    this.spellCombatModifiersByPlayer.clear();
-
-    // 他の効果タイプ（buff, debuff）は後で実装
   }
 
   private applyPreBattleSpellEffect(): void {
     const state = this.ensureStarted();
 
-    this.spellCombatModifiersByPlayer.clear();
-
-    if (!this.enableSpellCard || !this.declaredSpell) {
-      return;
-    }
-
-    const spell = this.declaredSpell;
-    if ((spell.effect.type !== "buff" && spell.effect.type !== "debuff") || !spell.effect.buffStat) {
-      return;
-    }
-
-    const targetPlayerIds = state.alivePlayerIds.filter((playerId) => {
-      if (spell.effect.target === "all") {
-        return true;
-      }
-
-      if (spell.effect.target === "boss") {
-        return playerId === state.bossPlayerId;
-      }
-
-      return playerId !== state.bossPlayerId;
+    this.spellCardHandler.applyPreBattleSpellEffect({
+      alivePlayerIds: state.alivePlayerIds,
+      bossPlayerId: state.bossPlayerId,
     });
-
-    for (const playerId of targetPlayerIds) {
-      const modifiers = this.spellCombatModifiersByPlayer.get(playerId) ?? {
-        attackMultiplier: 1,
-        defenseMultiplier: 1,
-        attackSpeedMultiplier: 1,
-      };
-
-      if (spell.effect.buffStat === "attack") {
-        modifiers.attackMultiplier *= spell.effect.value;
-      } else if (spell.effect.buffStat === "defense") {
-        modifiers.defenseMultiplier *= spell.effect.value;
-      } else if (spell.effect.buffStat === "attackSpeed") {
-        modifiers.attackSpeedMultiplier *= spell.effect.value;
-      }
-
-      this.spellCombatModifiersByPlayer.set(playerId, modifiers);
-    }
   }
 
   /**
    * 現在宣言中のスペルカードを取得
    */
   public getDeclaredSpell(): SpellCard | null {
-    return this.declaredSpell;
+    return this.spellCardHandler.getDeclaredSpell();
   }
 
   /**
    * 宣言中のスペルカードIDを取得
    */
   public getDeclaredSpellId(): string | null {
-    return this.declaredSpell?.id ?? null;
+    return this.spellCardHandler.getDeclaredSpellId();
   }
 
   /**
@@ -2406,25 +2282,13 @@ export class MatchRoomController {
    * @returns 宣言に成功した場合true
    */
   public declareSpellById(spellId: string): boolean {
-    if (!this.enableSpellCard) {
-      return false;
-    }
-
     const state = this.ensureStarted();
     const roundIndex = state.roundIndex;
-    const availableSpells = getSpellCardSetForRound(roundIndex);
-
-    const spell = availableSpells.find(s => s.id === spellId);
-    if (!spell) {
-      return false;
-    }
-
-    this.declaredSpell = spell;
-    return true;
+    return this.spellCardHandler.declareSpellById(roundIndex, spellId);
   }
 
   public getUsedSpellIds(): string[] {
-    return [...this.usedSpellIds];
+    return this.spellCardHandler.getUsedSpellIds();
   }
 
   /**

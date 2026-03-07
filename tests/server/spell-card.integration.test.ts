@@ -298,17 +298,19 @@ describe("SpellCard Integration", () => {
         [bossId]: 40,
       });
 
-      (bossHealController as any).declaredSpell = {
+      // spellCardHandlerを通してスペルを設定
+      (bossHealController as any).spellCardHandler.setDeclaredSpell({
         id: "test-heal-boss",
         name: "テスト回復",
         description: "ボスを30回復する",
         roundRange: [1, 1],
+        category: "instantLaser",
         effect: {
           type: "heal",
           target: "boss",
           value: 30,
         },
-      };
+      });
 
       if (bossHealController.phaseDeadlineAtMs) {
         bossHealController.advanceByTime(bossHealController.phaseDeadlineAtMs + 100);
@@ -353,17 +355,19 @@ describe("SpellCard Integration", () => {
         return;
       }
 
-      (bossDamageController as any).declaredSpell = {
+      // spellCardHandlerを通してスペルを設定
+      (bossDamageController as any).spellCardHandler.setDeclaredSpell({
         id: "test-damage-boss",
         name: "テストダメージ",
         description: "ボスに30ダメージを与える",
         roundRange: [1, 1],
+        category: "instantLaser",
         effect: {
           type: "damage",
           target: "boss",
           value: 30,
         },
-      };
+      });
 
       if (bossDamageController.phaseDeadlineAtMs) {
         bossDamageController.advanceByTime(bossDamageController.phaseDeadlineAtMs + 100);
@@ -388,17 +392,19 @@ describe("SpellCard Integration", () => {
         [PLAYER2]: 15,
       });
 
-      (controller as any).declaredSpell = {
+      // spellCardHandlerを通してスペルを設定
+      (controller as any).spellCardHandler.setDeclaredSpell({
         id: "test-heal-all",
         name: "全体回復",
         description: "全員を20回復する",
         roundRange: [1, 1],
+        category: "instantLaser",
         effect: {
           type: "heal",
           target: "all",
           value: 20,
         },
-      };
+      });
 
       if (controller.phaseDeadlineAtMs) {
         controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
@@ -409,30 +415,31 @@ describe("SpellCard Integration", () => {
     });
 
     it("attack buffは戦闘前の対象プレイヤー倍率として保持される", () => {
-      (controller as any).declaredSpell = {
+      // spellCardHandlerを通してスペルを設定
+      (controller as any).spellCardHandler.setDeclaredSpell({
         id: "test-buff-attack",
         name: "攻撃強化",
         description: "レイドの攻撃力を25%上げる",
         roundRange: [1, 1],
+        category: "instantLaser",
         effect: {
           type: "buff",
           target: "raid",
           value: 1.25,
           buffStat: "attack",
         },
-      };
+      });
 
       (controller as any).gameLoopState.setBossPlayer(PLAYER1);
       (controller as any).applyPreBattleSpellEffect();
 
-      const modifiers = (controller as any).spellCombatModifiersByPlayer as Map<string, {
-        attackMultiplier: number;
-        defenseMultiplier: number;
-        attackSpeedMultiplier: number;
-      }>;
+      // spellCardHandlerを通してmodifiersを取得
+      const handler = (controller as any).spellCardHandler;
+      const player1Mod = handler.getCombatModifiersForPlayer(PLAYER1);
+      const player2Mod = handler.getCombatModifiersForPlayer(PLAYER2);
 
-      expect(modifiers.get(PLAYER1)).toBeUndefined();
-      expect(modifiers.get(PLAYER2)).toEqual({
+      expect(player1Mod).toBeNull();
+      expect(player2Mod).toEqual({
         attackMultiplier: 1.25,
         defenseMultiplier: 1,
         attackSpeedMultiplier: 1,
@@ -440,30 +447,31 @@ describe("SpellCard Integration", () => {
     });
 
     it("attackSpeed debuffは戦闘前の対象プレイヤー倍率として保持される", () => {
-      (controller as any).declaredSpell = {
+      // spellCardHandlerを通してスペルを設定
+      (controller as any).spellCardHandler.setDeclaredSpell({
         id: "test-debuff-speed",
         name: "速度低下",
         description: "ボスの攻撃速度を30%下げる",
         roundRange: [1, 1],
+        category: "instantLaser",
         effect: {
           type: "debuff",
           target: "boss",
           value: 0.7,
           buffStat: "attackSpeed",
         },
-      };
+      });
 
       (controller as any).gameLoopState.setBossPlayer(PLAYER2);
       (controller as any).applyPreBattleSpellEffect();
 
-      const modifiers = (controller as any).spellCombatModifiersByPlayer as Map<string, {
-        attackMultiplier: number;
-        defenseMultiplier: number;
-        attackSpeedMultiplier: number;
-      }>;
+      // spellCardHandlerを通してmodifiersを取得
+      const handler = (controller as any).spellCardHandler;
+      const player1Mod = handler.getCombatModifiersForPlayer(PLAYER1);
+      const player2Mod = handler.getCombatModifiersForPlayer(PLAYER2);
 
-      expect(modifiers.get(PLAYER1)).toBeUndefined();
-      expect(modifiers.get(PLAYER2)).toEqual({
+      expect(player1Mod).toBeNull();
+      expect(player2Mod).toEqual({
         attackMultiplier: 1,
         defenseMultiplier: 1,
         attackSpeedMultiplier: 0.7,

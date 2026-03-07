@@ -27,17 +27,18 @@ describe("ShopOfferBuilder", () => {
         // Deterministic float generation
         return ((seed * 9301 + 49297) % 233280) / 233280;
       }),
-      pickRarity: vi.fn((odds, roll) => {
+      pickRarity: vi.fn((odds, roll): 1 | 2 | 3 => {
         const [one, two] = odds;
         if (roll < one) return 1;
         if (roll < one + two) return 2;
         return 3;
-      }),
+      }) as ShopOfferBuilderDependencies['pickRarity'],
       getPlayerLevel: vi.fn(() => 1),
       isSharedPoolEnabled: vi.fn(() => false),
       isPoolDepleted: vi.fn(() => false),
-      enableRumorInfluence: false,
+      isRumorInfluenceEnabled: vi.fn(() => false),
       setId: "default",
+      random: vi.fn(() => 0.5),
     };
 
     builder = new ShopOfferBuilder(mockDeps);
@@ -70,11 +71,13 @@ describe("ShopOfferBuilder", () => {
     });
 
     test("includes rumor unit for eligible players when feature is enabled", () => {
-      mockDeps.enableRumorInfluence = true;
-      mockDeps.getRumorUnitForRound = vi.fn(() => ({
-        unitType: "vanguard" as BoardUnitType,
-        rarity: 2 as const,
-        cost: 2,
+      mockDeps.isRumorInfluenceEnabled = vi.fn(() => true);
+      mockDeps.getRumorUnitForRound = vi.fn((): import("../../../src/data/rumor-units").RumorUnit | null => ({
+        targetRound: 1,
+        unitType: "vanguard",
+        rarity: 2,
+        displayName: "テスト噂ユニット",
+        description: "テスト用",
       }));
 
       const offers = builder.buildShopOffers("player1", 1, 0, 0, true);
@@ -90,7 +93,7 @@ describe("ShopOfferBuilder", () => {
     });
 
     test("does not include rumor unit when player is not eligible", () => {
-      mockDeps.enableRumorInfluence = true;
+      mockDeps.isRumorInfluenceEnabled = vi.fn(() => true);
 
       const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
 
@@ -102,7 +105,7 @@ describe("ShopOfferBuilder", () => {
     });
 
     test("does not include rumor unit when feature is disabled", () => {
-      mockDeps.enableRumorInfluence = false;
+      mockDeps.isRumorInfluenceEnabled = vi.fn(() => false);
 
       const offers = builder.buildShopOffers("player1", 1, 0, 0, true);
 
@@ -128,10 +131,20 @@ describe("ShopOfferBuilder", () => {
 
   describe("buildBossShopOffers", () => {
     test("creates 2 boss shop offers", () => {
-      mockDeps.getRandomScarletMansionUnit = vi.fn(() => ({
-        unitType: "vanguard" as BoardUnitType,
+      mockDeps.getRandomScarletMansionUnit = vi.fn((): import("../../../src/data/scarlet-mansion-units").ScarletMansionUnit => ({
+        id: "test-unit",
+        displayName: "テストボスユニット",
+        unitType: "vanguard",
         cost: 3,
-        name: "Test Boss Unit",
+        hp: 1000,
+        attack: 100,
+        attackSpeed: 1.0,
+        range: 1,
+        physicalReduction: 10,
+        magicReduction: 10,
+        role: "テスト",
+        skillDescription: "テストスキル",
+        flavorText: "テストフレーバー",
       }));
 
       const offers = builder.buildBossShopOffers();
@@ -146,34 +159,45 @@ describe("ShopOfferBuilder", () => {
     });
 
     test("uses scarlet mansion units from data source", () => {
+      const createMockUnit = (unitType: BoardUnitType, cost: 2 | 3 | 4, id: string): import("../../../src/data/scarlet-mansion-units").ScarletMansionUnit => ({
+        id,
+        displayName: `Unit ${id}`,
+        unitType,
+        cost,
+        hp: 1000,
+        attack: 100,
+        attackSpeed: 1.0,
+        range: 1,
+        physicalReduction: 10,
+        magicReduction: 10,
+        role: "テスト",
+        skillDescription: "テストスキル",
+        flavorText: "テストフレーバー",
+      });
+
       mockDeps.getRandomScarletMansionUnit = vi.fn()
-        .mockReturnValueOnce({
-          unitType: "vanguard" as BoardUnitType,
-          cost: 2,
-          name: "Unit A",
-        })
-        .mockReturnValueOnce({
-          unitType: "mage" as BoardUnitType,
-          cost: 3,
-          name: "Unit B",
-        });
+        .mockReturnValueOnce(createMockUnit("vanguard", 2, "unit-a"))
+        .mockReturnValueOnce(createMockUnit("mage", 3, "unit-b"));
 
       const offers = builder.buildBossShopOffers();
 
-      expect(offers[0].unitType).toBe("vanguard");
-      expect(offers[0].cost).toBe(2);
-      expect(offers[1].unitType).toBe("mage");
-      expect(offers[1].cost).toBe(3);
+      expect(offers.length).toBeGreaterThanOrEqual(2);
+      expect(offers[0]!.unitType).toBe("vanguard");
+      expect(offers[0]!.cost).toBe(2);
+      expect(offers[1]!.unitType).toBe("mage");
+      expect(offers[1]!.cost).toBe(3);
     });
   });
 
   describe("buildItemShopOffers", () => {
     test("creates 5 item shop offers", () => {
-      const mockItems: ItemType[] = ["sword", "shield", "potion"];
-      const mockItemDefs = {
-        sword: { cost: 5, name: "Sword" },
-        shield: { cost: 4, name: "Shield" },
-        potion: { cost: 3, name: "Potion" },
+      const mockItems: ItemType[] = ["sword", "shield", "boots", "ring", "amulet"];
+      const mockItemDefs: Record<ItemType, { cost: number }> = {
+        sword: { cost: 5 },
+        shield: { cost: 4 },
+        boots: { cost: 3 },
+        ring: { cost: 4 },
+        amulet: { cost: 5 },
       };
 
       const offers = builder.buildItemShopOffers(mockItems, mockItemDefs);
@@ -188,19 +212,21 @@ describe("ShopOfferBuilder", () => {
 
     test("uses provided item definitions for costs", () => {
       const mockItems: ItemType[] = ["sword"];
-      const mockItemDefs = {
-        sword: { cost: 10, name: "Expensive Sword" },
+      const mockItemDefs: Record<ItemType, { cost: number }> = {
+        sword: { cost: 10 },
+        shield: { cost: 3 },
+        boots: { cost: 3 },
+        ring: { cost: 4 },
+        amulet: { cost: 4 },
       };
 
-      // Mock Math.random to always return 0 (first item)
-      const originalRandom = Math.random;
-      Math.random = vi.fn(() => 0);
+      // Mock the injected random function to always return 0 (first item)
+      mockDeps.random = vi.fn(() => 0);
 
       const offers = builder.buildItemShopOffers(mockItems, mockItemDefs);
 
-      expect(offers[0].cost).toBe(10);
-
-      Math.random = originalRandom;
+      expect(offers.length).toBeGreaterThan(0);
+      expect(offers[0]!.cost).toBe(10);
     });
   });
 
@@ -218,7 +244,7 @@ describe("ShopOfferBuilder", () => {
     test("falls back to lower rarity when all units depleted", () => {
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
       mockDeps.isPoolDepleted = vi.fn(() => true);
-      mockDeps.pickRarity = vi.fn(() => 3); // Try to get rarity 3
+      mockDeps.pickRarity = vi.fn((): 1 | 2 | 3 => 3); // Try to get rarity 3
       mockDeps.getPlayerLevel = vi.fn(() => 6); // High level to allow rarity 3
 
       const offers = builder.buildShopOffers("player1", 1, 0, 0, false);

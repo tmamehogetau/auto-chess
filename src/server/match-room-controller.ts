@@ -419,6 +419,8 @@ export class MatchRoomController {
     };
 
     // Initialize shop offer builder with dependencies
+    // Note: Feature flags are initialized later, so we use getter functions
+    // to access the values at runtime rather than capturing them at construction time
     const shopOfferDeps: ShopOfferBuilderDependencies = {
       getRumorUnitForRound,
       getRandomScarletMansionUnit,
@@ -428,8 +430,9 @@ export class MatchRoomController {
       getPlayerLevel: (playerId: string) => this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
       isSharedPoolEnabled: () => this.enableSharedPool,
       isPoolDepleted: (cost: number) => this.sharedPool?.isDepleted(cost) ?? false,
-      enableRumorInfluence: this.enableRumorInfluence,
+      isRumorInfluenceEnabled: () => this.enableRumorInfluence,
       setId: this.setId,
+      random: Math.random,
     };
     this.shopOfferBuilder = new ShopOfferBuilder(shopOfferDeps);
 

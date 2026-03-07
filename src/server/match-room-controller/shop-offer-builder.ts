@@ -1,6 +1,8 @@
 import type { BoardUnitType } from "../../shared/room-messages";
 import type { ShopItemOffer } from "../../shared/room-messages";
 import type { ItemType } from "../combat/item-definitions";
+import type { RumorUnit } from "../../data/rumor-units";
+import type { ScarletMansionUnit } from "../../data/scarlet-mansion-units";
 
 type UnitRarity = 1 | 2 | 3;
 
@@ -40,18 +42,6 @@ const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, numb
   6: [0.2, 0.45, 0.35],
 };
 
-interface RumorUnit {
-  unitType: BoardUnitType;
-  rarity: UnitRarity;
-  cost: number;
-}
-
-interface ScarletMansionUnit {
-  unitType: BoardUnitType;
-  cost: number;
-  name: string;
-}
-
 /**
  * Dependencies required by ShopOfferBuilder
  * Allows for dependency injection and testing
@@ -74,9 +64,11 @@ export interface ShopOfferBuilderDependencies {
   /** Check if a specific pool cost is depleted */
   isPoolDepleted: (cost: number) => boolean;
   /** Whether rumor influence feature is enabled */
-  enableRumorInfluence: boolean;
+  isRumorInfluenceEnabled: () => boolean;
   /** Set ID for seed generation */
   setId: string;
+  /** Random function for item shop (returns 0-1) */
+  random: () => number;
 }
 
 /**
@@ -105,7 +97,7 @@ export class ShopOfferBuilder {
     const offers: ShopOffer[] = [];
 
     // 噂勢力: eligibleプレイヤーの最初のスロットに確定ユニットを設定
-    if (this.deps.enableRumorInfluence && isRumorEligible) {
+    if (this.deps.isRumorInfluenceEnabled() && isRumorEligible) {
       const rumorUnit = this.deps.getRumorUnitForRound(roundIndex);
       if (rumorUnit) {
         offers.push({
@@ -166,7 +158,7 @@ export class ShopOfferBuilder {
     const offers: ShopItemOffer[] = [];
 
     for (let i = 0; i < ITEM_SHOP_SIZE; i++) {
-      const randomIndex = Math.floor(Math.random() * itemTypes.length);
+      const randomIndex = Math.floor(this.deps.random() * itemTypes.length);
       const randomItem = itemTypes[randomIndex];
 
       if (!randomItem) {

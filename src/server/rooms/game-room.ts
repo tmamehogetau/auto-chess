@@ -1,6 +1,8 @@
 import { CloseCode, type Client, Room } from "colyseus";
 
 import { MatchRoomController } from "../match-room-controller";
+import { resolveCorrelationId } from "./game-room/correlation-id";
+import { syncRanking } from "./game-room/ranking-sync";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
@@ -181,7 +183,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.phaseDeadlineAtMs = 0;
     this.state.prepDeadlineAtMs = 0;
     this.state.roundIndex = 0;
-    this.syncRanking([]);
+    syncRanking(this.state.ranking, []);
   }
 
   public async onLeave(client: Client, code: number): Promise<void> {
@@ -275,7 +277,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
-    const correlationId = this.resolveCorrelationId(
+    const correlationId = resolveCorrelationId(
       client.sessionId,
       message.cmdSeq,
       message.correlationId,
@@ -718,22 +720,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, message);
   }
 
-  private resolveCorrelationId(
-    playerId: string,
-    cmdSeq: number,
-    incomingCorrelationId?: string,
-  ): string {
-    if (typeof incomingCorrelationId === "string") {
-      const normalized = incomingCorrelationId.trim();
-      if (normalized.length > 0) {
-        return normalized.slice(0, 128);
-      }
-    }
 
-    const nowMs = Date.now();
-    const suffix = Math.random().toString(36).slice(2, 8);
-    return `corr_${playerId}_${cmdSeq}_${nowMs}_${suffix}`;
-  }
 
   private async tryStartMatch(nowMs: number): Promise<void> {
     if (!this.controller) {
@@ -817,7 +804,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.bossPlayerId = this.controller.getBossPlayerId() ?? "";
     this.state.dominationCount = this.controller.getDominationCount() ?? 0;
 
-    this.syncRanking(this.controller.rankingTopToBottom);
+    syncRanking(this.state.ranking, this.controller.rankingTopToBottom);
 
     const targetPlayerIds =
       playerIds && playerIds.length > 0
@@ -970,15 +957,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
   }
 
-  private syncRanking(nextRanking: string[]): void {
-    while (this.state.ranking.length > 0) {
-      this.state.ranking.pop();
-    }
 
-    for (const playerId of nextRanking) {
-      this.state.ranking.push(playerId);
-    }
-  }
 
   private createRoundStateMessage(): RoundStateMessage {
     const phaseProgress = this.controller?.getPhaseProgress();

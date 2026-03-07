@@ -310,8 +310,8 @@ describe("E2E: Unit Operations Flow", () => {
         .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
         .join(",") ?? "";
       expect(playerAfter?.shopOffers.length).toBe(5);
-      // Offers might coincidentally be the same, so we just verify the structure
-      expect(afterOffers).not.toBe("");
+      // オファーが実際に変更されたことを検証（まれに同じになる可能性はあるがテストは厳格に）
+      expect(afterOffers).not.toBe(initialOffers);
 
       // Cleanup
       for (const client of clients) {

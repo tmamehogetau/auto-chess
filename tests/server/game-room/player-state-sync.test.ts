@@ -474,6 +474,123 @@ describe("player-state-sync", () => {
       expect(playerState.itemInventory.length).toBe(1);
       expect(playerState.itemInventory[0]).toBe("new-item");
     });
+
+    it("should sync shopOffers with isRumorUnit field", () => {
+      const cmdResult = {
+        boardUnitCount: 4,
+        gold: 15,
+        xp: 0,
+        level: 1,
+        shopLocked: false,
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        shopOffers: [
+          { unitType: "vanguard", cost: 1, rarity: 1, isRumorUnit: false },
+          { unitType: "mage", cost: 2, rarity: 2, isRumorUnit: true },
+        ],
+        benchUnits: [],
+        boardUnits: [],
+        itemShopOffers: [],
+        itemInventory: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+      };
+
+      syncPlayerStateFromCommandResult(playerState, cmdResult, 1);
+
+      expect(playerState.shopOffers.length).toBe(2);
+      expect(playerState.shopOffers[0]!.unitType).toBe("vanguard");
+      expect(playerState.shopOffers[0]!.isRumorUnit).toBe(false);
+      expect(playerState.shopOffers[1]!.unitType).toBe("mage");
+      expect(playerState.shopOffers[1]!.isRumorUnit).toBe(true);
+    });
+
+    it("should sync bossShopOffers when provided", () => {
+      const cmdResult = {
+        boardUnitCount: 4,
+        gold: 15,
+        xp: 0,
+        level: 1,
+        shopLocked: false,
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        shopOffers: [],
+        benchUnits: [],
+        boardUnits: [],
+        itemShopOffers: [],
+        itemInventory: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        bossShopOffers: [
+          { unitType: "vanguard", cost: 5, rarity: 4, isRumorUnit: false },
+        ],
+      };
+
+      syncPlayerStateFromCommandResult(playerState, cmdResult, 1);
+
+      expect(playerState.bossShopOffers.length).toBe(1);
+      expect(playerState.bossShopOffers[0]!.unitType).toBe("vanguard");
+      expect(playerState.bossShopOffers[0]!.cost).toBe(5);
+      expect(playerState.bossShopOffers[0]!.isRumorUnit).toBe(false);
+    });
+
+    it("should sync selectedHeroId and isRumorEligible when provided", () => {
+      const cmdResult = {
+        boardUnitCount: 4,
+        gold: 15,
+        xp: 0,
+        level: 1,
+        shopLocked: false,
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        shopOffers: [],
+        benchUnits: [],
+        boardUnits: [],
+        itemShopOffers: [],
+        itemInventory: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        selectedHeroId: "hero-special-001",
+        isRumorEligible: true,
+      };
+
+      syncPlayerStateFromCommandResult(playerState, cmdResult, 1);
+
+      expect(playerState.selectedHeroId).toBe("hero-special-001");
+      expect(playerState.isRumorEligible).toBe(true);
+    });
+
+    it("should preserve existing feature fields when not in command result", () => {
+      // Set initial values
+      playerState.selectedHeroId = "existing-hero";
+      playerState.isRumorEligible = true;
+      const bossOffer = new ShopOfferState();
+      bossOffer.unitType = "ranger";
+      bossOffer.cost = 5;
+      playerState.bossShopOffers.push(bossOffer);
+
+      const cmdResult = {
+        boardUnitCount: 4,
+        gold: 15,
+        xp: 0,
+        level: 1,
+        shopLocked: false,
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        shopOffers: [],
+        benchUnits: [],
+        boardUnits: [],
+        itemShopOffers: [],
+        itemInventory: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        // bossShopOffers, selectedHeroId, isRumorEligible not provided
+      };
+
+      syncPlayerStateFromCommandResult(playerState, cmdResult, 1);
+
+      // Existing values should be preserved (backward compatibility)
+      expect(playerState.selectedHeroId).toBe("existing-hero");
+      expect(playerState.isRumorEligible).toBe(true);
+      // But bossShopOffers should be cleared when not provided (default behavior)
+      expect(playerState.bossShopOffers.length).toBe(0);
+    });
   });
 
   describe("disabled feature fields backward compatibility", () => {

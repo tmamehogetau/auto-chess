@@ -72,7 +72,7 @@ export interface ControllerPlayerStatus {
 
 /**
  * Type representing command result payload for partial state updates.
- * Used after a command is accepted to sync the resulting state changes.
+ * Used after a command is processed and accepted to sync the resulting state changes.
  */
 export interface CommandResultPayload {
   boardUnitCount: number;
@@ -105,6 +105,14 @@ export interface CommandResultPayload {
     count: number;
     tier: number;
   }>;
+  bossShopOffers?: Array<{
+    unitType: string;
+    cost: number;
+    rarity: number;
+    isRumorUnit?: boolean;
+  }>;
+  selectedHeroId?: string;
+  isRumorEligible?: boolean;
 }
 
 /**
@@ -250,30 +258,39 @@ export function syncPlayerStateFromCommandResult(
   playerState.ownedMage = cmdResult.ownedUnits.mage;
   playerState.ownedAssassin = cmdResult.ownedUnits.assassin;
 
+  // Feature-flagged fields (backward compatible with empty defaults)
+  if (cmdResult.selectedHeroId !== undefined) {
+    playerState.selectedHeroId = cmdResult.selectedHeroId;
+  }
+  if (cmdResult.isRumorEligible !== undefined) {
+    playerState.isRumorEligible = cmdResult.isRumorEligible;
+  }
+
   // Shop offers - clear and repopulate
-  playerState.shopOffers.length = 0;
+  clearArraySchema(playerState.shopOffers);
   for (const offer of cmdResult.shopOffers) {
     const nextOffer = new ShopOfferState();
     nextOffer.unitType = toBoardUnitType(offer.unitType);
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
+    nextOffer.isRumorUnit = offer.isRumorUnit === true;
     playerState.shopOffers.push(nextOffer);
   }
 
   // Bench units - clear and repopulate
-  playerState.benchUnits.length = 0;
+  clearArraySchema(playerState.benchUnits);
   for (const benchUnit of cmdResult.benchUnits) {
     playerState.benchUnits.push(benchUnit);
   }
 
   // Board units - clear and repopulate
-  playerState.boardUnits.length = 0;
+  clearArraySchema(playerState.boardUnits);
   for (const boardUnit of cmdResult.boardUnits) {
     playerState.boardUnits.push(boardUnit);
   }
 
   // Item shop offers - clear and repopulate
-  playerState.itemShopOffers.length = 0;
+  clearArraySchema(playerState.itemShopOffers);
   for (const offer of cmdResult.itemShopOffers || []) {
     const nextOffer = new ShopItemOfferState();
     nextOffer.itemType = toItemType(offer.itemType);
@@ -281,8 +298,19 @@ export function syncPlayerStateFromCommandResult(
     playerState.itemShopOffers.push(nextOffer);
   }
 
+  // Boss shop offers - clear and repopulate
+  clearArraySchema(playerState.bossShopOffers);
+  for (const offer of cmdResult.bossShopOffers || []) {
+    const nextOffer = new ShopOfferState();
+    nextOffer.unitType = toBoardUnitType(offer.unitType);
+    nextOffer.cost = offer.cost;
+    nextOffer.rarity = offer.rarity;
+    nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    playerState.bossShopOffers.push(nextOffer);
+  }
+
   // Item inventory - clear and repopulate
-  playerState.itemInventory.length = 0;
+  clearArraySchema(playerState.itemInventory);
   for (const item of cmdResult.itemInventory || []) {
     playerState.itemInventory.push(item);
   }
@@ -305,7 +333,7 @@ export function syncPlayerStateFromCommandResult(
   }
 
   // Active synergies - clear and repopulate
-  playerState.activeSynergies.length = 0;
+  clearArraySchema(playerState.activeSynergies);
   for (const synergy of cmdResult.activeSynergies || []) {
     const nextSynergy = new SynergySchema();
     nextSynergy.unitType = synergy.unitType;

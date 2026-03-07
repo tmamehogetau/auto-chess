@@ -1,4 +1,11 @@
 import { GameLoopState, type Phase } from "../domain/game-loop-state";
+import {
+  hashToUint32,
+  seedToUnitFloat,
+  pickRarity,
+  comparePlayerIds,
+  buildLoserDamage,
+} from "./match-room-utils";
 import type {
   BoardUnitType,
   BoardUnitPlacement,
@@ -579,7 +586,7 @@ export class MatchRoomController {
     }
 
     const alivePlayers = [...state.alivePlayerIds].sort((left, right) =>
-      MatchRoomController.comparePlayerIds(left, right),
+      comparePlayerIds(left, right),
     );
     const eliminatedBestToWorst = [...this.eliminatedFromBottom].reverse();
 
@@ -2029,11 +2036,11 @@ export class MatchRoomController {
   ): ShopOffer {
     const level = this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL;
     const odds = SHOP_ODDS_BY_LEVEL[level] ?? SHOP_ODDS_BY_LEVEL[MAX_LEVEL] ?? [1, 0, 0];
-    const seedBase = MatchRoomController.hashToUint32(
+    const seedBase = hashToUint32(
       `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.setId}`,
     );
-    const rarityRoll = MatchRoomController.seedToUnitFloat(seedBase + 1);
-    const rarity = MatchRoomController.pickRarity(odds, rarityRoll);
+    const rarityRoll = seedToUnitFloat(seedBase + 1);
+    const rarity = pickRarity(odds, rarityRoll);
     let unitPool = SHOP_UNIT_POOL_BY_RARITY[rarity];
 
     // 共有プールが有効な場合、枯渇したユニットを除外
@@ -2049,7 +2056,7 @@ export class MatchRoomController {
       }
     }
 
-    const unitRoll = MatchRoomController.seedToUnitFloat(seedBase + 2);
+    const unitRoll = seedToUnitFloat(seedBase + 2);
     const unitType =
       unitPool.length > 0
         ? unitPool[Math.floor(unitRoll * unitPool.length) % unitPool.length] ?? unitPool[0] ?? "vanguard"
@@ -2060,44 +2067,6 @@ export class MatchRoomController {
       rarity,
       cost: rarity,
     };
-  }
-
-  private static pickRarity(
-    odds: readonly [number, number, number],
-    roll: number,
-  ): UnitRarity {
-    const [oneCostRate, twoCostRate] = odds;
-
-    if (roll < oneCostRate) {
-      return 1;
-    }
-
-    if (roll < oneCostRate + twoCostRate) {
-      return 2;
-    }
-
-    return 3;
-  }
-
-  private static seedToUnitFloat(seed: number): number {
-    let x = seed >>> 0;
-
-    x ^= x << 13;
-    x ^= x >>> 17;
-    x ^= x << 5;
-
-    return (x >>> 0) / 4294967296;
-  }
-
-  private static hashToUint32(text: string): number {
-    let hash = 2166136261;
-
-    for (let index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-
-    return hash >>> 0;
   }
 
   private ensureKnownPlayer(playerId: string): void {
@@ -2412,7 +2381,7 @@ export class MatchRoomController {
       return;
     }
 
-    const loserDamage = this.buildLoserDamage(
+    const loserDamage = buildLoserDamage(
       outcome.winnerUnitCount,
       outcome.loserUnitCount,
     );
@@ -2442,7 +2411,7 @@ export class MatchRoomController {
       return;
     }
 
-    const challengerDamage = this.buildLoserDamage(
+    const challengerDamage = buildLoserDamage(
       outcome.winnerUnitCount,
       outcome.loserUnitCount,
     );
@@ -2519,7 +2488,7 @@ export class MatchRoomController {
     // 戦闘結果から勝者と生存ユニット数を判定
     if (battleResult.winner === "right") {
       // After battle simulation, store results for both players
-      const damageToLeft = this.buildLoserDamage(
+      const damageToLeft = buildLoserDamage(
         battleResult.rightSurvivors.length,
         battleResult.leftSurvivors.length,
       );
@@ -2575,7 +2544,7 @@ export class MatchRoomController {
       };
     } else if (battleResult.winner === "left") {
       // After battle simulation, store results for both players
-      const damageToRight = this.buildLoserDamage(
+      const damageToRight = buildLoserDamage(
         battleResult.leftSurvivors.length,
         battleResult.rightSurvivors.length,
       );
@@ -2729,12 +2698,6 @@ export class MatchRoomController {
     });
   }
 
-  private buildLoserDamage(winnerUnitCount: number, loserUnitCount: number): number {
-    const baseDamage = 5;
-    // 新しいダメージ計算式: ベースダメージ + 勝者の生存ユニット数 × 2
-    return baseDamage + winnerUnitCount * 2;
-  }
-
   private estimateWinningSurvivingUnits(
     winnerUnitCount: number,
     loserUnitCount: number,
@@ -2798,19 +2761,7 @@ export class MatchRoomController {
       return rightRoundStartHp - leftRoundStartHp;
     }
 
-    return MatchRoomController.comparePlayerIds(left, right);
-  }
-
-  private static comparePlayerIds(left: string, right: string): number {
-    if (left < right) {
-      return -1;
-    }
-
-    if (left > right) {
-      return 1;
-    }
-
-    return 0;
+    return comparePlayerIds(left, right);
   }
 
   private buildPairingsForRound(
@@ -2822,7 +2773,7 @@ export class MatchRoomController {
     }
 
     const orderedParticipants = [...battleParticipants].sort((left, right) =>
-      MatchRoomController.comparePlayerIds(left, right),
+      comparePlayerIds(left, right),
     );
 
     if (orderedParticipants.length === 2) {

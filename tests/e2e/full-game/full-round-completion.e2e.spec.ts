@@ -178,9 +178,9 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
 
       // 最終状態の検証
       expect(gameRoom.state.phase).toBe("End");
-      // ゲームは最低1ラウンドは進行し、Endフェーズで終了する
-      expect(finalRoundIndex).toBeGreaterThanOrEqual(1);
-      expect(roundTransitions.length).toBeGreaterThanOrEqual(1);
+      // ゲームは最低3ラウンドは進行し、Endフェーズで終了する
+      expect(finalRoundIndex).toBeGreaterThanOrEqual(3);
+      expect(roundTransitions.length).toBeGreaterThanOrEqual(3);
 
       // match_summaryを検証（ログから取得）
       // ゲームがEndフェーズに到達し、totalRoundsが記録されていることを確認
@@ -325,11 +325,27 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
       const gameRoom = await testServer.createRoom<GameRoom>("game");
       const clients = await setupGameWith4Players(gameRoom);
 
+      // 強力な配置: player-elimination.e2e.spec.tsと同じ8体構成
+      const STRONG_PLACEMENTS = [
+        { cell: 0, unitType: "vanguard", starLevel: 3 },
+        { cell: 1, unitType: "vanguard", starLevel: 3 },
+        { cell: 2, unitType: "ranger", starLevel: 3 },
+        { cell: 3, unitType: "ranger", starLevel: 3 },
+        { cell: 4, unitType: "mage", starLevel: 3 },
+        { cell: 5, unitType: "mage", starLevel: 3 },
+        { cell: 6, unitType: "assassin", starLevel: 3 },
+        { cell: 7, unitType: "assassin", starLevel: 3 },
+      ];
+
       let eliminatedCount = 0;
       let finalRoundIndex = 0;
+      const targetLoserSessionId = clients[0]!.sessionId;
+      const cmdSeqBySessionId = new Map<string, number>(
+        clients.map((client) => [client.sessionId, 1]),
+      );
 
-      // 排除が発生するかゲームが終了するまでラウンドを進行（最大20ラウンド）
-      for (let round = 1; round <= 20; round += 1) {
+      // 排除が発生するかゲームが終了するまでラウンドを進行（最大12ラウンド）
+      for (let round = 1; round <= 12; round += 1) {
         // ゲームが既に終了しているか、排除が発生したらループを抜ける
         if (gameRoom.state.phase === "End") {
           break;
@@ -346,37 +362,38 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
 
         finalRoundIndex = gameRoom.state.roundIndex;
 
-        if (gameRoom.state.phase === "Prep") {
-          // 偏った配置: プレイヤー0は極端に弱く（毎回大ダメージを受ける）、他は強い
-          for (let i = 0; i < clients.length; i += 1) {
-            const client = clients[i]!;
-            const player = gameRoom.state.players.get(client.sessionId);
-            if (player && !player.eliminated) {
-              // プレイヤー0は空の盤面（ユニットなし）で毎回大ダメージ
-              // 他のプレイヤーは最大ユニット数で強力な構成
-              const placements = i === 0
-                ? [] // 弱い: 空の盤面
-                : [
-                    { cell: 0, unitType: "vanguard", starLevel: 3 },
-                    { cell: 1, unitType: "vanguard", starLevel: 3 },
-                    { cell: 2, unitType: "vanguard", starLevel: 3 },
-                    { cell: 3, unitType: "ranger", starLevel: 3 },
-                    { cell: 4, unitType: "ranger", starLevel: 3 },
-                    { cell: 5, unitType: "mage", starLevel: 3 },
-                  ];
+        // Prepフェーズを待機してコマンド送信
+        await waitForPhase(gameRoom, "Prep", 5_000);
 
-              client.send("prep_command", {
-                cmdSeq: round,
-                boardPlacements: placements,
-              });
-            }
+        // 偏った配置: ターゲットプレイヤーは空の盤面、他は強力な構成
+        for (const client of clients) {
+          const player = gameRoom.state.players.get(client.sessionId);
+          if (player && !player.eliminated) {
+            const placements = client.sessionId === targetLoserSessionId
+              ? [] // 弱い: 空の盤面で毎回大ダメージ
+              : STRONG_PLACEMENTS; // 強い: 8体の最大構成
+
+            const cmdSeq = cmdSeqBySessionId.get(client.sessionId) ?? 1;
+            cmdSeqBySessionId.set(client.sessionId, cmdSeq + 1);
+
+            client.send("prep_command", {
+              cmdSeq,
+              boardPlacements: placements,
+            });
           }
-          await new Promise((resolve) => setTimeout(resolve, 200));
         }
 
-        if (gameRoom.state.phase !== "End") {
-          await waitForRoundCompletion(gameRoom, round);
-        }
+        // Battleフェーズへ遷移
+        await waitForCondition(() => gameRoom.state.phase !== "Prep", 2_000);
+
+        // Settleフェーズへ遷移
+        await waitForPhase(gameRoom, "Settle", 5_000);
+
+        // 次のPrepまたはEndフェーズへ遷移
+        await waitForCondition(
+          () => gameRoom.state.phase === "Prep" || gameRoom.state.phase === "End",
+          8_000,
+        );
       }
 
       // 最終的な排除状況を確認
@@ -389,19 +406,10 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
 
       // 最終検証
       expect(gameRoom.state.phase).toBe("End");
-      expect(finalRoundIndex).toBeGreaterThanOrEqual(1);
+      expect(finalRoundIndex).toBeGreaterThanOrEqual(3);
 
-      // 少なくとも1人のプレイヤーが排除されているか、または排除寸前（HPが大幅に減少）
-      // ゲームが早期終了するため、排除が発生しない場合はHP減少を検証
-      if (eliminatedCount === 0) {
-        // 排除が発生しなかった場合は、少なくとも1人のプレイヤーがHPを大幅に減らしている
-        const playerWithHpLoss = Array.from(gameRoom.state.players.values()).find(
-          (p) => p.hp < 50, // 半分以下のHP
-        );
-        expect(playerWithHpLoss).toBeDefined();
-      } else {
-        expect(eliminatedCount).toBeGreaterThan(0);
-      }
+      // 少なくとも1人のプレイヤーが排除されていることを検証
+      expect(eliminatedCount).toBeGreaterThan(0);
 
       // 生存プレイヤーが1人以上いることを検証
       const alivePlayers = Array.from(gameRoom.state.players.values()).filter(

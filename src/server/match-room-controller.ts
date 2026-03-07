@@ -15,6 +15,15 @@ import type {
 import { MatchLogger } from "./match-logger";
 import { ShopOfferBuilder, type ShopOfferBuilderDependencies } from "./match-room-controller/shop-offer-builder";
 import {
+  validatePrepCommand,
+  type ValidationDependencies,
+  type CommandPayload,
+} from "./match-room-controller/prep-command-validator";
+import {
+  executePrepCommand,
+  type ExecutionDependencies,
+} from "./match-room-controller/prep-command-executor";
+import {
   normalizeBoardPlacements,
   resolveBoardPowerFromState,
   resolveUnitCountFromState,
@@ -997,614 +1006,142 @@ export class MatchRoomController {
     playerId: string,
     cmdSeq: number,
     receivedAtMs: number,
-    commandPayload?: {
-      boardUnitCount?: number;
-      boardPlacements?: BoardUnitPlacement[];
-      xpPurchaseCount?: number;
-      shopRefreshCount?: number;
-      shopBuySlotIndex?: number;
-      shopLock?: boolean;
-      benchToBoardCell?: {
-        benchIndex: number;
-        cell: number;
-      };
-      benchSellIndex?: number;
-      boardSellIndex?: number;
-      itemBuySlotIndex?: number;
-      itemEquipToBench?: {
-        inventoryItemIndex: number;
-        benchIndex: number;
-      };
-      itemUnequipFromBench?: {
-        benchIndex: number;
-        itemSlotIndex: number;
-      };
-      itemSellInventoryIndex?: number;
-      bossShopBuySlotIndex?: number;
-    },
+    commandPayload?: CommandPayload,
   ): CommandResult {
-    const validationResult = this.validatePrepCommandBasic(playerId, cmdSeq, receivedAtMs);
-    if (validationResult) {
-      return validationResult;
+    // Step 1: Build validation dependencies
+    const validationDeps: ValidationDependencies = {
+      isKnownPlayer: (id) => this.lastCmdSeqByPlayer.has(id),
+      isGameStarted: () => this.gameLoopState !== null,
+      getCurrentPhase: () => this.gameLoopState?.phase ?? "Waiting",
+      getLastCmdSeq: (id) => this.lastCmdSeqByPlayer.get(id) ?? 0,
+      getGold: (id) => this.goldByPlayer.get(id) ?? INITIAL_GOLD,
+      getShopOffers: (id) => this.shopOffersByPlayer.get(id) ?? [],
+      getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
+      getBoardPlacements: (id) => this.boardPlacementsByPlayer.get(id) ?? [],
+      getBoardUnitCount: (id) => this.resolveUnitCount(id),
+      getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
+      getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
+      getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
+      isBossPlayer: (id) => this.isBossPlayer(id),
+      isSharedPoolEnabled: () => this.enableSharedPool,
+      isPoolDepleted: (cost) => this.sharedPool?.isDepleted(cost) ?? false,
+      getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
+    };
+
+    // Step 2: Validate the command
+    const validationError = validatePrepCommand(
+      playerId,
+      cmdSeq,
+      receivedAtMs,
+      commandPayload ?? {},
+      validationDeps,
+    );
+
+    if (validationError) {
+      return validationError;
     }
 
-    if (commandPayload?.boardUnitCount !== undefined) {
-      const nextUnitCount = commandPayload.boardUnitCount;
-
-      if (!Number.isInteger(nextUnitCount) || nextUnitCount < 0 || nextUnitCount > 8) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      this.boardUnitCountByPlayer.set(playerId, nextUnitCount);
-      // boardPlacementsByPlayerはリセットしない（Bug #2修正）
-    }
-
-    if (commandPayload?.boardPlacements !== undefined) {
-      const validationResult = normalizeBoardPlacements(commandPayload.boardPlacements);
-
-      if (!validationResult.normalized) {
-        const errorCode = validationResult.errorCode ?? "INVALID_PAYLOAD";
-        return { accepted: false, code: errorCode };
-      }
-
-      this.boardPlacementsByPlayer.set(playerId, validationResult.normalized);
-      this.boardUnitCountByPlayer.set(playerId, validationResult.normalized.length);
-    }
-
-    let xpPurchaseCount = 0;
-    let shopRefreshCount = 0;
-    let shopBuySlotIndex: number | null = null;
-    let benchToBoardCell:
-      | {
-          benchIndex: number;
-          cell: number;
+    // Step 3: Build execution dependencies
+    const executionDeps: ExecutionDependencies = {
+      setBoardUnitCount: (id, count) => this.boardUnitCountByPlayer.set(id, count),
+      setBoardPlacements: (id, placements) => this.boardPlacementsByPlayer.set(id, placements),
+      setShopLock: (id, locked) => this.shopLockedByPlayer.set(id, locked),
+      setLastCmdSeq: (id, seq) => this.lastCmdSeqByPlayer.set(id, seq),
+      addGold: (id, amount) => {
+        const current = this.goldByPlayer.get(id) ?? INITIAL_GOLD;
+        this.goldByPlayer.set(id, current + amount);
+      },
+      addXp: (id, amount) => this.addXp(id, amount),
+      refreshShop: (id, count) => this.refreshShopByCount(id, count),
+      buyShopOffer: (id, slotIndex) => this.buyShopOfferBySlot(id, slotIndex),
+      deployBenchUnitToBoard: (id, benchIndex, cell) =>
+        this.deployBenchUnitToBoard(id, benchIndex, cell),
+      sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
+      sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
+      addItemToInventory: (id, itemType) => {
+        const inventory = this.itemInventoryByPlayer.get(id);
+        if (inventory) {
+          inventory.push(itemType);
         }
-      | null = null;
-    let benchSellIndex: number | null = null;
-    let boardSellIndex: number | null = null;
-    let itemBuySlotIndex: number | null = null;
-    let itemEquipToBench:
-      | {
-          inventoryItemIndex: number;
-          benchIndex: number;
-        }
-      | null = null;
-    let itemUnequipFromBench:
-      | {
-          benchIndex: number;
-          itemSlotIndex: number;
-        }
-      | null = null;
-    let itemSellInventoryIndex: number | null = null;
-    let bossShopBuySlotIndex: number | null = null;
-
-    if (commandPayload?.xpPurchaseCount !== undefined) {
-      xpPurchaseCount = commandPayload.xpPurchaseCount;
-
-      if (
-        !Number.isInteger(xpPurchaseCount) ||
-        xpPurchaseCount < 1 ||
-        xpPurchaseCount > MAX_XP_PURCHASE_COUNT
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (commandPayload?.shopRefreshCount !== undefined) {
-      shopRefreshCount = commandPayload.shopRefreshCount;
-
-      if (
-        !Number.isInteger(shopRefreshCount) ||
-        shopRefreshCount < 1 ||
-        shopRefreshCount > MAX_SHOP_REFRESH_COUNT
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (commandPayload?.shopBuySlotIndex !== undefined) {
-      shopBuySlotIndex = commandPayload.shopBuySlotIndex;
-
-      if (
-        !Number.isInteger(shopBuySlotIndex) ||
-        shopBuySlotIndex < 0 ||
-        shopBuySlotIndex > MAX_SHOP_BUY_SLOT_INDEX
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (shopBuySlotIndex !== null && shopRefreshCount > 0) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (commandPayload?.benchToBoardCell !== undefined) {
-      const benchIndex = commandPayload.benchToBoardCell.benchIndex;
-      const cell = commandPayload.benchToBoardCell.cell;
-
-      if (
-        !Number.isInteger(benchIndex) ||
-        benchIndex < 0 ||
-        !Number.isInteger(cell) ||
-        cell < MIN_BOARD_CELL_INDEX ||
-        cell > MAX_BOARD_CELL_INDEX
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      benchToBoardCell = {
-        benchIndex,
-        cell,
-      };
-    }
-
-    if (commandPayload?.benchSellIndex !== undefined) {
-      benchSellIndex = commandPayload.benchSellIndex;
-
-      if (!Number.isInteger(benchSellIndex) || benchSellIndex < 0) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (commandPayload?.boardSellIndex !== undefined) {
-      boardSellIndex = commandPayload.boardSellIndex;
-
-      if (
-        !Number.isInteger(boardSellIndex) ||
-        boardSellIndex < MIN_BOARD_CELL_INDEX ||
-        boardSellIndex > MAX_BOARD_CELL_INDEX
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (commandPayload?.itemBuySlotIndex !== undefined) {
-      itemBuySlotIndex = commandPayload.itemBuySlotIndex;
-
-      if (
-        !Number.isInteger(itemBuySlotIndex) ||
-        itemBuySlotIndex < 0 ||
-        itemBuySlotIndex >= ITEM_SHOP_SIZE
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (commandPayload?.itemEquipToBench !== undefined) {
-      const inventoryItemIndex = commandPayload.itemEquipToBench.inventoryItemIndex;
-      const benchIndex = commandPayload.itemEquipToBench.benchIndex;
-
-      if (
-        !Number.isInteger(inventoryItemIndex) ||
-        !Number.isInteger(benchIndex) ||
-        inventoryItemIndex < 0 ||
-        benchIndex < 0
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-
-      if (!inventory || inventoryItemIndex >= inventory.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      if (benchIndex >= benchUnits.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const benchUnit = benchUnits[benchIndex];
-      if (!benchUnit) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-      const currentItems = benchUnit.items || [];
-
-      if (currentItems.length >= MAX_ITEMS_PER_UNIT) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      itemEquipToBench = {
-        inventoryItemIndex,
-        benchIndex,
-      };
-    }
-
-    if (commandPayload?.itemUnequipFromBench !== undefined) {
-      const benchIndex = commandPayload.itemUnequipFromBench.benchIndex;
-      const itemSlotIndex = commandPayload.itemUnequipFromBench.itemSlotIndex;
-
-      if (
-        !Number.isInteger(benchIndex) ||
-        !Number.isInteger(itemSlotIndex) ||
-        benchIndex < 0 ||
-        itemSlotIndex < 0
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-
-      if (benchIndex >= benchUnits.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      if (!inventory || inventory.length >= MAX_INVENTORY_SIZE) {
-        return { accepted: false, code: "INVENTORY_FULL" };
-      }
-
-      const benchUnit = benchUnits[benchIndex];
-      if (!benchUnit) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-      const currentItems = benchUnit.items || [];
-
-      if (itemSlotIndex >= currentItems.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      itemUnequipFromBench = {
-        benchIndex,
-        itemSlotIndex,
-      };
-    }
-
-    if (commandPayload?.itemSellInventoryIndex !== undefined) {
-      const index = commandPayload.itemSellInventoryIndex;
-
-      if (!Number.isInteger(index) || index < 0) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-
-      if (!inventory || index >= inventory.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      itemSellInventoryIndex = index;
-    }
-
-    if (commandPayload?.bossShopBuySlotIndex !== undefined) {
-      bossShopBuySlotIndex = commandPayload.bossShopBuySlotIndex;
-
-      if (
-        !Number.isInteger(bossShopBuySlotIndex!) ||
-        bossShopBuySlotIndex! < 0 ||
-        bossShopBuySlotIndex! > 1
-      ) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      // Boss shop is only available to boss player
-      if (!this.isBossPlayer(playerId)) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      // Check if offer exists and is not already purchased
-      const bossOffers = this.getBossShopOffersForPlayer(playerId);
-      if (!bossOffers || bossShopBuySlotIndex! >= bossOffers.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const bossOffer = bossOffers[bossShopBuySlotIndex!];
-      if (!bossOffer || bossOffer.purchased) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (benchToBoardCell && benchSellIndex !== null) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (benchSellIndex !== null && shopBuySlotIndex !== null) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (boardSellIndex !== null && benchToBoardCell) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (boardSellIndex !== null && benchSellIndex !== null) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (boardSellIndex !== null && shopBuySlotIndex !== null) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (
-      boardSellIndex !== null &&
-      (commandPayload?.boardUnitCount !== undefined || commandPayload?.boardPlacements !== undefined)
-    ) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (itemBuySlotIndex !== null && shopRefreshCount > 0) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (itemBuySlotIndex !== null && shopBuySlotIndex !== null) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (benchToBoardCell) {
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-      const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-      const currentBoardUnitCount = this.resolveUnitCount(playerId);
-
-      if (!benchUnits[benchToBoardCell.benchIndex]) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      if (currentBoardUnitCount >= 8) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const duplicatedCell = boardPlacements.some(
-        (placement) => placement.cell === benchToBoardCell?.cell,
-      );
-
-      if (duplicatedCell) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (benchSellIndex !== null) {
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-
-      if (!benchUnits[benchSellIndex]) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    if (boardSellIndex !== null) {
-      const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-      const hasBoardUnit = boardPlacements.some((placement) => placement.cell === boardSellIndex);
-
-      if (!hasBoardUnit) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-    }
-
-    let shopBuyCost = 0;
-
-    if (shopBuySlotIndex !== null) {
-      const offers = this.shopOffersByPlayer.get(playerId) ?? [];
-      const targetOffer = offers[shopBuySlotIndex];
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-
-      if (!targetOffer) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      if (benchUnits.length >= MAX_BENCH_SIZE) {
-        return { accepted: false, code: "BENCH_FULL" };
-      }
-
-      // 共有プールの在庫チェック（Feature Flagが有効な場合）
-      if (this.enableSharedPool && this.sharedPool && this.sharedPool.isDepleted(targetOffer.cost)) {
-        return { accepted: false, code: "POOL_DEPLETED" };
-      }
-
-      shopBuyCost = targetOffer.cost;
-    }
-
-    let itemBuyCost = 0;
-
-    if (itemBuySlotIndex !== null) {
-      const itemShop = this.itemShopOffersByPlayer.get(playerId);
-
-      if (!itemShop || itemBuySlotIndex < 0 || itemBuySlotIndex >= itemShop.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const offer = itemShop[itemBuySlotIndex];
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-
-      if (!offer) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      if (!inventory || inventory.length >= MAX_INVENTORY_SIZE) {
-        return { accepted: false, code: "INVENTORY_FULL" };
-      }
-
-      itemBuyCost = offer.cost;
-    }
-
-    let bossShopBuyCost = 0;
-
-    if (bossShopBuySlotIndex !== null) {
-      const bossOffers = this.getBossShopOffersForPlayer(playerId);
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-
-      if (!bossOffers || bossShopBuySlotIndex! >= bossOffers.length) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      const bossOffer = bossOffers[bossShopBuySlotIndex!];
-      if (!bossOffer || bossOffer.purchased) {
-        return { accepted: false, code: "INVALID_PAYLOAD" };
-      }
-
-      if (benchUnits.length >= MAX_BENCH_SIZE) {
-        return { accepted: false, code: "BENCH_FULL" };
-      }
-
-      // Boss shop offers have cost 0 (special units for boss player)
-      bossShopBuyCost = 0;
-    }
-
-    if (xpPurchaseCount > 0 || shopRefreshCount > 0 || shopBuyCost > 0 || itemBuyCost > 0 || bossShopBuyCost > 0) {
-      const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
-      const requiredGold =
-        XP_PURCHASE_COST * xpPurchaseCount +
-        SHOP_REFRESH_COST * shopRefreshCount +
-        shopBuyCost +
-        itemBuyCost +
-        bossShopBuyCost;
-
-      if (currentGold < requiredGold) {
-        return { accepted: false, code: "INSUFFICIENT_GOLD" };
-      }
-
-      this.goldByPlayer.set(playerId, currentGold - requiredGold);
-
-      if (xpPurchaseCount > 0) {
-        this.addXp(playerId, XP_PURCHASE_GAIN * xpPurchaseCount);
-      }
-
-      if (shopRefreshCount > 0) {
-        this.refreshShopByCount(playerId, shopRefreshCount);
-      }
-
-      if (shopBuySlotIndex !== null) {
-        this.buyShopOfferBySlot(playerId, shopBuySlotIndex);
-      }
-
-      if (itemBuySlotIndex !== null) {
-        const itemShop = this.itemShopOffersByPlayer.get(playerId);
-        const inventory = this.itemInventoryByPlayer.get(playerId);
-
-        if (itemShop && inventory) {
-          const offer = itemShop[itemBuySlotIndex];
-          if (offer) {
-            inventory.push(offer.itemType);
+      },
+      equipItemToBenchUnit: (id, inventoryItemIndex, benchIndex) => {
+        const inventory = this.itemInventoryByPlayer.get(id);
+        const benchUnits = this.benchUnitsByPlayer.get(id);
+        if (inventory && benchUnits) {
+          const benchUnit = benchUnits[benchIndex];
+          if (benchUnit) {
+            const item = inventory[inventoryItemIndex];
+            if (item !== undefined) {
+              inventory.splice(inventoryItemIndex, 1);
+              benchUnit.items = benchUnit.items || [];
+              benchUnit.items.push(item);
+            }
           }
         }
-      }
-
-      if (bossShopBuySlotIndex !== null) {
-        const bossOffers = this.getBossShopOffersForPlayer(playerId);
-        const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-
-        if (bossOffers && bossShopBuySlotIndex! < bossOffers.length) {
-          const bossOffer = bossOffers[bossShopBuySlotIndex!];
+      },
+      unequipItemFromBenchUnit: (id, benchIndex, itemSlotIndex) => {
+        const benchUnits = this.benchUnitsByPlayer.get(id);
+        const inventory = this.itemInventoryByPlayer.get(id);
+        if (benchUnits && inventory) {
+          const benchUnit = benchUnits[benchIndex];
+          if (benchUnit?.items) {
+            const item = benchUnit.items[itemSlotIndex];
+            if (item !== undefined) {
+              benchUnit.items.splice(itemSlotIndex, 1);
+              inventory.push(item);
+            }
+          }
+        }
+      },
+      sellInventoryItem: (id, inventoryItemIndex) => {
+        const inventory = this.itemInventoryByPlayer.get(id);
+        if (inventory) {
+          const item = inventory[inventoryItemIndex];
+          if (item !== undefined) {
+            const itemDef = ITEM_DEFINITIONS[item];
+            const sellValue = Math.floor(itemDef.cost / 2);
+            inventory.splice(inventoryItemIndex, 1);
+            const currentGold = this.goldByPlayer.get(id) || 0;
+            this.goldByPlayer.set(id, currentGold + sellValue);
+          }
+        }
+      },
+      buyBossShopOffer: (id, slotIndex) => {
+        const bossOffers = this.getBossShopOffersForPlayer(id);
+        const benchUnits = this.benchUnitsByPlayer.get(id) ?? [];
+        if (bossOffers && slotIndex < bossOffers.length) {
+          const bossOffer = bossOffers[slotIndex];
           if (bossOffer && !bossOffer.purchased) {
-            // Add unit to bench as BenchUnit object
             benchUnits.push({
               unitType: bossOffer.unitType,
               cost: bossOffer.cost,
               starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
               unitCount: 1,
             });
-            this.benchUnitsByPlayer.set(playerId, benchUnits);
-
-            // Mark offer as purchased
+            this.benchUnitsByPlayer.set(id, benchUnits);
             bossOffer.purchased = true;
-
-            // ボスショップログを記録
-            const state = this.ensureStarted();
-            this.matchLogger?.logBossShop(
-              state.roundIndex,
-              playerId,
-              bossOffers.map((o) => {
-                const offer: { unitType: string; cost: number; isRumorUnit?: boolean } = {
-                  unitType: o.unitType,
-                  cost: o.cost,
-                };
-                if (o.isRumorUnit !== undefined) {
-                  offer.isRumorUnit = o.isRumorUnit;
-                }
-                return offer;
-              }),
-              {
-                slotIndex: bossShopBuySlotIndex,
-                unitType: bossOffer.unitType,
-                cost: bossOffer.cost,
-              },
-            );
           }
         }
-      }
-    }
+      },
+      getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
+      getOwnedUnits: (id) => this.ownedUnitsByPlayer.get(id) ?? { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+      getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
+      getShopOffers: (id) => this.shopOffersByPlayer.get(id) ?? [],
+      getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
+      getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
+      logBossShop: (id, offers, purchase) => {
+        const state = this.ensureStarted();
+        this.matchLogger?.logBossShop(
+          state.roundIndex,
+          id,
+          offers,
+          purchase,
+        );
+      },
+    };
 
-    if (commandPayload?.shopLock !== undefined) {
-      this.shopLockedByPlayer.set(playerId, commandPayload.shopLock);
-    }
-
-    if (benchToBoardCell) {
-      this.deployBenchUnitToBoard(playerId, benchToBoardCell.benchIndex, benchToBoardCell.cell);
-    }
-
-    if (benchSellIndex !== null) {
-      this.sellBenchUnit(playerId, benchSellIndex);
-    }
-
-    if (boardSellIndex !== null) {
-      this.sellBoardUnit(playerId, boardSellIndex);
-    }
-
-    // Handle item equip to bench
-    if (itemEquipToBench) {
-      const { inventoryItemIndex, benchIndex } = itemEquipToBench;
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-      const benchUnits = this.benchUnitsByPlayer.get(playerId);
-
-      if (inventory && benchUnits) {
-        const benchUnit = benchUnits[benchIndex];
-        if (!benchUnit) {
-          /* Should not happen due to validation */
-        } else {
-          const currentItems = benchUnit.items || [];
-
-          // Move item from inventory to bench unit
-          const item = inventory[inventoryItemIndex];
-          if (item !== undefined) {
-            inventory.splice(inventoryItemIndex, 1);
-            currentItems.push(item);
-            benchUnit.items = currentItems;
-          }
-        }
-      }
-    }
-
-    // Handle item unequip from bench
-    if (itemUnequipFromBench) {
-      const { benchIndex, itemSlotIndex } = itemUnequipFromBench;
-      const benchUnits = this.benchUnitsByPlayer.get(playerId);
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-
-      if (benchUnits && inventory) {
-        const benchUnit = benchUnits[benchIndex];
-        if (!benchUnit) {
-          /* Should not happen due to validation */
-        } else {
-          const currentItems = benchUnit.items || [];
-
-          // Move item from bench unit to inventory
-          const item = currentItems[itemSlotIndex];
-          if (item !== undefined) {
-            currentItems.splice(itemSlotIndex, 1);
-            inventory.push(item);
-          }
-        }
-      }
-    }
-
-    // Handle item sell
-    if (itemSellInventoryIndex !== null) {
-      const inventory = this.itemInventoryByPlayer.get(playerId);
-
-      if (inventory) {
-        const item = inventory[itemSellInventoryIndex];
-        if (item !== undefined) {
-          const itemDef = ITEM_DEFINITIONS[item];
-          const sellValue = Math.floor(itemDef.cost / 2);
-
-          // Remove from inventory and add gold
-          inventory.splice(itemSellInventoryIndex, 1);
-          const currentGold = this.goldByPlayer.get(playerId) || 0;
-          this.goldByPlayer.set(playerId, currentGold + sellValue);
-        }
-      }
-    }
-
-    this.lastCmdSeqByPlayer.set(playerId, cmdSeq);
-
-    return { accepted: true };
+    // Step 4: Execute the command
+    return executePrepCommand(playerId, cmdSeq, commandPayload ?? {}, executionDeps);
   }
 
   private applyPrepIncome(): void {
@@ -3016,34 +2553,6 @@ export class MatchRoomController {
   /**
    * PrepCommandの基本バリデーション（フェーズ、プレイヤー、タイミング、コマンド順序）
    */
-  private validatePrepCommandBasic(
-    playerId: string,
-    cmdSeq: number,
-    receivedAtMs: number,
-  ): CommandResult | null {
-    if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
-      return { accepted: false, code: "PHASE_MISMATCH" };
-    }
-
-    if (!this.lastCmdSeqByPlayer.has(playerId)) {
-      return { accepted: false, code: "UNKNOWN_PLAYER" };
-    }
-
-    const deadline = this.prepDeadlineAtMs;
-
-    if (deadline === null || receivedAtMs >= deadline) {
-      return { accepted: false, code: "LATE_INPUT" };
-    }
-
-    const previousCmdSeq = this.lastCmdSeqByPlayer.get(playerId);
-
-    if (previousCmdSeq === undefined || cmdSeq <= previousCmdSeq) {
-      return { accepted: false, code: "DUPLICATE_CMD" };
-    }
-
-    return null; // バリデーション通過
-  }
-
   /**
    * 主人公をBattleUnitに変換
    */

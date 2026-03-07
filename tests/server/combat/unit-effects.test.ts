@@ -24,6 +24,17 @@ describe("unit-effects", () => {
     expect(result.errorCode).toBeUndefined();
   });
 
+  test("normalizeBoardPlacementsはoptional unitIdを壊さず保持する", () => {
+    const placements = [{ cell: 5, unitType: "mage", unitId: "mage_apprentice" }] as BoardUnitPlacement[];
+
+    const result = normalizeBoardPlacements(placements);
+
+    expect(result.normalized).toEqual([
+      { cell: 5, unitType: "mage", unitId: "mage_apprentice", starLevel: 1 },
+    ]);
+    expect(result.errorCode).toBeUndefined();
+  });
+
   test("starLevelが不正な配置はrejectする", () => {
     const placements: BoardUnitPlacement[] = [{ cell: 0, unitType: "mage", starLevel: 0 }];
 

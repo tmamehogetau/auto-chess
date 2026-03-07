@@ -1,5 +1,7 @@
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
 
+export type UnitId = string;
+
 export type ItemType = 'sword' | 'shield' | 'boots' | 'ring' | 'amulet';
 
 export interface ItemInstance {
@@ -37,6 +39,7 @@ export interface SubUnitConfig {
 // MVP Phase 1 Unit Definition
 export interface MvpPhase1Unit {
   id: string;
+  unitId: UnitId;
   name: string;
   type: BoardUnitType;
   cost: number;

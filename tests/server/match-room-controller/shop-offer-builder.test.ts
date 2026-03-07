@@ -74,6 +74,7 @@ describe("ShopOfferBuilder", () => {
       mockDeps.isRumorInfluenceEnabled = vi.fn(() => true);
       mockDeps.getRumorUnitForRound = vi.fn((): import("../../../src/data/rumor-units").RumorUnit | null => ({
         targetRound: 1,
+        unitId: "rumor_test_vanguard_r1",
         unitType: "vanguard",
         rarity: 2,
         displayName: "テスト噂ユニット",
@@ -133,6 +134,7 @@ describe("ShopOfferBuilder", () => {
     test("creates 2 boss shop offers", () => {
       mockDeps.getRandomScarletMansionUnit = vi.fn((): import("../../../src/data/scarlet-mansion-units").ScarletMansionUnit => ({
         id: "test-unit",
+        unitId: "test-unit",
         displayName: "テストボスユニット",
         unitType: "vanguard",
         cost: 3,
@@ -161,6 +163,7 @@ describe("ShopOfferBuilder", () => {
     test("uses scarlet mansion units from data source", () => {
       const createMockUnit = (unitType: BoardUnitType, cost: 2 | 3 | 4, id: string): import("../../../src/data/scarlet-mansion-units").ScarletMansionUnit => ({
         id,
+        unitId: id,
         displayName: `Unit ${id}`,
         unitType,
         cost,

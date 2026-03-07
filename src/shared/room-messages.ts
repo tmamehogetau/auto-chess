@@ -1,4 +1,4 @@
-import { ItemType } from './types';
+import type { ItemType, UnitId } from './types';
 
 export const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
@@ -65,6 +65,7 @@ export interface ShopItemOffer {
 export interface BoardUnitPlacement {
   cell: number;
   unitType: BoardUnitType;
+  unitId?: UnitId;
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;

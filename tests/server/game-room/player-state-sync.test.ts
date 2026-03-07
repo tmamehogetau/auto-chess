@@ -99,6 +99,57 @@ describe("player-state-sync", () => {
       expect(playerState.boardUnits[2]).toBe("board-unit-3");
     });
 
+    it("should preserve optional unitId fields in shop payloads", () => {
+      const controllerStatus: ControllerPlayerStatus = {
+        hp: 75,
+        eliminated: false,
+        boardUnitCount: 3,
+        gold: 25,
+        xp: 4,
+        level: 2,
+        shopOffers: [
+          {
+            unitType: "vanguard",
+            unitId: "scarlet_guard",
+            cost: 1,
+            rarity: 1,
+            isRumorUnit: false,
+          },
+        ] as ControllerPlayerStatus["shopOffers"],
+        shopLocked: true,
+        benchUnits: ["unit-a"],
+        boardUnits: ["board-unit-1"],
+        ownedUnits: {
+          vanguard: 2,
+          ranger: 1,
+          mage: 0,
+          assassin: 0,
+        },
+        itemInventory: [],
+        itemShopOffers: [],
+        bossShopOffers: [
+          {
+            unitType: "mage",
+            unitId: "patchouli_librarian",
+            cost: 5,
+            rarity: 4,
+            isRumorUnit: false,
+          },
+        ] as ControllerPlayerStatus["bossShopOffers"],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        selectedHeroId: "",
+        isRumorEligible: false,
+      };
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.shopOffers[0]).toHaveProperty("unitId", "scarlet_guard");
+      expect(playerState.shopOffers[0]!.unitType).toBe("vanguard");
+      expect(playerState.bossShopOffers[0]).toHaveProperty("unitId", "patchouli_librarian");
+      expect(playerState.bossShopOffers[0]!.unitType).toBe("mage");
+    });
+
     it("should keep board / bench / shop fields consistent", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,

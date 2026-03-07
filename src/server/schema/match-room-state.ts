@@ -7,6 +7,8 @@ import type { FeatureFlags } from "../../shared/feature-flags";
 export class ShopOfferState extends Schema {
   declare public unitType: BoardUnitType;
 
+  declare public unitId: string;
+
   declare public cost: number;
 
   declare public rarity: number;
@@ -16,6 +18,7 @@ export class ShopOfferState extends Schema {
   public constructor() {
     super();
     this.unitType = "vanguard";
+    this.unitId = "";
     this.cost = 1;
     this.rarity = 1;
     this.isRumorUnit = false;
@@ -209,6 +212,7 @@ export class MatchRoomState extends Schema {
 
 defineTypes(ShopOfferState, {
   unitType: "string",
+  unitId: "string",
   cost: "number",
   rarity: "number",
   isRumorUnit: "boolean",

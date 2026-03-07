@@ -9,6 +9,7 @@ import {
   findTarget,
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
+import { resolveBattlePlacements } from "../../../src/server/unit-id-resolver";
 import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
@@ -144,6 +145,63 @@ describe("battle-simulator", () => {
       expect(unit2.hp).toBeLessThan(unit3.hp);
       expect(unit1.attackPower).toBeLessThan(unit2.attackPower);
       expect(unit2.attackPower).toBeLessThan(unit3.attackPower);
+    });
+
+    test("現在のunitType入力は正確な基礎ステータスを返す", () => {
+      expect(createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0)).toMatchObject({
+        id: "left-vanguard-0",
+        type: "vanguard",
+        hp: 80,
+        maxHp: 80,
+        attackPower: 4,
+        attackSpeed: 0.5,
+        attackRange: 1,
+        defense: 3,
+      });
+      expect(createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
+        id: "left-ranger-1",
+        type: "ranger",
+        hp: 50,
+        maxHp: 50,
+        attackPower: 5,
+        attackSpeed: 0.8,
+        attackRange: 3,
+        defense: 0,
+      });
+      expect(createBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
+        id: "right-mage-0",
+        type: "mage",
+        hp: 40,
+        maxHp: 40,
+        attackPower: 6,
+        attackSpeed: 0.6,
+        attackRange: 2,
+        defense: 0,
+      });
+      expect(createBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
+        id: "right-assassin-1",
+        type: "assassin",
+        hp: 45,
+        maxHp: 45,
+        attackPower: 5,
+        attackSpeed: 1,
+        attackRange: 1,
+        defense: 0,
+      });
+    });
+
+    test("unitIdがある場合はunitTypeよりunitId解決を優先する", () => {
+      const unit = createBattleUnit(
+        { cell: 0, unitType: "mage", unitId: "meiling", starLevel: 1 },
+        "left",
+        0,
+      );
+
+      expect(unit.type).toBe("vanguard");
+      expect(unit.hp).toBe(850);
+      expect(unit.attackPower).toBe(65);
+      expect(unit.attackRange).toBe(1);
+      expect(unit.defense).toBe(17.5);
     });
   });
 
@@ -469,6 +527,54 @@ describe("battle-simulator", () => {
       expect(result1.combatLog).toEqual(result2.combatLog);
     });
 
+    test("現在のMVP戦闘ベースラインは同じ入力で正確に再現される", () => {
+      const createLeftUnits = (): BattleUnit[] => [
+        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
+      ];
+      const createRightUnits = (): BattleUnit[] => [
+        createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
+      ];
+
+      const summarize = (result: ReturnType<BattleSimulator["simulateBattle"]>) => ({
+        winner: result.winner,
+        durationMs: result.durationMs,
+        damageDealt: result.damageDealt,
+        leftSurvivors: result.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell })),
+        rightSurvivors: result.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell })),
+        combatLogStart: result.combatLog.slice(0, 3),
+        combatLogEnd: result.combatLog.slice(-3),
+      });
+
+      const result1 = summarize(
+        new BattleSimulator().simulateBattle(createLeftUnits(), createRightUnits(), [], [], 10_000),
+      );
+      const result2 = summarize(
+        new BattleSimulator().simulateBattle(createLeftUnits(), createRightUnits(), [], [], 10_000),
+      );
+
+      expect(result1).toEqual(result2);
+      expect(result1).toEqual({
+        winner: "draw",
+        durationMs: 10_000,
+        damageDealt: {
+          left: 0,
+          right: 0,
+        },
+        leftSurvivors: [
+          { id: "left-vanguard-0", hp: 80, cell: 0 },
+          { id: "left-ranger-1", hp: 50, cell: 1 },
+        ],
+        rightSurvivors: [
+          { id: "right-vanguard-0", hp: 80, cell: 7 },
+          { id: "right-ranger-1", hp: 50, cell: 6 },
+        ],
+        combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
+        combatLogEnd: ["Left units: 2", "Right units: 2", "Battle ended: Draw (HP: 130 vs 130)"],
+      });
+    });
+
     test("hero synergy bonus typeが指定された側のシナジーが強化される", () => {
       const simulator = new BattleSimulator();
 
@@ -715,6 +821,49 @@ describe("battle-simulator", () => {
         // Check that Shield Wall was activated (should appear in combat log)
         expect(result.combatLog.some(log => log.includes('Shield Wall'))).toBe(true);
       });
+    });
+
+    test("unitId resolverは現行MVP rosterで同じ戦闘結果を返す", () => {
+      const createResolvedPlacements = () => ({
+        left: resolveBattlePlacements([
+          { cell: 0, unitType: "mage", unitId: "warrior_a", starLevel: 1 },
+          { cell: 1, unitType: "assassin", unitId: "archer_a", starLevel: 1 },
+        ]),
+        right: resolveBattlePlacements([
+          { cell: 7, unitType: "mage", unitId: "warrior_b", starLevel: 1 },
+          { cell: 6, unitType: "assassin", unitId: "archer_b", starLevel: 1 },
+        ]),
+      });
+
+      const { left: leftPlacements1, right: rightPlacements1 } = createResolvedPlacements();
+      const result1 = new BattleSimulator().simulateBattle(
+        leftPlacements1.map((placement, index) => createBattleUnit(placement, "left", index)),
+        rightPlacements1.map((placement, index) => createBattleUnit(placement, "right", index)),
+        leftPlacements1,
+        rightPlacements1,
+        10_000,
+      );
+
+      const { left: leftPlacements2, right: rightPlacements2 } = createResolvedPlacements();
+      const result2 = new BattleSimulator().simulateBattle(
+        leftPlacements2.map((placement, index) => createBattleUnit(placement, "left", index)),
+        rightPlacements2.map((placement, index) => createBattleUnit(placement, "right", index)),
+        leftPlacements2,
+        rightPlacements2,
+        10_000,
+      );
+
+      expect(result1.winner).toBe("draw");
+      expect(result1.damageDealt).toEqual({ left: 0, right: 0 });
+      expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
+        { id: "left-vanguard-0", hp: 80, cell: 0 },
+        { id: "left-ranger-1", hp: 50, cell: 1 },
+      ]);
+      expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
+        { id: "right-vanguard-0", hp: 80, cell: 7 },
+        { id: "right-ranger-1", hp: 50, cell: 6 },
+      ]);
+      expect(result1.combatLog).toEqual(result2.combatLog);
     });
   });
 });

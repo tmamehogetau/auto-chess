@@ -71,6 +71,7 @@ import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansion
 import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
 import type { SubUnitConfig } from "../shared/types";
 import type { ControllerPlayerStatus } from "./types/player-state-types";
+import { resolveBattlePlacements } from "./unit-id-resolver";
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
@@ -1905,13 +1906,15 @@ export class MatchRoomController {
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
     const leftPlacements = this.battleInputSnapshotByPlayer.get(leftPlayerId) ?? [];
     const rightPlacements = this.battleInputSnapshotByPlayer.get(rightPlayerId) ?? [];
+    const leftResolvedPlacements = resolveBattlePlacements(leftPlacements);
+    const rightResolvedPlacements = resolveBattlePlacements(rightPlacements);
 
     // ボード配置をBattleUnitに変換
-    const leftBattleUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+    const leftBattleUnits: BattleUnit[] = leftResolvedPlacements.map((placement, index) =>
       createBattleUnit(placement, "left", index),
     );
 
-    const rightBattleUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
+    const rightBattleUnits: BattleUnit[] = rightResolvedPlacements.map((placement, index) =>
       createBattleUnit(placement, "right", index),
     );
 
@@ -1941,14 +1944,14 @@ export class MatchRoomController {
     const battleId = `r${this.roundIndex}-${leftPlayerId}-${rightPlayerId}`;
     const battleTraceLog = this.battleResolutionService.createBattleTraceLog({
       battleId,
-      roundIndex: this.roundIndex,
-      leftPlayerId,
-      rightPlayerId,
-      leftPlacements,
-      rightPlacements,
-      leftHeroId: leftHeroId ?? null,
-      rightHeroId: rightHeroId ?? null,
-    });
+        roundIndex: this.roundIndex,
+        leftPlayerId,
+        rightPlayerId,
+        leftPlacements: leftResolvedPlacements,
+        rightPlacements: rightResolvedPlacements,
+        leftHeroId: leftHeroId ?? null,
+        rightHeroId: rightHeroId ?? null,
+      });
     // T3: 常時出力（環境変数依存を廃止）
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(battleTraceLog));
@@ -1963,8 +1966,8 @@ export class MatchRoomController {
       roundIndex: this.roundIndex,
       leftPlayerId,
       rightPlayerId,
-      leftPlacements,
-      rightPlacements,
+      leftPlacements: leftResolvedPlacements,
+      rightPlacements: rightResolvedPlacements,
       leftBattleUnits,
       rightBattleUnits,
       leftHeroSynergyBonusType,

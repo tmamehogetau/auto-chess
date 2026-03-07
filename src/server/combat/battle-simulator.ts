@@ -13,6 +13,7 @@ import {
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 import { HEROES } from "../../data/heroes";
+import { resolveBattlePlacement } from "../unit-id-resolver";
 
 /**
  * アクションインターフェース
@@ -99,7 +100,8 @@ export function createBattleUnit(
   index: number,
   isBoss: boolean = false,
 ): BattleUnit {
-  const { unitType, starLevel = 1, cell, archetype } = placement;
+  const resolvedPlacement = resolveBattlePlacement(placement);
+  const { unitType, starLevel = 1, cell, archetype } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
 
   // Scarlet Mansionユニットの特殊ステータスをチェック

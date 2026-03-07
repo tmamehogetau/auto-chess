@@ -1,0 +1,476 @@
+/**
+ * Battle Resolution Service
+ * Extracted from match-room-controller.ts to handle battle resolution logic
+ * with dependency injection for testability
+ */
+
+import type { BattleUnit, BattleResult as SimulatorBattleResult } from "../combat/battle-simulator";
+import type { BoardUnitPlacement } from "../../shared/room-messages";
+import type { MatchLogger } from "../match-logger";
+
+/**
+ * Spell combat modifiers
+ */
+export interface SpellCombatModifiers {
+  attackMultiplier: number;
+  defenseMultiplier: number;
+  attackSpeedMultiplier: number;
+}
+import type { SubUnitConfig } from "../../shared/types";
+import type { BoardUnitType } from "../../shared/room-messages";
+import { HEROES } from "../../data/heroes";
+import { buildLoserDamage } from "./damage-calculator";
+
+/**
+ * Battle resolution outcome
+ */
+export interface MatchupOutcome {
+  winnerId: string | null;
+  loserId: string | null;
+  winnerUnitCount: number;
+  loserUnitCount: number;
+  isDraw: boolean;
+}
+
+/**
+ * Battle result for a single player
+ */
+export interface PlayerBattleResult {
+  opponentId: string;
+  won: boolean;
+  damageDealt: number;
+  damageTaken: number;
+  survivors: number;
+  opponentSurvivors: number;
+}
+
+/**
+ * Complete battle resolution result
+ */
+export interface BattleResolutionResult {
+  outcome: MatchupOutcome;
+  leftBattleResult: PlayerBattleResult;
+  rightBattleResult: PlayerBattleResult;
+}
+
+/**
+ * Battle simulator interface for dependency injection
+ */
+export interface IBattleSimulator {
+  simulateBattle(
+    leftBattleUnits: BattleUnit[],
+    rightBattleUnits: BattleUnit[],
+    leftPlacements: BoardUnitPlacement[],
+    rightPlacements: BoardUnitPlacement[],
+    maxDurationMs: number,
+    leftHeroSynergyBonusType: BoardUnitType | null,
+    rightHeroSynergyBonusType: BoardUnitType | null,
+    subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null,
+  ): SimulatorBattleResult;
+}
+
+/**
+ * Dependencies for BattleResolutionService
+ */
+export interface BattleResolutionDependencies {
+  battleSimulator: IBattleSimulator;
+  matchLogger: MatchLogger | null;
+  enableSubUnitSystem: boolean;
+  subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null;
+}
+
+/**
+ * Input parameters for battle trace log
+ */
+export interface BattleTraceLogInput {
+  battleId: string;
+  roundIndex: number;
+  leftPlayerId: string;
+  rightPlayerId: string;
+  leftPlacements: BoardUnitPlacement[];
+  rightPlacements: BoardUnitPlacement[];
+  leftHeroId: string | null;
+  rightHeroId: string | null;
+}
+
+/**
+ * Battle trace log output
+ */
+export interface BattleTraceLog {
+  type: "battle_trace";
+  battleId: string;
+  roundIndex: number;
+  leftPlayerId: string;
+  rightPlayerId: string;
+  leftPlacements: BoardUnitPlacement[];
+  rightPlacements: BoardUnitPlacement[];
+  leftHeroId: string | null;
+  rightHeroId: string | null;
+  timestamp: number;
+}
+
+/**
+ * Input parameters for battle result trace log
+ */
+export interface BattleResultTraceLogInput {
+  battleId: string;
+  roundIndex: number;
+  leftPlayerId: string;
+  rightPlayerId: string;
+  winner: "left" | "right" | "draw";
+  leftSurvivors: number;
+  rightSurvivors: number;
+  leftDamageTaken: number;
+  rightDamageTaken: number;
+}
+
+/**
+ * Battle result trace log output
+ */
+export interface BattleResultTraceLog {
+  type: "battle_result_trace";
+  battleId: string;
+  roundIndex: number;
+  leftPlayerId: string;
+  rightPlayerId: string;
+  winner: "left" | "right" | "draw";
+  leftSurvivors: number;
+  rightSurvivors: number;
+  leftDamageTaken: number;
+  rightDamageTaken: number;
+  timestamp: number;
+}
+
+/**
+ * Input parameters for resolveMatchup
+ */
+export interface ResolveMatchupInput {
+  battleId: string;
+  roundIndex: number;
+  leftPlayerId: string;
+  rightPlayerId: string;
+  leftPlacements: BoardUnitPlacement[];
+  rightPlacements: BoardUnitPlacement[];
+  leftBattleUnits: BattleUnit[];
+  rightBattleUnits: BattleUnit[];
+  leftHeroSynergyBonusType: BoardUnitType | null;
+  rightHeroSynergyBonusType: BoardUnitType | null;
+  battleIndex: number;
+}
+
+/**
+ * Service for resolving battles between two players
+ */
+export class BattleResolutionService {
+  constructor(private readonly deps: BattleResolutionDependencies) {}
+
+  /**
+   * Resolve a matchup between two players
+   * Returns the outcome and battle results for both players
+   */
+  resolveMatchup(input: ResolveMatchupInput): BattleResolutionResult {
+    const {
+      battleId,
+      roundIndex,
+      leftPlayerId,
+      rightPlayerId,
+      leftPlacements,
+      rightPlacements,
+      leftBattleUnits,
+      rightBattleUnits,
+      leftHeroSynergyBonusType,
+      rightHeroSynergyBonusType,
+      battleIndex,
+    } = input;
+
+    // Run battle simulation
+    const battleResult = this.deps.battleSimulator.simulateBattle(
+      leftBattleUnits,
+      rightBattleUnits,
+      leftPlacements,
+      rightPlacements,
+      30000, // 30秒の最大戦闘時間
+      leftHeroSynergyBonusType,
+      rightHeroSynergyBonusType,
+      this.deps.enableSubUnitSystem ? this.deps.subUnitAssistConfigByType : null,
+    );
+
+    // Process results based on winner
+    let outcome: MatchupOutcome;
+    let leftBattleResult: PlayerBattleResult;
+    let rightBattleResult: PlayerBattleResult;
+
+    if (battleResult.winner === "right") {
+      const damageToLeft = this.calculateDamage(
+        battleResult.rightSurvivors.length,
+        battleResult.leftSurvivors.length,
+      );
+
+      leftBattleResult = {
+        opponentId: rightPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: damageToLeft,
+        survivors: battleResult.leftSurvivors.length,
+        opponentSurvivors: battleResult.rightSurvivors.length,
+      };
+
+      rightBattleResult = {
+        opponentId: leftPlayerId,
+        won: true,
+        damageDealt: damageToLeft,
+        damageTaken: 0,
+        survivors: battleResult.rightSurvivors.length,
+        opponentSurvivors: battleResult.leftSurvivors.length,
+      };
+
+      outcome = {
+        winnerId: rightPlayerId,
+        loserId: leftPlayerId,
+        winnerUnitCount: battleResult.rightSurvivors.length,
+        loserUnitCount: battleResult.leftSurvivors.length,
+        isDraw: false,
+      };
+
+      // Log battle result
+      this.logBattleResult(
+        roundIndex,
+        battleIndex,
+        leftPlayerId,
+        rightPlayerId,
+        "right",
+        0,
+        damageToLeft,
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+    } else if (battleResult.winner === "left") {
+      const damageToRight = this.calculateDamage(
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+
+      leftBattleResult = {
+        opponentId: rightPlayerId,
+        won: true,
+        damageDealt: damageToRight,
+        damageTaken: 0,
+        survivors: battleResult.leftSurvivors.length,
+        opponentSurvivors: battleResult.rightSurvivors.length,
+      };
+
+      rightBattleResult = {
+        opponentId: leftPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: damageToRight,
+        survivors: battleResult.rightSurvivors.length,
+        opponentSurvivors: battleResult.leftSurvivors.length,
+      };
+
+      outcome = {
+        winnerId: leftPlayerId,
+        loserId: rightPlayerId,
+        winnerUnitCount: battleResult.leftSurvivors.length,
+        loserUnitCount: battleResult.rightSurvivors.length,
+        isDraw: false,
+      };
+
+      // Log battle result
+      this.logBattleResult(
+        roundIndex,
+        battleIndex,
+        leftPlayerId,
+        rightPlayerId,
+        "left",
+        damageToRight,
+        0,
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+    } else {
+      // Draw
+      leftBattleResult = {
+        opponentId: rightPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: 0,
+        survivors: battleResult.leftSurvivors.length,
+        opponentSurvivors: battleResult.rightSurvivors.length,
+      };
+
+      rightBattleResult = {
+        opponentId: leftPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: 0,
+        survivors: battleResult.rightSurvivors.length,
+        opponentSurvivors: battleResult.leftSurvivors.length,
+      };
+
+      outcome = {
+        winnerId: null,
+        loserId: null,
+        winnerUnitCount: battleResult.leftSurvivors.length,
+        loserUnitCount: battleResult.rightSurvivors.length,
+        isDraw: true,
+      };
+
+      // Log battle result
+      this.logBattleResult(
+        roundIndex,
+        battleIndex,
+        leftPlayerId,
+        rightPlayerId,
+        "draw",
+        0,
+        0,
+        battleResult.leftSurvivors.length,
+        battleResult.rightSurvivors.length,
+      );
+    }
+
+    return {
+      outcome,
+      leftBattleResult,
+      rightBattleResult,
+    };
+  }
+
+  /**
+   * Apply spell combat modifiers to battle units
+   */
+  applySpellModifiers(
+    battleUnits: BattleUnit[],
+    modifiers: SpellCombatModifiers | null,
+  ): void {
+    if (!modifiers) {
+      return;
+    }
+
+    for (const battleUnit of battleUnits) {
+      battleUnit.buffModifiers.attackMultiplier *= modifiers.attackMultiplier;
+      battleUnit.buffModifiers.defenseMultiplier *= modifiers.defenseMultiplier;
+      battleUnit.buffModifiers.attackSpeedMultiplier *= modifiers.attackSpeedMultiplier;
+    }
+  }
+
+  /**
+   * Create a battle trace log
+   */
+  createBattleTraceLog(input: BattleTraceLogInput): BattleTraceLog {
+    return {
+      type: "battle_trace",
+      battleId: input.battleId,
+      roundIndex: input.roundIndex,
+      leftPlayerId: input.leftPlayerId,
+      rightPlayerId: input.rightPlayerId,
+      leftPlacements: input.leftPlacements,
+      rightPlacements: input.rightPlacements,
+      leftHeroId: input.leftHeroId,
+      rightHeroId: input.rightHeroId,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Create a battle result trace log
+   */
+  createBattleResultTraceLog(input: BattleResultTraceLogInput): BattleResultTraceLog {
+    return {
+      type: "battle_result_trace",
+      battleId: input.battleId,
+      roundIndex: input.roundIndex,
+      leftPlayerId: input.leftPlayerId,
+      rightPlayerId: input.rightPlayerId,
+      winner: input.winner,
+      leftSurvivors: input.leftSurvivors,
+      rightSurvivors: input.rightSurvivors,
+      leftDamageTaken: input.leftDamageTaken,
+      rightDamageTaken: input.rightDamageTaken,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Calculate damage dealt to loser
+   */
+  calculateDamage(winnerUnitCount: number, loserUnitCount: number): number {
+    return buildLoserDamage(winnerUnitCount, loserUnitCount);
+  }
+
+  /**
+   * Create a hero battle unit from hero ID
+   */
+  createHeroBattleUnit(
+    heroId: string | undefined,
+    playerId: string,
+  ): BattleUnit | null {
+    if (!heroId) return null;
+
+    const hero = HEROES.find((h) => h.id === heroId);
+    if (!hero) return null;
+
+    return {
+      id: `hero-${playerId}`,
+      type: "vanguard" as BoardUnitType,
+      starLevel: 1,
+      hp: hero.hp,
+      maxHp: hero.hp,
+      attackPower: hero.attack,
+      attackSpeed: 0.5,
+      attackRange: 1,
+      cell: 8,
+      isDead: false,
+      attackCount: 0,
+      defense: 0,
+      critRate: 0,
+      critDamageMultiplier: 1.5,
+      physicalReduction: undefined,
+      magicReduction: undefined,
+      buffModifiers: {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      },
+    };
+  }
+
+  /**
+   * Get hero synergy bonus type from hero ID
+   */
+  getHeroSynergyBonusType(heroId: string | undefined): BoardUnitType | null {
+    if (!heroId) return null;
+    const bonusType = HEROES.find((h) => h.id === heroId)?.synergyBonusType;
+    if (!bonusType) return null;
+    // Cast to BoardUnitType since hero synergy bonus types are valid BoardUnitTypes
+    return bonusType as BoardUnitType;
+  }
+
+  /**
+   * Log battle result to MatchLogger
+   */
+  private logBattleResult(
+    roundIndex: number,
+    battleIndex: number,
+    leftPlayerId: string,
+    rightPlayerId: string,
+    winner: "left" | "right" | "draw",
+    leftDamageDealt: number,
+    rightDamageDealt: number,
+    leftSurvivors: number,
+    rightSurvivors: number,
+  ): void {
+    this.deps.matchLogger?.logBattleResult(
+      roundIndex,
+      battleIndex,
+      leftPlayerId,
+      rightPlayerId,
+      winner,
+      leftDamageDealt,
+      rightDamageDealt,
+      leftSurvivors,
+      rightSurvivors,
+    );
+  }
+}

@@ -6,6 +6,10 @@ import {
 } from "./match-room-controller/random-utils";
 import { comparePlayerIds } from "./match-room-controller/player-compare";
 import { buildLoserDamage } from "./match-room-controller/damage-calculator";
+import {
+  BattleResolutionService,
+  type BattleResolutionDependencies,
+} from "./match-room-controller/battle-resolution";
 import type {
   BoardUnitType,
   BoardUnitPlacement,
@@ -376,6 +380,7 @@ export class MatchRoomController {
   private matchLogger: MatchLogger | null;
 
   private readonly shopOfferBuilder: ShopOfferBuilder;
+  private readonly battleResolutionService: BattleResolutionService;
 
   public constructor(
     playerIds: string[],
@@ -483,6 +488,18 @@ export class MatchRoomController {
     this.subUnitAssistConfigByType = this.enableSubUnitSystem
       ? resolveSubUnitAssistConfigByType()
       : new Map<BoardUnitType, SubUnitConfig>();
+
+    // Initialize battle resolution service with dependencies
+    // (must be after subUnit system initialization)
+    const battleResolutionDeps: BattleResolutionDependencies = {
+      battleSimulator: new BattleSimulator(),
+      matchLogger,
+      enableSubUnitSystem: this.enableSubUnitSystem,
+      subUnitAssistConfigByType: this.enableSubUnitSystem
+        ? this.subUnitAssistConfigByType
+        : null,
+    };
+    this.battleResolutionService = new BattleResolutionService(battleResolutionDeps);
 
     // Feature Flagに基づいてスペルカードを初期化
     this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
@@ -1898,33 +1915,31 @@ export class MatchRoomController {
       createBattleUnit(placement, "right", index),
     );
 
-    this.applySpellCombatModifiersToUnits(leftPlayerId, leftBattleUnits);
-    this.applySpellCombatModifiersToUnits(rightPlayerId, rightBattleUnits);
+    // スペル効果を適用
+    const leftModifiers = this.spellCombatModifiersByPlayer.get(leftPlayerId);
+    this.battleResolutionService.applySpellModifiers(leftBattleUnits, leftModifiers ?? null);
+    const rightModifiers = this.spellCombatModifiersByPlayer.get(rightPlayerId);
+    this.battleResolutionService.applySpellModifiers(rightBattleUnits, rightModifiers ?? null);
 
     // 主人公を追加（選択されている場合）
     const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
-    const leftHeroBattleUnit = this.createHeroBattleUnit(leftHeroId, leftPlayerId);
+    const leftHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(leftHeroId, leftPlayerId);
     if (leftHeroBattleUnit) {
       leftBattleUnits.push(leftHeroBattleUnit);
     }
 
     const rightHeroId = this.selectedHeroByPlayer.get(rightPlayerId);
-    const rightHeroBattleUnit = this.createHeroBattleUnit(rightHeroId, rightPlayerId);
+    const rightHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(rightHeroId, rightPlayerId);
     if (rightHeroBattleUnit) {
       rightBattleUnits.push(rightHeroBattleUnit);
     }
 
-    const leftHeroSynergyBonusType = leftHeroId
-      ? HEROES.find((h) => h.id === leftHeroId)?.synergyBonusType ?? null
-      : null;
-    const rightHeroSynergyBonusType = rightHeroId
-      ? HEROES.find((h) => h.id === rightHeroId)?.synergyBonusType ?? null
-      : null;
+    const leftHeroSynergyBonusType = this.battleResolutionService.getHeroSynergyBonusType(leftHeroId);
+    const rightHeroSynergyBonusType = this.battleResolutionService.getHeroSynergyBonusType(rightHeroId);
 
     // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
     const battleId = `r${this.roundIndex}-${leftPlayerId}-${rightPlayerId}`;
-    const battleTraceLog = {
-      type: "battle_trace",
+    const battleTraceLog = this.battleResolutionService.createBattleTraceLog({
       battleId,
       roundIndex: this.roundIndex,
       leftPlayerId,
@@ -1933,191 +1948,66 @@ export class MatchRoomController {
       rightPlacements,
       leftHeroId: leftHeroId ?? null,
       rightHeroId: rightHeroId ?? null,
-      timestamp: Date.now(),
-    };
+    });
     // T3: 常時出力（環境変数依存を廃止）
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(battleTraceLog));
 
-    // バトルシミュレーターで戦闘を実行
-    const battleSimulator = new BattleSimulator();
-    const battleResult = battleSimulator.simulateBattle(
-      leftBattleUnits,
-      rightBattleUnits,
-      leftPlacements,
-      rightPlacements,
-      30000, // 30秒の最大戦闘時間
-      leftHeroSynergyBonusType,
-      rightHeroSynergyBonusType,
-      this.enableSubUnitSystem ? this.subUnitAssistConfigByType : null,
+    // バトル解決サービスで戦闘を実行
+    const battleIndex = this.currentRoundPairings.findIndex(
+      (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
     );
 
-    // 戦闘結果から勝者と生存ユニット数を判定
-    if (battleResult.winner === "right") {
-      // After battle simulation, store results for both players
-      const damageToLeft = buildLoserDamage(
-        battleResult.rightSurvivors.length,
-        battleResult.leftSurvivors.length,
-      );
-      this.battleResultsByPlayer.set(leftPlayerId, {
-        opponentId: rightPlayerId,
-        won: false,
-        damageDealt: 0,
-        damageTaken: damageToLeft,
-        survivors: battleResult.leftSurvivors.length,
-        opponentSurvivors: battleResult.rightSurvivors.length,
-      });
-      this.battleResultsByPlayer.set(rightPlayerId, {
-        opponentId: leftPlayerId,
-        won: true,
-        damageDealt: damageToLeft,
-        damageTaken: 0,
-        survivors: battleResult.rightSurvivors.length,
-        opponentSurvivors: battleResult.leftSurvivors.length,
-      });
+    const resolutionResult = this.battleResolutionService.resolveMatchup({
+      battleId,
+      roundIndex: this.roundIndex,
+      leftPlayerId,
+      rightPlayerId,
+      leftPlacements,
+      rightPlacements,
+      leftBattleUnits,
+      rightBattleUnits,
+      leftHeroSynergyBonusType,
+      rightHeroSynergyBonusType,
+      battleIndex,
+    });
 
-      // Log battle result to MatchLogger
-      this.matchLogger?.logBattleResult(
-        this.roundIndex,
-        this.currentRoundPairings.findIndex(
-          (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
-        ),
-        leftPlayerId,
-        rightPlayerId,
-        "right",
-        0,
-        damageToLeft,
-        battleResult.leftSurvivors.length,
-        battleResult.rightSurvivors.length,
-      );
+    // Store battle results in controller state
+    this.battleResultsByPlayer.set(leftPlayerId, resolutionResult.leftBattleResult);
+    this.battleResultsByPlayer.set(rightPlayerId, resolutionResult.rightBattleResult);
 
-      this.logBattleResultTrace({
-        battleId,
-        leftPlayerId,
-        rightPlayerId,
-        winner: "right",
-        leftSurvivors: battleResult.leftSurvivors.length,
-        rightSurvivors: battleResult.rightSurvivors.length,
-        leftDamageTaken: damageToLeft,
-        rightDamageTaken: 0,
-      });
+    // Log battle result trace
+    const { outcome } = resolutionResult;
+    let winner: "left" | "right" | "draw";
+    let leftDamageTaken: number;
+    let rightDamageTaken: number;
 
-      return {
-        winnerId: rightPlayerId,
-        loserId: leftPlayerId,
-        winnerUnitCount: battleResult.rightSurvivors.length,
-        loserUnitCount: battleResult.leftSurvivors.length,
-        isDraw: false,
-      };
-    } else if (battleResult.winner === "left") {
-      // After battle simulation, store results for both players
-      const damageToRight = buildLoserDamage(
-        battleResult.leftSurvivors.length,
-        battleResult.rightSurvivors.length,
-      );
-      this.battleResultsByPlayer.set(leftPlayerId, {
-        opponentId: rightPlayerId,
-        won: true,
-        damageDealt: damageToRight,
-        damageTaken: 0,
-        survivors: battleResult.leftSurvivors.length,
-        opponentSurvivors: battleResult.rightSurvivors.length,
-      });
-      this.battleResultsByPlayer.set(rightPlayerId, {
-        opponentId: leftPlayerId,
-        won: false,
-        damageDealt: 0,
-        damageTaken: damageToRight,
-        survivors: battleResult.rightSurvivors.length,
-        opponentSurvivors: battleResult.leftSurvivors.length,
-      });
-
-      // Log battle result to MatchLogger
-      this.matchLogger?.logBattleResult(
-        this.roundIndex,
-        this.currentRoundPairings.findIndex(
-          (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
-        ),
-        leftPlayerId,
-        rightPlayerId,
-        "left",
-        damageToRight,
-        0,
-        battleResult.leftSurvivors.length,
-        battleResult.rightSurvivors.length,
-      );
-
-      this.logBattleResultTrace({
-        battleId,
-        leftPlayerId,
-        rightPlayerId,
-        winner: "left",
-        leftSurvivors: battleResult.leftSurvivors.length,
-        rightSurvivors: battleResult.rightSurvivors.length,
-        leftDamageTaken: 0,
-        rightDamageTaken: damageToRight,
-      });
-
-      return {
-        winnerId: leftPlayerId,
-        loserId: rightPlayerId,
-        winnerUnitCount: battleResult.leftSurvivors.length,
-        loserUnitCount: battleResult.rightSurvivors.length,
-        isDraw: false,
-      };
+    if (outcome.isDraw) {
+      winner = "draw";
+      leftDamageTaken = 0;
+      rightDamageTaken = 0;
+    } else if (outcome.winnerId === leftPlayerId) {
+      winner = "left";
+      leftDamageTaken = 0;
+      rightDamageTaken = resolutionResult.rightBattleResult.damageTaken;
     } else {
-      // 引き分けの場合 - 双方の結果を保存
-      this.battleResultsByPlayer.set(leftPlayerId, {
-        opponentId: rightPlayerId,
-        won: false,
-        damageDealt: 0,
-        damageTaken: 0,
-        survivors: battleResult.leftSurvivors.length,
-        opponentSurvivors: battleResult.rightSurvivors.length,
-      });
-      this.battleResultsByPlayer.set(rightPlayerId, {
-        opponentId: leftPlayerId,
-        won: false,
-        damageDealt: 0,
-        damageTaken: 0,
-        survivors: battleResult.rightSurvivors.length,
-        opponentSurvivors: battleResult.leftSurvivors.length,
-      });
-
-      // Log battle result to MatchLogger
-      this.matchLogger?.logBattleResult(
-        this.roundIndex,
-        this.currentRoundPairings.findIndex(
-          (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
-        ),
-        leftPlayerId,
-        rightPlayerId,
-        "draw",
-        0,
-        0,
-        battleResult.leftSurvivors.length,
-        battleResult.rightSurvivors.length,
-      );
-
-      this.logBattleResultTrace({
-        battleId,
-        leftPlayerId,
-        rightPlayerId,
-        winner: "draw",
-        leftSurvivors: battleResult.leftSurvivors.length,
-        rightSurvivors: battleResult.rightSurvivors.length,
-        leftDamageTaken: 0,
-        rightDamageTaken: 0,
-      });
-
-      return {
-        winnerId: null,
-        loserId: null,
-        winnerUnitCount: battleResult.leftSurvivors.length,
-        loserUnitCount: battleResult.rightSurvivors.length,
-        isDraw: true,
-      };
+      winner = "right";
+      leftDamageTaken = resolutionResult.leftBattleResult.damageTaken;
+      rightDamageTaken = 0;
     }
+
+    this.logBattleResultTrace({
+      battleId,
+      leftPlayerId,
+      rightPlayerId,
+      winner,
+      leftSurvivors: resolutionResult.leftBattleResult.survivors,
+      rightSurvivors: resolutionResult.rightBattleResult.survivors,
+      leftDamageTaken,
+      rightDamageTaken,
+    });
+
+    return outcome;
   }
 
   private logBattleResultTrace(params: {
@@ -2496,19 +2386,6 @@ export class MatchRoomController {
     }
   }
 
-  private applySpellCombatModifiersToUnits(playerId: string, battleUnits: BattleUnit[]): void {
-    const modifiers = this.spellCombatModifiersByPlayer.get(playerId);
-    if (!modifiers) {
-      return;
-    }
-
-    for (const battleUnit of battleUnits) {
-      battleUnit.buffModifiers.attackMultiplier *= modifiers.attackMultiplier;
-      battleUnit.buffModifiers.defenseMultiplier *= modifiers.defenseMultiplier;
-      battleUnit.buffModifiers.attackSpeedMultiplier *= modifiers.attackSpeedMultiplier;
-    }
-  }
-
   /**
    * 現在宣言中のスペルカードを取得
    */
@@ -2553,40 +2430,4 @@ export class MatchRoomController {
   /**
    * PrepCommandの基本バリデーション（フェーズ、プレイヤー、タイミング、コマンド順序）
    */
-  /**
-   * 主人公をBattleUnitに変換
-   */
-  private createHeroBattleUnit(
-    heroId: string | undefined,
-    playerId: string,
-  ): BattleUnit | null {
-    if (!heroId) return null;
-
-    const hero = HEROES.find((h) => h.id === heroId);
-    if (!hero) return null;
-
-    return {
-      id: `hero-${playerId}`,
-      type: "vanguard" as BoardUnitType,
-      starLevel: 1,
-      hp: hero.hp,
-      maxHp: hero.hp,
-      attackPower: hero.attack,
-      attackSpeed: 0.5,
-      attackRange: 1,
-      cell: 8,
-      isDead: false,
-      attackCount: 0,
-      defense: 0,
-      critRate: 0,
-      critDamageMultiplier: 1.5,
-      physicalReduction: undefined,
-      magicReduction: undefined,
-      buffModifiers: {
-        attackMultiplier: 1,
-        defenseMultiplier: 1,
-        attackSpeedMultiplier: 1,
-      },
-    };
-  }
 }

@@ -7,6 +7,8 @@ import {
   syncPlayerStateFromController,
   syncPlayerStateFromCommandResult,
 } from "./game-room/player-state-sync";
+import { handleAdminQuery } from "./game-room/admin-query-handler";
+import { logPrepCommandActions } from "./game-room/prep-command-logging";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
@@ -18,7 +20,6 @@ import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
   type AdminQueryMessage,
-  type AdminResponseMessage,
   type PrepCommandMessage,
   type ReadyMessage,
   type RoundStateMessage,
@@ -426,225 +427,20 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         }
       | undefined,
   ): void {
-    if (!this.matchLogger || !commandPayload) {
-      return;
-    }
-
-    const player = this.state.players.get(sessionId);
-    const goldBefore = player?.gold ?? 0;
-
-    if (commandPayload.shopBuySlotIndex !== undefined) {
-      const offers = this.controller?.getShopOffersForPlayer(sessionId);
-      const offer = offers?.[commandPayload.shopBuySlotIndex];
-      if (offer) {
-        this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_unit", {
-          unitType: offer.unitType,
-          cost: offer.cost,
-          goldBefore,
-          goldAfter: goldBefore - offer.cost,
-        });
-      }
-    }
-
-    if (commandPayload.benchSellIndex !== undefined) {
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "sell_unit", {
-        benchIndex: commandPayload.benchSellIndex,
-        goldBefore,
-        goldAfter: goldBefore + 1,
-      });
-    }
-
-    if (commandPayload.benchToBoardCell !== undefined) {
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "deploy", {
-        benchIndex: commandPayload.benchToBoardCell.benchIndex,
-        toCell: commandPayload.benchToBoardCell.cell,
-        goldBefore,
-        goldAfter: goldBefore,
-      });
-    }
-
-    if (commandPayload.shopRefreshCount !== undefined) {
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "shop_refresh", {
-        itemCount: commandPayload.shopRefreshCount,
-        goldBefore,
-        goldAfter: goldBefore - 2,
-      });
-    }
-
-    if (commandPayload.xpPurchaseCount !== undefined) {
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_xp", {
-        itemCount: commandPayload.xpPurchaseCount,
-        goldBefore,
-        goldAfter: goldBefore - 4,
-      });
-    }
-
-    if (commandPayload.boardSellIndex !== undefined) {
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "board_sell", {
-        cell: commandPayload.boardSellIndex,
-        goldBefore,
-        goldAfter: goldBefore + 1,
-      });
-    }
-
-    if (commandPayload.itemBuySlotIndex !== undefined) {
-      const playerStatus = this.controller?.getPlayerStatus(sessionId);
-      const itemOffer = playerStatus?.itemShopOffers[commandPayload.itemBuySlotIndex];
-      if (itemOffer) {
-        this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_item", {
-          itemType: itemOffer.itemType,
-          cost: itemOffer.cost,
-          goldBefore,
-          goldAfter: goldBefore - itemOffer.cost,
-        });
-      }
-    }
-
-    if (commandPayload.itemEquipToBench !== undefined) {
-      const playerStatus = this.controller?.getPlayerStatus(sessionId);
-      const item = playerStatus?.itemInventory[commandPayload.itemEquipToBench.inventoryItemIndex];
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "equip_item", {
-        inventoryIndex: commandPayload.itemEquipToBench.inventoryItemIndex,
-        benchIndex: commandPayload.itemEquipToBench.benchIndex,
-        ...(item !== undefined && { itemType: item }),
-        goldBefore,
-        goldAfter: goldBefore,
-      });
-    }
-
-    if (commandPayload.itemUnequipFromBench !== undefined) {
-      const playerStatus = this.controller?.getPlayerStatus(sessionId);
-      const benchUnit = playerStatus?.benchUnits[commandPayload.itemUnequipFromBench.benchIndex];
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "unequip_item", {
-        benchIndex: commandPayload.itemUnequipFromBench.benchIndex,
-        itemSlotIndex: commandPayload.itemUnequipFromBench.itemSlotIndex,
-        ...(benchUnit !== undefined && { benchUnit }),
-        goldBefore,
-        goldAfter: goldBefore,
-      });
-    }
-
-    if (commandPayload.itemSellInventoryIndex !== undefined) {
-      const playerStatus = this.controller?.getPlayerStatus(sessionId);
-      const item = playerStatus?.itemInventory[commandPayload.itemSellInventoryIndex];
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "sell_item", {
-        inventoryIndex: commandPayload.itemSellInventoryIndex,
-        ...(item !== undefined && { itemType: item }),
-        goldBefore,
-        goldAfter: goldBefore + 1,
-      });
-    }
-
-    if (commandPayload.bossShopBuySlotIndex !== undefined) {
-      const bossOffers = this.controller?.getBossShopOffersForPlayer(sessionId);
-      const offer = bossOffers?.[commandPayload.bossShopBuySlotIndex];
-      if (offer) {
-        this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "buy_boss_unit", {
-          unitType: offer.unitType,
-          cost: offer.cost,
-          goldBefore,
-          goldAfter: goldBefore - offer.cost,
-        });
-      }
-    }
-
-    if (commandPayload.shopLock !== undefined) {
-      this.matchLogger.logAction(sessionId, this.controller!.roundIndex, "shop_lock", {
-        locked: commandPayload.shopLock,
-        goldBefore,
-        goldAfter: goldBefore,
-      });
-    }
+    logPrepCommandActions(sessionId, commandPayload, {
+      logger: this.matchLogger,
+      getShopOffers: (sid) => this.controller?.getShopOffersForPlayer(sid),
+      getBossShopOffers: (sid) => this.controller?.getBossShopOffersForPlayer(sid),
+      getPlayerStatus: (sid) => this.controller?.getPlayerStatus(sid) ?? null,
+      getRoundIndex: () => this.controller?.roundIndex ?? 0,
+      getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
+    });
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
-    const correlationId =
-      typeof message?.correlationId === "string" && message.correlationId.trim().length > 0
-        ? message.correlationId.trim()
-        : undefined;
-    const correlationMeta = correlationId ? { correlationId } : {};
-
-    if (!this.sharedBoardBridge) {
-      this.sendAdminResponse(client, {
-        ok: false,
-        kind: message?.kind ?? "metrics",
-        timestamp: Date.now(),
-        ...correlationMeta,
-        error: "SharedBoardBridge is not available",
-      });
-      return;
-    }
-
-    switch (message.kind) {
-      case "metrics": {
-        this.sendAdminResponse(client, {
-          ok: true,
-          kind: "metrics",
-          timestamp: Date.now(),
-          ...correlationMeta,
-          data: this.sharedBoardBridge.getMetrics(),
-        });
-        return;
-      }
-
-      case "dashboard": {
-        this.sendAdminResponse(client, {
-          ok: true,
-          kind: "dashboard",
-          timestamp: Date.now(),
-          ...correlationMeta,
-          data: this.sharedBoardBridge.getDashboardMetrics(message.windowMs),
-        });
-        return;
-      }
-
-      case "alerts": {
-        this.sendAdminResponse(client, {
-          ok: true,
-          kind: "alerts",
-          timestamp: Date.now(),
-          ...correlationMeta,
-          data: this.sharedBoardBridge.getAlertStatus(message.thresholds),
-        });
-        return;
-      }
-
-      case "top_errors": {
-        this.sendAdminResponse(client, {
-          ok: true,
-          kind: "top_errors",
-          timestamp: Date.now(),
-          ...correlationMeta,
-          data: this.sharedBoardBridge.getTopErrors(message.limit, message.windowMs),
-        });
-        return;
-      }
-
-      case "logs": {
-        this.sendAdminResponse(client, {
-          ok: true,
-          kind: "logs",
-          timestamp: Date.now(),
-          ...correlationMeta,
-          data: this.sharedBoardBridge.getRecentLogs(message.limit),
-        });
-        return;
-      }
-
-      default: {
-        this.sendAdminResponse(client, {
-          ok: false,
-          kind: "metrics",
-          timestamp: Date.now(),
-          ...correlationMeta,
-          error: `Unknown admin query kind: ${String((message as { kind?: unknown }).kind)}`,
-        });
-      }
-    }
-  }
-
-  private sendAdminResponse(client: Client, message: AdminResponseMessage): void {
-    client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, message);
+    handleAdminQuery(client, message, {
+      bridge: this.sharedBoardBridge,
+    });
   }
 
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getActiveRosterUnits,
   getActiveRosterKind,
+  getTouhouDraftRosterUnits,
   ROSTER_KIND_MVP,
   ROSTER_KIND_TOUHOU,
   TouhouRosterNotConfiguredError,
@@ -9,6 +10,7 @@ import {
 } from "../../../src/server/roster/roster-provider";
 import type { FeatureFlags } from "../../../src/shared/feature-flags";
 import mvpPhase1UnitsData from "../../../src/data/mvp_phase1_units.json";
+import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 
 /**
  * Test helper: Create FeatureFlags with defaults + overrides.
@@ -72,18 +74,37 @@ describe("roster-provider", () => {
       expect(actualUnitIds).toContain("dragon");
     });
 
-    it("should throw explicit error when enableTouhouRoster is true", () => {
+    it("should return Touhou draft roster units when enableTouhouRoster is true", () => {
       const flags = createFeatureFlags({
         enableTouhouRoster: true,
         enableTouhouFactions: true,
       });
 
-      expect(() => getActiveRosterUnits(flags)).toThrow(
-        TouhouRosterNotConfiguredError
-      );
-      expect(() => getActiveRosterUnits(flags)).toThrow(
-        /Touhou roster data is not configured yet/
-      );
+      const units = getActiveRosterUnits(flags);
+      expect(units).toHaveLength(TOUHOU_UNITS.length);
+      expect(units[0]).toMatchObject({
+        unitId: "rin",
+        name: "火焔猫燐",
+        type: "vanguard",
+      });
+    });
+
+    it("should expose Touhou draft roster data through a separate wiring path", () => {
+      const draftUnits = getTouhouDraftRosterUnits();
+
+      expect(draftUnits).toHaveLength(25);
+      expect(draftUnits[0]).toMatchObject({
+        unitId: "rin",
+        name: "火焔猫燐",
+        type: "vanguard",
+        cost: 1,
+      });
+      expect(draftUnits.some((unit) => unit.unitId === "zanmu")).toBe(true);
+      expect(draftUnits.every((unit) => Array.isArray(unit.synergy))).toBe(true);
+
+      const flags = createFeatureFlags({ enableTouhouRoster: true });
+      const activeUnits = getActiveRosterUnits(flags);
+      expect(activeUnits).toHaveLength(draftUnits.length);
     });
 
     it("should expose roster unit definitions with required fields from production source", () => {
@@ -163,13 +184,11 @@ describe("roster-provider", () => {
       expect(units[0]!.unitId).toBeDefined();
     });
 
-    it("should fail-closed when enableTouhouRoster is true (abstraction boundary)", () => {
+    it("should switch source when enableTouhouRoster is true (abstraction boundary)", () => {
       const flags = createFeatureFlags({ enableTouhouRoster: true });
 
-      // The source selection abstraction should route to fail-closed behavior
-      expect(() => getActiveRosterUnits(flags)).toThrow(
-        TouhouRosterNotConfiguredError
-      );
+      const units = getActiveRosterUnits(flags);
+      expect(units.some((unit) => unit.unitId === "zanmu")).toBe(true);
     });
   });
 });

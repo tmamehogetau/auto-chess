@@ -12,7 +12,6 @@ import {
   withFlags,
   FLAG_CONFIGURATIONS,
 } from "./feature-flag-test-helper";
-import { TouhouRosterNotConfiguredError } from "../../src/server/roster/roster-provider";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -614,24 +613,36 @@ describe("GameRoom Integration with Feature Flags", () => {
         });
       });
 
-      test("enableTouhouRoster=true fails explicitly when room creation begins", async () => {
-        // This test verifies that when enableTouhouRoster=true,
-        // the game fails at the earliest runtime entry point (GameRoom.onCreate)
+      test("enableTouhouRoster=true creates a room and exposes Touhou draft units", async () => {
         await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_ONLY, async () => {
-          // Verify roster provider throws for Touhou roster
           const { getActiveRosterUnits } = await import("../../src/server/roster/roster-provider");
           const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
 
           const flags = FeatureFlagService.getInstance().getFlags();
           expect(flags.enableTouhouRoster).toBe(true);
 
-          // The roster provider should throw when Touhou roster is requested but not configured
-          expect(() => getActiveRosterUnits(flags)).toThrow(TouhouRosterNotConfiguredError);
-          expect(() => getActiveRosterUnits(flags)).toThrow(/Touhou roster data is not configured yet/);
+          const activeRoster = getActiveRosterUnits(flags);
+          expect(activeRoster).toHaveLength(25);
+          expect(activeRoster.some((unit) => unit.unitId === "rin")).toBe(true);
 
-          await expect(testServer.createRoom<GameRoom>("game")).rejects.toThrow(
-            /Touhou roster data is not configured yet/,
-          );
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const target = serverRoom.state.players.get(clients[0].sessionId);
+          expect(target?.shopOffers.length).toBe(5);
+          expect(target?.shopOffers.every((offer) => offer.unitId.length > 0)).toBe(true);
         });
       });
 

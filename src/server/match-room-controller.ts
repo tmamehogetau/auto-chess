@@ -61,7 +61,11 @@ import {
 import { HEROES } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
-import { getActiveRosterKind, validateRosterAvailability } from "./roster/roster-provider";
+import {
+  getActiveRosterKind,
+  getTouhouDraftRosterUnits,
+  validateRosterAvailability,
+} from "./roster/roster-provider";
 import type { FeatureFlags } from "../shared/feature-flags";
 import { type SpellCard } from "../data/spell-cards";
 import {
@@ -146,10 +150,12 @@ const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   5: 20,
 };
 
-type UnitRarity = 1 | 2 | 3;
+type UnitRarity = 1 | 2 | 3 | 4 | 5;
+type LegacyRarity = 1 | 2 | 3;
 
 interface ShopOffer {
   unitType: BoardUnitType;
+  unitId?: string;
   rarity: UnitRarity;
   cost: number;
   isRumorUnit?: boolean;
@@ -166,13 +172,14 @@ interface OwnedUnits {
 
 interface BenchUnit {
   unitType: BoardUnitType;
+  unitId?: string;
   cost: number;
   starLevel: number;
   unitCount: number;
   items?: ItemType[];
 }
 
-type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
+type ShopOfferKey = string;
 
 // ユニットタイプとコストのマッピング（コスト=レアリティ）
 const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
@@ -182,7 +189,7 @@ const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
   assassin: 3,
 };
 
-const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<UnitRarity, readonly BoardUnitType[]>> = {
+const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<LegacyRarity, readonly BoardUnitType[]>> = {
   1: ["vanguard", "ranger"],
   2: ["mage", "assassin"],
   3: ["assassin", "mage"],
@@ -458,6 +465,7 @@ export class MatchRoomController {
       setId: this.setId,
       random: Math.random,
       getActiveRosterKind: () => getActiveRosterKind(this.rosterFlags),
+      getTouhouDraftRosterUnits,
     };
     this.shopOfferBuilder = new ShopOfferBuilder(shopOfferDeps);
 
@@ -1324,8 +1332,8 @@ export class MatchRoomController {
         return false;
       }
 
-      const leftKey: ShopOfferKey = `${leftOffer.unitType}:${leftOffer.rarity}:${leftOffer.cost}`;
-      const rightKey: ShopOfferKey = `${rightOffer.unitType}:${rightOffer.rarity}:${rightOffer.cost}`;
+      const leftKey: ShopOfferKey = `${leftOffer.unitId ?? leftOffer.unitType}:${leftOffer.rarity}:${leftOffer.cost}`;
+      const rightKey: ShopOfferKey = `${rightOffer.unitId ?? rightOffer.unitType}:${rightOffer.rarity}:${rightOffer.cost}`;
 
       if (leftKey !== rightKey) {
         return false;
@@ -1372,12 +1380,18 @@ export class MatchRoomController {
 
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
 
-    benchUnits.push({
+    const purchasedBenchUnit: BenchUnit = {
       unitType: boughtOffer.unitType,
       cost: boughtOffer.cost,
       starLevel: STAR_LEVEL_MIN,
       unitCount: 1,
-    });
+    };
+
+    if (boughtOffer.unitId !== undefined) {
+      purchasedBenchUnit.unitId = boughtOffer.unitId;
+    }
+
+    benchUnits.push(purchasedBenchUnit);
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     this.tryMergeBenchUnits(playerId);
 
@@ -1402,47 +1416,66 @@ export class MatchRoomController {
 
       for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
         for (const starLevel of [STAR_LEVEL_MIN, STAR_LEVEL_MAX - 1] as const) {
-          const mergeCandidates: number[] = [];
+          const mergeKeys = new Set(
+            benchUnits
+              .filter((unit) => unit.unitType === unitType && unit.starLevel === starLevel)
+              .map((unit) => unit.unitId ?? ""),
+          );
 
-          for (let index = 0; index < benchUnits.length; index += 1) {
-            const unit = benchUnits[index];
+          for (const mergeUnitId of mergeKeys) {
+            const mergeCandidates: number[] = [];
 
-            if (!unit || unit.unitType !== unitType || unit.starLevel !== starLevel) {
+            for (let index = 0; index < benchUnits.length; index += 1) {
+              const unit = benchUnits[index];
+
+              if (
+                !unit ||
+                unit.unitType !== unitType ||
+                unit.starLevel !== starLevel ||
+                (unit.unitId ?? "") !== mergeUnitId
+              ) {
+                continue;
+              }
+
+              mergeCandidates.push(index);
+            }
+
+            if (mergeCandidates.length < STAR_MERGE_THRESHOLD) {
               continue;
             }
 
-            mergeCandidates.push(index);
-          }
+            const consumedIndexes = mergeCandidates
+              .slice(0, STAR_MERGE_THRESHOLD)
+              .sort((left, right) => right - left);
+            let mergedCost = 0;
+            let mergedCount = 0;
 
-          if (mergeCandidates.length < STAR_MERGE_THRESHOLD) {
-            continue;
-          }
+            for (const index of consumedIndexes) {
+              const unit = benchUnits[index];
 
-          const consumedIndexes = mergeCandidates
-            .slice(0, STAR_MERGE_THRESHOLD)
-            .sort((left, right) => right - left);
-          let mergedCost = 0;
-          let mergedCount = 0;
+              if (!unit) {
+                continue;
+              }
 
-          for (const index of consumedIndexes) {
-            const unit = benchUnits[index];
-
-            if (!unit) {
-              continue;
+              mergedCost += unit.cost;
+              mergedCount += unit.unitCount;
+              benchUnits.splice(index, 1);
             }
 
-            mergedCost += unit.cost;
-            mergedCount += unit.unitCount;
-            benchUnits.splice(index, 1);
-          }
+            const mergedBenchUnit: BenchUnit = {
+              unitType,
+              cost: mergedCost,
+              starLevel: starLevel + 1,
+              unitCount: mergedCount,
+            };
 
-          benchUnits.push({
-            unitType,
-            cost: mergedCost,
-            starLevel: starLevel + 1,
-            unitCount: mergedCount,
-          });
-          mergedAny = true;
+            if (mergeUnitId !== "") {
+              mergedBenchUnit.unitId = mergeUnitId;
+            }
+
+            benchUnits.push(mergedBenchUnit);
+            mergedAny = true;
+          }
         }
       }
     }
@@ -1460,14 +1493,20 @@ export class MatchRoomController {
     }
 
     benchUnits.splice(benchIndex, 1);
-    boardPlacements.push({
+    const boardPlacement: BoardUnitPlacement = {
       cell,
       unitType: benchUnit.unitType,
       starLevel: benchUnit.starLevel,
       sellValue: benchUnit.cost,
       unitCount: benchUnit.unitCount,
       items: benchUnit.items || [],
-    });
+    };
+
+    if (benchUnit.unitId !== undefined) {
+      boardPlacement.unitId = benchUnit.unitId;
+    }
+
+    boardPlacements.push(boardPlacement);
     boardPlacements.sort((left, right) => left.cell - right.cell);
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);

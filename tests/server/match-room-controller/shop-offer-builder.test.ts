@@ -5,7 +5,8 @@ import {
 } from "../../../src/server/match-room-controller/shop-offer-builder";
 import type { BoardUnitType } from "../../../src/shared/room-messages";
 import type { ItemType } from "../../../src/server/combat/item-definitions";
-import { ROSTER_KIND_MVP, ROSTER_KIND_TOUHOU, TouhouRosterNotConfiguredError } from "../../../src/server/roster/roster-provider";
+import { ROSTER_KIND_MVP, ROSTER_KIND_TOUHOU } from "../../../src/server/roster/roster-provider";
+import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 
 describe("ShopOfferBuilder", () => {
   let builder: ShopOfferBuilder;
@@ -41,6 +42,7 @@ describe("ShopOfferBuilder", () => {
       setId: "default",
       random: vi.fn(() => 0.5),
       getActiveRosterKind: vi.fn(() => ROSTER_KIND_MVP),
+      getTouhouDraftRosterUnits: vi.fn(() => []),
     };
 
     builder = new ShopOfferBuilder(mockDeps);
@@ -335,17 +337,32 @@ describe("ShopOfferBuilder", () => {
       expect(Math.max(...rarities)).toBeLessThanOrEqual(3);
     });
 
-    test("fails clearly when Touhou roster is active", () => {
-      // When Touhou roster is active, builder should fail clearly
+    test("builds Touhou unitId-based offers when Touhou roster is active", () => {
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() =>
+        TOUHOU_UNITS.map((unit) => ({
+          id: unit.unitId,
+          unitId: unit.unitId,
+          name: unit.displayName,
+          type: unit.unitType,
+          cost: unit.cost,
+          hp: unit.hp,
+          attack: unit.attack,
+          attackSpeed: unit.attackSpeed,
+          range: unit.range,
+          synergy: unit.factionId ? [unit.factionId] : [],
+        })),
+      );
       
       // Re-create builder with new mock
       builder = new ShopOfferBuilder(mockDeps);
       
-      // Should throw when trying to build shop offers
-      expect(() => builder.buildShopOffers("player1", 1, 0, 0, false)).toThrow(
-        TouhouRosterNotConfiguredError
-      );
+      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+      expect(offers).toHaveLength(5);
+      expect(offers.every((offer) => offer.unitId)).toBe(true);
+      expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 5)).toBe(true);
+      expect(offers.every((offer) => offer.rarity === offer.cost)).toBe(true);
     });
 
     test("produces deterministic results with same seed (MVP behavior)", () => {

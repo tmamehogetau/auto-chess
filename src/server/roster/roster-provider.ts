@@ -1,6 +1,7 @@
 import type { FeatureFlags } from "../../shared/feature-flags";
 import type { BoardUnitType, UnitSkill } from "../../shared/types";
 import mvpPhase1UnitsData from "../../data/mvp_phase1_units.json";
+import { TOUHOU_UNITS } from "../../data/touhou-units";
 
 /**
  * Generic roster unit interface - not tied to MVP-specific types.
@@ -47,7 +48,7 @@ export class TouhouRosterNotConfiguredError extends Error {
 /**
  * Internal roster source types - abstraction boundary for source selection.
  */
-type RosterSource = "mvp-json" | "touhou-unconfigured";
+type RosterSource = "mvp-json" | "touhou-draft";
 
 /**
  * Select the roster source based on feature flags.
@@ -58,7 +59,7 @@ type RosterSource = "mvp-json" | "touhou-unconfigured";
  */
 function selectRosterSource(flags: FeatureFlags): RosterSource {
   if (flags.enableTouhouRoster) {
-    return "touhou-unconfigured";
+    return "touhou-draft";
   }
   return "mvp-json";
 }
@@ -73,6 +74,21 @@ function loadMvpRosterUnits(): RosterUnit[] {
   return mvpPhase1UnitsData.units as RosterUnit[];
 }
 
+export function getTouhouDraftRosterUnits(): RosterUnit[] {
+  return TOUHOU_UNITS.map((unit) => ({
+    id: unit.unitId,
+    unitId: unit.unitId,
+    name: unit.displayName,
+    type: unit.unitType,
+    cost: unit.cost,
+    hp: unit.hp,
+    attack: unit.attack,
+    attackSpeed: unit.attackSpeed,
+    range: unit.range,
+    synergy: unit.factionId ? [unit.factionId] : [],
+  }));
+}
+
 /**
  * Get the active roster kind based on feature flags.
  * @param flags - Current feature flags
@@ -85,11 +101,10 @@ export function getActiveRosterKind(flags: FeatureFlags): RosterKind {
 /**
  * Get active roster unit definitions.
  * Returns MVP roster when enableTouhouRoster=false (from production data source).
- * Throws explicit error when enableTouhouRoster=true (fail-closed).
+ * Returns Touhou draft roster when enableTouhouRoster=true.
  *
  * @param flags - Current feature flags
  * @returns RosterUnit[] - Array of active roster units
- * @throws TouhouRosterNotConfiguredError - When Touhou roster is enabled but not configured
  */
 export function getActiveRosterUnits(flags: FeatureFlags): RosterUnit[] {
   const source = selectRosterSource(flags);
@@ -97,8 +112,8 @@ export function getActiveRosterUnits(flags: FeatureFlags): RosterUnit[] {
   switch (source) {
     case "mvp-json":
       return loadMvpRosterUnits();
-    case "touhou-unconfigured":
-      throw new TouhouRosterNotConfiguredError();
+    case "touhou-draft":
+      return getTouhouDraftRosterUnits();
     default:
       // Exhaustiveness check - should never reach here
       throw new TouhouRosterNotConfiguredError();

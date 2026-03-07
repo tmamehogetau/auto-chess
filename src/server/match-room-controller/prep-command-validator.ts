@@ -20,6 +20,7 @@ const ITEM_SHOP_SIZE = 5;
 
 export interface ShopOffer {
   unitType: string;
+  unitId?: string;
   rarity: number;
   cost: number;
   isRumorUnit?: boolean;
@@ -34,6 +35,7 @@ export interface ItemShopOffer {
 
 export interface BenchUnit {
   unitType: string;
+  unitId?: string;
   cost: number;
   starLevel: number;
   unitCount: number;

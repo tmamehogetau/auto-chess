@@ -3,16 +3,16 @@ import { CloseCode, type Client, Room } from "colyseus";
 import { MatchRoomController } from "../match-room-controller";
 import { resolveCorrelationId } from "./game-room/correlation-id";
 import { syncRanking } from "./game-room/ranking-sync";
+import {
+  syncPlayerStateFromController,
+  syncPlayerStateFromCommandResult,
+} from "./game-room/player-state-sync";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
 import {
   MatchRoomState,
   PlayerPresenceState,
-  ShopOfferState,
-  ShopItemOfferState,
-  BattleResultSchema,
-  SynergySchema,
 } from "../schema/match-room-state";
 import {
   CLIENT_MESSAGE_TYPES,
@@ -344,81 +344,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   ): void {
     if (!this.controller) return;
 
-    player.lastCmdSeq = cmdSeq;
-
     const latestStatus = this.controller.getPlayerStatus(sessionId);
-    player.boardUnitCount = latestStatus.boardUnitCount;
-    player.gold = latestStatus.gold;
-    player.xp = latestStatus.xp;
-    player.level = latestStatus.level;
-    player.shopLocked = latestStatus.shopLocked;
-    player.ownedVanguard = latestStatus.ownedUnits.vanguard;
-    player.ownedRanger = latestStatus.ownedUnits.ranger;
-    player.ownedMage = latestStatus.ownedUnits.mage;
-    player.ownedAssassin = latestStatus.ownedUnits.assassin;
-
-    // Sync shop offers
-    player.shopOffers.length = 0;
-    for (const offer of latestStatus.shopOffers) {
-      const nextOffer = new ShopOfferState();
-      nextOffer.unitType = offer.unitType;
-      nextOffer.cost = offer.cost;
-      nextOffer.rarity = offer.rarity;
-      player.shopOffers.push(nextOffer);
-    }
-
-    // Sync bench and board units
-    player.benchUnits.length = 0;
-    for (const benchUnit of latestStatus.benchUnits) {
-      player.benchUnits.push(benchUnit);
-    }
-
-    player.boardUnits.length = 0;
-    for (const boardUnit of latestStatus.boardUnits) {
-      player.boardUnits.push(boardUnit);
-    }
-
-    // Sync item shop offers
-    player.itemShopOffers.length = 0;
-    for (const offer of latestStatus.itemShopOffers || []) {
-      const nextOffer = new ShopItemOfferState();
-      nextOffer.itemType = offer.itemType;
-      nextOffer.cost = offer.cost;
-      player.itemShopOffers.push(nextOffer);
-    }
-
-    // Sync item inventory
-    player.itemInventory.length = 0;
-    for (const item of latestStatus.itemInventory || []) {
-      player.itemInventory.push(item);
-    }
-
-    // Sync last battle result
-    if (latestStatus.lastBattleResult) {
-      player.lastBattleResult.opponentId = latestStatus.lastBattleResult.opponentId;
-      player.lastBattleResult.won = latestStatus.lastBattleResult.won;
-      player.lastBattleResult.damageDealt = latestStatus.lastBattleResult.damageDealt;
-      player.lastBattleResult.damageTaken = latestStatus.lastBattleResult.damageTaken;
-      player.lastBattleResult.survivors = latestStatus.lastBattleResult.survivors;
-      player.lastBattleResult.opponentSurvivors = latestStatus.lastBattleResult.opponentSurvivors;
-    } else {
-      player.lastBattleResult.opponentId = "";
-      player.lastBattleResult.won = false;
-      player.lastBattleResult.damageDealt = 0;
-      player.lastBattleResult.damageTaken = 0;
-      player.lastBattleResult.survivors = 0;
-      player.lastBattleResult.opponentSurvivors = 0;
-    }
-
-    // Sync active synergies
-    player.activeSynergies.length = 0;
-    for (const synergy of latestStatus.activeSynergies || []) {
-      const nextSynergy = new SynergySchema();
-      nextSynergy.unitType = synergy.unitType;
-      nextSynergy.count = synergy.count;
-      nextSynergy.tier = synergy.tier;
-      player.activeSynergies.push(nextSynergy);
-    }
+    syncPlayerStateFromCommandResult(player, latestStatus, cmdSeq);
   }
 
   private buildPrepCommandPayload(
@@ -851,110 +778,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
     this.playerHpCache.set(playerId, status.hp);
 
-    playerState.hp = status.hp;
-    playerState.eliminated = status.eliminated;
-    playerState.boardUnitCount = status.boardUnitCount;
-    playerState.gold = status.gold;
-    playerState.xp = status.xp;
-    playerState.level = status.level;
-    playerState.shopLocked = status.shopLocked;
-    playerState.ownedVanguard = status.ownedUnits.vanguard;
-    playerState.ownedRanger = status.ownedUnits.ranger;
-    playerState.ownedMage = status.ownedUnits.mage;
-    playerState.ownedAssassin = status.ownedUnits.assassin;
-
-    while (playerState.shopOffers.length > 0) {
-      playerState.shopOffers.pop();
-    }
-
-    while (playerState.benchUnits.length > 0) {
-      playerState.benchUnits.pop();
-    }
-
-    while (playerState.boardUnits.length > 0) {
-      playerState.boardUnits.pop();
-    }
-
-    for (const offer of status.shopOffers) {
-      const nextOffer = new ShopOfferState();
-
-      nextOffer.unitType = offer.unitType;
-      nextOffer.cost = offer.cost;
-      nextOffer.rarity = offer.rarity;
-      nextOffer.isRumorUnit = offer.isRumorUnit === true;
-      playerState.shopOffers.push(nextOffer);
-    }
-
-    for (const benchUnit of status.benchUnits) {
-      playerState.benchUnits.push(benchUnit);
-    }
-
-    for (const boardUnit of status.boardUnits) {
-      playerState.boardUnits.push(boardUnit);
-    }
-
-    // Sync item shop offers
-    while (playerState.itemShopOffers.length > 0) {
-      playerState.itemShopOffers.pop();
-    }
-    for (const offer of status.itemShopOffers || []) {
-      const nextOffer = new ShopItemOfferState();
-      nextOffer.itemType = offer.itemType;
-      nextOffer.cost = offer.cost;
-      playerState.itemShopOffers.push(nextOffer);
-    }
-
-    // Sync boss shop offers
-    while (playerState.bossShopOffers.length > 0) {
-      playerState.bossShopOffers.pop();
-    }
-    for (const offer of status.bossShopOffers || []) {
-      const nextOffer = new ShopOfferState();
-      nextOffer.unitType = offer.unitType;
-      nextOffer.cost = offer.cost;
-      nextOffer.rarity = offer.rarity;
-      nextOffer.isRumorUnit = offer.isRumorUnit === true;
-      playerState.bossShopOffers.push(nextOffer);
-    }
-
-    playerState.isRumorEligible = status.isRumorEligible;
-
-    // Sync item inventory
-    while (playerState.itemInventory.length > 0) {
-      playerState.itemInventory.pop();
-    }
-    for (const item of status.itemInventory || []) {
-      playerState.itemInventory.push(item);
-    }
-
-    // Sync last battle result
-    if (status.lastBattleResult) {
-      playerState.lastBattleResult.opponentId = status.lastBattleResult.opponentId;
-      playerState.lastBattleResult.won = status.lastBattleResult.won;
-      playerState.lastBattleResult.damageDealt = status.lastBattleResult.damageDealt;
-      playerState.lastBattleResult.damageTaken = status.lastBattleResult.damageTaken;
-      playerState.lastBattleResult.survivors = status.lastBattleResult.survivors;
-      playerState.lastBattleResult.opponentSurvivors = status.lastBattleResult.opponentSurvivors;
-    } else {
-      playerState.lastBattleResult.opponentId = "";
-      playerState.lastBattleResult.won = false;
-      playerState.lastBattleResult.damageDealt = 0;
-      playerState.lastBattleResult.damageTaken = 0;
-      playerState.lastBattleResult.survivors = 0;
-      playerState.lastBattleResult.opponentSurvivors = 0;
-    }
-
-    // Sync active synergies
-    while (playerState.activeSynergies.length > 0) {
-      playerState.activeSynergies.pop();
-    }
-    for (const synergy of status.activeSynergies || []) {
-      const nextSynergy = new SynergySchema();
-      nextSynergy.unitType = synergy.unitType;
-      nextSynergy.count = synergy.count;
-      nextSynergy.tier = synergy.tier;
-      playerState.activeSynergies.push(nextSynergy);
-    }
+    syncPlayerStateFromController(playerState, status);
   }
 
 

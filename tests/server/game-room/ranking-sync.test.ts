@@ -1,20 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { syncRanking } from "../../../src/server/rooms/game-room/ranking-sync";
 
-// Mock schema types
-const createMockRankingArray = () => ({
-  length: 0,
-  pop: vi.fn(),
-  push: vi.fn(),
-  splice: vi.fn(),
-  [Symbol.iterator]: function* () {
-    const items: string[] = [];
-    for (let i = 0; i < this.length; i++) {
-      if (items[i]) yield items[i];
-    }
-  },
-});
-
 describe("syncRanking", () => {
   it("should clear existing ranking and populate with new ranking", () => {
     const stateRanking: { length: number; pop: () => void; push: (item: string) => void } = {
@@ -115,5 +101,29 @@ describe("syncRanking", () => {
 
     expect(popCount).toBe(100);
     expect(pushCount).toBe(50);
+  });
+
+  it("should work with real array and verify final state", () => {
+    // Use a real JavaScript array to verify actual behavior
+    const stateRanking: string[] = ["old-1", "old-2", "old-3"];
+    const newRanking = ["player-a", "player-b", "player-c"];
+    
+    syncRanking(stateRanking, newRanking);
+
+    // Verify final state matches the new ranking exactly
+    expect(stateRanking).toEqual(["player-a", "player-b", "player-c"]);
+    expect(stateRanking.length).toBe(3);
+  });
+
+  it("should clear and repopulate real array correctly", () => {
+    const stateRanking: string[] = ["existing"];
+    const newRanking = ["first", "second", "third", "fourth"];
+    
+    syncRanking(stateRanking, newRanking);
+
+    // Verify ranking order is preserved (top to bottom)
+    expect(stateRanking).toEqual(["first", "second", "third", "fourth"]);
+    expect(stateRanking[0]).toBe("first");
+    expect(stateRanking[3]).toBe("fourth");
   });
 });

@@ -12,7 +12,7 @@
     "test:coverage:watch": "vitest --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
-    "verify:ci": "npm run lint && npm run test:run",
+    "verify:ci": "npm run lint && npm run test:run && npm run test:coverage",
     "client:check": "node scripts/serve-client-check.mjs",
     "server": "tsx server.ts",
     "play": "npm-run-all --parallel server client:check"

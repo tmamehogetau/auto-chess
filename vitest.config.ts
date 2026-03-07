@@ -6,26 +6,26 @@ export default defineConfig({
     globals: true,
     root: "./",
     setupFiles: ["./vitest.setup.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html"],
+      exclude: [
+        "node_modules/",
+        "tests/",
+        "**/*.d.ts",
+        "**/*.config.*",
+      ],
+      thresholds: {
+        statements: 80,
+        branches: 70,
+        functions: 80,
+        lines: 80,
+      },
+    },
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  coverage: {
-    provider: 'v8',
-    reporter: ['text', 'json', 'html'],
-    exclude: [
-      'node_modules/',
-      'tests/',
-      '**/*.d.ts',
-      '**/*.config.*',
-    ],
-    thresholds: {
-      statements: 80,
-      branches: 70,
-      functions: 80,
-      lines: 80,
     },
   },
 });

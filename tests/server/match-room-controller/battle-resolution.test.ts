@@ -282,8 +282,8 @@ describe("BattleResolutionService", () => {
         mockLeftPlacements,
         mockRightPlacements,
         30000,
-        "synergy1",
-        "synergy2",
+        "vanguard",
+        "ranger",
         null,
       );
     });

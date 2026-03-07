@@ -1,5 +1,6 @@
 import type { CommandResult, BoardUnitPlacement } from "../../shared/room-messages";
 import type { ItemType } from "../../shared/types";
+import { normalizeBoardPlacements } from "../combat/unit-effects";
 import type {
   CommandPayload,
   ShopOffer,
@@ -81,10 +82,13 @@ export function executePrepCommand(
     deps.setBoardUnitCount(playerId, payload.boardUnitCount);
   }
 
-  // 2. Apply board placements
+  // 2. Apply board placements (normalize before saving)
   if (payload.boardPlacements !== undefined) {
-    deps.setBoardPlacements(playerId, payload.boardPlacements);
-    deps.setBoardUnitCount(playerId, payload.boardPlacements.length);
+    const normalizedResult = normalizeBoardPlacements(payload.boardPlacements);
+    if (normalizedResult.normalized) {
+      deps.setBoardPlacements(playerId, normalizedResult.normalized);
+      deps.setBoardUnitCount(playerId, normalizedResult.normalized.length);
+    }
   }
 
   // 3. Calculate and apply gold changes for all purchase operations

@@ -147,12 +147,7 @@ function validateBasicState(
   receivedAtMs: number,
   deps: ValidationDependencies,
 ): import("../../shared/room-messages").CommandResult | null {
-  // Check if player is known
-  if (!deps.isKnownPlayer(playerId)) {
-    return { accepted: false, code: "UNKNOWN_PLAYER" };
-  }
-
-  // Check if game has started
+  // Check if game has started (phase check should come before player check)
   if (!deps.isGameStarted()) {
     return { accepted: false, code: "PHASE_MISMATCH" };
   }
@@ -163,9 +158,17 @@ function validateBasicState(
     return { accepted: false, code: "PHASE_MISMATCH" };
   }
 
-  // Check deadline
+  // Check if player is known
+  if (!deps.isKnownPlayer(playerId)) {
+    return { accepted: false, code: "UNKNOWN_PLAYER" };
+  }
+
+  // Check deadline (null deadline is invalid)
   const prepDeadline = deps.getPrepDeadlineAtMs();
-  if (prepDeadline !== null && receivedAtMs >= prepDeadline) {
+  if (prepDeadline === null) {
+    return { accepted: false, code: "PHASE_MISMATCH" };
+  }
+  if (receivedAtMs >= prepDeadline) {
     return { accepted: false, code: "LATE_INPUT" };
   }
 
@@ -331,6 +334,11 @@ function validateCommandConflicts(
 ): import("../../shared/room-messages").CommandResult | null {
   // shopBuySlotIndex and shopRefreshCount cannot be used together
   if (payload.shopBuySlotIndex !== undefined && payload.shopRefreshCount !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  // benchSellIndex and shopBuySlotIndex cannot be used together
+  if (payload.benchSellIndex !== undefined && payload.shopBuySlotIndex !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 

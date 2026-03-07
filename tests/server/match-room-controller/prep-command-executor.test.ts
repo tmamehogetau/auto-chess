@@ -55,14 +55,34 @@ describe("PrepCommandExecutor", () => {
   });
 
   describe("Board Placements", () => {
-    test("sets board placements when provided", () => {
+    test("sets normalized board placements when provided", () => {
       const deps = createDependencies();
       const placements = [{ cell: 0, unitType: "vanguard" as const }];
       const payload: CommandPayload = { boardPlacements: placements };
 
       executePrepCommand("p1", 1, payload, deps);
 
-      expect(deps.setBoardPlacements).toHaveBeenCalledWith("p1", placements);
+      // normalized placements have starLevel defaulted to 1 and sorted by cell
+      expect(deps.setBoardPlacements).toHaveBeenCalledWith("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1 },
+      ]);
+    });
+
+    test("normalizes board placements with default starLevel", () => {
+      const deps = createDependencies();
+      const placements = [
+        { cell: 3, unitType: "ranger" as const },
+        { cell: 1, unitType: "mage" as const },
+      ];
+      const payload: CommandPayload = { boardPlacements: placements };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      // Should be sorted by cell and have starLevel defaulted to 1
+      expect(deps.setBoardPlacements).toHaveBeenCalledWith("p1", [
+        { cell: 1, unitType: "mage", starLevel: 1 },
+        { cell: 3, unitType: "ranger", starLevel: 1 },
+      ]);
     });
 
     test("does not set board placements when not provided", () => {

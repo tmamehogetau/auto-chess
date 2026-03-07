@@ -45,6 +45,16 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "UNKNOWN_PLAYER" });
     });
 
+    test("null prepDeadline returns PHASE_MISMATCH", () => {
+      const deps = createDependencies({
+        getPrepDeadlineAtMs: vi.fn().mockReturnValue(null),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {}, deps);
+
+      expect(result).toEqual({ accepted: false, code: "PHASE_MISMATCH" });
+    });
+
     test("game not started returns PHASE_MISMATCH", () => {
       const deps = createDependencies({
         isGameStarted: vi.fn().mockReturnValue(false),
@@ -169,6 +179,17 @@ describe("PrepCommandValidator", () => {
       const result = validatePrepCommand("p1", 1, 1000, {
         shopBuySlotIndex: 0,
         shopRefreshCount: 1,
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("benchSellIndex and shopBuySlotIndex together returns INVALID_PAYLOAD", () => {
+      const deps = createDependencies();
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        benchSellIndex: 0,
+        shopBuySlotIndex: 0,
       }, deps);
 
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });

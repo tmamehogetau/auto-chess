@@ -61,6 +61,8 @@ import {
 import { HEROES } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
+import { getActiveRosterKind, validateRosterAvailability } from "./roster/roster-provider";
+import type { FeatureFlags } from "../shared/feature-flags";
 import { type SpellCard } from "../data/spell-cards";
 import {
   SpellCardHandler,
@@ -374,6 +376,8 @@ export class MatchRoomController {
     enablePhaseExpansion: boolean;
   };
 
+  private readonly rosterFlags: FeatureFlags;
+
   private matchLogger: MatchLogger | null;
 
   private readonly shopOfferBuilder: ShopOfferBuilder;
@@ -429,9 +433,18 @@ export class MatchRoomController {
       enablePhaseExpansion: options.featureFlags?.enablePhaseExpansion ?? false,
     };
 
+    // Feature Flagに基づいて共有プールを初期化
+    this.enableSharedPool = FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool');
+    this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
+
+    // Store roster flags for runtime use
+    this.rosterFlags = FeatureFlagService.getInstance().getFlags();
+
+    validateRosterAvailability(this.rosterFlags);
+
     // Initialize shop offer builder with dependencies
-    // Note: Feature flags are initialized later, so we use getter functions
-    // to access the values at runtime rather than capturing them at construction time
+    // Uses hardcoded pools for byte-for-byte MVP compatibility
+    // Uses roster provider boundary to validate roster kind - fails clearly for Touhou roster
     const shopOfferDeps: ShopOfferBuilderDependencies = {
       getRumorUnitForRound,
       getRandomScarletMansionUnit,
@@ -444,6 +457,7 @@ export class MatchRoomController {
       isRumorInfluenceEnabled: () => this.enableRumorInfluence,
       setId: this.setId,
       random: Math.random,
+      getActiveRosterKind: () => getActiveRosterKind(this.rosterFlags),
     };
     this.shopOfferBuilder = new ShopOfferBuilder(shopOfferDeps);
 
@@ -475,10 +489,6 @@ export class MatchRoomController {
       this.itemShopOffersByPlayer.set(playerId, []);
       this.selectedHeroByPlayer.set(playerId, "");
     }
-
-    // Feature Flagに基づいて共有プールを初期化
-    this.enableSharedPool = FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool');
-    this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
 
     // Feature Flagに基づいてサブユニットシステムを初期化
     this.enableSubUnitSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableSubUnitSystem');
@@ -1906,16 +1916,16 @@ export class MatchRoomController {
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
     const leftPlacements = this.battleInputSnapshotByPlayer.get(leftPlayerId) ?? [];
     const rightPlacements = this.battleInputSnapshotByPlayer.get(rightPlayerId) ?? [];
-    const leftResolvedPlacements = resolveBattlePlacements(leftPlacements);
-    const rightResolvedPlacements = resolveBattlePlacements(rightPlacements);
+    const leftResolvedPlacements = resolveBattlePlacements(leftPlacements, this.rosterFlags);
+    const rightResolvedPlacements = resolveBattlePlacements(rightPlacements, this.rosterFlags);
 
     // ボード配置をBattleUnitに変換
     const leftBattleUnits: BattleUnit[] = leftResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "left", index),
+      createBattleUnit(placement, "left", index, false, this.rosterFlags),
     );
 
     const rightBattleUnits: BattleUnit[] = rightResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "right", index),
+      createBattleUnit(placement, "right", index, false, this.rosterFlags),
     );
 
     // スペル効果を適用

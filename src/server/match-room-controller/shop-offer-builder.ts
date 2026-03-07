@@ -3,6 +3,7 @@ import type { ShopItemOffer } from "../../shared/room-messages";
 import type { ItemType } from "../combat/item-definitions";
 import type { RumorUnit } from "../../data/rumor-units";
 import type { ScarletMansionUnit } from "../../data/scarlet-mansion-units";
+import { getActiveRosterKind, ROSTER_KIND_TOUHOU, TouhouRosterNotConfiguredError } from "../roster/roster-provider";
 
 type UnitRarity = 1 | 2 | 3;
 
@@ -69,6 +70,8 @@ export interface ShopOfferBuilderDependencies {
   setId: string;
   /** Random function for item shop (returns 0-1) */
   random: () => number;
+  /** Get active roster kind from provider (for boundary validation) */
+  getActiveRosterKind: () => string;
 }
 
 /**
@@ -200,6 +203,9 @@ export class ShopOfferBuilder {
 
   /**
    * Build a single shop offer
+   * Uses roster provider boundary for validation.
+   * - MVP roster: uses hardcoded pools (byte-for-byte compatible)
+   * - Touhou roster: fails clearly with error
    * @private
    */
   private buildSingleShopOffer(
@@ -208,6 +214,12 @@ export class ShopOfferBuilder {
     refreshCount: number,
     nonce: number,
   ): ShopOffer {
+    // Check roster kind at the boundary - fail clearly for Touhou roster
+    const rosterKind = this.deps.getActiveRosterKind();
+    if (rosterKind === ROSTER_KIND_TOUHOU) {
+      throw new TouhouRosterNotConfiguredError();
+    }
+
     const level = this.deps.getPlayerLevel(playerId);
     const odds = SHOP_ODDS_BY_LEVEL[level] ?? SHOP_ODDS_BY_LEVEL[MAX_LEVEL] ?? [1, 0, 0];
     const seedBase = this.deps.hashToUint32(
@@ -215,7 +227,9 @@ export class ShopOfferBuilder {
     );
     const rarityRoll = this.deps.seedToUnitFloat(seedBase + 1);
     const rarity = this.deps.pickRarity(odds, rarityRoll);
-    let unitPool = SHOP_UNIT_POOL_BY_RARITY[rarity];
+
+    // Use hardcoded pool for byte-for-byte MVP compatibility
+    let unitPool = [...SHOP_UNIT_POOL_BY_RARITY[rarity]];
 
     // 共有プールが有効な場合、枯渇したユニットを除外
     if (this.deps.isSharedPoolEnabled()) {
@@ -226,7 +240,7 @@ export class ShopOfferBuilder {
       // すべてのユニットが枯渇している場合は、代わりに低レアリティを試行
       if (unitPool.length === 0 && rarity > 1) {
         const lowerRarity = (rarity - 1) as UnitRarity;
-        unitPool = SHOP_UNIT_POOL_BY_RARITY[lowerRarity].filter(
+        unitPool = [...SHOP_UNIT_POOL_BY_RARITY[lowerRarity]].filter(
           (unitType) => !this.deps.isPoolDepleted(UNIT_TYPE_TO_COST[unitType]),
         );
       }

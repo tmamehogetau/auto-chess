@@ -1,5 +1,6 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
 import type { SubUnitConfig } from "../../shared/types";
+import type { FeatureFlags } from "../../shared/feature-flags";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import {
@@ -99,8 +100,9 @@ export function createBattleUnit(
   side: "left" | "right",
   index: number,
   isBoss: boolean = false,
+  flags: FeatureFlags,
 ): BattleUnit {
-  const resolvedPlacement = resolveBattlePlacement(placement);
+  const resolvedPlacement = resolveBattlePlacement(placement, flags);
   const { unitType, starLevel = 1, cell, archetype } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
 

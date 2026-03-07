@@ -12,6 +12,7 @@ import { logPrepCommandActions } from "./game-room/prep-command-logging";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
+import { validateRosterAvailability } from "../roster/roster-provider";
 import {
   MatchRoomState,
   PlayerPresenceState,
@@ -99,6 +100,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableBossExclusiveShop = flags.enableBossExclusiveShop;
     this.state.featureFlagsEnableSharedBoardShadow = flags.enableSharedBoardShadow;
     this.enableSharedBoardShadow = flags.enableSharedBoardShadow;
+
+    validateRosterAvailability(flags);
 
     this.onMessage<ReadyMessage>(CLIENT_MESSAGE_TYPES.READY, async (client, message) => {
       await this.handleReady(client, message);

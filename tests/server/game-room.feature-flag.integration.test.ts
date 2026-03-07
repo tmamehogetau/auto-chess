@@ -12,6 +12,7 @@ import {
   withFlags,
   FLAG_CONFIGURATIONS,
 } from "./feature-flag-test-helper";
+import { TouhouRosterNotConfiguredError } from "../../src/server/roster/roster-provider";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -576,8 +577,84 @@ describe("GameRoom Integration with Feature Flags", () => {
           const strongestBResult =
             await strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
 
-          expect(strongestAResult).toEqual({ accepted: true });
-          expect(strongestBResult).toEqual({ accepted: true });
+      expect(strongestAResult).toEqual({ accepted: true });
+      expect(strongestBResult).toEqual({ accepted: true });
+        });
+      });
+    });
+
+    describe("Touhou roster migration scaffold tests", () => {
+      test("current gameplay works under enableTouhouRoster=false", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          // Verify game starts normally with MVP roster
+          expect(serverRoom.state.phase).toBe("Prep");
+          expect(serverRoom.state.roundIndex).toBe(1);
+
+          // Verify shop offers are generated using MVP roster
+          const target = serverRoom.state.players.get(clients[0].sessionId);
+          expect(target?.shopOffers.length).toBe(5);
+        });
+      });
+
+      test("enableTouhouRoster=true fails explicitly when room creation begins", async () => {
+        // This test verifies that when enableTouhouRoster=true,
+        // the game fails at the earliest runtime entry point (GameRoom.onCreate)
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_ONLY, async () => {
+          // Verify roster provider throws for Touhou roster
+          const { getActiveRosterUnits } = await import("../../src/server/roster/roster-provider");
+          const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
+
+          const flags = FeatureFlagService.getInstance().getFlags();
+          expect(flags.enableTouhouRoster).toBe(true);
+
+          // The roster provider should throw when Touhou roster is requested but not configured
+          expect(() => getActiveRosterUnits(flags)).toThrow(TouhouRosterNotConfiguredError);
+          expect(() => getActiveRosterUnits(flags)).toThrow(/Touhou roster data is not configured yet/);
+
+          await expect(testServer.createRoom<GameRoom>("game")).rejects.toThrow(
+            /Touhou roster data is not configured yet/,
+          );
+        });
+      });
+
+      test("unit-id-resolver uses roster provider boundary", async () => {
+        // This test verifies that unit-id-resolver uses the roster provider
+        // as the boundary for MVP roster data access
+        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+          const { resolveBattlePlacement } = await import("../../src/server/unit-id-resolver");
+          const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
+
+          const flags = FeatureFlagService.getInstance().getFlags();
+
+          // Verify unit resolution works with roster provider
+          // When enableTouhouRoster=false, uses MVP roster from provider
+          const placement = {
+            cell: 1,
+            unitType: "vanguard" as const,
+            unitId: "warrior_a",
+          };
+
+          const resolved = resolveBattlePlacement(placement, flags);
+          expect(resolved.unitType).toBe("vanguard");
+          expect(resolved.unitId).toBe("warrior_a");
         });
       });
     });

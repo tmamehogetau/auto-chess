@@ -1,0 +1,110 @@
+import type { FeatureFlags } from "../../shared/feature-flags";
+import type { BoardUnitType, UnitSkill } from "../../shared/types";
+import mvpPhase1UnitsData from "../../data/mvp_phase1_units.json";
+
+/**
+ * Generic roster unit interface - not tied to MVP-specific types.
+ * Future-proof for Touhou roster activation (Phase 2+).
+ */
+export interface RosterUnit {
+  id: string;
+  unitId: string;
+  name: string;
+  type: BoardUnitType;
+  cost: number;
+  hp: number;
+  attack: number;
+  attackSpeed: number;
+  range: number;
+  synergy: string[];
+  subUnit?: {
+    unitId: string;
+    mode: "assist";
+    bonusAttackPct?: number;
+    bonusHpPct?: number;
+  };
+  skill?: UnitSkill;
+}
+
+/**
+ * Roster kind identifiers
+ */
+export const ROSTER_KIND_MVP = "mvp" as const;
+export const ROSTER_KIND_TOUHOU = "touhou" as const;
+
+export type RosterKind = typeof ROSTER_KIND_MVP | typeof ROSTER_KIND_TOUHOU;
+
+/**
+ * Error thrown when Touhou roster is requested but not configured
+ */
+export class TouhouRosterNotConfiguredError extends Error {
+  constructor() {
+    super("Touhou roster data is not configured yet");
+    this.name = "TouhouRosterNotConfiguredError";
+  }
+}
+
+/**
+ * Internal roster source types - abstraction boundary for source selection.
+ */
+type RosterSource = "mvp-json" | "touhou-unconfigured";
+
+/**
+ * Select the roster source based on feature flags.
+ * This is the abstraction boundary - future source types can be added here.
+ *
+ * @param flags - Current feature flags
+ * @returns RosterSource - The selected source type
+ */
+function selectRosterSource(flags: FeatureFlags): RosterSource {
+  if (flags.enableTouhouRoster) {
+    return "touhou-unconfigured";
+  }
+  return "mvp-json";
+}
+
+/**
+ * Load units from MVP JSON source.
+ * Isolated for testability and future source additions.
+ *
+ * @returns RosterUnit[] - MVP roster units
+ */
+function loadMvpRosterUnits(): RosterUnit[] {
+  return mvpPhase1UnitsData.units as RosterUnit[];
+}
+
+/**
+ * Get the active roster kind based on feature flags.
+ * @param flags - Current feature flags
+ * @returns RosterKind - Either MVP or Touhou roster
+ */
+export function getActiveRosterKind(flags: FeatureFlags): RosterKind {
+  return flags.enableTouhouRoster ? ROSTER_KIND_TOUHOU : ROSTER_KIND_MVP;
+}
+
+/**
+ * Get active roster unit definitions.
+ * Returns MVP roster when enableTouhouRoster=false (from production data source).
+ * Throws explicit error when enableTouhouRoster=true (fail-closed).
+ *
+ * @param flags - Current feature flags
+ * @returns RosterUnit[] - Array of active roster units
+ * @throws TouhouRosterNotConfiguredError - When Touhou roster is enabled but not configured
+ */
+export function getActiveRosterUnits(flags: FeatureFlags): RosterUnit[] {
+  const source = selectRosterSource(flags);
+
+  switch (source) {
+    case "mvp-json":
+      return loadMvpRosterUnits();
+    case "touhou-unconfigured":
+      throw new TouhouRosterNotConfiguredError();
+    default:
+      // Exhaustiveness check - should never reach here
+      throw new TouhouRosterNotConfiguredError();
+  }
+}
+
+export function validateRosterAvailability(flags: FeatureFlags): void {
+  void getActiveRosterUnits(flags);
+}

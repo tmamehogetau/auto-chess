@@ -10,15 +10,37 @@ Located at: `src/shared/feature-flags.ts`
 
 ```typescript
 export interface FeatureFlags {
+  // MVP Phase flags
   enableHeroSystem: boolean;
   enableSharedPool: boolean;
   enablePhaseExpansion: boolean;
+  enableSubUnitSystem: boolean;
+  enableEmblemCells: boolean;
+  enableSpellCard: boolean;
+  enableRumorInfluence: boolean;
+  enableBossExclusiveShop: boolean;
+  enableSharedBoardShadow: boolean;
+  // Migration flags for Touhou roster switch (Phase 2)
+  enableTouhouRoster: boolean;
+  enableTouhouFactions: boolean;
+  enablePerUnitSharedPool: boolean;
 }
 
 export const DEFAULT_FLAGS: FeatureFlags = {
+  // MVP Phase flags
   enableHeroSystem: false,
   enableSharedPool: false,
   enablePhaseExpansion: false,
+  enableSubUnitSystem: false,
+  enableEmblemCells: false,
+  enableSpellCard: false,
+  enableRumorInfluence: false,
+  enableBossExclusiveShop: false,
+  enableSharedBoardShadow: false,
+  // Migration flags for Touhou roster switch (Phase 2)
+  enableTouhouRoster: false,
+  enableTouhouFactions: false,
+  enablePerUnitSharedPool: false,
 };
 ```
 
@@ -46,22 +68,96 @@ Flow:
 3. `MatchRoomState` stores flags for client sync
 4. Client receives flags via Colyseus schema sync
 
+## Migration Flag Design (Touhou Roster Switch)
+
+The migration flags (`enableTouhouRoster`, `enableTouhouFactions`, `enablePerUnitSharedPool`) control the Phase 2 roster migration from MVP units to Touhou characters. These flags are **fail-closed** - enabling them without complete data will throw an explicit error.
+
+### Allowed Flag Combinations
+
+| enableTouhouRoster | enableTouhouFactions | enablePerUnitSharedPool | Status |
+|-------------------|---------------------|------------------------|--------|
+| false | false | false | ✅ Valid - MVP roster only |
+| true | false | false | ✅ Valid - Touhou roster only |
+| true | true | false | ✅ Valid - Touhou + factions |
+| true | true | true | ✅ Valid - Touhou + factions + per-unit pool |
+| false | true | false | ❌ Invalid - factions need roster |
+| false | false | true | ❌ Invalid - per-unit pool needs factions |
+| true | false | true | ❌ Invalid - per-unit pool needs factions |
+
+### Fail-Closed Scaffold Behavior
+
+When `enableTouhouRoster=true`, the roster provider throws `TouhouRosterNotConfiguredError` to prevent activation with incomplete data.
+
+**Source of truth**: See `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/reference/touhou-units-migration-plan.md` for the exact activation blocker (unitType/cost finalization for all 25 units) and migration roadmap.
+
 ## Flag Definitions
 
-### enableHeroSystem
+### MVP Phase Flags
+
+#### enableHeroSystem
 - **Purpose**: Enable hero unit system
 - **Default**: false
 - **Env Var**: `FEATURE_ENABLE_HERO_SYSTEM`
 
-### enableSharedPool
+#### enableSharedPool
 - **Purpose**: Enable shared pool for unit rarity
 - **Default**: false
 - **Env Var**: `FEATURE_ENABLE_SHARED_POOL`
 
-### enablePhaseExpansion
+#### enablePhaseExpansion
 - **Purpose**: Enable Phase 2 phase expansion
 - **Default**: false
 - **Env Var**: `FEATURE_ENABLE_PHASE_EXPANSION`
+
+#### enableSubUnitSystem
+- **Purpose**: Enable sub-unit assist system
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_SUB_UNIT_SYSTEM`
+
+#### enableEmblemCells
+- **Purpose**: Enable emblem cell system
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_EMBLEM_CELLS`
+
+#### enableSpellCard
+- **Purpose**: Enable spell card system
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_SPELL_CARD`
+
+#### enableRumorInfluence
+- **Purpose**: Enable rumor influence system
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_RUMOR_INFLUENCE`
+
+#### enableBossExclusiveShop
+- **Purpose**: Enable boss exclusive shop
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP`
+
+#### enableSharedBoardShadow
+- **Purpose**: Enable shared board shadow
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_SHARED_BOARD_SHADOW`
+
+### Migration Flags (Phase 2)
+
+#### enableTouhouRoster
+- **Purpose**: Enable Touhou character roster (25 units, 6 factions)
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_TOUHOU_ROSTER`
+- **Note**: Fail-closed - throws error until all 25 units have complete data
+
+#### enableTouhouFactions
+- **Purpose**: Enable faction synergy system for Touhou units
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_TOUHOU_FACTIONS`
+- **Dependency**: Requires `enableTouhouRoster=true`
+
+#### enablePerUnitSharedPool
+- **Purpose**: Enable per-unit shared pool (Map<unitId, count>)
+- **Default**: false
+- **Env Var**: `FEATURE_ENABLE_PER_UNIT_SHARED_POOL`
+- **Dependency**: Requires both `enableTouhouRoster=true` AND `enableTouhouFactions=true`
 
 ## Usage Examples
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 
 import {
   BattleSimulator,
@@ -28,6 +29,7 @@ describe("Boss Raid Simulation", () => {
       "right",
       0,
       true, // isBoss = true
+      DEFAULT_FLAGS,
     );
 
     return boss;
@@ -46,6 +48,7 @@ describe("Boss Raid Simulation", () => {
       "left",
       cell,
       false,
+      DEFAULT_FLAGS,
     );
   }
 

@@ -45,6 +45,7 @@ import { getRumorUnitForRound, type RumorUnit } from "../data/rumor-units";
 import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansionUnit } from "../data/scarlet-mansion-units";
 import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
 import type { SubUnitConfig } from "../shared/types";
+import type { ControllerPlayerStatus } from "./types/player-state-types";
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
@@ -764,27 +765,7 @@ export class MatchRoomController {
     return [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
   }
 
-  public getPlayerStatus(playerId: string): {
-    hp: number;
-    eliminated: boolean;
-    boardUnitCount: number;
-    gold: number;
-    xp: number;
-    level: number;
-    shopOffers: ShopOffer[];
-    shopLocked: boolean;
-    benchUnits: string[];
-    boardUnits: string[];
-    ownedUnits: OwnedUnits;
-    itemInventory: ItemType[];
-    itemShopOffers: ShopItemOffer[];
-    bossShopOffers: ShopOffer[];
-    lastBattleResult: BattleResult | undefined;
-    activeSynergies?: { unitType: string; count: number; tier: number }[];
-    selectedHeroId: string;
-    isRumorEligible: boolean;
-    sharedPoolInventory?: ReadonlyMap<number, number>;
-  } {
+  public getPlayerStatus(playerId: string): ControllerPlayerStatus {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
     const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
@@ -805,7 +786,7 @@ export class MatchRoomController {
     const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
     const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
 
-    const baseStatus = {
+    const baseStatus: ControllerPlayerStatus = {
       hp: state.getPlayerHp(playerId),
       eliminated: state.isPlayerEliminated(playerId),
       boardUnitCount: this.boardUnitCountByPlayer.get(playerId) ?? 4,

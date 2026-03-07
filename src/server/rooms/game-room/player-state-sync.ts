@@ -5,115 +5,25 @@ import {
   SynergySchema,
 } from "../../schema/match-room-state";
 import type { BoardUnitType, ItemType } from "../../../shared/types";
+import type {
+  ControllerPlayerStatus,
+  CommandResultPayload,
+} from "../../types/player-state-types";
+
+// Re-export types for backward compatibility
+export type {
+  PlayerStatusBattleResult,
+  ShopOfferView,
+  ShopItemOfferView,
+  OwnedUnitsView,
+  ActiveSynergyView,
+  ControllerPlayerStatus,
+  CommandResultPayload,
+} from "../../types/player-state-types";
 
 // Type assertions for string-to-union-type conversions
 const toBoardUnitType = (s: string): BoardUnitType => s as BoardUnitType;
 const toItemType = (s: string): ItemType => s as ItemType;
-
-/**
- * Battle result type as returned from MatchRoomController.getPlayerStatus()
- * Note: This is different from battle-simulator.ts BattleResult
- */
-export interface PlayerStatusBattleResult {
-  opponentId: string;
-  won: boolean;
-  damageDealt: number;
-  damageTaken: number;
-  survivors: number;
-  opponentSurvivors: number;
-}
-
-/**
- * Type representing the player status returned from MatchRoomController.getPlayerStatus()
- * Used for full state synchronization from controller to room state.
- */
-export interface ControllerPlayerStatus {
-  hp: number;
-  eliminated: boolean;
-  boardUnitCount: number;
-  gold: number;
-  xp: number;
-  level: number;
-  shopOffers: Array<{
-    unitType: string;
-    cost: number;
-    rarity: number;
-    isRumorUnit?: boolean;
-  }>;
-  shopLocked: boolean;
-  benchUnits: string[];
-  boardUnits: string[];
-  ownedUnits: {
-    vanguard: number;
-    ranger: number;
-    mage: number;
-    assassin: number;
-  };
-  itemInventory: string[];
-  itemShopOffers: Array<{
-    itemType: string;
-    cost: number;
-  }>;
-  bossShopOffers: Array<{
-    unitType: string;
-    cost: number;
-    rarity: number;
-    isRumorUnit?: boolean;
-  }>;
-  lastBattleResult: PlayerStatusBattleResult | undefined;
-  activeSynergies?: Array<{
-    unitType: string;
-    count: number;
-    tier: number;
-  }>;
-  selectedHeroId: string;
-  isRumorEligible: boolean;
-}
-
-/**
- * Type representing command result payload for partial state updates.
- * Used after a command is processed and accepted to sync the resulting state changes.
- */
-export interface CommandResultPayload {
-  boardUnitCount: number;
-  gold: number;
-  xp: number;
-  level: number;
-  shopLocked: boolean;
-  ownedUnits: {
-    vanguard: number;
-    ranger: number;
-    mage: number;
-    assassin: number;
-  };
-  shopOffers: Array<{
-    unitType: string;
-    cost: number;
-    rarity: number;
-    isRumorUnit?: boolean;
-  }>;
-  benchUnits: string[];
-  boardUnits: string[];
-  itemShopOffers: Array<{
-    itemType: string;
-    cost: number;
-  }>;
-  itemInventory: string[];
-  lastBattleResult: PlayerStatusBattleResult | undefined;
-  activeSynergies?: Array<{
-    unitType: string;
-    count: number;
-    tier: number;
-  }>;
-  bossShopOffers?: Array<{
-    unitType: string;
-    cost: number;
-    rarity: number;
-    isRumorUnit?: boolean;
-  }>;
-  selectedHeroId?: string;
-  isRumorEligible?: boolean;
-}
 
 /**
  * Clears all items from a Colyseus ArraySchema using pop().

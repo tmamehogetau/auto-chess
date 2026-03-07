@@ -3,9 +3,9 @@ import {
   hashToUint32,
   seedToUnitFloat,
   pickRarity,
-  comparePlayerIds,
-  buildLoserDamage,
-} from "./match-room-utils";
+} from "./match-room-controller/random-utils";
+import { comparePlayerIds } from "./match-room-controller/player-compare";
+import { buildLoserDamage } from "./match-room-controller/damage-calculator";
 import type {
   BoardUnitType,
   BoardUnitPlacement,

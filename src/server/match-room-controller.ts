@@ -13,6 +13,7 @@ import type {
   ShopItemOffer,
 } from "../shared/room-messages";
 import { MatchLogger } from "./match-logger";
+import { ShopOfferBuilder, type ShopOfferBuilderDependencies } from "./match-room-controller/shop-offer-builder";
 import {
   normalizeBoardPlacements,
   resolveBoardPowerFromState,
@@ -365,6 +366,8 @@ export class MatchRoomController {
 
   private matchLogger: MatchLogger | null;
 
+  private readonly shopOfferBuilder: ShopOfferBuilder;
+
   public constructor(
     playerIds: string[],
     createdAtMs: number,
@@ -414,6 +417,22 @@ export class MatchRoomController {
     this.featureFlags = {
       enablePhaseExpansion: options.featureFlags?.enablePhaseExpansion ?? false,
     };
+
+    // Initialize shop offer builder with dependencies
+    const shopOfferDeps: ShopOfferBuilderDependencies = {
+      getRumorUnitForRound,
+      getRandomScarletMansionUnit,
+      hashToUint32,
+      seedToUnitFloat,
+      pickRarity,
+      getPlayerLevel: (playerId: string) => this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
+      isSharedPoolEnabled: () => this.enableSharedPool,
+      isPoolDepleted: (cost: number) => this.sharedPool?.isDepleted(cost) ?? false,
+      enableRumorInfluence: this.enableRumorInfluence,
+      setId: this.setId,
+    };
+    this.shopOfferBuilder = new ShopOfferBuilder(shopOfferDeps);
+
     this.phaseHpTarget = this.resolvePhaseHpTarget(1);
     this.phaseDamageDealt = 0;
     this.phaseResult = "pending";
@@ -1620,14 +1639,21 @@ export class MatchRoomController {
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
       this.shopLockedByPlayer.set(playerId, false);
+      const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
       this.shopOffersByPlayer.set(
         playerId,
-        this.buildShopOffers(playerId, state.roundIndex, 0, 0),
+        this.shopOfferBuilder.buildShopOffers(
+          playerId,
+          state.roundIndex,
+          0,
+          0,
+          isRumorEligible,
+        ),
       );
 
       // Initialize item shops
       if (!this.shopLockedByPlayer.get(playerId)) {
-        const itemOffers = this.buildItemShopOffers();
+        const itemOffers = this.shopOfferBuilder.buildItemShopOffers(ITEM_TYPES, ITEM_DEFINITIONS);
         this.itemShopOffersByPlayer.set(playerId, itemOffers);
       }
 
@@ -1640,7 +1666,7 @@ export class MatchRoomController {
       if (this.enableBossExclusiveShop && state.isBoss(playerId)) {
         this.bossShopOffersByPlayer.set(
           playerId,
-          this.buildBossShopOffers(),
+          this.shopOfferBuilder.buildBossShopOffers(),
         );
       }
     }
@@ -1658,9 +1684,16 @@ export class MatchRoomController {
 
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
+      const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
       this.shopOffersByPlayer.set(
         playerId,
-        this.buildShopOffers(playerId, state.roundIndex, 0, 0),
+        this.shopOfferBuilder.buildShopOffers(
+          playerId,
+          state.roundIndex,
+          0,
+          0,
+          isRumorEligible,
+        ),
       );
 
       // 噂勢力: ショップ生成後、eligibleフラグをリセット
@@ -1672,7 +1705,7 @@ export class MatchRoomController {
       if (this.enableBossExclusiveShop && state.isBoss(playerId)) {
         this.bossShopOffersByPlayer.set(
           playerId,
-          this.buildBossShopOffers(),
+          this.shopOfferBuilder.buildBossShopOffers(),
         );
       }
     }
@@ -1686,10 +1719,23 @@ export class MatchRoomController {
     const previousOffers = this.shopOffersByPlayer.get(playerId) ?? [];
     const currentCount = this.shopRefreshCountByPlayer.get(playerId) ?? 0;
     const nextCount = currentCount + refreshCount;
-    let nextOffers = this.buildShopOffers(playerId, state.roundIndex, nextCount, 0);
+    const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
+    let nextOffers = this.shopOfferBuilder.buildShopOffers(
+      playerId,
+      state.roundIndex,
+      nextCount,
+      0,
+      isRumorEligible,
+    );
 
     if (this.areShopOffersEqual(previousOffers, nextOffers)) {
-      nextOffers = this.buildShopOffers(playerId, state.roundIndex, nextCount, 1);
+      nextOffers = this.shopOfferBuilder.buildShopOffers(
+        playerId,
+        state.roundIndex,
+        nextCount,
+        1,
+        isRumorEligible,
+      );
     }
 
     this.shopRefreshCountByPlayer.set(playerId, nextCount);
@@ -1745,11 +1791,11 @@ export class MatchRoomController {
 
     offers.splice(slotIndex, 1);
     offers.push(
-      this.buildSingleShopOffer(
+      this.shopOfferBuilder.buildReplacementOffer(
         playerId,
         state.roundIndex,
         refreshCount,
-        SHOP_SIZE + purchaseCount,
+        purchaseCount,
       ),
     );
 
@@ -1948,125 +1994,6 @@ export class MatchRoomController {
     if (this.enableSharedPool && this.sharedPool) {
       this.sharedPool.increase(soldPlacement.sellValue ?? 1);
     }
-  }
-
-  private buildShopOffers(
-    playerId: string,
-    roundIndex: number,
-    refreshCount: number,
-    purchaseCount: number,
-  ): ShopOffer[] {
-    const offers: ShopOffer[] = [];
-    const isEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
-
-    // 噂勢力: eligibleプレイヤーの最初のスロットに確定ユニットを設定
-    if (this.enableRumorInfluence && isEligible) {
-      const rumorUnit = getRumorUnitForRound(roundIndex);
-      if (rumorUnit) {
-        offers.push({
-          unitType: rumorUnit.unitType,
-          rarity: rumorUnit.rarity,
-          cost: rumorUnit.rarity,
-          isRumorUnit: true,
-        });
-      }
-    }
-
-    // 残りのスロットを通常生成
-    const remainingSlots = SHOP_SIZE - offers.length;
-    for (let slotIndex = 0; slotIndex < remainingSlots; slotIndex += 1) {
-      offers.push(
-        this.buildSingleShopOffer(
-          playerId,
-          roundIndex,
-          refreshCount,
-          purchaseCount + slotIndex,
-        ),
-      );
-    }
-
-    return offers;
-  }
-
-  /**
-   * ボス専用ショップのオファーを生成
-   * 紅魔館ユニットのみが出現（常時2枠）
-   */
-  private buildBossShopOffers(): ShopOffer[] {
-    const offers: ShopOffer[] = [];
-
-    for (let slotIndex = 0; slotIndex < BOSS_SHOP_SIZE; slotIndex += 1) {
-      const unit = getRandomScarletMansionUnit();
-      offers.push({
-        unitType: unit.unitType,
-        rarity: unit.cost as UnitRarity,
-        cost: unit.cost,
-      });
-    }
-
-    return offers;
-  }
-
-  private buildItemShopOffers(): ShopItemOffer[] {
-    const offers: ShopItemOffer[] = [];
-
-    for (let i = 0; i < ITEM_SHOP_SIZE; i++) {
-      const randomIndex = Math.floor(Math.random() * ITEM_TYPES.length);
-      const randomItem = ITEM_TYPES[randomIndex];
-
-      if (!randomItem) {
-        continue;
-      }
-
-      const itemDef = ITEM_DEFINITIONS[randomItem];
-      offers.push({
-        itemType: randomItem,
-        cost: itemDef.cost
-      });
-    }
-
-    return offers;
-  }
-
-  private buildSingleShopOffer(
-    playerId: string,
-    roundIndex: number,
-    refreshCount: number,
-    nonce: number,
-  ): ShopOffer {
-    const level = this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL;
-    const odds = SHOP_ODDS_BY_LEVEL[level] ?? SHOP_ODDS_BY_LEVEL[MAX_LEVEL] ?? [1, 0, 0];
-    const seedBase = hashToUint32(
-      `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.setId}`,
-    );
-    const rarityRoll = seedToUnitFloat(seedBase + 1);
-    const rarity = pickRarity(odds, rarityRoll);
-    let unitPool = SHOP_UNIT_POOL_BY_RARITY[rarity];
-
-    // 共有プールが有効な場合、枯渇したユニットを除外
-    if (this.enableSharedPool && this.sharedPool) {
-      unitPool = unitPool.filter((unitType) => !this.sharedPool!.isDepleted(UNIT_TYPE_TO_COST[unitType]));
-
-      // すべてのユニットが枯渇している場合は、代わりに低レアリティを試行
-      if (unitPool.length === 0 && rarity > 1) {
-        const lowerRarity = (rarity - 1) as UnitRarity;
-        unitPool = SHOP_UNIT_POOL_BY_RARITY[lowerRarity].filter(
-          (unitType) => !this.sharedPool!.isDepleted(UNIT_TYPE_TO_COST[unitType]),
-        );
-      }
-    }
-
-    const unitRoll = seedToUnitFloat(seedBase + 2);
-    const unitType =
-      unitPool.length > 0
-        ? unitPool[Math.floor(unitRoll * unitPool.length) % unitPool.length] ?? unitPool[0] ?? "vanguard"
-        : "vanguard";
-
-    return {
-      unitType,
-      rarity,
-      cost: rarity,
-    };
   }
 
   private ensureKnownPlayer(playerId: string): void {

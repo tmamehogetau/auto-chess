@@ -15,7 +15,7 @@ import { SERVER_MESSAGE_TYPES } from "../../../src/shared/room-messages";
 
 describe("E2E: Full Round Completion (R1-R8)", () => {
   let testServer: ColyseusTestServer;
-  const TEST_SERVER_PORT = 4574;
+  const TEST_SERVER_PORT = 4577;
 
   beforeAll(async () => {
     const server = defineServer({

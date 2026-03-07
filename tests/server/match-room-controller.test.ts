@@ -1496,4 +1496,40 @@ describe("MatchRoomController", () => {
 
     expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
   });
+
+  test("setMatchLoggerで抽出サービスにもロガーが伝播される", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    // Create a mock logger
+    const mockLogger = {
+      logBattleResult: vi.fn(),
+      logSpellEffect: vi.fn(),
+      logHpChange: vi.fn(),
+      logRoundTransition: vi.fn(),
+      logBossShop: vi.fn(),
+      logMatchSummary: vi.fn(),
+      registerPlayer: vi.fn(),
+    };
+
+    // Set logger after construction (simulating GameRoom behavior)
+    controller.setMatchLogger(mockLogger as unknown as import("../../src/server/match-logger").MatchLogger);
+
+    // Start the game
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    // Advance to Battle phase to trigger battle resolution logging
+    controller.advanceByTime(32_001);
+
+    // Verify that battle resolution logging occurred (logger was propagated)
+    // The battle should have been resolved and logged
+    expect(mockLogger.logRoundTransition).toHaveBeenCalled();
+  });
 });

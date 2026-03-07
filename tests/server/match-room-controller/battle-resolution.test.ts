@@ -249,6 +249,50 @@ describe("BattleResolutionService", () => {
       }).not.toThrow();
     });
 
+    it("should propagate logger updates via setMatchLogger", () => {
+      const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: [leftBattleUnits[0]],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 50 },
+      });
+
+      // Create service without logger (simulating constructor-time capture)
+      const serviceWithLateLogger = new BattleResolutionService({
+        battleSimulator: mockBattleSimulator,
+        matchLogger: null,
+        enableSubUnitSystem: false,
+        subUnitAssistConfigByType: null,
+      });
+
+      // Set logger after construction (simulating setMatchLogger call)
+      const newMockLogger = createMockMatchLogger();
+      serviceWithLateLogger.setMatchLogger(newMockLogger);
+
+      // Run battle resolution
+      serviceWithLateLogger.resolveMatchup({
+        battleId: "r1-p1-p2",
+        roundIndex: 1,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits,
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      // Verify the new logger was called (not the old null logger)
+      expect(newMockLogger.logBattleResult).toHaveBeenCalled();
+    });
+
     it("should pass correct parameters to battle simulator", () => {
       const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
       const rightBattleUnits = [createMockBattleUnit("unit2", "right")];

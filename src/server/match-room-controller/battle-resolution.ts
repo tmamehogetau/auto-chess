@@ -80,6 +80,11 @@ export interface BattleResolutionDependencies {
 }
 
 /**
+ * Logger provider function type for lazy logger resolution
+ */
+export type LoggerProvider = () => MatchLogger | null;
+
+/**
  * Input parameters for battle trace log
  */
 export interface BattleTraceLogInput {
@@ -162,7 +167,18 @@ export interface ResolveMatchupInput {
  * Service for resolving battles between two players
  */
 export class BattleResolutionService {
-  constructor(private readonly deps: BattleResolutionDependencies) {}
+  private matchLogger: MatchLogger | null;
+
+  constructor(private readonly deps: BattleResolutionDependencies) {
+    this.matchLogger = deps.matchLogger;
+  }
+
+  /**
+   * Update the match logger (called when logger is set after construction)
+   */
+  public setMatchLogger(logger: MatchLogger | null): void {
+    this.matchLogger = logger;
+  }
 
   /**
    * Resolve a matchup between two players
@@ -461,7 +477,7 @@ export class BattleResolutionService {
     leftSurvivors: number,
     rightSurvivors: number,
   ): void {
-    this.deps.matchLogger?.logBattleResult(
+    this.matchLogger?.logBattleResult(
       roundIndex,
       battleIndex,
       leftPlayerId,

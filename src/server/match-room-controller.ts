@@ -768,6 +768,9 @@ export class MatchRoomController {
    */
   public setMatchLogger(logger: MatchLogger | null): void {
     this.matchLogger = logger;
+    // 抽出したサービスにもロガーを伝播（Bug: コンストラクタ後にロガーが設定される場合の対応）
+    this.battleResolutionService.setMatchLogger(logger);
+    this.spellCardHandler.setMatchLogger(logger);
   }
 
   /**

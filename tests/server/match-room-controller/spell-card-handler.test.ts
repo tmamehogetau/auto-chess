@@ -110,6 +110,35 @@ describe("SpellCardHandler", () => {
       });
       expect(disabledHandler.getDeclaredSpell()).toBeNull();
     });
+
+    it("setMatchLoggerでロガーを更新できる", () => {
+      // Create handler without logger (simulating constructor-time capture)
+      const handlerWithoutLogger = new SpellCardHandler({
+        enableSpellCard: true,
+        matchLogger: null,
+      });
+
+      // Set logger after construction
+      const newMockLogger = createMockLogger();
+      handlerWithoutLogger.setMatchLogger(newMockLogger);
+
+      // Declare and apply spell to trigger logging
+      handlerWithoutLogger.declareSpell(1);
+      const playerHps = new Map<string, number>([
+        ["boss", 100],
+        ["player1", 100],
+      ]);
+
+      handlerWithoutLogger.applySpellEffect({
+        roundIndex: 1,
+        playerHps,
+        alivePlayerIds: ["boss", "player1"],
+        bossPlayerId: "boss",
+      });
+
+      // Verify the new logger was called
+      expect(newMockLogger.logSpellEffect).toHaveBeenCalled();
+    });
   });
 
   describe("declareSpell", () => {

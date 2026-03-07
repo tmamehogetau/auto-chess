@@ -59,7 +59,7 @@ export interface ApplyPreBattleSpellEffectParams {
  */
 export class SpellCardHandler {
   private readonly enableSpellCard: boolean;
-  private readonly matchLogger: MatchLogger | null;
+  private matchLogger: MatchLogger | null;
 
   private declaredSpell: SpellCard | null = null;
   private readonly usedSpellIds: string[] = [];
@@ -69,6 +69,13 @@ export class SpellCardHandler {
   constructor(deps: SpellCardHandlerDependencies) {
     this.enableSpellCard = deps.enableSpellCard;
     this.matchLogger = deps.matchLogger;
+  }
+
+  /**
+   * マッチロガーを更新（コンストラクション後に呼ばれる）
+   */
+  public setMatchLogger(logger: MatchLogger | null): void {
+    this.matchLogger = logger;
   }
 
   /**

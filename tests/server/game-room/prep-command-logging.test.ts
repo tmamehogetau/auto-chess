@@ -353,6 +353,59 @@ describe("prep-command-logging", () => {
       });
     });
 
+    it("should log merge action when mergeUnits is provided", () => {
+      const payload = {
+        mergeUnits: { unitType: "vanguard", starLevel: 2, benchIndices: [0, 1, 2] },
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("merge");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "vanguard",
+        starLevel: 2,
+        benchIndices: [0, 1, 2],
+        goldBefore: 10,
+        goldAfter: 10,
+      });
+    });
+
+    it("should log merge action with boardCells when merging from board", () => {
+      const payload = {
+        mergeUnits: { unitType: "ranger", starLevel: 3, boardCells: [5, 10, 15] },
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("merge");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "ranger",
+        starLevel: 3,
+        boardCells: [5, 10, 15],
+        goldBefore: 10,
+        goldAfter: 10,
+      });
+    });
+
+    it("should log merge action without benchIndices when not provided", () => {
+      const payload = {
+        mergeUnits: { unitType: "mage", starLevel: 2 },
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("merge");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "mage",
+        starLevel: 2,
+      });
+      expect(loggedActions[0]!.details).not.toHaveProperty("benchIndices");
+      expect(loggedActions[0]!.details).not.toHaveProperty("boardCells");
+    });
+
     it("should log multiple actions when multiple payload fields are provided", () => {
       const payload = {
         shopBuySlotIndex: 0,
@@ -401,11 +454,12 @@ describe("prep-command-logging", () => {
         itemSellInventoryIndex: 0,
         bossShopBuySlotIndex: 0,
         shopLock: true,
+        mergeUnits: { unitType: "vanguard", starLevel: 2, benchIndices: [0, 1, 2] },
       };
 
       logPrepCommandActions("player1", payload, deps);
 
-      expect(loggedActions).toHaveLength(12);
+      expect(loggedActions).toHaveLength(13);
     });
   });
 });

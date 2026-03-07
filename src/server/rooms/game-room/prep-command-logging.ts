@@ -39,6 +39,7 @@ export function logPrepCommandActions(
         itemUnequipFromBench?: { benchIndex: number; itemSlotIndex: number };
         itemSellInventoryIndex?: number;
         bossShopBuySlotIndex?: number;
+        mergeUnits?: { unitType: string; starLevel: number; benchIndices?: number[]; boardCells?: number[] };
       }
     | undefined,
   deps: PrepCommandLoggingDeps,
@@ -168,6 +169,21 @@ export function logPrepCommandActions(
   if (commandPayload.shopLock !== undefined) {
     deps.logger.logAction(sessionId, roundIndex, "shop_lock", {
       locked: commandPayload.shopLock,
+      goldBefore,
+      goldAfter: goldBefore,
+    });
+  }
+
+  if (commandPayload.mergeUnits !== undefined) {
+    deps.logger.logAction(sessionId, roundIndex, "merge", {
+      unitType: commandPayload.mergeUnits.unitType,
+      starLevel: commandPayload.mergeUnits.starLevel,
+      ...(commandPayload.mergeUnits.benchIndices !== undefined && {
+        benchIndices: commandPayload.mergeUnits.benchIndices,
+      }),
+      ...(commandPayload.mergeUnits.boardCells !== undefined && {
+        boardCells: commandPayload.mergeUnits.boardCells,
+      }),
       goldBefore,
       goldAfter: goldBefore,
     });

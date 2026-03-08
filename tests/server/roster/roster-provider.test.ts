@@ -201,4 +201,80 @@ describe("roster-provider", () => {
       expect(units.some((unit) => unit.unitId === "zanmu")).toBe(true);
     });
   });
+
+  /**
+   * Regression coverage: Legacy fallback hard boundary enforcement
+   * These tests ensure that enableTouhouRoster=false is the absolute gate.
+   * Adjacent flags must NOT affect roster selection when the main switch is OFF.
+   */
+  describe("Legacy fallback hard boundary (enableTouhouRoster=false)", () => {
+    it("should return MVP roster when enableTouhouFactions=true WITHOUT enableTouhouRoster", () => {
+      // Regression test: Touhou factions flag alone must NOT activate Touhou roster
+      const flags = createFeatureFlags({
+        enableTouhouRoster: false,
+        enableTouhouFactions: true,
+      });
+
+      const kind = getActiveRosterKind(flags);
+      const units = getActiveRosterUnits(flags);
+
+      expect(kind).toBe(ROSTER_KIND_MVP);
+      expect(units).toHaveLength(mvpPhase1UnitsData.units.length);
+      expect(units.some((unit) => unit.unitId === "warrior_a")).toBe(true);
+      expect(units.some((unit) => unit.unitId === "rin")).toBe(false);
+    });
+
+    it("should return MVP roster when enablePerUnitSharedPool=true WITHOUT enableTouhouRoster", () => {
+      // Regression test: Per-unit shared pool flag alone must NOT affect roster selection
+      const flags = createFeatureFlags({
+        enableTouhouRoster: false,
+        enablePerUnitSharedPool: true,
+      });
+
+      const kind = getActiveRosterKind(flags);
+      const units = getActiveRosterUnits(flags);
+
+      expect(kind).toBe(ROSTER_KIND_MVP);
+      expect(units).toHaveLength(mvpPhase1UnitsData.units.length);
+      expect(units[0]!.unitId).toBe(mvpPhase1UnitsData.units[0]!.unitId);
+    });
+
+    it("should return MVP roster when ALL adjacent Touhou flags are true BUT enableTouhouRoster is false", () => {
+      // Comprehensive regression: Even with all adjacent flags forced ON,
+      // the legacy boundary (enableTouhouRoster=false) must remain intact.
+      const flags = createFeatureFlags({
+        enableTouhouRoster: false,
+        enableTouhouFactions: true,
+        enablePerUnitSharedPool: true,
+        enableSharedPool: true,
+      });
+
+      const kind = getActiveRosterKind(flags);
+      const units = getActiveRosterUnits(flags);
+
+      expect(kind).toBe(ROSTER_KIND_MVP);
+      // Verify MVP units are returned, not Touhou units
+      expect(units.some((unit) => unit.unitId === "warrior_a")).toBe(true);
+      expect(units.some((unit) => unit.unitId === "dragon")).toBe(true);
+      expect(units.some((unit) => unit.unitId === "rin")).toBe(false);
+      expect(units.some((unit) => unit.unitId === "zanmu")).toBe(false);
+    });
+
+    it("should maintain MVP roster even with complex mixed flag combinations", () => {
+      // Edge case: Mixed legacy and new flags should not break the boundary
+      const flags = createFeatureFlags({
+        enableTouhouRoster: false,
+        enableTouhouFactions: true,
+        enablePerUnitSharedPool: true,
+        enableHeroSystem: true,
+        enablePhaseExpansion: true,
+      });
+
+      const kind = getActiveRosterKind(flags);
+      const units = getActiveRosterUnits(flags);
+
+      expect(kind).toBe(ROSTER_KIND_MVP);
+      expect(units.length).toBe(mvpPhase1UnitsData.units.length);
+    });
+  });
 });

@@ -96,6 +96,10 @@ export function normalizeBoardPlacements(
       starLevel,
     };
 
+    if (placement.unitId !== undefined) {
+      normalizedPlacement.unitId = placement.unitId;
+    }
+
     if (placement.sellValue !== undefined) {
       normalizedPlacement.sellValue = placement.sellValue;
     }

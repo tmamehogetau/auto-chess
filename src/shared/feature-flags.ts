@@ -8,6 +8,10 @@ export interface FeatureFlags {
   enableRumorInfluence: boolean;
   enableBossExclusiveShop: boolean;
   enableSharedBoardShadow: boolean;
+  // Migration flags for Touhou roster switch (Phase 2)
+  enableTouhouRoster: boolean;
+  enableTouhouFactions: boolean;
+  enablePerUnitSharedPool: boolean;
 }
 
 export const DEFAULT_FLAGS: FeatureFlags = {
@@ -20,4 +24,8 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   enableRumorInfluence: false,
   enableBossExclusiveShop: false,
   enableSharedBoardShadow: false,
+  // Migration flags for Touhou roster switch (Phase 2)
+  enableTouhouRoster: false,
+  enableTouhouFactions: false,
+  enablePerUnitSharedPool: false,
 };

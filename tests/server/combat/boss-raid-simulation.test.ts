@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 
 import {
   BattleSimulator,
@@ -10,9 +11,9 @@ import {
  * Boss Raid Simulation Tests
  *
  * Tests to measure win rates between boss (Remilia) and 3-player raid teams.
- * Current balance: Boss is overwhelmingly dominant (95-100% win rate)
- * Rationale: Boss (HP: 3200, ATK: 280, Reduction: 15/10%) outclasses all ★3 raid teams
- * Boss DPS: 266, Max Raid DPS: ~24. Boss kills raid in ~2.5s, raid needs 80s+ to kill boss
+ * Target balance: Boss wins around 60% across representative raid compositions
+ * Current baseline: Boss (HP: 580, ATK: 47, AS: 0.57, Reduction: 0/0%)
+ * This keeps ★1 raid comps boss-favored while allowing stronger ★3 comps to win more often
  */
 
 describe("Boss Raid Simulation", () => {
@@ -20,7 +21,7 @@ describe("Boss Raid Simulation", () => {
 
   /**
    * Create boss unit (Remilia)
-   * Uses boss stats from JSON (hp: 3200, attack: 280, attackSpeed: 0.95, range: 3)
+   * Uses boss stats from JSON (hp: 580, attack: 47, attackSpeed: 0.57, range: 3)
    */
   function createBossUnit(): BattleUnit {
     const boss = createBattleUnit(
@@ -28,6 +29,7 @@ describe("Boss Raid Simulation", () => {
       "right",
       0,
       true, // isBoss = true
+      DEFAULT_FLAGS,
     );
 
     return boss;
@@ -46,6 +48,7 @@ describe("Boss Raid Simulation", () => {
       "left",
       cell,
       false,
+      DEFAULT_FLAGS,
     );
   }
 
@@ -172,9 +175,7 @@ describe("Boss Raid Simulation", () => {
       console.log(`Draw rate: ${drawRate.toFixed(1)}%`);
       console.log(`Avg duration: ${(durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(0)}ms`);
 
-      // NOTE: These are measurement tests, not strict assertions
-      // Current boss stats (HP: 3200, ATK: 280, Reduction: 15/10%) result in near-100% boss win rate
-      // Adjust boss stats in createBossUnit() if a 40-60% balance is desired
+      // Measurement-only visibility for one representative composition.
       expect(bossWinRate).toBeGreaterThanOrEqual(0);
       expect(bossWinRate).toBeLessThanOrEqual(100);
     });
@@ -241,7 +242,7 @@ describe("Boss Raid Simulation", () => {
       expect(bossWinRate).toBeLessThanOrEqual(100);
     });
 
-    test("代表編成セットの総合ボス勝率が95-100%に収まる（現在のボスステータス）", () => {
+    test("代表編成セットの総合ボス勝率が55-65%に収まる（60%目標）", () => {
       const scenarios: Array<{
         name: string;
         expectedAdvantage: "boss" | "raid";
@@ -342,18 +343,13 @@ describe("Boss Raid Simulation", () => {
         const scenarioBossRate = scenarioBossWins / iterationsPerScenario;
         console.log(`${scenario.name}: ${(scenarioBossRate * 100).toFixed(1)}%`);
 
-        // All scenarios are boss-dominant with current boss stats (HP: 3200, Attack: 280, Reduction: 15/10%)
-        // Boss DPS (266) significantly outclasses max raid team DPS (~24)
-        // Boss kills raid teams in ~2.5s, while raid needs 80s+ to kill boss
-        expect(scenarioBossRate).toBeGreaterThan(0.8);
-
         totalBossWins += scenarioBossWins;
         totalBattles += iterationsPerScenario;
       }
 
       const overallBossWinRate = totalBossWins / totalBattles;
-      expect(overallBossWinRate).toBeGreaterThanOrEqual(0.95);
-      expect(overallBossWinRate).toBeLessThanOrEqual(1.0);
+      expect(overallBossWinRate).toBeGreaterThanOrEqual(0.55);
+      expect(overallBossWinRate).toBeLessThanOrEqual(0.65);
     });
   });
 
@@ -362,14 +358,14 @@ describe("Boss Raid Simulation", () => {
       const boss = createBossUnit();
 
       // Boss stats from JSON
-      expect(boss.hp).toBe(3200);
-      expect(boss.maxHp).toBe(3200);
-      expect(boss.attackPower).toBe(280);
-      expect(boss.attackSpeed).toBe(0.95);
+      expect(boss.hp).toBe(580);
+      expect(boss.maxHp).toBe(580);
+      expect(boss.attackPower).toBe(47);
+      expect(boss.attackSpeed).toBe(0.57);
       expect(boss.attackRange).toBe(3);
       expect(boss.isBoss).toBe(true);
-      expect(boss.physicalReduction).toBe(15);
-      expect(boss.magicReduction).toBe(10);
+      expect(boss.physicalReduction).toBe(0);
+      expect(boss.magicReduction).toBe(0);
     });
 
     test("レイドチームの総ステータス検証", () => {

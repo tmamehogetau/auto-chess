@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
+import type { BoardUnitPlacement } from "../../src/shared/room-messages";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const controllerOptions = {
   readyAutoStartMs: 60_000,
@@ -412,6 +414,418 @@ describe("MatchRoomController", () => {
     expect(afterStatus.ownedUnits[firstUnitType]).toBe(1);
   });
 
+  test("myourenji tier2 では shopBuySlotIndex の購入コストが1下がる", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 1);
+    });
+  });
+
+  test("myourenji tier1 では shop cost reduction を適用しない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 2);
+    });
+  });
+
+  test("niji_ryuudou tier1 の shop cost reduction は cost floor 1 を守る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "niji_ryuudou" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "niji_ryuudou" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "kisume", rarity: 1, cost: 1 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 1);
+    });
+  });
+
+  test("niji_ryuudou tier1 では eligible Touhou unit の shopBuySlotIndex 購入コストが1下がる", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "niji_ryuudou" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "niji_ryuudou" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 1);
+    });
+  });
+
+  test("legacy MVP unit は Touhou shop cost reduction を継承しない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 2);
+    });
+  });
+
+  test("enableTouhouFactions=false では shop cost reduction を適用しない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_ONLY, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 2);
+    });
+  });
+
+  test("niji_ryuudou tier2 では最初の itemBuy で 1 ドローする", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        itemShopOffersByPlayer: Map<string, Array<{ itemType: "sword" | "shield" | "boots" | "ring" | "amulet"; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "tsukasa", factionId: "niji_ryuudou" },
+        { cell: 1, unitType: "ranger", starLevel: 1, unitId: "megumu", factionId: "niji_ryuudou" },
+        { cell: 2, unitType: "mage", starLevel: 1, unitId: "chimata", factionId: "niji_ryuudou" },
+        { cell: 3, unitType: "assassin", starLevel: 1, unitId: "yamame", factionId: "niji_ryuudou" },
+      ]);
+      internals.itemShopOffersByPlayer.set("p1", [
+        { itemType: "sword", cost: 3 },
+      ]);
+
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        itemBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.itemInventory).toContain("sword");
+      expect(afterStatus.itemInventory).toHaveLength(2);
+    });
+  });
+
+  test("niji_ryuudou tier2 では最初の itemEquip で 1 ドローする", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number; items?: string[] }>>;
+        itemInventoryByPlayer: Map<string, Array<"sword" | "shield" | "boots" | "ring" | "amulet">>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "tsukasa", factionId: "niji_ryuudou" },
+        { cell: 1, unitType: "ranger", starLevel: 1, unitId: "megumu", factionId: "niji_ryuudou" },
+        { cell: 2, unitType: "mage", starLevel: 1, unitId: "chimata", factionId: "niji_ryuudou" },
+        { cell: 3, unitType: "assassin", starLevel: 1, unitId: "yamame", factionId: "niji_ryuudou" },
+      ]);
+      internals.benchUnitsByPlayer.set("p1", [
+        { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1, items: [] },
+      ]);
+      internals.itemInventoryByPlayer.set("p1", ["shield"]);
+
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        itemEquipToBench: {
+          inventoryItemIndex: 0,
+          benchIndex: 0,
+        },
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.itemInventory).toHaveLength(1);
+    });
+  });
+
+  test("niji_ryuudou tier2 のドローは Prep ごとに最初の item/equip use 1 回だけ", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number; items?: string[] }>>;
+        itemShopOffersByPlayer: Map<string, Array<{ itemType: "sword" | "shield" | "boots" | "ring" | "amulet"; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "tsukasa", factionId: "niji_ryuudou" },
+        { cell: 1, unitType: "ranger", starLevel: 1, unitId: "megumu", factionId: "niji_ryuudou" },
+        { cell: 2, unitType: "mage", starLevel: 1, unitId: "chimata", factionId: "niji_ryuudou" },
+        { cell: 3, unitType: "assassin", starLevel: 1, unitId: "yamame", factionId: "niji_ryuudou" },
+      ]);
+      internals.benchUnitsByPlayer.set("p1", [
+        { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1, items: [] },
+      ]);
+      internals.itemShopOffersByPlayer.set("p1", [
+        { itemType: "sword", cost: 3 },
+      ]);
+
+      const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
+        itemBuySlotIndex: 0,
+      });
+      const afterBuyStatus = controller.getPlayerStatus("p1");
+      const equipResult = controller.submitPrepCommand("p1", 2, 3_100, {
+        itemEquipToBench: {
+          inventoryItemIndex: 0,
+          benchIndex: 0,
+        },
+      });
+      const afterEquipStatus = controller.getPlayerStatus("p1");
+
+      expect(buyResult).toEqual({ accepted: true });
+      expect(equipResult).toEqual({ accepted: true });
+      expect(afterBuyStatus.itemInventory).toHaveLength(2);
+      expect(afterEquipStatus.itemInventory).toHaveLength(1);
+    });
+  });
+
+  test("myourenji 割引購入ユニットを即売却しても差額goldは増えない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+        { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const goldBefore = controller.getPlayerStatus("p1").gold;
+      const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const goldAfterBuy = controller.getPlayerStatus("p1").gold;
+      const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
+        benchSellIndex: 0,
+      });
+      const status = controller.getPlayerStatus("p1");
+
+      expect(buyResult).toEqual({ accepted: true });
+      expect(sellResult).toEqual({ accepted: true });
+      expect(goldAfterBuy).toBe(goldBefore - 1);
+      expect(status.gold).toBe(goldBefore);
+    });
+  });
+
   test("ベンチ満杯でshopBuySlotIndexはBENCH_FULLで却下される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
@@ -517,6 +931,143 @@ describe("MatchRoomController", () => {
     expect(status.gold).toBe(beforeSellGold + unitCost);
     expect(status.benchUnits.length).toBe(0);
     expect(status.ownedUnits[soldOwnedKey]).toBe(beforeSellOwned[soldOwnedKey] - 1);
+  });
+
+  test("enablePerUnitSharedPool=true では Touhou unitId ごとに購入在庫が減る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          getAvailableByUnitId: (unitId: string, cost: number) => number;
+          decreaseByUnitId: (unitId: string, cost: number) => boolean;
+        };
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, rarity: 1 },
+      ]);
+
+      const before = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinBefore = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 0 });
+      const after = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinAfter = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+
+      expect(result).toEqual({ accepted: true });
+      expect(before).toBe(5);
+      expect(after).toBe(4);
+      expect(nazrinBefore).toBe(5);
+      expect(nazrinAfter).toBe(5);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では sharedPoolInventory が実在庫総量を反映する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, rarity: 1 },
+      ]);
+
+      const before = controller.getPlayerStatus("p1").sharedPoolInventory?.get(1);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 0 });
+      const after = controller.getPlayerStatus("p1").sharedPoolInventory?.get(1);
+
+      expect(result).toEqual({ accepted: true });
+      expect(before).toBe(18);
+      expect(after).toBe(17);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では Touhou unitId の売却で同じ在庫へ返る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          getAvailableByUnitId: (unitId: string, cost: number) => number;
+          decreaseByUnitId: (unitId: string, cost: number) => boolean;
+        };
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; starLevel: number; unitCount: number }>>;
+      };
+
+      internals.benchUnitsByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 },
+      ]);
+
+      const before = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinBefore = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { benchSellIndex: 0 });
+      const after = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinAfter = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+
+      expect(result).toEqual({ accepted: true });
+      expect(after).toBe(before + 1);
+      expect(nazrinAfter).toBe(nazrinBefore);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では removePlayer 時に board/bench の unitId 在庫が返る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          getAvailableByUnitId: (unitId: string, cost: number) => number;
+          decreaseByUnitId: (unitId: string, cost: number) => boolean;
+        };
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; starLevel: number; unitCount: number }>>;
+        boardPlacementsByPlayer: Map<string, Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; sellValue?: number; unitCount?: number }>>;
+      };
+
+      internals.benchUnitsByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 },
+      ]);
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "ranger", unitId: "nazrin", sellValue: 1, unitCount: 1 },
+      ]);
+
+      internals.sharedPool.decreaseByUnitId("rin", 1);
+      internals.sharedPool.decreaseByUnitId("nazrin", 1);
+
+      const rinBefore = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinBefore = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+
+      controller.removePlayer("p1");
+
+      expect(internals.sharedPool.getAvailableByUnitId("rin", 1)).toBe(rinBefore + 1);
+      expect(internals.sharedPool.getAvailableByUnitId("nazrin", 1)).toBe(nazrinBefore + 1);
+    });
   });
 
   test("同種3体購入でベンチ上で自動合成されて★2になる", () => {

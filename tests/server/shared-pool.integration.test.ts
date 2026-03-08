@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SharedPool } from '../../src/server/shared-pool';
+import { TOUHOU_UNITS } from '../../src/data/touhou-units';
 
 describe('SharedPool Integration Tests', () => {
   let pool: SharedPool;
@@ -178,6 +179,40 @@ describe('SharedPool Integration Tests', () => {
       }
 
       expect(pool.getAvailable(1)).toBe(18);
+    });
+  });
+
+  describe('per-unit inventory', () => {
+    it('Touhou unitId ごとの初期在庫を cost ベース枚数で持てること', () => {
+      const rin = TOUHOU_UNITS.find((unit) => unit.unitId === 'rin');
+      const byakuren = TOUHOU_UNITS.find((unit) => unit.unitId === 'byakuren');
+
+      expect(rin).toBeDefined();
+      expect(byakuren).toBeDefined();
+      expect(pool.getAvailableByUnitId('rin', rin!.cost)).toBe(5);
+      expect(pool.getAvailableByUnitId('byakuren', byakuren!.cost)).toBe(2);
+    });
+
+    it('unitId ベースで減算と枯渇判定ができること', () => {
+      for (let i = 0; i < 5; i++) {
+        expect(pool.decreaseByUnitId('rin', 1)).toBe(true);
+      }
+
+      expect(pool.decreaseByUnitId('rin', 1)).toBe(false);
+      expect(pool.isDepletedByUnitId('rin', 1)).toBe(true);
+      expect(pool.getAvailableByUnitId('rin', 1)).toBe(0);
+      expect(pool.getAvailableByUnitId('nazrin', 1)).toBe(5);
+      expect(pool.getAvailable(1)).toBe(13);
+    });
+
+    it('同コスト unitId 在庫の合計は cost 在庫総量を超えないこと', () => {
+      const cost1Units = TOUHOU_UNITS.filter((unit) => unit.cost === 1);
+      const totalAvailable = cost1Units.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, unit.cost),
+        0,
+      );
+
+      expect(totalAvailable).toBe(pool.getAvailable(1));
     });
   });
 

@@ -1,4 +1,5 @@
-import { ItemType } from './types';
+import type { TouhouFactionId } from '../data/touhou-units';
+import type { ItemType, UnitId } from './types';
 
 export const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
@@ -65,6 +66,12 @@ export interface ShopItemOffer {
 export interface BoardUnitPlacement {
   cell: number;
   unitType: BoardUnitType;
+  unitId?: UnitId;
+  factionId?: TouhouFactionId | null;
+  hp?: number;
+  attack?: number;
+  attackSpeed?: number;
+  range?: number;
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;

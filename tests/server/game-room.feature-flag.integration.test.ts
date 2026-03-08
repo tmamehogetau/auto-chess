@@ -249,6 +249,28 @@ describe("GameRoom Integration with Feature Flags", () => {
         });
       });
 
+      test("Touhou full migration では shared pool 実効フラグが state へ反映される", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(true);
+          expect(serverRoom.state.featureFlagsEnablePerUnitSharedPool).toBe(true);
+        });
+      });
+
       test("Prepの締切を過ぎるとBattleへ自動遷移する", async () => {
         await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
           const serverRoom = await testServer.createRoom<GameRoom>("game");
@@ -576,8 +598,291 @@ describe("GameRoom Integration with Feature Flags", () => {
           const strongestBResult =
             await strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
 
-          expect(strongestAResult).toEqual({ accepted: true });
-          expect(strongestBResult).toEqual({ accepted: true });
+      expect(strongestAResult).toEqual({ accepted: true });
+      expect(strongestBResult).toEqual({ accepted: true });
+        });
+      });
+    });
+
+    describe("Touhou roster migration scaffold tests", () => {
+      test("current gameplay works under enableTouhouRoster=false", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          // Verify game starts normally with MVP roster
+          expect(serverRoom.state.phase).toBe("Prep");
+          expect(serverRoom.state.roundIndex).toBe(1);
+
+          // Verify shop offers are generated using MVP roster
+          const target = serverRoom.state.players.get(clients[0].sessionId);
+          expect(target?.shopOffers.length).toBe(5);
+        });
+      });
+
+      test("enableTouhouRoster=true creates a room and exposes Touhou draft units", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_ONLY, async () => {
+          const { getActiveRosterUnits } = await import("../../src/server/roster/roster-provider");
+          const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
+
+          const flags = FeatureFlagService.getInstance().getFlags();
+          expect(flags.enableTouhouRoster).toBe(true);
+
+          const activeRoster = getActiveRosterUnits(flags);
+          expect(activeRoster).toHaveLength(25);
+          expect(activeRoster.some((unit) => unit.unitId === "rin")).toBe(true);
+
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const target = serverRoom.state.players.get(clients[0].sessionId);
+          expect(target?.shopOffers.length).toBe(5);
+          expect(target?.shopOffers.every((offer) => offer.unitId.length > 0)).toBe(true);
+        });
+      });
+
+      test("unit-id-resolver uses roster provider boundary", async () => {
+        // This test verifies that unit-id-resolver uses the roster provider
+        // as the boundary for MVP roster data access
+        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+          const { resolveBattlePlacement } = await import("../../src/server/unit-id-resolver");
+          const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
+
+          const flags = FeatureFlagService.getInstance().getFlags();
+
+          // Verify unit resolution works with roster provider
+          // When enableTouhouRoster=false, uses MVP roster from provider
+          const placement = {
+            cell: 1,
+            unitType: "vanguard" as const,
+            unitId: "warrior_a",
+          };
+
+          const resolved = resolveBattlePlacement(placement, flags);
+          expect(resolved.unitType).toBe("vanguard");
+          expect(resolved.unitId).toBe("warrior_a");
+        });
+      });
+
+      test("unit-id-resolver attaches Touhou faction metadata on the active roster path", async () => {
+        await withFlags({
+          ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        }, async () => {
+          const { resolveBattlePlacement } = await import("../../src/server/unit-id-resolver");
+          const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
+
+          const flags = FeatureFlagService.getInstance().getFlags();
+
+          const rinPlacement = {
+            cell: 1,
+            unitType: "vanguard" as const,
+            unitId: "rin",
+          };
+          const zanmuPlacement = {
+            cell: 2,
+            unitType: "mage" as const,
+            unitId: "zanmu",
+          };
+
+          const resolvedRin = resolveBattlePlacement(rinPlacement, flags);
+          const resolvedZanmu = resolveBattlePlacement(zanmuPlacement, flags);
+
+          expect(resolvedRin.unitType).toBe("vanguard");
+          expect(resolvedRin.unitId).toBe("rin");
+          expect(resolvedRin.factionId).toBe("chireiden");
+          expect(resolvedRin.hp).toBe(620);
+          expect(resolvedRin.attack).toBe(40);
+          expect(resolvedRin.attackSpeed).toBe(0.85);
+          expect(resolvedRin.range).toBe(1);
+
+          expect(resolvedZanmu.unitType).toBe("mage");
+          expect(resolvedZanmu.unitId).toBe("zanmu");
+          expect(resolvedZanmu.factionId).toBeNull();
+          expect(resolvedZanmu.hp).toBe(1180);
+          expect(resolvedZanmu.attack).toBe(118);
+          expect(resolvedZanmu.attackSpeed).toBe(0.85);
+          expect(resolvedZanmu.range).toBe(3);
+        });
+      });
+
+      test("true/true/false では Touhou faction shop discount が反映される", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+          ]);
+
+          const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
+          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+            cmdSeq: 1,
+            shopBuySlotIndex: 0,
+          });
+
+          await waitForCondition(
+            () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
+            1_000,
+          );
+
+          const player = serverRoom.state.players.get(sessionId);
+          expect(player?.gold).toBe(goldBefore - 1);
+        });
+      });
+
+      test("true/true/true では discount と per-unit 購入結果が両立する", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+          ]);
+
+          const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
+          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+            cmdSeq: 1,
+            shopBuySlotIndex: 0,
+          });
+
+          await waitForCondition(
+            () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
+            1_000,
+          );
+
+          const player = serverRoom.state.players.get(sessionId);
+          expect(player?.gold).toBe(goldBefore - 1);
+          expect(player?.benchUnits.length).toBe(1);
+        });
+      });
+
+      test("false/false/false では legacy MVP buy cost を維持する", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "vanguard", starLevel: 1 },
+            { cell: 1, unitType: "mage", starLevel: 1 },
+            { cell: 2, unitType: "assassin", starLevel: 1 },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "mage", rarity: 2, cost: 2 },
+          ]);
+
+          const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
+          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+            cmdSeq: 1,
+            shopBuySlotIndex: 0,
+          });
+
+          await waitForCondition(
+            () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 2,
+            1_000,
+          );
+
+          const player = serverRoom.state.players.get(sessionId);
+          expect(player?.gold).toBe(goldBefore - 2);
+          expect(player?.benchUnits.length).toBe(1);
         });
       });
     });

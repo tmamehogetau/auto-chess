@@ -63,6 +63,13 @@ For new agents or quick start, read these 3 files:
 npm run verify:ci
 ```
 
+## Review Guidelines
+- Prioritize regressions that change MVP behavior when `enableTouhouRoster=false`.
+- Verify Touhou-only behavior stays gated behind `enableTouhouRoster`, `enableTouhouFactions`, and `enablePerUnitSharedPool`.
+- Check that `unitId` propagates correctly through buy, bench, board, sell, and shared-pool return paths.
+- Flag any mismatch between implemented Touhou faction effects and `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/touhou-faction-effect-matrix.md`.
+- Treat data-loss, state-desync, and pool-inventory inconsistencies as high priority.
+
 ## Done Criteria
 - All tests pass (`npm run test:run`)
 - Type checking succeeds (`npm run typecheck`)

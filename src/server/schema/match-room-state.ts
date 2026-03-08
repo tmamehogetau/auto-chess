@@ -7,6 +7,8 @@ import type { FeatureFlags } from "../../shared/feature-flags";
 export class ShopOfferState extends Schema {
   declare public unitType: BoardUnitType;
 
+  declare public unitId: string;
+
   declare public cost: number;
 
   declare public rarity: number;
@@ -16,6 +18,7 @@ export class ShopOfferState extends Schema {
   public constructor() {
     super();
     this.unitType = "vanguard";
+    this.unitId = "";
     this.cost = 1;
     this.rarity = 1;
     this.isRumorUnit = false;
@@ -175,6 +178,12 @@ export class MatchRoomState extends Schema {
 
   declare public featureFlagsEnableSharedBoardShadow: boolean;
 
+  declare public featureFlagsEnableTouhouRoster: boolean;
+
+  declare public featureFlagsEnableTouhouFactions: boolean;
+
+  declare public featureFlagsEnablePerUnitSharedPool: boolean;
+
   declare public declaredSpellId: string;
 
   declare public usedSpellIds: ArraySchema<string>;
@@ -200,6 +209,9 @@ export class MatchRoomState extends Schema {
     this.featureFlagsEnableRumorInfluence = false;
     this.featureFlagsEnableBossExclusiveShop = false;
     this.featureFlagsEnableSharedBoardShadow = false;
+    this.featureFlagsEnableTouhouRoster = false;
+    this.featureFlagsEnableTouhouFactions = false;
+    this.featureFlagsEnablePerUnitSharedPool = false;
     this.declaredSpellId = "";
     this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
@@ -209,6 +221,7 @@ export class MatchRoomState extends Schema {
 
 defineTypes(ShopOfferState, {
   unitType: "string",
+  unitId: "string",
   cost: "number",
   rarity: "number",
   isRumorUnit: "boolean",
@@ -280,6 +293,9 @@ defineTypes(MatchRoomState, {
   featureFlagsEnableRumorInfluence: "boolean",
   featureFlagsEnableBossExclusiveShop: "boolean",
   featureFlagsEnableSharedBoardShadow: "boolean",
+  featureFlagsEnableTouhouRoster: "boolean",
+  featureFlagsEnableTouhouFactions: "boolean",
+  featureFlagsEnablePerUnitSharedPool: "boolean",
   declaredSpellId: "string",
   usedSpellIds: ["string"],
   bossPlayerId: "string",

@@ -27,6 +27,10 @@ class FeatureFlagService {
       enableRumorInfluence: this.parseEnvBoolean("FEATURE_ENABLE_RUMOR_INFLUENCE"),
       enableBossExclusiveShop: this.parseEnvBoolean("FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP"),
       enableSharedBoardShadow: this.parseEnvBoolean("FEATURE_ENABLE_SHARED_BOARD_SHADOW"),
+      // Migration flags for Touhou roster switch (Phase 2)
+      enableTouhouRoster: this.parseEnvBoolean("FEATURE_ENABLE_TOUHOU_ROSTER"),
+      enableTouhouFactions: this.parseEnvBoolean("FEATURE_ENABLE_TOUHOU_FACTIONS"),
+      enablePerUnitSharedPool: this.parseEnvBoolean("FEATURE_ENABLE_PER_UNIT_SHARED_POOL"),
     };
   }
 
@@ -52,33 +56,63 @@ class FeatureFlagService {
    */
   public validateFlagConfiguration(): void {
     const flags = this.flags;
-    const enabledFeatures = Object.entries(flags)
+
+    // Migration flag validation (Phase 2: Touhou roster switch)
+    // Dependency rules: factions => roster, perUnitSharedPool => factions && roster
+    if (flags.enableTouhouFactions && !flags.enableTouhouRoster) {
+      throw new Error(
+        "Invalid Feature Flag configuration: enableTouhouFactions requires enableTouhouRoster",
+      );
+    }
+    if (flags.enablePerUnitSharedPool && (!flags.enableTouhouRoster || !flags.enableTouhouFactions)) {
+      throw new Error(
+        "Invalid Feature Flag configuration: enablePerUnitSharedPool requires both enableTouhouRoster and enableTouhouFactions",
+      );
+    }
+
+    // Separate MVP flags from migration flags for validation
+    const mvpFlags = {
+      enableHeroSystem: flags.enableHeroSystem,
+      enableSharedPool: flags.enableSharedPool,
+      enablePhaseExpansion: flags.enablePhaseExpansion,
+      enableSubUnitSystem: flags.enableSubUnitSystem,
+      enableEmblemCells: flags.enableEmblemCells,
+      enableSpellCard: flags.enableSpellCard,
+      enableRumorInfluence: flags.enableRumorInfluence,
+      enableBossExclusiveShop: flags.enableBossExclusiveShop,
+      enableSharedBoardShadow: flags.enableSharedBoardShadow,
+    };
+
+    const enabledMvpFeatures = Object.entries(mvpFlags)
       .filter(([, enabled]) => enabled)
       .map(([featureName]) => featureName);
-    const enabledCount = enabledFeatures.length;
-    const totalFeatureCount = Object.keys(flags).length;
-    const isAllDisabled = enabledCount === 0;
-    const isAllEnabled = enabledCount === totalFeatureCount;
-    const isSingleFeatureMode = enabledCount === 1;
+    const enabledMvpCount = enabledMvpFeatures.length;
+    const totalMvpFeatureCount = Object.keys(mvpFlags).length;
+    const isMvpAllDisabled = enabledMvpCount === 0;
+    const isMvpAllEnabled = enabledMvpCount === totalMvpFeatureCount;
+    const isMvpSingleFeatureMode = enabledMvpCount === 1;
 
     // 非許可組み合わせの検証
     const invalidCombinations: string[] = [];
 
     // MVP運用では「ALL_DISABLED / ALL_ENABLED / 単機能ON」のみ許可する
-    if (!isAllDisabled && !isAllEnabled && !isSingleFeatureMode) {
+    if (!isMvpAllDisabled && !isMvpAllEnabled && !isMvpSingleFeatureMode) {
       invalidCombinations.push(
         "MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration",
       );
     }
 
     // エンブレムセルは未実装領域が残るため、MVPでは ALL_ENABLED のみ許可
-    if (flags.enableEmblemCells && !isAllEnabled) {
+    if (flags.enableEmblemCells && !isMvpAllEnabled) {
       invalidCombinations.push(
         "enableEmblemCells is only allowed in ALL_ENABLED configuration",
       );
     }
 
     if (invalidCombinations.length > 0) {
+      const enabledFeatures = Object.entries(flags)
+        .filter(([, enabled]) => enabled)
+        .map(([featureName]) => featureName);
       throw new Error(
         `Invalid Feature Flag configuration: ${invalidCombinations.join("; ")} (enabled: ${enabledFeatures.join(",") || "none"})`,
       );

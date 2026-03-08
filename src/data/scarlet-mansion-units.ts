@@ -6,10 +6,13 @@
  */
 
 import type { BoardUnitType } from "../shared/room-messages";
+import type { UnitId } from "../shared/types";
 
 export interface ScarletMansionUnit {
   /** ユニットID */
   id: string;
+  /** stable unitId */
+  unitId: UnitId;
   /** 表示名 */
   displayName: string;
   /** ユニットタイプ（通常のBoardUnitTypeとは別枠） */
@@ -43,6 +46,7 @@ export interface ScarletMansionUnit {
 export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
   {
     id: "meiling",
+    unitId: "meiling",
     displayName: "紅美鈴",
     unitType: "vanguard",
     cost: 2,
@@ -58,6 +62,7 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
   },
   {
     id: "sakuya",
+    unitId: "sakuya",
     displayName: "十六夜咲夜",
     unitType: "assassin",
     cost: 3,
@@ -73,6 +78,7 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
   },
   {
     id: "patchouli",
+    unitId: "patchouli",
     displayName: "パチュリー・ノーレッジ",
     unitType: "mage",
     cost: 4,

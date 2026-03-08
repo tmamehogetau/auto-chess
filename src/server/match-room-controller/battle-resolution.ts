@@ -7,6 +7,7 @@
 import type { BattleUnit, BattleResult as SimulatorBattleResult } from "../combat/battle-simulator";
 import type { BoardUnitPlacement } from "../../shared/room-messages";
 import type { MatchLogger } from "../match-logger";
+import type { FeatureFlags } from "../../shared/feature-flags";
 
 /**
  * Spell combat modifiers
@@ -66,6 +67,7 @@ export interface IBattleSimulator {
     leftHeroSynergyBonusType: BoardUnitType | null,
     rightHeroSynergyBonusType: BoardUnitType | null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null,
+    flags?: FeatureFlags,
   ): SimulatorBattleResult;
 }
 
@@ -77,6 +79,7 @@ export interface BattleResolutionDependencies {
   matchLogger: MatchLogger | null;
   enableSubUnitSystem: boolean;
   subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null;
+  featureFlags?: FeatureFlags;
 }
 
 /**
@@ -209,6 +212,7 @@ export class BattleResolutionService {
       leftHeroSynergyBonusType,
       rightHeroSynergyBonusType,
       this.deps.enableSubUnitSystem ? this.deps.subUnitAssistConfigByType : null,
+      this.deps.featureFlags,
     );
 
     // Process results based on winner

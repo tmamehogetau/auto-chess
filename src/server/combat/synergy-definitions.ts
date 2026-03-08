@@ -1,5 +1,6 @@
 import type { BoardUnitPlacement } from '../../shared/room-messages';
 import { BoardUnitType } from '../../shared/types';
+import type { TouhouFactionId } from '../../data/touhou-units';
 import type { BattleUnit } from './battle-simulator';
 
 export type SynergyTier = 0 | 1 | 2 | 3;
@@ -14,8 +15,34 @@ export interface SynergyEffects {
 }
 
 export interface SynergyDefinition {
-  thresholds: [number, number, number]; // [3, 6, 9]
+  thresholds: readonly number[];
   effects: SynergyEffects;
+}
+
+export type TouhouFactionEffectId =
+  | 'faction.chireiden'
+  | 'faction.myourenji'
+  | 'faction.shinreibyou'
+  | 'faction.grassroot_network'
+  | 'faction.niji_ryuudou'
+  | 'faction.kanjuden';
+
+export interface TouhouFactionTierEffect {
+  effectId: TouhouFactionEffectId;
+  statModifiers?: {
+    defense?: number;
+    attackPower?: number;
+    hpMultiplier?: number;
+    attackSpeedMultiplier?: number;
+  };
+  special?: {
+    reflectRatio?: number;
+    ultimateDamageMultiplier?: number;
+    bonusDamageVsDebuffedTarget?: number;
+    shopCostReduction?: number;
+    firstItemUseDraws?: number;
+    debuffImmunityCategories?: string[];
+  };
 }
 
 export const SYNERGY_THRESHOLDS: [number, number, number] = [3, 6, 9];
@@ -67,6 +94,130 @@ export const SYNERGY_DEFINITIONS: Record<BoardUnitType, SynergyDefinition> = {
 
 export const SCARLET_MANSION_ARCHETYPES = ["meiling", "sakuya", "patchouli"] as const;
 
+export const TOUHOU_FACTION_THRESHOLDS: Record<TouhouFactionId, readonly number[]> = {
+  chireiden: [2, 4],
+  myourenji: [2, 3, 5],
+  shinreibyou: [2, 3, 5],
+  grassroot_network: [2, 3],
+  niji_ryuudou: [2, 4],
+  kanjuden: [2, 3],
+};
+
+export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, SynergyDefinition>> = {
+  chireiden: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.chireiden,
+    effects: {
+      defense: [1, 2],
+    },
+  },
+  myourenji: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.myourenji,
+    effects: {
+      hpMultiplier: [1.05, 1.1, 1.15],
+      attackPower: [0, 1, 2],
+    },
+  },
+  shinreibyou: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.shinreibyou,
+    effects: {},
+  },
+  grassroot_network: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.grassroot_network,
+    effects: {
+      attackPower: [1, 2],
+    },
+  },
+  niji_ryuudou: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.niji_ryuudou,
+    effects: {},
+  },
+  kanjuden: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.kanjuden,
+    effects: {
+      attackPower: [1, 2],
+    },
+  },
+};
+
+export const TOUHOU_FACTION_EFFECT_IDS: Partial<Record<TouhouFactionId, TouhouFactionEffectId>> = {
+  chireiden: 'faction.chireiden',
+  myourenji: 'faction.myourenji',
+  shinreibyou: 'faction.shinreibyou',
+  grassroot_network: 'faction.grassroot_network',
+  niji_ryuudou: 'faction.niji_ryuudou',
+  kanjuden: 'faction.kanjuden',
+};
+
+const TOUHOU_FACTION_SPECIAL_EFFECTS: Partial<Record<TouhouFactionId, Array<TouhouFactionTierEffect['special'] | undefined>>> = {
+  chireiden: [
+    { reflectRatio: 0.1 },
+    { reflectRatio: 0.2 },
+  ],
+  myourenji: [
+    undefined,
+    { shopCostReduction: 1 },
+    { shopCostReduction: 1 },
+  ],
+  shinreibyou: [
+    { ultimateDamageMultiplier: 1.1 },
+    { ultimateDamageMultiplier: 1.2, bonusDamageVsDebuffedTarget: 0.12 },
+    { ultimateDamageMultiplier: 1.35, bonusDamageVsDebuffedTarget: 0.18 },
+  ],
+  niji_ryuudou: [
+    { shopCostReduction: 1 },
+    { shopCostReduction: 1, firstItemUseDraws: 1 },
+  ],
+  kanjuden: [
+    { debuffImmunityCategories: ['crowd_control'] },
+    { debuffImmunityCategories: ['crowd_control', 'stat_down', 'dot'] },
+  ],
+};
+
+export function getTouhouFactionTierEffect(
+  factionId: TouhouFactionId,
+  tier: SynergyTier,
+): TouhouFactionTierEffect | null {
+  if (tier <= 0) {
+    return null;
+  }
+
+  const definition = TOUHOU_FACTION_DEFINITIONS[factionId];
+  const effectId = TOUHOU_FACTION_EFFECT_IDS[factionId as keyof typeof TOUHOU_FACTION_EFFECT_IDS];
+
+  if (!definition || !effectId) {
+    return null;
+  }
+
+  const tierIndex = tier - 1;
+  const statModifiers: TouhouFactionTierEffect['statModifiers'] = {};
+  const special = TOUHOU_FACTION_SPECIAL_EFFECTS[factionId]?.[tierIndex];
+
+  if (definition.effects.defense?.[tierIndex] !== undefined) {
+    statModifiers.defense = definition.effects.defense[tierIndex];
+  }
+  if (definition.effects.attackPower?.[tierIndex] !== undefined) {
+    statModifiers.attackPower = definition.effects.attackPower[tierIndex];
+  }
+  if (definition.effects.hpMultiplier?.[tierIndex] !== undefined) {
+    statModifiers.hpMultiplier = definition.effects.hpMultiplier[tierIndex];
+  }
+  if (definition.effects.attackSpeedMultiplier?.[tierIndex] !== undefined) {
+    statModifiers.attackSpeedMultiplier = definition.effects.attackSpeedMultiplier[tierIndex];
+  }
+
+  const result: TouhouFactionTierEffect = { effectId };
+
+  if (Object.keys(statModifiers).length > 0) {
+    result.statModifiers = statModifiers;
+  }
+
+  if (special) {
+    result.special = special;
+  }
+
+  return result;
+}
+
 export function calculateScarletMansionSynergy(
   boardPlacements: BoardUnitPlacement[],
 ): boolean {
@@ -103,10 +254,10 @@ export function hasScarletMansionBossLifesteal(
 /**
  * Get the synergy tier based on unit count
  */
-export function getSynergyTier(count: number, thresholds: [number, number, number]): SynergyTier {
-  if (count >= thresholds[2]) return 3;
-  if (count >= thresholds[1]) return 2;
-  if (count >= thresholds[0]) return 1;
+export function getSynergyTier(count: number, thresholds: readonly number[]): SynergyTier {
+  if (thresholds[2] !== undefined && count >= thresholds[2]) return 3;
+  if (thresholds[1] !== undefined && count >= thresholds[1]) return 2;
+  if (thresholds[0] !== undefined && count >= thresholds[0]) return 1;
   return 0;
 }
 
@@ -116,11 +267,18 @@ export function getSynergyTier(count: number, thresholds: [number, number, numbe
 export interface SynergyDetails {
   countsByType: Record<BoardUnitType, number>;
   activeTiers: Record<BoardUnitType, SynergyTier>;
+  factionCounts: Partial<Record<TouhouFactionId, number>>;
+  factionActiveTiers: Partial<Record<TouhouFactionId, SynergyTier>>;
+}
+
+export interface SynergyCalculationOptions {
+  enableTouhouFactions?: boolean;
 }
 
 export function calculateSynergyDetails(
-  boardPlacements: Array<{ unitType: BoardUnitType }>,
+  boardPlacements: Array<{ unitType: BoardUnitType; factionId?: TouhouFactionId | null }>,
   heroSynergyBonusType: BoardUnitType | null = null,
+  options: SynergyCalculationOptions = {},
 ): SynergyDetails {
   const countsByType: Record<BoardUnitType, number> = {
     vanguard: 0,
@@ -128,6 +286,7 @@ export function calculateSynergyDetails(
     mage: 0,
     assassin: 0,
   };
+  const factionCounts: Partial<Record<TouhouFactionId, number>> = {};
 
   for (const placement of boardPlacements) {
     const unitType = placement.unitType;
@@ -147,6 +306,10 @@ export function calculateSynergyDetails(
       // If no specific synergies, count by unit type directly
       countsByType[unitType]++;
     }
+
+    if (options.enableTouhouFactions && placement.factionId) {
+      factionCounts[placement.factionId] = (factionCounts[placement.factionId] ?? 0) + 1;
+    }
   }
 
   if (heroSynergyBonusType) {
@@ -165,5 +328,16 @@ export function calculateSynergyDetails(
     activeTiers[unitType] = getSynergyTier(countsByType[unitType], def.thresholds);
   }
 
-  return { countsByType, activeTiers };
+  const factionActiveTiers: Partial<Record<TouhouFactionId, SynergyTier>> = {};
+
+  if (options.enableTouhouFactions) {
+    for (const factionId of Object.keys(TOUHOU_FACTION_THRESHOLDS) as TouhouFactionId[]) {
+      factionActiveTiers[factionId] = getSynergyTier(
+        factionCounts[factionId] ?? 0,
+        TOUHOU_FACTION_THRESHOLDS[factionId],
+      );
+    }
+  }
+
+  return { countsByType, activeTiers, factionCounts, factionActiveTiers };
 }

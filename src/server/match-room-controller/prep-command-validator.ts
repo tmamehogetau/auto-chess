@@ -5,6 +5,8 @@ import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
 } from "../../shared/board-geometry";
+import type { FeatureFlags } from "../../shared/feature-flags";
+import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 
 // Constants from the controller
 const XP_PURCHASE_COST = 4;
@@ -20,6 +22,7 @@ const ITEM_SHOP_SIZE = 5;
 
 export interface ShopOffer {
   unitType: string;
+  unitId?: string;
   rarity: number;
   cost: number;
   isRumorUnit?: boolean;
@@ -34,6 +37,7 @@ export interface ItemShopOffer {
 
 export interface BenchUnit {
   unitType: string;
+  unitId?: string;
   cost: number;
   starLevel: number;
   unitCount: number;
@@ -81,8 +85,9 @@ export interface ValidationDependencies {
   getBossShopOffers: (playerId: string) => ShopOffer[];
   isBossPlayer: (playerId: string) => boolean;
   isSharedPoolEnabled: () => boolean;
-  isPoolDepleted: (cost: number) => boolean;
+  isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
+  getRosterFlags: () => FeatureFlags;
 }
 
 export interface ValidationContext {
@@ -450,7 +455,7 @@ function validatePreconditions(
     // Shared pool check
     if (deps.isSharedPoolEnabled()) {
       const targetOffer = offers[payload.shopBuySlotIndex];
-      if (targetOffer && deps.isPoolDepleted(targetOffer.cost)) {
+      if (targetOffer && deps.isPoolDepleted(targetOffer.cost, targetOffer.unitId)) {
         return { accepted: false, code: "POOL_DEPLETED" };
       }
     }
@@ -571,7 +576,12 @@ function validateGold(
     const offers = deps.getShopOffers(playerId);
     const targetOffer = offers[payload.shopBuySlotIndex];
     if (targetOffer) {
-      shopBuyCost = targetOffer.cost;
+      const boardPlacements = payload.boardPlacements ?? deps.getBoardPlacements(playerId);
+      shopBuyCost = calculateDiscountedShopOfferCost(
+        targetOffer,
+        boardPlacements,
+        deps.getRosterFlags(),
+      );
     }
   }
 

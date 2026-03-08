@@ -192,6 +192,14 @@ Create a short checklist before editing:
 - keep `enableTouhouRoster=false` compatibility called out explicitly
 - record any deferred item that misses the W5 minimum slice
 
+W5 exit checklist:
+- spell cards: `完了` (W5 minimum slice shipped; expansion details deferred)
+- rumor influence: `完了` (single guaranteed next-round rumor offer + state/log sync shipped)
+- boss exclusive shop: `完了` (boss-only lane + purchase isolation shipped)
+- fixed-pair sub-unit: `完了` (single supported pair `warrior_a -> warrior_a_sub` shipped)
+- MVP-safe boundary: `enableTouhouRoster=false` compatibility maintained across all W5 work
+- deferred follow-up: card variety / UI演出 / fixed-pair追加 / KPI観測強化は W6 以降へ繰り越し
+
 **Step 2: Update docs minimally**
 
 Sync docs so they reflect the actual W5 exit state:
@@ -216,3 +224,18 @@ Expected: PASS
 git add 00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/Game_Specification_Summary.md 00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/plans/active/MVP_to_Production_Weekly_Execution_Plan.md docs/plans/2026-03-08-w5-experience-expansion.md
 git commit -m "docs: sync W5 experience expansion status"
 ```
+
+---
+
+## Verification Evidence
+
+- `npx vitest run tests/server/spell-card.integration.test.ts tests/server/rumor-influence.integration.test.ts tests/server/boss-exclusive-shop.integration.test.ts tests/server/sub-unit-system.integration.test.ts tests/e2e/full-game/p1-features-integration.e2e.spec.ts tests/e2e/full-game/sub-unit-system.e2e.spec.ts tests/e2e/full-game/full-game-with-phase2-features.e2e.spec.ts`
+- `npm run verify:ci`
+- `npm run test:coverage`
+
+## Deferred Follow-up
+
+- spell card の追加カード定義と演出拡張
+- rumor influence のバリエーション拡張と KPI 観測
+- boss exclusive shop の UI/演出強化
+- fixed-pair sub-unit の対応ペア追加と balance tuning

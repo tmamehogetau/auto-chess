@@ -424,6 +424,10 @@ function applySubUnitAssist(
       continue;
     }
 
+    if (subUnitConfig.parentUnitId && placement.unitId !== subUnitConfig.parentUnitId) {
+      continue;
+    }
+
     const appliedLabels: string[] = [];
 
     if (subUnitConfig.bonusHpPct !== undefined && subUnitConfig.bonusHpPct > 0) {

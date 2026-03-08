@@ -214,6 +214,7 @@ interface MatchupOutcome {
 }
 
 interface MvpPhase1UnitForSubUnit {
+  unitId: string;
   type: BoardUnitType;
   subUnit?: SubUnitConfig;
 }
@@ -254,6 +255,7 @@ function resolveSubUnitAssistConfigByType(): ReadonlyMap<BoardUnitType, SubUnitC
     const normalizedConfig: SubUnitConfig = {
       unitId: subUnit.unitId,
       mode: "assist",
+      parentUnitId: unitRow.unitId,
     };
 
     if (subUnit.bonusAttackPct !== undefined) {
@@ -889,7 +891,16 @@ export class MatchRoomController {
         const starLevel = placement.starLevel ?? 1;
         const hasSubUnitAssist =
           this.enableSubUnitSystem &&
-          this.subUnitAssistConfigByType.has(placement.unitType);
+          (() => {
+            const config = this.subUnitAssistConfigByType.get(placement.unitType);
+            if (!config) {
+              return false;
+            }
+            if (!config.parentUnitId) {
+              return true;
+            }
+            return placement.unitId === config.parentUnitId;
+          })();
 
         if (starLevel > 1 || hasSubUnitAssist) {
           const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;

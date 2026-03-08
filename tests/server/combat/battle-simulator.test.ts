@@ -1105,6 +1105,51 @@ describe("battle-simulator", () => {
       ).toBe(true);
     });
 
+    test("sub-unit assistは対応fixed pairのunitIdにだけ適用される", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 }, "left", 0),
+      ];
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 1, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 }, "right", 0),
+      ];
+
+      const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map([
+        [
+          "vanguard",
+          {
+            unitId: "warrior_a_sub",
+            mode: "assist",
+            bonusHpPct: 0.1,
+            parentUnitId: "warrior_a",
+          },
+        ],
+      ]);
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        5_000,
+        null,
+        null,
+        subUnitAssistConfigByType,
+      );
+
+      expect(leftUnits[0]?.maxHp).toBe(88);
+      expect(rightUnits[0]?.maxHp).toBe(80);
+      expect(result.combatLog.filter((log) => log.includes("sub-unit assist (warrior_a_sub)"))).toHaveLength(1);
+    });
+
     test("sub-unit assist設定がない場合はHPボーナスもログ出力も発生しない", () => {
       const simulator = new BattleSimulator();
 

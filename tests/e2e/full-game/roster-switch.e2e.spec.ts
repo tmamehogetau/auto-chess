@@ -6,7 +6,7 @@ import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 import mvpPhase1UnitsData from "../../../src/data/mvp_phase1_units.json";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { FeatureFlagService } from "../../../src/server/feature-flag-service";
-import { createRoomWithForcedFlags, FLAG_CONFIGURATIONS, restoreFeatureFlagService, withFlags } from "../../server/feature-flag-test-helper";
+import { createRoomWithForcedFlags, FLAG_CONFIGURATIONS, restoreForcedFlagFixtures, withFlags } from "../../server/feature-flag-test-helper";
 import { waitForCondition } from "../shared-board-bridge/helpers/wait";
 
 describe("E2E: Roster Switch", () => {
@@ -37,11 +37,8 @@ describe("E2E: Roster Switch", () => {
     if (testServer) {
       await testServer.cleanup();
     }
-    delete process.env.FEATURE_ENABLE_TOUHOU_ROSTER;
-    delete process.env.FEATURE_ENABLE_TOUHOU_FACTIONS;
-    delete process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL;
-    restoreFeatureFlagService();
-    (FeatureFlagService as any).instance = undefined;
+    // Restore all forced fixtures (service mock + environment variables)
+    restoreForcedFlagFixtures();
   });
 
   afterAll(async () => {

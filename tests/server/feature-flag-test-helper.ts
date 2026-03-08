@@ -128,6 +128,12 @@ export async function createRoomWithFlags(
 let originalGetInstance: (() => FeatureFlagService) | undefined;
 
 /**
+ * Store the original environment variables for restoration after tests.
+ * Used by createRoomWithForcedFlags to prevent env leakage.
+ */
+let originalEnv: NodeJS.ProcessEnv | undefined;
+
+/**
  * Create a mock FeatureFlagService that returns forced flags.
  * Does not rely on private internals - uses public interface only.
  */
@@ -161,6 +167,11 @@ export async function createRoomWithForcedFlags(
   // Store original getInstance (if not already stored)
   if (!originalGetInstance) {
     originalGetInstance = FeatureFlagService.getInstance.bind(FeatureFlagService);
+  }
+
+  // Store original env (if not already stored)
+  if (!originalEnv) {
+    originalEnv = { ...process.env };
   }
 
   // Set ALL env vars to false first (clean slate)
@@ -197,13 +208,20 @@ export async function createRoomWithForcedFlags(
 }
 
 /**
- * Restore the original FeatureFlagService.getInstance after tests.
- * Call this in afterEach to prevent flag leakage between tests.
+ * Restore the original FeatureFlagService.getInstance and environment variables after tests.
+ * Call this in afterEach to prevent flag/env leakage between tests.
  */
-export function restoreFeatureFlagService(): void {
+export function restoreForcedFlagFixtures(): void {
+  // Restore original getInstance
   if (originalGetInstance) {
     FeatureFlagService.getInstance = originalGetInstance;
     originalGetInstance = undefined;
+  }
+
+  // Restore original environment variables
+  if (originalEnv) {
+    process.env = originalEnv;
+    originalEnv = undefined;
   }
 }
 

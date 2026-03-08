@@ -70,7 +70,7 @@ Flow:
 
 ## Migration Flag Design (Touhou Roster Switch)
 
-The migration flags (`enableTouhouRoster`, `enableTouhouFactions`, `enablePerUnitSharedPool`) control the Phase 2 roster migration from MVP units to Touhou characters. The roster switch is now active at the draft-data level, while faction synergy and per-unit shared-pool work remain gated behind follow-up implementation.
+The migration flags (`enableTouhouRoster`, `enableTouhouFactions`, `enablePerUnitSharedPool`) control the Phase 2 roster migration from MVP units to Touhou characters. The roster switch, Touhou faction runtime wiring, and per-unit shared-pool path are now active behind those flags while legacy MVP behavior remains available through the fully-off configuration.
 
 ### Allowed Flag Combinations
 
@@ -95,7 +95,9 @@ Still deferred:
 - `enablePerUnitSharedPool=true` now switches Touhou shared pool inventory to `unitId`-granular stock for shop generation and buy/sell/remove return paths, but broader rollout still needs additional gameplay balancing and migration validation
 - roster-switch ON/OFF E2E now covers legacy MVP shop state vs Touhou active runtime shop state, but broader migration rollout should still keep using gated validation
 
-**Source of truth**: See `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/reference/touhou-units-migration-plan.md` for the current remaining blockers (faction synergy, per-unit shared pool, and roster switch completion gates) and migration roadmap.
+G2 effect tuning must now use `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/touhou-faction-effect-matrix.md` as the code-facing matrix. Runtime implementation should not continue for rows that still lack concrete values there.
+
+**Source of truth**: See `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/reference/touhou-units-migration-plan.md` for the current remaining blockers (final faction effect tuning, non-numeric faction effects, and broader migration rollout gates) and migration roadmap.
 
 ## Flag Definitions
 

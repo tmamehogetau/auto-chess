@@ -4,6 +4,8 @@ import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import {
   calculateSynergyDetails,
   getSynergyTier,
+  getTouhouFactionTierEffect,
+  TOUHOU_FACTION_EFFECT_IDS,
 } from "../../../src/server/combat/synergy-definitions";
 
 describe("synergy-definitions", () => {
@@ -76,6 +78,54 @@ describe("synergy-definitions", () => {
       expect(getSynergyTier(2, [2, 4])).toBe(1);
       expect(getSynergyTier(4, [2, 4])).toBe(2);
       expect(getSynergyTier(5, [2, 3, 5])).toBe(3);
+    });
+  });
+
+  describe("Touhou faction effect metadata", () => {
+    test("4勢力スコープで stable effectId を公開する", () => {
+      expect(TOUHOU_FACTION_EFFECT_IDS).toEqual({
+        chireiden: "faction.chireiden",
+        myourenji: "faction.myourenji",
+        grassroot_network: "faction.grassroot_network",
+        kanjuden: "faction.kanjuden",
+      });
+    });
+
+    test("chireiden tier effect から final metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("chireiden", 1)).toEqual({
+        effectId: "faction.chireiden",
+        statModifiers: {
+          defense: 1,
+        },
+      });
+      expect(getTouhouFactionTierEffect("chireiden", 2)).toEqual({
+        effectId: "faction.chireiden",
+        statModifiers: {
+          defense: 2,
+        },
+      });
+    });
+
+    test("myourenji tier effect から final metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("myourenji", 1)).toEqual({
+        effectId: "faction.myourenji",
+        statModifiers: {
+          hpMultiplier: 1.05,
+          attackPower: 0,
+        },
+      });
+      expect(getTouhouFactionTierEffect("myourenji", 3)).toEqual({
+        effectId: "faction.myourenji",
+        statModifiers: {
+          hpMultiplier: 1.15,
+          attackPower: 2,
+        },
+      });
+    });
+
+    test("未実装スコープの faction は metadata 未解決のまま返す", () => {
+      expect(getTouhouFactionTierEffect("shinreibyou", 1)).toBeNull();
+      expect(getTouhouFactionTierEffect("niji_ryuudou", 1)).toBeNull();
     });
   });
 });

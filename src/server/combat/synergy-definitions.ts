@@ -19,6 +19,22 @@ export interface SynergyDefinition {
   effects: SynergyEffects;
 }
 
+export type TouhouFactionEffectId =
+  | 'faction.chireiden'
+  | 'faction.myourenji'
+  | 'faction.grassroot_network'
+  | 'faction.kanjuden';
+
+export interface TouhouFactionTierEffect {
+  effectId: TouhouFactionEffectId;
+  statModifiers?: {
+    defense?: number;
+    attackPower?: number;
+    hpMultiplier?: number;
+    attackSpeedMultiplier?: number;
+  };
+}
+
 export const SYNERGY_THRESHOLDS: [number, number, number] = [3, 6, 9];
 
 // Synergy name to unit type mapping for MVP Phase 1
@@ -104,6 +120,50 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
     },
   },
 };
+
+export const TOUHOU_FACTION_EFFECT_IDS: Partial<Record<TouhouFactionId, TouhouFactionEffectId>> = {
+  chireiden: 'faction.chireiden',
+  myourenji: 'faction.myourenji',
+  grassroot_network: 'faction.grassroot_network',
+  kanjuden: 'faction.kanjuden',
+};
+
+export function getTouhouFactionTierEffect(
+  factionId: TouhouFactionId,
+  tier: SynergyTier,
+): TouhouFactionTierEffect | null {
+  if (tier <= 0) {
+    return null;
+  }
+
+  const definition = TOUHOU_FACTION_DEFINITIONS[factionId];
+  const effectId = TOUHOU_FACTION_EFFECT_IDS[factionId as keyof typeof TOUHOU_FACTION_EFFECT_IDS];
+
+  if (!definition || !effectId) {
+    return null;
+  }
+
+  const tierIndex = tier - 1;
+  const statModifiers: TouhouFactionTierEffect['statModifiers'] = {};
+
+  if (definition.effects.defense?.[tierIndex] !== undefined) {
+    statModifiers.defense = definition.effects.defense[tierIndex];
+  }
+  if (definition.effects.attackPower?.[tierIndex] !== undefined) {
+    statModifiers.attackPower = definition.effects.attackPower[tierIndex];
+  }
+  if (definition.effects.hpMultiplier?.[tierIndex] !== undefined) {
+    statModifiers.hpMultiplier = definition.effects.hpMultiplier[tierIndex];
+  }
+  if (definition.effects.attackSpeedMultiplier?.[tierIndex] !== undefined) {
+    statModifiers.attackSpeedMultiplier = definition.effects.attackSpeedMultiplier[tierIndex];
+  }
+
+  return {
+    effectId,
+    statModifiers,
+  };
+}
 
 export function calculateScarletMansionSynergy(
   boardPlacements: BoardUnitPlacement[],

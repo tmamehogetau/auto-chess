@@ -149,10 +149,7 @@ describe("Rumor Influence Integration", () => {
       }
 
       controller.setPendingRoundDamage({
-        [BOSS]: 300,
-        [RAID1]: 300,
-        [RAID2]: 300,
-        [RAID3]: 300,
+        [BOSS]: 600,
       });
 
       if (controller.phaseDeadlineAtMs) {
@@ -163,6 +160,63 @@ describe("Rumor Influence Integration", () => {
 
       expect(roundLog?.guaranteedRumorSlotApplied).toBe(true);
       expect(roundLog?.rumorFactions).toEqual([getRumorUnitForRound(2)?.unitType]);
+    });
+
+    it("確定噂スロットを消費した後はeligibleがリセットされ、再refreshで再付与されない", () => {
+      if (controller.prepDeadlineAtMs) {
+        controller.advanceByTime(controller.prepDeadlineAtMs + 100);
+      }
+
+      controller.setPendingRoundDamage({
+        [BOSS]: 600,
+      });
+
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      const prepStatus = controller.getPlayerStatus(RAID1);
+      expect(prepStatus.isRumorEligible).toBe(false);
+      expect(prepStatus.shopOffers[0]?.isRumorUnit).toBe(true);
+
+      const refreshResult = controller.submitPrepCommand(RAID1, 1, Date.now(), {
+        shopRefreshCount: 1,
+      });
+      expect(refreshResult.accepted).toBe(true);
+
+      const refreshedStatus = controller.getPlayerStatus(RAID1);
+      expect(refreshedStatus.isRumorEligible).toBe(false);
+      expect(refreshedStatus.shopOffers[0]?.isRumorUnit).not.toBe(true);
+      expect(refreshedStatus.shopOffers.filter((offer) => offer.isRumorUnit).length).toBe(0);
+    });
+
+    it("フェーズ失敗時はrumor logが次ラウンド付与を示さない", () => {
+      const logger = new MatchLogger("match-rumor-failed", "room-rumor-failed");
+      controller.setMatchLogger(logger);
+
+      if (controller.prepDeadlineAtMs) {
+        controller.advanceByTime(controller.prepDeadlineAtMs + 100);
+      }
+
+      controller.setPendingRoundDamage({
+        [BOSS]: 10,
+      });
+
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      const roundLog = logger.getRoundLogs().find((log) => log.roundIndex === 1);
+
+      expect(roundLog?.guaranteedRumorSlotApplied).toBe(false);
+      expect(roundLog?.rumorFactions ?? []).toEqual([]);
+      expect(controller.getPlayerStatus(RAID1).isRumorEligible).toBe(false);
     });
   });
 

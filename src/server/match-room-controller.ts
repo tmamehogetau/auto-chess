@@ -1296,8 +1296,8 @@ export class MatchRoomController {
         ),
       );
 
-      // 噂勢力: ショップ生成後、eligibleフラグをリセット
-      if (this.enableRumorInfluence) {
+      // 噂勢力: 確定枠を消費したらeligibleフラグをリセット
+      if (this.enableRumorInfluence && isRumorEligible) {
         this.rumorInfluenceEligibleByPlayer.set(playerId, false);
       }
 
@@ -1341,6 +1341,10 @@ export class MatchRoomController {
     this.shopRefreshCountByPlayer.set(playerId, nextCount);
     this.shopPurchaseCountByPlayer.set(playerId, 0);
     this.shopOffersByPlayer.set(playerId, nextOffers);
+
+    if (this.enableRumorInfluence && isRumorEligible) {
+      this.rumorInfluenceEligibleByPlayer.set(playerId, false);
+    }
   }
 
   private areShopOffersEqual(left: ShopOffer[], right: ShopOffer[]): boolean {
@@ -1918,11 +1922,13 @@ export class MatchRoomController {
     }
 
     const nextRoundRumorUnit = getRumorUnitForRound(state.roundIndex + 1);
-    const rumorFactions = nextRoundRumorUnit ? [nextRoundRumorUnit.unitType] : [];
     const guaranteedRumorSlotApplied =
       this.enableRumorInfluence &&
       this.phaseResult === "success" &&
-      rumorFactions.length > 0;
+      nextRoundRumorUnit !== null;
+    const rumorFactions = guaranteedRumorSlotApplied && nextRoundRumorUnit
+      ? [nextRoundRumorUnit.unitType]
+      : [];
 
     if (this.matchLogger) {
       this.matchLogger.logRumorInfluence(

@@ -97,6 +97,7 @@ describe("ShopOfferBuilder", () => {
         cost: 2,
         isRumorUnit: true,
       });
+      expect(offers.slice(1).every((offer) => offer.isRumorUnit !== true)).toBe(true);
     });
 
     test("does not include rumor unit when player is not eligible", () => {

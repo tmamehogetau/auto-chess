@@ -360,6 +360,38 @@ describe("player-state-sync", () => {
       expect(playerState.bossShopOffers[0]!.cost).toBe(5);
     });
 
+    it("should expose consumed rumor eligibility separately from rumor shop result", () => {
+      const controllerStatus: ControllerPlayerStatus = {
+        hp: 100,
+        eliminated: false,
+        boardUnitCount: 4,
+        gold: 20,
+        xp: 0,
+        level: 1,
+        shopOffers: [
+          { unitType: "mage", cost: 2, rarity: 2, isRumorUnit: true },
+          { unitType: "vanguard", cost: 1, rarity: 1, isRumorUnit: false },
+        ],
+        shopLocked: false,
+        benchUnits: [],
+        boardUnits: [],
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        itemInventory: [],
+        itemShopOffers: [],
+        bossShopOffers: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        selectedHeroId: "",
+        isRumorEligible: false,
+      };
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.isRumorEligible).toBe(false);
+      expect(playerState.shopOffers[0]!.isRumorUnit).toBe(true);
+      expect(playerState.shopOffers[1]!.isRumorUnit).toBe(false);
+    });
+
     it("should replace existing data when syncing (clear then repopulate)", () => {
       // Set initial state with some data
       const oldOffer = new ShopOfferState();

@@ -202,9 +202,25 @@ export class SharedBoardBridge {
         this.reconnectTimer = null;
       }
     } catch (error) {
-      console.error("[SharedBoardBridge] Connection failed:", error);
-      this.scheduleReconnect();
+      const shouldSuppressConnectLogs = this.isExpectedSharedBoardUnavailableError(error);
+
+      if (!shouldSuppressConnectLogs) {
+        console.error("[SharedBoardBridge] Connection failed:", error);
+      }
+
+      this.scheduleReconnect({ silent: shouldSuppressConnectLogs });
     }
+  }
+
+  private isExpectedSharedBoardUnavailableError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    return (
+      error.message === "No shared_board room found"
+      || error.message.includes("not found in local process")
+    );
   }
 
   private async findSharedBoardRoomIdWithRetry(): Promise<string> {
@@ -724,13 +740,17 @@ export class SharedBoardBridge {
   /**
    * 再接続スケジュール
    */
-  private scheduleReconnect(): void {
+  private scheduleReconnect(options: { silent?: boolean } = {}): void {
+    const silent = options.silent ?? false;
+
     if (this.reconnectTimer) {
       return;
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error("[SharedBoardBridge] Max reconnection attempts reached");
+      if (!silent) {
+        console.error("[SharedBoardBridge] Max reconnection attempts reached");
+      }
       this.state = "DEGRADED";
       return;
     }
@@ -742,8 +762,10 @@ export class SharedBoardBridge {
       this.reconnectBaseDelayMs * Math.pow(2, this.reconnectAttempts - 1),
       this.reconnectMaxDelayMs,
     );
-    
-    console.log(`[SharedBoardBridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
+    if (!silent) {
+      console.log(`[SharedBoardBridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    }
     
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;

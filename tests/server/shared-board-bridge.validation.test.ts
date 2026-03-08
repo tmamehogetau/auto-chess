@@ -44,6 +44,16 @@ describe("SharedBoardBridge validation (T1-2)", () => {
     enqueue.call(bridge, playerId, cells);
   };
 
+  const invokeConnect = async (bridge: SharedBoardBridge): Promise<void> => {
+    const connect = Reflect.get(bridge, "connect") as (() => Promise<void>) | undefined;
+
+    if (!connect) {
+      throw new Error("Expected connect to be available");
+    }
+
+    await connect.call(bridge);
+  };
+
   const createBridge = (): {
     bridge: SharedBoardBridge;
     syncPlayersFromController: ReturnType<typeof vi.fn>;
@@ -286,6 +296,43 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       );
       expect(errorCall).toBeDefined();
       expect(errorCall![0]).toBe("[SharedBoardBridge] Apply placement failed:");
+    });
+  });
+
+  describe("接続ログ: 想定内の shared_board 未起動ではノイズを出さない", () => {
+    let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+      vi.restoreAllMocks();
+    });
+
+    it("想定外の接続失敗は従来どおり error ログを出す", async () => {
+      const { bridge } = createBridge();
+
+      Reflect.set(bridge, "enabled", true);
+      Reflect.set(bridge, "state", "CONNECTING");
+      Reflect.set(bridge, "sharedBoardRoomId", null);
+      Reflect.set(bridge, "maxReconnectAttempts", 0);
+      Reflect.set(bridge, "findSharedBoardRoomIdWithRetry", vi.fn(async () => {
+        throw new Error("unexpected lookup failure");
+      }));
+
+      await invokeConnect(bridge);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[SharedBoardBridge] Connection failed:",
+        expect.any(Error),
+      );
     });
   });
 });

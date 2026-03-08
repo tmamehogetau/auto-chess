@@ -16,6 +16,8 @@ import { CLIENT_MESSAGE_TYPES, SERVER_MESSAGE_TYPES } from "../../../src/shared/
 describe("E2E: Full Game with Phase 2 Features", () => {
   let testServer: ColyseusTestServer;
   const TEST_SERVER_PORT = 4571; // ポート変更
+  let consoleLogSpy: ReturnType<typeof vi.spyOn> | null = null;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn> | null = null;
 
   beforeAll(async () => {
     const server = defineServer({
@@ -38,6 +40,10 @@ describe("E2E: Full Game with Phase 2 Features", () => {
     if (testServer) {
       await testServer.cleanup();
     }
+    consoleLogSpy?.mockRestore();
+    consoleErrorSpy?.mockRestore();
+    consoleLogSpy = null;
+    consoleErrorSpy = null;
     // Feature flags reset
     delete process.env.FEATURE_ENABLE_HERO_SYSTEM;
     delete process.env.FEATURE_ENABLE_SHARED_POOL;
@@ -96,6 +102,41 @@ describe("E2E: Full Game with Phase 2 Features", () => {
     client.send("HERO_SELECT", { heroId });
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+
+  it(
+    "SharedBoardShadow ON でも shared_board room 未起動の expected-miss は error/reconnect ノイズを出さない",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
+        consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+        consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        const gameRoom = await testServer.createRoom<GameRoom>("game");
+        const clients = await setupGameWith4Players(gameRoom);
+
+        await waitForPhase(gameRoom, "Prep", 5_000);
+        await new Promise((resolve) => setTimeout(resolve, 700));
+
+        const hasExpectedMissError = consoleErrorSpy.mock.calls.some(
+          (call: unknown[]) =>
+            typeof call[0] === "string"
+            && call[0].includes("[SharedBoardBridge] Connection failed:"),
+        );
+        const hasReconnectNoise = consoleLogSpy.mock.calls.some(
+          (call: unknown[]) =>
+            typeof call[0] === "string"
+            && call[0].includes("[SharedBoardBridge] Reconnecting in"),
+        );
+
+        expect(hasExpectedMissError).toBe(false);
+        expect(hasReconnectNoise).toBe(false);
+
+        for (const client of clients) {
+          client.connection.close();
+        }
+      });
+    },
+  );
 
   it(
     "全Phase2フラグON: Prep→Battle→Settle→Prepのラウンド遷移",

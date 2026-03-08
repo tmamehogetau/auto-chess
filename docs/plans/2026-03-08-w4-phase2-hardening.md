@@ -1,5 +1,7 @@
 # W4 Phase2 Hardening Implementation Plan
 
+> **Status**: Completed on 2026-03-08.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Stabilize the newly merged Phase2 core by reducing noisy bridge logging, hardening roster-switch regressions, and syncing the remaining active docs to the real main-branch state.
@@ -7,6 +9,27 @@
 **Architecture:** Keep the hardening pass small and local. Do not redesign bridge/monitoring infrastructure; instead, add explicit guards and regression tests around the current MVP-safe behavior. Treat `enableTouhouRoster=false` as the primary compatibility boundary and keep monitoring/reporting lightweight and structured.
 
 **Tech Stack:** TypeScript, Vitest, Colyseus, npm, Markdown
+
+## Outcome
+
+- Reduced noisy `SharedBoardBridge` success logging while preserving failure logs
+- Made `BridgeMonitor` structured runtime logging opt-in without dropping metrics/history collection
+- Broadened regression coverage around `enableTouhouRoster=false` legacy fallback behavior
+- Synced active docs to post-merge W4 state
+- Verified with focused regressions, `npm run verify:ci`, and `npm run test:coverage`
+
+## Verification Snapshot
+
+- `npx vitest run tests/server/roster/roster-provider.test.ts tests/e2e/full-game/roster-switch.e2e.spec.ts tests/server/shared-board-bridge.batch-sync.test.ts tests/server/shared-board-bridge.validation.test.ts` -> 4 files / 40 tests passed
+- `npm run typecheck` -> passed
+- `npm run verify:ci` -> passed
+- `npm run test:coverage` -> 71 files / 820 tests passed, statements 86.77%, branches 75.85%, functions 87.69%, lines 86.81%
+
+## Deferred Follow-ups
+
+- `SharedBoardBridge` still emits expected connection failure / reconnect logs when no `shared_board` room is available; reduce this runtime noise separately from W4 hardening
+- `SyncOperationResult.code` in `src/server/shared-board-bridge.ts` still appears narrower than the controller return-code surface and should be aligned in a follow-up
+- Forced-flag roster fixtures still deserve a later pass for parallel-test isolation hardening
 
 ---
 

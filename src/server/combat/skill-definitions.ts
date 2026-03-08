@@ -14,6 +14,22 @@ export interface HeroSkillEffect {
   execute: (caster: BattleUnit, allies: BattleUnit[], enemies: BattleUnit[], log: string[]) => void;
 }
 
+function isDebuffedTarget(unit: BattleUnit): boolean {
+  return unit.buffModifiers.attackMultiplier < 1
+    || unit.buffModifiers.defenseMultiplier < 1
+    || unit.buffModifiers.attackSpeedMultiplier < 1;
+}
+
+function calculateUltimateDamage(caster: BattleUnit, baseDamage: number, target?: BattleUnit): number {
+  let damage = baseDamage * (caster.ultimateDamageMultiplier ?? 1);
+
+  if (target && isDebuffedTarget(target)) {
+    damage *= 1 + (caster.bonusDamageVsDebuffedTarget ?? 0);
+  }
+
+  return Math.floor(damage);
+}
+
 export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   vanguard: {
     name: 'Shield Wall',
@@ -38,7 +54,11 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
       const livingEnemies = enemies.filter(e => !e.isDead);
       if (livingEnemies.length > 0) {
         const target = livingEnemies.reduce((lowest, e) => e.hp < lowest.hp ? e : lowest);
-        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2);
+        const damage = calculateUltimateDamage(
+          caster,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * 2,
+          target,
+        );
         target.hp -= damage;
         log.push(`${caster.type} activates Precise Shot! Deals ${damage} damage to ${target.type}`);
       }
@@ -50,12 +70,24 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     triggerCount: 3,
     execute: (caster, _allies, enemies, log) => {
       // 全敵に 1.5 倍攻撃ダメージを与える
-      const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 1.5);
       for (const enemy of enemies) {
         if (!enemy.isDead) {
+          const damage = calculateUltimateDamage(
+            caster,
+            caster.attackPower * caster.buffModifiers.attackMultiplier * 1.5,
+            enemy,
+          );
           enemy.hp -= damage;
         }
       }
+      const sampleTarget = enemies.find((enemy) => !enemy.isDead);
+      const damage = sampleTarget
+        ? calculateUltimateDamage(
+          caster,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * 1.5,
+          sampleTarget,
+        )
+        : 0;
       log.push(`${caster.type} activates Arcane Burst! Deals ${damage} damage to all enemies`);
     }
   },
@@ -68,7 +100,11 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
       const livingEnemies = enemies.filter(e => !e.isDead);
       if (livingEnemies.length > 0) {
         const target = livingEnemies.reduce((lowest, e) => e.hp < lowest.hp ? e : lowest);
-        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 3);
+        const damage = calculateUltimateDamage(
+          caster,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * 3,
+          target,
+        );
         target.hp -= damage;
         log.push(`${caster.type} activates Backstab! Deals ${damage} damage to ${target.type}`);
       }
@@ -164,6 +200,9 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
       for (const enemy of livingEnemies) {
         const distance = Math.abs(enemy.cell - centerCell);
         if (distance <= radius) {
+          if (enemy.debuffImmunityCategories?.includes('crowd_control')) {
+            continue;
+          }
           // 攻撃速度 -30% (3秒間)
           // 注: 現在のシステムでは永続的なバフのみ実装されているため、即座に適用
           // 将来的にはデバフ持続時間の管理機能が必要

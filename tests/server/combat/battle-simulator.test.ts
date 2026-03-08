@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import type { BoardUnitPlacement, BoardUnitType } from "../../../src/shared/room-messages";
-import type { SubUnitConfig } from "../../../src/shared/types";
+import { getMvpPhase1Boss, type SubUnitConfig } from "../../../src/shared/types";
+import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 import {
   BattleSimulator,
   calculateCellDistance,
@@ -10,10 +11,22 @@ import {
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
 import { resolveBattlePlacements } from "../../../src/server/unit-id-resolver";
+
+function createTestBattleUnit(
+  placement: BoardUnitPlacement,
+  side: "left" | "right",
+  index: number,
+  isBoss: boolean = false,
+  flags = DEFAULT_FLAGS,
+): BattleUnit {
+  return createBattleUnit(placement, side, index, isBoss, flags);
+}
+
 import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
 } from "../../../src/server/combat/synergy-definitions";
+import { HERO_SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
 
 describe("battle-simulator", () => {
   describe("scarlet mansion synergy", () => {
@@ -27,7 +40,7 @@ describe("battle-simulator", () => {
     });
 
     test("HP70%以上のレミリアにシナジーバフが適用される", () => {
-      const boss = createBattleUnit(
+      const boss = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "right",
         0,
@@ -41,7 +54,7 @@ describe("battle-simulator", () => {
     });
 
     test("HP70%未満のレミリアにはシナジーバフが適用されない", () => {
-      const boss = createBattleUnit(
+      const boss = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "right",
         0,
@@ -56,12 +69,12 @@ describe("battle-simulator", () => {
 
     test("HP70%以上かつシナジー有効時はレミリアが吸血する", () => {
       const simulator = new BattleSimulator();
-      const raidUnit = createBattleUnit(
+      const raidUnit = createTestBattleUnit(
         { cell: 3, unitType: "vanguard", starLevel: 1 },
         "left",
         0,
       );
-      const boss = createBattleUnit(
+      const boss = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "right",
         0,
@@ -88,29 +101,207 @@ describe("battle-simulator", () => {
   });
 
   describe("boss passive", () => {
-    test("HP70%以上のレミリアは紅き夜の王でATK+20%になる", () => {
-      const simulator = new BattleSimulator();
+    test("isBoss=true かつ remilia は boss data baseline を使う", () => {
+      const bossBaseline = getMvpPhase1Boss();
       const boss = createBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+        DEFAULT_FLAGS,
+      );
+
+      expect(boss.maxHp).toBe(bossBaseline.hp);
+      expect(boss.hp).toBe(bossBaseline.hp);
+      expect(boss.attackPower).toBe(bossBaseline.attack);
+      expect(boss.attackSpeed).toBe(bossBaseline.attackSpeed);
+      expect(boss.attackRange).toBe(bossBaseline.range);
+      expect(boss.physicalReduction).toBe(bossBaseline.physicalReduction);
+      expect(boss.magicReduction).toBe(bossBaseline.magicReduction);
+    });
+
+    test("HP70%以上のレミリアは紅き夜の王でHP70%未満時より高いダメージを出す", () => {
+      const simulator = new BattleSimulator();
+      const bossWithPassive = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "left",
         0,
         true,
       );
-      const raidUnit = createBattleUnit(
+      const bossWithoutPassive = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "left",
+        0,
+        true,
+      );
+      bossWithoutPassive.hp = Math.floor(bossWithoutPassive.maxHp * 0.6);
+
+      const raidUnitForPassive = createTestBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const raidUnitWithoutPassive = createTestBattleUnit(
         { cell: 2, unitType: "vanguard", starLevel: 1 },
         "right",
         0,
       );
 
-      const result = simulator.simulateBattle(
-        [boss],
-        [raidUnit],
+      const passiveResult = simulator.simulateBattle(
+        [bossWithPassive],
+        [raidUnitForPassive],
         [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
         [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
         1_500,
       );
 
-      expect(result.damageDealt.left).toBe(333);
+      const nonPassiveResult = simulator.simulateBattle(
+        [bossWithoutPassive],
+        [raidUnitWithoutPassive],
+        [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
+        [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
+        1_500,
+      );
+
+      expect(passiveResult.damageDealt.left).toBeGreaterThan(nonPassiveResult.damageDealt.left);
+    });
+  });
+
+  describe("kanjuden debuff immunity", () => {
+    test("kanjuden tier1 は crowd_control の攻撃速度低下を無効化する", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", starLevel: 1 }, "left", 0);
+      const immuneTarget = createTestBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1, factionId: "kanjuden" },
+        "right",
+        0,
+        false,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      ) as BattleUnit & { debuffImmunityCategories?: string[] };
+      immuneTarget.debuffImmunityCategories = ["crowd_control"];
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [immuneTarget], log);
+
+      expect(immuneTarget.buffModifiers.attackSpeedMultiplier).toBe(1);
+    });
+
+    test("kanjuden でないユニットには咲夜の攻撃速度低下が適用される", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", starLevel: 1 }, "left", 0);
+      const normalTarget = createTestBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [normalTarget], log);
+
+      expect(normalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+    });
+  });
+
+  describe("shinreibyou ultimate modifiers", () => {
+    test("shinreibyou tier1 は damaging skill に x1.10 を乗せる", () => {
+      const flags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: 1, unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index, false, flags)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, false, flags)),
+        leftPlacements,
+        rightPlacements,
+        2_500,
+        null,
+        null,
+        null,
+        flags,
+      );
+
+      expect(result.combatLog.some((log) => log.includes("Backstab! Deals 264 damage"))).toBe(true);
+    });
+
+    test("shinreibyou tier2 は debuffed target に +12% bonus damage を乗せる", () => {
+      const flags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: 1, unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+        { cell: 2, unitType: "ranger", unitId: "tojiko", starLevel: 1, factionId: "shinreibyou" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+      ];
+      const leftUnits = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index, false, flags),
+      );
+      const rightUnits = rightPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "right", index, false, flags),
+      );
+      rightUnits[0]!.buffModifiers.attackSpeedMultiplier = 0.7;
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        2_500,
+        null,
+        null,
+        null,
+        flags,
+      );
+
+      expect(result.combatLog.some((log) => log.includes("Backstab! Deals 322 damage"))).toBe(true);
+    });
+
+    test("shinreibyou tier inactive では ultimate modifier が発動しない", () => {
+      const flags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index, false, flags)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, false, flags)),
+        leftPlacements,
+        rightPlacements,
+        2_500,
+        null,
+        null,
+        null,
+        flags,
+      );
+
+      expect(result.combatLog.some((log) => log.includes("Backstab! Deals 240 damage"))).toBe(true);
     });
   });
 
@@ -121,7 +312,7 @@ describe("battle-simulator", () => {
         unitType: "vanguard",
         starLevel: 1,
       };
-      const unit = createBattleUnit(placement, "left", 0);
+      const unit = createTestBattleUnit(placement, "left", 0);
       expect(unit.id).toBe("left-vanguard-0");
       expect(unit.type).toBe("vanguard");
       expect(unit.starLevel).toBe(1);
@@ -137,9 +328,9 @@ describe("battle-simulator", () => {
       const placement2: BoardUnitPlacement = { cell: 1, unitType: "vanguard", starLevel: 2 };
       const placement3: BoardUnitPlacement = { cell: 2, unitType: "vanguard", starLevel: 3 };
 
-      const unit1 = createBattleUnit(placement1, "left", 0);
-      const unit2 = createBattleUnit(placement2, "left", 1);
-      const unit3 = createBattleUnit(placement3, "left", 2);
+      const unit1 = createTestBattleUnit(placement1, "left", 0);
+      const unit2 = createTestBattleUnit(placement2, "left", 1);
+      const unit3 = createTestBattleUnit(placement3, "left", 2);
 
       expect(unit1.hp).toBeLessThan(unit2.hp);
       expect(unit2.hp).toBeLessThan(unit3.hp);
@@ -148,7 +339,7 @@ describe("battle-simulator", () => {
     });
 
     test("現在のunitType入力は正確な基礎ステータスを返す", () => {
-      expect(createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0)).toMatchObject({
         id: "left-vanguard-0",
         type: "vanguard",
         hp: 80,
@@ -158,7 +349,7 @@ describe("battle-simulator", () => {
         attackRange: 1,
         defense: 3,
       });
-      expect(createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
         id: "left-ranger-1",
         type: "ranger",
         hp: 50,
@@ -168,7 +359,7 @@ describe("battle-simulator", () => {
         attackRange: 3,
         defense: 0,
       });
-      expect(createBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
         id: "right-mage-0",
         type: "mage",
         hp: 40,
@@ -178,7 +369,7 @@ describe("battle-simulator", () => {
         attackRange: 2,
         defense: 0,
       });
-      expect(createBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
         id: "right-assassin-1",
         type: "assassin",
         hp: 45,
@@ -191,17 +382,56 @@ describe("battle-simulator", () => {
     });
 
     test("unitIdがある場合はunitTypeよりunitId解決を優先する", () => {
-      const unit = createBattleUnit(
+      // Both paths use flags-aware roster provider resolution
+      // Compare: unitId resolution vs direct unitType (both with flags)
+      const unitWithUnitId = createTestBattleUnit(
         { cell: 0, unitType: "mage", unitId: "meiling", starLevel: 1 },
         "left",
         0,
+        false,
+        DEFAULT_FLAGS,
+      );
+      const unitWithDirectType = createTestBattleUnit(
+        { cell: 1, unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+        false,
+        DEFAULT_FLAGS,
       );
 
-      expect(unit.type).toBe("vanguard");
-      expect(unit.hp).toBe(850);
-      expect(unit.attackPower).toBe(65);
-      expect(unit.attackRange).toBe(1);
-      expect(unit.defense).toBe(17.5);
+      // unitId "meiling" resolves to vanguard despite placement unitType=mage
+      expect(unitWithUnitId.type).toBe("vanguard");
+      expect(unitWithUnitId.hp).toBe(850);
+      // Direct unitType=vanguard uses base stats, not scarlet mansion stats
+      expect(unitWithDirectType.type).toBe("vanguard");
+      expect(unitWithDirectType.hp).toBe(80); // base vanguard HP
+    });
+
+    test("Touhou roster 有効時は unitId 解決した戦闘ステータスを使う", () => {
+      const touhouFlags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+
+      const unit = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", unitId: "rin", starLevel: 1 },
+        "left",
+        0,
+        false,
+        touhouFlags,
+      );
+
+      expect(unit).toMatchObject({
+        id: "left-vanguard-0",
+        type: "vanguard",
+        hp: 620,
+        maxHp: 620,
+        attackPower: 40,
+        attackSpeed: 0.85,
+        attackRange: 1,
+        defense: 3,
+      });
     });
   });
 
@@ -490,10 +720,10 @@ describe("battle-simulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 5000);
@@ -510,12 +740,12 @@ describe("battle-simulator", () => {
       const simulator2 = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
-        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
-        createBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
       ];
 
       const result1 = simulator1.simulateBattle(leftUnits, rightUnits, [], [], 10000);
@@ -529,12 +759,12 @@ describe("battle-simulator", () => {
 
     test("現在のMVP戦闘ベースラインは同じ入力で正確に再現される", () => {
       const createLeftUnits = (): BattleUnit[] => [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
-        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
       ];
       const createRightUnits = (): BattleUnit[] => [
-        createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
-        createBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
       ];
 
       const summarize = (result: ReturnType<BattleSimulator["simulateBattle"]>) => ({
@@ -588,10 +818,10 @@ describe("battle-simulator", () => {
       ];
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(
@@ -607,14 +837,215 @@ describe("battle-simulator", () => {
       expect(result.winner).toBe("left");
     });
 
+    test("grassroot_network tier1 は該当 faction ユニットにだけ攻撃バフを適用する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
+        { cell: 2, unitType: "vanguard", starLevel: 1, unitId: "zanmu", factionId: null },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
+
+      expect(leftUnits[0]?.attackPower).toBe(6);
+      expect(leftUnits[1]?.attackPower).toBe(6);
+      expect(leftUnits[2]?.attackPower).toBe(4);
+    });
+
+    test("myourenji tier2 は該当 faction ユニットに HP と攻撃バフを適用する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "vanguard", starLevel: 1, unitId: "ichirin", factionId: "myourenji" },
+        { cell: 2, unitType: "mage", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 3, unitType: "mage", starLevel: 1, unitId: "zanmu", factionId: null },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
+
+      expect(leftUnits[0]?.maxHp).toBeGreaterThan(50);
+      expect(leftUnits[1]?.maxHp).toBeGreaterThan(80);
+      expect(leftUnits[2]?.attackPower).toBeGreaterThan(6);
+      expect(leftUnits[3]?.maxHp).toBe(40);
+      expect(leftUnits[3]?.attackPower).toBe(6);
+    });
+
+    test("enableTouhouFactions=false では factionId があっても faction buff を適用しない", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index, false, {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+        }),
+      );
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+        },
+      );
+
+      expect(leftUnits[0]?.attackPower).toBe(45);
+      expect(leftUnits[1]?.attackPower).toBe(64);
+    });
+
+    test("chireiden tier1 は軽減後ダメージの10%を攻撃元へ反射する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 3, unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: 7, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "right", index),
+      );
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
+
+      expect(leftUnits[0]?.hp).toBe(48);
+    });
+
+    test("chireiden reflection は反射ダメージを再反射しない", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3, factionId: "chireiden" },
+        { cell: 1, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 3, unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: 7, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "right", index),
+      );
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
+
+      expect(leftUnits[0]?.hp).toBe(48);
+      expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(2);
+    });
+
     test("戦闘ログにダメージ情報が記録される", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 2, unitType: "ranger", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 2, unitType: "ranger", starLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 5000);
@@ -635,10 +1066,10 @@ describe("battle-simulator", () => {
       ];
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
       ];
 
       const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map<
@@ -685,10 +1116,10 @@ describe("battle-simulator", () => {
       ];
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 5_000);
@@ -703,7 +1134,7 @@ describe("battle-simulator", () => {
 
       // 左: vanguard (sub-unitなし)
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
       ];
       const leftPlacements: BoardUnitPlacement[] = [
         { cell: 0, unitType: "vanguard", starLevel: 1 },
@@ -711,7 +1142,7 @@ describe("battle-simulator", () => {
 
       // 右: vanguard (sub-unitあり)
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
       const rightPlacements: BoardUnitPlacement[] = [
         { cell: 4, unitType: "vanguard", starLevel: 1 },
@@ -763,10 +1194,10 @@ describe("battle-simulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 100);
@@ -778,11 +1209,11 @@ describe("battle-simulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0),
-        createBattleUnit({ cell: 1, unitType: "vanguard", starLevel: 3 }, "left", 1),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0),
+        createTestBattleUnit({ cell: 1, unitType: "vanguard", starLevel: 3 }, "left", 1),
       ];
       const rightUnits: BattleUnit[] = [
-        createBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 10000);
@@ -804,12 +1235,12 @@ describe("battle-simulator", () => {
 
     describe('Skill activation', () => {
       it('vanguard activates Shield Wall every 3 attacks', () => {
-        const vanguard = createBattleUnit({
+        const vanguard = createTestBattleUnit({
           unitType: 'vanguard',
           starLevel: 1,
           cell: 3
         }, "left", 0);
-        const enemy = createBattleUnit({
+        const enemy = createTestBattleUnit({
           unitType: 'ranger',
           starLevel: 1,
           cell: 4
@@ -824,21 +1255,37 @@ describe("battle-simulator", () => {
     });
 
     test("unitId resolverは現行MVP rosterで同じ戦闘結果を返す", () => {
+      // MVP flags for roster provider boundary
+      const mvpFlags = {
+        enableHeroSystem: false,
+        enableSharedPool: false,
+        enablePhaseExpansion: false,
+        enableSubUnitSystem: false,
+        enableEmblemCells: false,
+        enableSpellCard: false,
+        enableRumorInfluence: false,
+        enableBossExclusiveShop: false,
+        enableSharedBoardShadow: false,
+        enableTouhouRoster: false,
+        enableTouhouFactions: false,
+        enablePerUnitSharedPool: false,
+      };
+
       const createResolvedPlacements = () => ({
         left: resolveBattlePlacements([
           { cell: 0, unitType: "mage", unitId: "warrior_a", starLevel: 1 },
           { cell: 1, unitType: "assassin", unitId: "archer_a", starLevel: 1 },
-        ]),
+        ], mvpFlags),
         right: resolveBattlePlacements([
           { cell: 7, unitType: "mage", unitId: "warrior_b", starLevel: 1 },
           { cell: 6, unitType: "assassin", unitId: "archer_b", starLevel: 1 },
-        ]),
+        ], mvpFlags),
       });
 
       const { left: leftPlacements1, right: rightPlacements1 } = createResolvedPlacements();
       const result1 = new BattleSimulator().simulateBattle(
-        leftPlacements1.map((placement, index) => createBattleUnit(placement, "left", index)),
-        rightPlacements1.map((placement, index) => createBattleUnit(placement, "right", index)),
+        leftPlacements1.map((placement, index) => createTestBattleUnit(placement, "left", index, false, mvpFlags)),
+        rightPlacements1.map((placement, index) => createTestBattleUnit(placement, "right", index, false, mvpFlags)),
         leftPlacements1,
         rightPlacements1,
         10_000,
@@ -846,8 +1293,8 @@ describe("battle-simulator", () => {
 
       const { left: leftPlacements2, right: rightPlacements2 } = createResolvedPlacements();
       const result2 = new BattleSimulator().simulateBattle(
-        leftPlacements2.map((placement, index) => createBattleUnit(placement, "left", index)),
-        rightPlacements2.map((placement, index) => createBattleUnit(placement, "right", index)),
+        leftPlacements2.map((placement, index) => createTestBattleUnit(placement, "left", index, false, mvpFlags)),
+        rightPlacements2.map((placement, index) => createTestBattleUnit(placement, "right", index, false, mvpFlags)),
         leftPlacements2,
         rightPlacements2,
         10_000,

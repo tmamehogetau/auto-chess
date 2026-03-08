@@ -27,3 +27,6 @@ jobs:
 
     - name: Run verify:ci
       run: npm run verify:ci
+
+    - name: Run coverage gate
+      run: npm run test:coverage

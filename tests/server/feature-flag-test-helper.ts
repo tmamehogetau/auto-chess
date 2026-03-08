@@ -4,6 +4,49 @@ import { GameRoom } from "../../src/server/rooms/game-room";
 import type { ColyseusTestServer } from "@colyseus/testing";
 
 /**
+ * Environment variable name mapping for feature flags.
+ * Centralized to avoid drift between test helper and integration tests.
+ */
+export const FLAG_ENV_VARS: Record<keyof FeatureFlags, string> = {
+  enableHeroSystem: "FEATURE_ENABLE_HERO_SYSTEM",
+  enableSharedPool: "FEATURE_ENABLE_SHARED_POOL",
+  enablePhaseExpansion: "FEATURE_ENABLE_PHASE_EXPANSION",
+  enableSubUnitSystem: "FEATURE_ENABLE_SUB_UNIT_SYSTEM",
+  enableEmblemCells: "FEATURE_ENABLE_EMBLEM_CELLS",
+  enableSpellCard: "FEATURE_ENABLE_SPELL_CARD",
+  enableRumorInfluence: "FEATURE_ENABLE_RUMOR_INFLUENCE",
+  enableBossExclusiveShop: "FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP",
+  enableSharedBoardShadow: "FEATURE_ENABLE_SHARED_BOARD_SHADOW",
+  enableTouhouRoster: "FEATURE_ENABLE_TOUHOU_ROSTER",
+  enableTouhouFactions: "FEATURE_ENABLE_TOUHOU_FACTIONS",
+  enablePerUnitSharedPool: "FEATURE_ENABLE_PER_UNIT_SHARED_POOL",
+};
+
+/**
+ * Migration flags subset for validation and testing.
+ */
+export const MIGRATION_FLAGS: (keyof FeatureFlags)[] = [
+  "enableTouhouRoster",
+  "enableTouhouFactions",
+  "enablePerUnitSharedPool",
+];
+
+/**
+ * MVP-era flags subset (excludes migration flags).
+ */
+export const MVP_FLAGS: (keyof FeatureFlags)[] = [
+  "enableHeroSystem",
+  "enableSharedPool",
+  "enablePhaseExpansion",
+  "enableSubUnitSystem",
+  "enableEmblemCells",
+  "enableSpellCard",
+  "enableRumorInfluence",
+  "enableBossExclusiveShop",
+  "enableSharedBoardShadow",
+];
+
+/**
  * Set environment variables for feature flags and execute a test function.
  * After execution, the environment variables and singleton instance are restored.
  *
@@ -18,37 +61,12 @@ export async function withFlags(
   const originalEnv = { ...process.env };
 
   try {
-    // Set environment variables for specified flags
-    if (flags.enableHeroSystem !== undefined) {
-      process.env.FEATURE_ENABLE_HERO_SYSTEM = String(flags.enableHeroSystem);
-    }
-    if (flags.enableSharedPool !== undefined) {
-      process.env.FEATURE_ENABLE_SHARED_POOL = String(flags.enableSharedPool);
-    }
-    if (flags.enablePhaseExpansion !== undefined) {
-      process.env.FEATURE_ENABLE_PHASE_EXPANSION = String(
-        flags.enablePhaseExpansion,
-      );
-    }
-    if (flags.enableSubUnitSystem !== undefined) {
-      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = String(
-        flags.enableSubUnitSystem,
-      );
-    }
-    if (flags.enableEmblemCells !== undefined) {
-      process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
-    }
-    if (flags.enableSpellCard !== undefined) {
-      process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
-    }
-    if (flags.enableRumorInfluence !== undefined) {
-      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = String(flags.enableRumorInfluence);
-    }
-    if (flags.enableBossExclusiveShop !== undefined) {
-      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = String(flags.enableBossExclusiveShop);
-    }
-    if (flags.enableSharedBoardShadow !== undefined) {
-      process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = String(flags.enableSharedBoardShadow);
+    // Set environment variables for specified flags using centralized mapping
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      const value = flags[flagName as keyof FeatureFlags];
+      if (value !== undefined) {
+        process.env[envVarName] = String(value);
+      }
     }
 
     // Reset singleton instance to pick up new environment variables
@@ -82,18 +100,10 @@ export async function createRoomWithFlags(
   const originalEnv = { ...process.env };
 
   try {
-    // Set all environment variables for feature flags
-    process.env.FEATURE_ENABLE_HERO_SYSTEM = String(flags.enableHeroSystem);
-    process.env.FEATURE_ENABLE_SHARED_POOL = String(flags.enableSharedPool);
-    process.env.FEATURE_ENABLE_PHASE_EXPANSION = String(
-      flags.enablePhaseExpansion,
-    );
-    process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = String(flags.enableSubUnitSystem);
-    process.env.FEATURE_ENABLE_EMBLEM_CELLS = String(flags.enableEmblemCells);
-    process.env.FEATURE_ENABLE_SPELL_CARD = String(flags.enableSpellCard);
-    process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = String(flags.enableRumorInfluence);
-    process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = String(flags.enableBossExclusiveShop);
-    process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = String(flags.enableSharedBoardShadow);
+    // Set all environment variables for feature flags using centralized mapping
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(flags[flagName as keyof FeatureFlags]);
+    }
 
     // Reset singleton instance to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
@@ -126,6 +136,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** All feature flags enabled (Phase2 behavior) */
@@ -139,6 +152,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: true,
     enableBossExclusiveShop: true,
     enableSharedBoardShadow: true,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only hero system enabled */
@@ -152,6 +168,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only shared pool enabled */
@@ -165,6 +184,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only phase expansion enabled */
@@ -178,6 +200,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only spell card enabled */
@@ -191,6 +216,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only rumor influence enabled */
@@ -204,6 +232,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: true,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only boss exclusive shop enabled */
@@ -217,6 +248,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: true,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only sub-unit system enabled */
@@ -230,6 +264,9 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   } satisfies FeatureFlags,
 
   /** Only shared board shadow enabled */
@@ -243,5 +280,56 @@ export const FLAG_CONFIGURATIONS = {
     enableRumorInfluence: false,
     enableBossExclusiveShop: false,
     enableSharedBoardShadow: true,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
+  } satisfies FeatureFlags,
+
+  /** Migration: Touhou roster only (true/false/false) */
+  TOUHOU_ROSTER_ONLY: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+    enableTouhouRoster: true,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
+  } satisfies FeatureFlags,
+
+  /** Migration: Touhou roster + factions (true/true/false) */
+  TOUHOU_ROSTER_WITH_FACTIONS: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+    enableTouhouRoster: true,
+    enableTouhouFactions: true,
+    enablePerUnitSharedPool: false,
+  } satisfies FeatureFlags,
+
+  /** Migration: Touhou roster + factions + per-unit pool (true/true/true) */
+  TOUHOU_FULL_MIGRATION: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+    enableTouhouRoster: true,
+    enableTouhouFactions: true,
+    enablePerUnitSharedPool: true,
   } satisfies FeatureFlags,
 } as const;

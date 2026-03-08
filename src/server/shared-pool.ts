@@ -1,3 +1,5 @@
+import { getTouhouUnitsByCost } from "../data/touhou-units";
+
 /**
  * 共有プールの在庫管理クラス
  * Feature Flag: enableSharedPool が true の場合のみ有効化される
@@ -6,6 +8,7 @@
  */
 export class SharedPool {
   private readonly inventory: Map<number, number>;
+  private readonly inventoryByUnitId: Map<string, number>;
 
   constructor() {
     // コスト別の初期在庫: 1G:18, 2G:14, 3G:11, 4G:8, 5G:6
@@ -16,6 +19,8 @@ export class SharedPool {
       [4, 8],
       [5, 6],
     ]);
+    this.inventoryByUnitId = new Map<string, number>();
+    this.seedPerUnitInventory();
   }
 
   /**
@@ -68,11 +73,71 @@ export class SharedPool {
     return this.getAvailable(cost) <= 0;
   }
 
+  public decreaseByUnitId(unitId: string, cost: number): boolean {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return false;
+    }
+
+    const current = this.getAvailableByUnitId(unitId, cost);
+    if (current <= 0 || !this.decrease(cost)) {
+      return false;
+    }
+
+    this.inventoryByUnitId.set(unitId, current - 1);
+    return true;
+  }
+
+  public increaseByUnitId(unitId: string, cost: number): void {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return;
+    }
+
+    const current = this.getAvailableByUnitId(unitId, cost);
+    this.increase(cost);
+    this.inventoryByUnitId.set(unitId, current + 1);
+  }
+
+  public getAvailableByUnitId(unitId: string, cost: number): number {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return 0;
+    }
+
+    return this.inventoryByUnitId.get(unitId) ?? 0;
+  }
+
+  public isDepletedByUnitId(unitId: string, cost: number): boolean {
+    return this.getAvailableByUnitId(unitId, cost) <= 0;
+  }
+
   /**
    * 有効なコスト（1-5）か判定
    */
   private isValidCost(cost: number): boolean {
     return Number.isInteger(cost) && cost >= 1 && cost <= 5;
+  }
+
+  private isValidUnitId(unitId: string): boolean {
+    return typeof unitId === "string" && unitId.length > 0;
+  }
+
+  private seedPerUnitInventory(): void {
+    for (const cost of [1, 2, 3, 4, 5] as const) {
+      const units = getTouhouUnitsByCost(cost);
+      const total = this.inventory.get(cost) ?? 0;
+
+      if (units.length === 0) {
+        continue;
+      }
+
+      const baseCount = Math.floor(total / units.length);
+      let remainder = total % units.length;
+
+      for (const unit of units) {
+        const extraCount = remainder > 0 ? 1 : 0;
+        this.inventoryByUnitId.set(unit.unitId, baseCount + extraCount);
+        remainder = Math.max(0, remainder - 1);
+      }
+    }
   }
 
   /**

@@ -1,14 +1,17 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
-import type { SubUnitConfig } from "../../shared/types";
+import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
+import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import {
   SYNERGY_DEFINITIONS,
+  TOUHOU_FACTION_DEFINITIONS,
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
   calculateSynergyDetails,
+  getTouhouFactionTierEffect,
   hasScarletMansionBossLifesteal,
-  SynergyTier,
+  type SynergyEffects,
 } from "./synergy-definitions";
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
@@ -52,6 +55,10 @@ export interface BattleUnit {
     defenseMultiplier: number; // デフォルト 1.0
     attackSpeedMultiplier: number; // デフォルト 1.0
   };
+  reflectRatio?: number;
+  ultimateDamageMultiplier?: number;
+  bonusDamageVsDebuffedTarget?: number;
+  debuffImmunityCategories?: string[];
 }
 
 /**
@@ -99,10 +106,21 @@ export function createBattleUnit(
   side: "left" | "right",
   index: number,
   isBoss: boolean = false,
+  flags: FeatureFlags,
 ): BattleUnit {
-  const resolvedPlacement = resolveBattlePlacement(placement);
-  const { unitType, starLevel = 1, cell, archetype } = resolvedPlacement;
+  const resolvedPlacement = resolveBattlePlacement(placement, flags);
+  const {
+    unitType,
+    starLevel = 1,
+    cell,
+    archetype,
+    hp: resolvedHp,
+    attack: resolvedAttack,
+    attackSpeed: resolvedAttackSpeed,
+    range: resolvedRange,
+  } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
+  const bossStats = isBoss && archetype === "remilia" ? getMvpPhase1Boss() : null;
 
   // Scarlet Mansionユニットの特殊ステータスをチェック
   let finalHp: number;
@@ -113,15 +131,15 @@ export function createBattleUnit(
   let finalPhysicalReduction: number | undefined = undefined;
   let finalMagicReduction: number | undefined = undefined;
 
-  if (isBoss && archetype === "remilia") {
+  if (bossStats) {
     // ボス（remilia）の場合、ボスステータスを適用
-    finalHp = 3200;
-    finalAttack = 280;
-    finalAttackSpeed = 0.95;
-    finalRange = 3;
+    finalHp = bossStats.hp;
+    finalAttack = bossStats.attack;
+    finalAttackSpeed = bossStats.attackSpeed;
+    finalRange = bossStats.range;
     finalDefense = 0; // ボスは reduction を使用
-    finalPhysicalReduction = 15;
-    finalMagicReduction = 10;
+    finalPhysicalReduction = bossStats.physicalReduction;
+    finalMagicReduction = bossStats.magicReduction;
   } else if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
     // Scarlet Mansionユニットの場合、特殊ステータスを適用
     const scarletUnit = getScarletMansionUnitById(archetype);
@@ -146,10 +164,10 @@ export function createBattleUnit(
   } else {
     // 通常ユニット: 星レベル倍率を適用
     const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
-    finalHp = baseStats.hp * starMultiplier;
-    finalAttack = baseStats.attack * starMultiplier;
-    finalAttackSpeed = baseStats.attackSpeed;
-    finalRange = baseStats.range;
+    finalHp = (resolvedHp ?? baseStats.hp) * starMultiplier;
+    finalAttack = (resolvedAttack ?? baseStats.attack) * starMultiplier;
+    finalAttackSpeed = resolvedAttackSpeed ?? baseStats.attackSpeed;
+    finalRange = resolvedRange ?? baseStats.range;
     finalDefense = unitType === "vanguard" ? 3 : 0;
   }
 
@@ -176,6 +194,8 @@ export function createBattleUnit(
       defenseMultiplier: 1.0,
       attackSpeedMultiplier: 1.0,
     },
+    reflectRatio: 0,
+    debuffImmunityCategories: [],
   };
 }
 
@@ -254,69 +274,94 @@ function applySynergyBuffs(
   units: BattleUnit[],
   boardPlacements: BoardUnitPlacement[],
   heroSynergyBonusType: BoardUnitType | null = null,
+  flags: FeatureFlags = DEFAULT_FLAGS,
 ): void {
-  const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType);
+  const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType, {
+    enableTouhouFactions: flags.enableTouhouFactions,
+  });
   const scarletMansionSynergyActive = calculateScarletMansionSynergy(boardPlacements);
 
-  for (const unit of units) {
+  for (const [index, unit] of units.entries()) {
     applyScarletMansionSynergyToBoss(unit, scarletMansionSynergyActive);
 
     const tier = synergyDetails.activeTiers[unit.type];
-    if (tier === 0) continue;
-
-    const def = SYNERGY_DEFINITIONS[unit.type];
-    const idx = tier - 1; // tier 1 -> index 0
-
-    // Apply defense buff
-    if (def.effects.defense) {
-      const defenseValue = def.effects.defense[idx];
-      if (defenseValue !== undefined) {
-        unit.defense += defenseValue;
-      }
+    if (tier > 0) {
+      applySynergyEffects(unit, SYNERGY_DEFINITIONS[unit.type].effects, tier);
     }
 
-    // Apply HP multiplier
-    if (def.effects.hpMultiplier) {
-      const multiplier = def.effects.hpMultiplier[idx];
-      if (multiplier !== undefined) {
-        unit.maxHp = Math.floor(unit.maxHp * multiplier);
-        unit.hp = Math.floor(unit.hp * multiplier);
-      }
+    const factionId = boardPlacements[index]?.factionId;
+    if (!factionId) {
+      continue;
     }
 
-    // Apply attack power buff
-    if (def.effects.attackPower) {
-      const attackPowerValue = def.effects.attackPower[idx];
-      if (attackPowerValue !== undefined) {
-        unit.attackPower += attackPowerValue;
+    const factionTier = synergyDetails.factionActiveTiers[factionId] ?? 0;
+    const factionDef = TOUHOU_FACTION_DEFINITIONS[factionId];
+    if (factionTier > 0 && factionDef) {
+      applySynergyEffects(unit, factionDef.effects, factionTier);
+
+      const factionEffect = getTouhouFactionTierEffect(factionId, factionTier);
+      if (factionEffect?.special?.reflectRatio !== undefined) {
+        unit.reflectRatio = factionEffect.special.reflectRatio;
+      }
+      if (factionEffect?.special?.ultimateDamageMultiplier !== undefined) {
+        unit.ultimateDamageMultiplier = factionEffect.special.ultimateDamageMultiplier;
+      }
+      if (factionEffect?.special?.bonusDamageVsDebuffedTarget !== undefined) {
+        unit.bonusDamageVsDebuffedTarget = factionEffect.special.bonusDamageVsDebuffedTarget;
+      }
+      if (factionEffect?.special?.debuffImmunityCategories !== undefined) {
+        unit.debuffImmunityCategories = factionEffect.special.debuffImmunityCategories;
       }
     }
+  }
+}
 
-    // Apply attack speed multiplier
-    if (def.effects.attackSpeedMultiplier) {
-      const attackSpeedValue = def.effects.attackSpeedMultiplier[idx];
-      if (attackSpeedValue !== undefined) {
-        unit.buffModifiers.attackSpeedMultiplier *= attackSpeedValue;
-      }
+function applySynergyEffects(unit: BattleUnit, effects: SynergyEffects, tier: number): void {
+  const idx = tier - 1;
+
+  if (effects.defense) {
+    const defenseValue = effects.defense[idx];
+    if (defenseValue !== undefined) {
+      unit.defense += defenseValue;
     }
+  }
 
-    // Apply crit rate
-    if (def.effects.critRate) {
-      const critRateValue = def.effects.critRate[idx];
-      if (critRateValue !== undefined) {
-        unit.critRate += critRateValue;
-      }
+  if (effects.hpMultiplier) {
+    const multiplier = effects.hpMultiplier[idx];
+    if (multiplier !== undefined) {
+      unit.maxHp = Math.floor(unit.maxHp * multiplier);
+      unit.hp = Math.floor(unit.hp * multiplier);
     }
+  }
 
-    // Apply crit damage multiplier
-    if (def.effects.critDamageMultiplier) {
-      const critDamageValue = def.effects.critDamageMultiplier[idx];
-      if (critDamageValue !== undefined) {
-        unit.critDamageMultiplier = Math.max(
-          unit.critDamageMultiplier,
-          critDamageValue
-        );
-      }
+  if (effects.attackPower) {
+    const attackPowerValue = effects.attackPower[idx];
+    if (attackPowerValue !== undefined) {
+      unit.attackPower += attackPowerValue;
+    }
+  }
+
+  if (effects.attackSpeedMultiplier) {
+    const attackSpeedValue = effects.attackSpeedMultiplier[idx];
+    if (attackSpeedValue !== undefined) {
+      unit.buffModifiers.attackSpeedMultiplier *= attackSpeedValue;
+    }
+  }
+
+  if (effects.critRate) {
+    const critRateValue = effects.critRate[idx];
+    if (critRateValue !== undefined) {
+      unit.critRate += critRateValue;
+    }
+  }
+
+  if (effects.critDamageMultiplier) {
+    const critDamageValue = effects.critDamageMultiplier[idx];
+    if (critDamageValue !== undefined) {
+      unit.critDamageMultiplier = Math.max(
+        unit.critDamageMultiplier,
+        critDamageValue,
+      );
     }
   }
 }
@@ -446,6 +491,7 @@ export class BattleSimulator {
     leftHeroSynergyBonusType: BoardUnitType | null = null,
     rightHeroSynergyBonusType: BoardUnitType | null = null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null = null,
+    flags: FeatureFlags = DEFAULT_FLAGS,
   ): BattleResult {
     try {
       // Bug #3 fix: Validate input teams
@@ -475,8 +521,8 @@ export class BattleSimulator {
       const rightScarletBossLifestealActive = hasScarletMansionBossLifesteal(rightPlacements);
 
       // シナジーバフを適用
-      applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType);
-      applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType);
+      applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType, flags);
+      applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType, flags);
 
       // アイテム効果を適用
       for (let i = 0; i < leftUnits.length; i++) {
@@ -595,6 +641,19 @@ export class BattleSimulator {
           }
 
           target.hp -= actualDamage;
+
+          if ((target.reflectRatio ?? 0) > 0 && actualDamage > 0) {
+            const reflectedDamage = Math.max(1, Math.floor(actualDamage * (target.reflectRatio ?? 0)));
+            action.unit.hp -= reflectedDamage;
+            combatLog.push(
+              `${generateUnitName(target)} reflects ${reflectedDamage} damage to ${generateUnitName(action.unit)}`,
+            );
+
+            if (action.unit.hp <= 0) {
+              action.unit.isDead = true;
+              combatLog.push(`${generateUnitName(action.unit)} has been defeated!`);
+            }
+          }
 
           // ボスパッシブ「紅色の世界」の回復効果（与えたダメージの5%回復）
           if (bossPassiveActive && actualDamage > 0) {

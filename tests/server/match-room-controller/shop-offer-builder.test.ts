@@ -5,6 +5,8 @@ import {
 } from "../../../src/server/match-room-controller/shop-offer-builder";
 import type { BoardUnitType } from "../../../src/shared/room-messages";
 import type { ItemType } from "../../../src/server/combat/item-definitions";
+import { ROSTER_KIND_MVP, ROSTER_KIND_TOUHOU } from "../../../src/server/roster/roster-provider";
+import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 
 describe("ShopOfferBuilder", () => {
   let builder: ShopOfferBuilder;
@@ -36,9 +38,13 @@ describe("ShopOfferBuilder", () => {
       getPlayerLevel: vi.fn(() => 1),
       isSharedPoolEnabled: vi.fn(() => false),
       isPoolDepleted: vi.fn(() => false),
+      isPerUnitPoolEnabled: vi.fn(() => false),
+      isUnitIdPoolDepleted: vi.fn(() => false),
       isRumorInfluenceEnabled: vi.fn(() => false),
       setId: "default",
       random: vi.fn(() => 0.5),
+      getActiveRosterKind: vi.fn(() => ROSTER_KIND_MVP),
+      getTouhouDraftRosterUnits: vi.fn(() => []),
     };
 
     builder = new ShopOfferBuilder(mockDeps);
@@ -295,6 +301,126 @@ describe("ShopOfferBuilder", () => {
       expect(mockDeps.hashToUint32).toHaveBeenCalledWith(
         expect.stringContaining("player2")
       );
+    });
+  });
+
+  describe("roster provider boundary", () => {
+    test("uses hardcoded pools for byte-for-byte MVP compatibility when roster is MVP", () => {
+      // This test verifies that the shop builder uses hardcoded SHOP_UNIT_POOL_BY_RARITY
+      // for byte-for-byte compatibility with existing MVP behavior.
+      // The builder should NOT rebuild pools from MVP JSON costs.
+
+      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+      expect(offers).toHaveLength(5);
+
+      // Verify getActiveRosterKind was called to check roster boundary
+      expect(mockDeps.getActiveRosterKind).toHaveBeenCalled();
+
+      // Define expected hardcoded MVP pools for strict verification
+      const expectedPoolsByRarity: Record<number, readonly BoardUnitType[]> = {
+        1: ["vanguard", "ranger"],
+        2: ["mage", "assassin"],
+        3: ["assassin", "mage"],
+      };
+
+      // Verify each offer uses unit types from correct hardcoded pool for its rarity
+      offers.forEach((offer) => {
+        // Cost should equal rarity (MVP behavior)
+        expect(offer.cost).toBe(offer.rarity);
+
+        // Verify unit type is in the correct pool for this rarity
+        const expectedPool = expectedPoolsByRarity[offer.rarity];
+        expect(expectedPool).toContain(offer.unitType);
+      });
+
+      // Additional verification: ensure we don't have impossible rarity values
+      const rarities = offers.map((o) => o.rarity);
+      expect(Math.min(...rarities)).toBeGreaterThanOrEqual(1);
+      expect(Math.max(...rarities)).toBeLessThanOrEqual(3);
+    });
+
+    test("builds Touhou unitId-based offers when Touhou roster is active", () => {
+      mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() =>
+        TOUHOU_UNITS.map((unit) => ({
+          id: unit.unitId,
+          unitId: unit.unitId,
+          name: unit.displayName,
+          type: unit.unitType,
+          cost: unit.cost,
+          hp: unit.hp,
+          attack: unit.attack,
+          attackSpeed: unit.attackSpeed,
+          range: unit.range,
+          synergy: unit.factionId ? [unit.factionId] : [],
+        })),
+      );
+      
+      // Re-create builder with new mock
+      builder = new ShopOfferBuilder(mockDeps);
+      
+      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+      expect(offers).toHaveLength(5);
+      expect(offers.every((offer) => offer.unitId)).toBe(true);
+      expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 5)).toBe(true);
+      expect(offers.every((offer) => offer.rarity === offer.cost)).toBe(true);
+    });
+
+    test("filters only depleted Touhou unitIds when per-unit shared pool is enabled", () => {
+      mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() =>
+        TOUHOU_UNITS.filter((unit) => unit.cost === 1).map((unit) => ({
+          id: unit.unitId,
+          unitId: unit.unitId,
+          name: unit.displayName,
+          type: unit.unitType,
+          cost: unit.cost,
+          hp: unit.hp,
+          attack: unit.attack,
+          attackSpeed: unit.attackSpeed,
+          range: unit.range,
+          synergy: unit.factionId ? [unit.factionId] : [],
+        })),
+      );
+      mockDeps.isSharedPoolEnabled = vi.fn(() => true);
+      mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
+      mockDeps.isUnitIdPoolDepleted = vi.fn((unitId: string) => unitId === "rin");
+      mockDeps.seedToUnitFloat = vi.fn(() => 0);
+
+      builder = new ShopOfferBuilder(mockDeps);
+
+      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+      expect(offers).toHaveLength(5);
+      expect(offers.every((offer) => offer.unitId !== "rin")).toBe(true);
+      expect(mockDeps.isUnitIdPoolDepleted).toHaveBeenCalled();
+    });
+
+    test("produces deterministic results with same seed (MVP behavior)", () => {
+      // Same inputs should produce same outputs (using hardcoded pools)
+      mockDeps.hashToUint32 = vi.fn((text: string) => {
+        let hash = 0;
+        for (let i = 0; i < text.length; i++) {
+          hash = ((hash << 5) - hash) + text.charCodeAt(i);
+          hash = hash & hash;
+        }
+        return Math.abs(hash) % 4294967296;
+      });
+      mockDeps.seedToUnitFloat = vi.fn((seed: number) => {
+        return ((seed * 9301 + 49297) % 233280) / 233280;
+      });
+
+      const offers1 = builder.buildShopOffers("player1", 1, 0, 0, false);
+      const offers2 = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+      expect(offers1).toEqual(offers2);
+      
+      // Verify the actual unit types are from hardcoded pools
+      offers1.forEach((offer) => {
+        expect([1, 2, 3]).toContain(offer.rarity);
+        expect(["vanguard", "ranger", "mage", "assassin"]).toContain(offer.unitType);
+      });
     });
   });
 });

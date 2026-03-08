@@ -27,6 +27,7 @@ import {
   executePrepCommand,
   type ExecutionDependencies,
 } from "./match-room-controller/prep-command-executor";
+import { calculateDiscountedShopOfferCost } from "./match-room-controller/shop-cost-reduction";
 import {
   normalizeBoardPlacements,
   resolveBoardPowerFromState,
@@ -47,9 +48,9 @@ import {
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
 import {
+  calculateSynergyDetails,
   calculateScarletMansionSynergy,
-  SYNERGY_TO_UNIT_TYPE,
-  UNIT_TYPE_TO_SYNERGY_NAMES,
+  getTouhouFactionTierEffect,
 } from "./combat/synergy-definitions";
 import {
   STAR_LEVEL_MAX,
@@ -61,6 +62,12 @@ import {
 import { HEROES } from "../data/heroes";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
+import {
+  getActiveRosterKind,
+  getTouhouDraftRosterUnits,
+  validateRosterAvailability,
+} from "./roster/roster-provider";
+import type { FeatureFlags } from "../shared/feature-flags";
 import { type SpellCard } from "../data/spell-cards";
 import {
   SpellCardHandler,
@@ -144,10 +151,12 @@ const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   5: 20,
 };
 
-type UnitRarity = 1 | 2 | 3;
+type UnitRarity = 1 | 2 | 3 | 4 | 5;
+type LegacyRarity = 1 | 2 | 3;
 
 interface ShopOffer {
   unitType: BoardUnitType;
+  unitId?: string;
   rarity: UnitRarity;
   cost: number;
   isRumorUnit?: boolean;
@@ -164,13 +173,14 @@ interface OwnedUnits {
 
 interface BenchUnit {
   unitType: BoardUnitType;
+  unitId?: string;
   cost: number;
   starLevel: number;
   unitCount: number;
   items?: ItemType[];
 }
 
-type ShopOfferKey = `${BoardUnitType}:${UnitRarity}:${number}`;
+type ShopOfferKey = string;
 
 // ユニットタイプとコストのマッピング（コスト=レアリティ）
 const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
@@ -180,7 +190,7 @@ const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
   assassin: 3,
 };
 
-const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<UnitRarity, readonly BoardUnitType[]>> = {
+const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<LegacyRarity, readonly BoardUnitType[]>> = {
   1: ["vanguard", "ranger"],
   2: ["mage", "assassin"],
   3: ["assassin", "mage"],
@@ -304,6 +314,8 @@ export class MatchRoomController {
 
   private readonly itemShopOffersByPlayer: Map<string, ShopItemOffer[]>;
 
+  private readonly nijiRyuudouFirstItemDrawConsumedByPlayer: Map<string, boolean>;
+
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
   private readonly selectedHeroByPlayer: Map<string, string>;
@@ -374,6 +386,8 @@ export class MatchRoomController {
     enablePhaseExpansion: boolean;
   };
 
+  private readonly rosterFlags: FeatureFlags;
+
   private matchLogger: MatchLogger | null;
 
   private readonly shopOfferBuilder: ShopOfferBuilder;
@@ -406,6 +420,7 @@ export class MatchRoomController {
     this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
     this.itemInventoryByPlayer = new Map<string, ItemType[]>();
     this.itemShopOffersByPlayer = new Map<string, ShopItemOffer[]>();
+    this.nijiRyuudouFirstItemDrawConsumedByPlayer = new Map<string, boolean>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
@@ -429,9 +444,20 @@ export class MatchRoomController {
       enablePhaseExpansion: options.featureFlags?.enablePhaseExpansion ?? false,
     };
 
+    // Store roster flags for runtime use
+    this.rosterFlags = FeatureFlagService.getInstance().getFlags();
+
+    // Feature Flagに基づいて共有プールを初期化
+    this.enableSharedPool =
+      FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool')
+      || this.rosterFlags.enablePerUnitSharedPool;
+    this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
+
+    validateRosterAvailability(this.rosterFlags);
+
     // Initialize shop offer builder with dependencies
-    // Note: Feature flags are initialized later, so we use getter functions
-    // to access the values at runtime rather than capturing them at construction time
+    // Uses hardcoded pools for byte-for-byte MVP compatibility
+    // Uses roster provider boundary to validate roster kind - fails clearly for Touhou roster
     const shopOfferDeps: ShopOfferBuilderDependencies = {
       getRumorUnitForRound,
       getRandomScarletMansionUnit,
@@ -441,9 +467,14 @@ export class MatchRoomController {
       getPlayerLevel: (playerId: string) => this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
       isSharedPoolEnabled: () => this.enableSharedPool,
       isPoolDepleted: (cost: number) => this.sharedPool?.isDepleted(cost) ?? false,
+      isPerUnitPoolEnabled: () => this.rosterFlags.enablePerUnitSharedPool,
+      isUnitIdPoolDepleted: (unitId: string, cost: number) =>
+        this.sharedPool?.isDepletedByUnitId(unitId, cost) ?? false,
       isRumorInfluenceEnabled: () => this.enableRumorInfluence,
       setId: this.setId,
       random: Math.random,
+      getActiveRosterKind: () => getActiveRosterKind(this.rosterFlags),
+      getTouhouDraftRosterUnits,
     };
     this.shopOfferBuilder = new ShopOfferBuilder(shopOfferDeps);
 
@@ -473,12 +504,9 @@ export class MatchRoomController {
       });
       this.itemInventoryByPlayer.set(playerId, []);
       this.itemShopOffersByPlayer.set(playerId, []);
+      this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
     }
-
-    // Feature Flagに基づいて共有プールを初期化
-    this.enableSharedPool = FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool');
-    this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
 
     // Feature Flagに基づいてサブユニットシステムを初期化
     this.enableSubUnitSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableSubUnitSystem');
@@ -495,6 +523,7 @@ export class MatchRoomController {
       subUnitAssistConfigByType: this.enableSubUnitSystem
         ? this.subUnitAssistConfigByType
         : null,
+      featureFlags: this.rosterFlags,
     };
     this.battleResolutionService = new BattleResolutionService(battleResolutionDeps);
 
@@ -1042,8 +1071,15 @@ export class MatchRoomController {
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       isBossPlayer: (id) => this.isBossPlayer(id),
       isSharedPoolEnabled: () => this.enableSharedPool,
-      isPoolDepleted: (cost) => this.sharedPool?.isDepleted(cost) ?? false,
+      isPoolDepleted: (cost, unitId) => {
+        if (this.rosterFlags.enablePerUnitSharedPool && unitId) {
+          return this.sharedPool?.isDepletedByUnitId(unitId, cost) ?? false;
+        }
+
+        return this.sharedPool?.isDepleted(cost) ?? false;
+      },
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
+      getRosterFlags: () => this.rosterFlags,
     };
 
     // Step 2: Validate the command
@@ -1080,6 +1116,7 @@ export class MatchRoomController {
         const inventory = this.itemInventoryByPlayer.get(id);
         if (inventory) {
           inventory.push(itemType);
+          this.tryGrantNijiRyuudouFirstItemDraw(id);
         }
       },
       equipItemToBenchUnit: (id, inventoryItemIndex, benchIndex) => {
@@ -1093,6 +1130,7 @@ export class MatchRoomController {
               inventory.splice(inventoryItemIndex, 1);
               benchUnit.items = benchUnit.items || [];
               benchUnit.items.push(item);
+              this.tryGrantNijiRyuudouFirstItemDraw(id);
             }
           }
         }
@@ -1144,9 +1182,11 @@ export class MatchRoomController {
       getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
       getOwnedUnits: (id) => this.ownedUnitsByPlayer.get(id) ?? { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
       getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
+      getBoardPlacements: (id) => this.boardPlacementsByPlayer.get(id) ?? [],
       getShopOffers: (id) => this.shopOffersByPlayer.get(id) ?? [],
       getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
+      getRosterFlags: () => this.rosterFlags,
       logBossShop: (id, offers, purchase) => {
         const state = this.ensureStarted();
         this.matchLogger?.logBossShop(
@@ -1197,6 +1237,7 @@ export class MatchRoomController {
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
       this.shopLockedByPlayer.set(playerId, false);
+      this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, false);
       const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
       this.shopOffersByPlayer.set(
         playerId,
@@ -1242,6 +1283,7 @@ export class MatchRoomController {
 
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
+      this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, false);
       const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
       this.shopOffersByPlayer.set(
         playerId,
@@ -1314,8 +1356,8 @@ export class MatchRoomController {
         return false;
       }
 
-      const leftKey: ShopOfferKey = `${leftOffer.unitType}:${leftOffer.rarity}:${leftOffer.cost}`;
-      const rightKey: ShopOfferKey = `${rightOffer.unitType}:${rightOffer.rarity}:${rightOffer.cost}`;
+      const leftKey: ShopOfferKey = `${leftOffer.unitId ?? leftOffer.unitType}:${leftOffer.rarity}:${leftOffer.cost}`;
+      const rightKey: ShopOfferKey = `${rightOffer.unitId ?? rightOffer.unitType}:${rightOffer.rarity}:${rightOffer.cost}`;
 
       if (leftKey !== rightKey) {
         return false;
@@ -1343,9 +1385,7 @@ export class MatchRoomController {
     }
 
     // 共有プールから在庫を減らす（Feature Flagが有効な場合）
-    if (this.enableSharedPool && this.sharedPool) {
-      this.sharedPool.decrease(boughtOffer.cost);
-    }
+    this.decreaseSharedPoolForOffer(boughtOffer);
 
     offers.splice(slotIndex, 1);
     offers.push(
@@ -1361,13 +1401,25 @@ export class MatchRoomController {
     this.shopOffersByPlayer.set(playerId, offers);
 
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    const purchasedUnitCost = calculateDiscountedShopOfferCost(
+      boughtOffer,
+      boardPlacements,
+      this.rosterFlags,
+    );
 
-    benchUnits.push({
+    const purchasedBenchUnit: BenchUnit = {
       unitType: boughtOffer.unitType,
-      cost: boughtOffer.cost,
+      cost: purchasedUnitCost,
       starLevel: STAR_LEVEL_MIN,
       unitCount: 1,
-    });
+    };
+
+    if (boughtOffer.unitId !== undefined) {
+      purchasedBenchUnit.unitId = boughtOffer.unitId;
+    }
+
+    benchUnits.push(purchasedBenchUnit);
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     this.tryMergeBenchUnits(playerId);
 
@@ -1392,47 +1444,66 @@ export class MatchRoomController {
 
       for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
         for (const starLevel of [STAR_LEVEL_MIN, STAR_LEVEL_MAX - 1] as const) {
-          const mergeCandidates: number[] = [];
+          const mergeKeys = new Set(
+            benchUnits
+              .filter((unit) => unit.unitType === unitType && unit.starLevel === starLevel)
+              .map((unit) => unit.unitId ?? ""),
+          );
 
-          for (let index = 0; index < benchUnits.length; index += 1) {
-            const unit = benchUnits[index];
+          for (const mergeUnitId of mergeKeys) {
+            const mergeCandidates: number[] = [];
 
-            if (!unit || unit.unitType !== unitType || unit.starLevel !== starLevel) {
+            for (let index = 0; index < benchUnits.length; index += 1) {
+              const unit = benchUnits[index];
+
+              if (
+                !unit ||
+                unit.unitType !== unitType ||
+                unit.starLevel !== starLevel ||
+                (unit.unitId ?? "") !== mergeUnitId
+              ) {
+                continue;
+              }
+
+              mergeCandidates.push(index);
+            }
+
+            if (mergeCandidates.length < STAR_MERGE_THRESHOLD) {
               continue;
             }
 
-            mergeCandidates.push(index);
-          }
+            const consumedIndexes = mergeCandidates
+              .slice(0, STAR_MERGE_THRESHOLD)
+              .sort((left, right) => right - left);
+            let mergedCost = 0;
+            let mergedCount = 0;
 
-          if (mergeCandidates.length < STAR_MERGE_THRESHOLD) {
-            continue;
-          }
+            for (const index of consumedIndexes) {
+              const unit = benchUnits[index];
 
-          const consumedIndexes = mergeCandidates
-            .slice(0, STAR_MERGE_THRESHOLD)
-            .sort((left, right) => right - left);
-          let mergedCost = 0;
-          let mergedCount = 0;
+              if (!unit) {
+                continue;
+              }
 
-          for (const index of consumedIndexes) {
-            const unit = benchUnits[index];
-
-            if (!unit) {
-              continue;
+              mergedCost += unit.cost;
+              mergedCount += unit.unitCount;
+              benchUnits.splice(index, 1);
             }
 
-            mergedCost += unit.cost;
-            mergedCount += unit.unitCount;
-            benchUnits.splice(index, 1);
-          }
+            const mergedBenchUnit: BenchUnit = {
+              unitType,
+              cost: mergedCost,
+              starLevel: starLevel + 1,
+              unitCount: mergedCount,
+            };
 
-          benchUnits.push({
-            unitType,
-            cost: mergedCost,
-            starLevel: starLevel + 1,
-            unitCount: mergedCount,
-          });
-          mergedAny = true;
+            if (mergeUnitId !== "") {
+              mergedBenchUnit.unitId = mergeUnitId;
+            }
+
+            benchUnits.push(mergedBenchUnit);
+            mergedAny = true;
+          }
         }
       }
     }
@@ -1450,14 +1521,20 @@ export class MatchRoomController {
     }
 
     benchUnits.splice(benchIndex, 1);
-    boardPlacements.push({
+    const boardPlacement: BoardUnitPlacement = {
       cell,
       unitType: benchUnit.unitType,
       starLevel: benchUnit.starLevel,
       sellValue: benchUnit.cost,
       unitCount: benchUnit.unitCount,
       items: benchUnit.items || [],
-    });
+    };
+
+    if (benchUnit.unitId !== undefined) {
+      boardPlacement.unitId = benchUnit.unitId;
+    }
+
+    boardPlacements.push(boardPlacement);
     boardPlacements.sort((left, right) => left.cell - right.cell);
 
     this.benchUnitsByPlayer.set(playerId, benchUnits);
@@ -1494,9 +1571,7 @@ export class MatchRoomController {
     this.goldByPlayer.set(playerId, currentGold + benchUnit.cost);
 
     // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
-    if (this.enableSharedPool && this.sharedPool) {
-      this.sharedPool.increase(benchUnit.cost);
-    }
+    this.increaseSharedPoolForUnit(benchUnit.unitId, benchUnit.cost, benchUnit.unitCount);
   }
 
   private sellBoardUnit(playerId: string, cell: number): void {
@@ -1549,9 +1624,11 @@ export class MatchRoomController {
     this.goldByPlayer.set(playerId, currentGold + sellValue);
 
     // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
-    if (this.enableSharedPool && this.sharedPool) {
-      this.sharedPool.increase(soldPlacement.sellValue ?? 1);
-    }
+    this.increaseSharedPoolForUnit(
+      soldPlacement.unitId,
+      sellValue,
+      soldPlacement.unitCount ?? soldPlacement.starLevel ?? 1,
+    );
   }
 
   private ensureKnownPlayer(playerId: string): void {
@@ -1571,6 +1648,9 @@ export class MatchRoomController {
   }
 
   public removePlayer(playerId: string): void {
+    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+
     this.playerIds = this.playerIds.filter((id) => id !== playerId);
     this.readyPlayers.delete(playerId);
     this.lastCmdSeqByPlayer.delete(playerId);
@@ -1587,6 +1667,7 @@ export class MatchRoomController {
     this.ownedUnitsByPlayer.delete(playerId);
     this.itemInventoryByPlayer.delete(playerId);
     this.itemShopOffersByPlayer.delete(playerId);
+    this.nijiRyuudouFirstItemDrawConsumedByPlayer.delete(playerId);
     this.battleResultsByPlayer.delete(playerId);
     this.pendingRoundDamageByPlayer.delete(playerId);
     this.hpAtBattleStartByPlayer.delete(playerId);
@@ -1594,27 +1675,90 @@ export class MatchRoomController {
 
     // 共有プールへ全ユニットを返却（Feature Flagが有効な場合）
     if (this.enableSharedPool && this.sharedPool) {
-      const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-      const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-
       // 盤面のユニットを返却
       for (const placement of boardPlacements) {
         const unitCost = placement.sellValue ?? UNIT_TYPE_TO_COST[placement.unitType] ?? 1;
         const unitCount = placement.unitCount ?? placement.starLevel ?? 1;
-        for (let i = 0; i < unitCount; i++) {
-          this.sharedPool.increase(unitCost);
-        }
+        this.increaseSharedPoolForUnit(placement.unitId, unitCost, unitCount);
       }
 
       // ベンチのユニットを返却
       for (const benchUnit of benchUnits) {
         const unitCost = benchUnit.cost ?? 1;
         const unitCount = benchUnit.unitCount ?? 1;
-        for (let i = 0; i < unitCount; i++) {
-          this.sharedPool.increase(unitCost);
-        }
+        this.increaseSharedPoolForUnit(benchUnit.unitId, unitCost, unitCount);
       }
     }
+  }
+
+  private decreaseSharedPoolForOffer(offer: ShopOffer): void {
+    if (!this.enableSharedPool || !this.sharedPool) {
+      return;
+    }
+
+    if (this.rosterFlags.enablePerUnitSharedPool && offer.unitId) {
+      this.sharedPool.decreaseByUnitId(offer.unitId, offer.cost);
+      return;
+    }
+
+    this.sharedPool.decrease(offer.cost);
+  }
+
+  private increaseSharedPoolForUnit(unitId: string | undefined, cost: number, count: number): void {
+    if (!this.enableSharedPool || !this.sharedPool) {
+      return;
+    }
+
+    for (let i = 0; i < count; i += 1) {
+      if (this.rosterFlags.enablePerUnitSharedPool && unitId) {
+        this.sharedPool.increaseByUnitId(unitId, cost);
+      } else {
+        this.sharedPool.increase(cost);
+      }
+    }
+  }
+
+  private tryGrantNijiRyuudouFirstItemDraw(playerId: string): void {
+    if (this.nijiRyuudouFirstItemDrawConsumedByPlayer.get(playerId)) {
+      return;
+    }
+
+    if (!this.hasActiveNijiRyuudouFirstItemDraw(playerId)) {
+      return;
+    }
+
+    const inventory = this.itemInventoryByPlayer.get(playerId);
+
+    if (!inventory || inventory.length >= MAX_INVENTORY_SIZE) {
+      return;
+    }
+
+    const bonusOffer = this.shopOfferBuilder.buildItemShopOffers(ITEM_TYPES, ITEM_DEFINITIONS)[0];
+
+    if (!bonusOffer) {
+      return;
+    }
+
+    inventory.push(bonusOffer.itemType);
+    this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, true);
+  }
+
+  private hasActiveNijiRyuudouFirstItemDraw(playerId: string): boolean {
+    if (!this.rosterFlags.enableTouhouFactions) {
+      return false;
+    }
+
+    const placements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    const resolvedPlacements = resolveBattlePlacements(placements, this.rosterFlags);
+    const synergyDetails = calculateSynergyDetails(
+      resolvedPlacements,
+      null,
+      { enableTouhouFactions: true },
+    );
+    const tier = synergyDetails.factionActiveTiers.niji_ryuudou ?? 0;
+    const factionEffect = getTouhouFactionTierEffect("niji_ryuudou", tier);
+
+    return (factionEffect?.special?.firstItemUseDraws ?? 0) > 0;
   }
 
   private calculateActiveSynergies(
@@ -1622,51 +1766,41 @@ export class MatchRoomController {
     heroSynergyBonusType: BoardUnitType | null = null,
     playerId?: string, // ログ記録用
   ): { unitType: string; count: number; tier: number }[] {
-    const counts: { [key in BoardUnitType]: number } = { vanguard: 0, ranger: 0, mage: 0, assassin: 0 };
-
     if (!placements) {
       return [];
     }
 
-    for (const p of placements) {
-      if (!p || !p.unitType) continue;
-      const unitType = p.unitType;
-
-      // Check if this unit type has associated synergies
-      const synergyNames = UNIT_TYPE_TO_SYNERGY_NAMES[unitType];
-
-      if (synergyNames && synergyNames.length > 0) {
-        // Map each synergy name to its unit type and count
-        for (const synergyName of synergyNames) {
-          const mappedType = SYNERGY_TO_UNIT_TYPE[synergyName];
-          if (mappedType) {
-            counts[mappedType]++;
-          }
-        }
-      } else {
-        // If no specific synergies, count by unit type directly
-        counts[unitType]++;
-      }
-    }
-
-    if (heroSynergyBonusType) {
-      counts[heroSynergyBonusType] += 1;
-    }
+    const resolvedPlacements = resolveBattlePlacements(placements, this.rosterFlags);
+    const synergyDetails = calculateSynergyDetails(
+      resolvedPlacements,
+      heroSynergyBonusType,
+      { enableTouhouFactions: this.rosterFlags.enableTouhouFactions },
+    );
 
     const result: { unitType: string; count: number; tier: number }[] = [];
 
     const unitTypes: BoardUnitType[] = ["vanguard", "ranger", "mage", "assassin"];
 
     for (const type of unitTypes) {
-      const count: number = counts[type]! || 0;
-
-      let tier = 0;
-      if (count >= 9) tier = 3;
-      else if (count >= 6) tier = 2;
-      else if (count >= 3) tier = 1;
+      const count = synergyDetails.countsByType[type] ?? 0;
+      const tier = synergyDetails.activeTiers[type] ?? 0;
 
       if (count > 0) {
         result.push({ unitType: type, count, tier });
+      }
+    }
+
+    if (this.rosterFlags.enableTouhouFactions) {
+      for (const [factionId, count] of Object.entries(synergyDetails.factionCounts)) {
+        if (!count || count <= 0) {
+          continue;
+        }
+
+        result.push({
+          unitType: factionId,
+          count,
+          tier: synergyDetails.factionActiveTiers[factionId as keyof typeof synergyDetails.factionActiveTiers] ?? 0,
+        });
       }
     }
 
@@ -1906,16 +2040,16 @@ export class MatchRoomController {
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
     const leftPlacements = this.battleInputSnapshotByPlayer.get(leftPlayerId) ?? [];
     const rightPlacements = this.battleInputSnapshotByPlayer.get(rightPlayerId) ?? [];
-    const leftResolvedPlacements = resolveBattlePlacements(leftPlacements);
-    const rightResolvedPlacements = resolveBattlePlacements(rightPlacements);
+    const leftResolvedPlacements = resolveBattlePlacements(leftPlacements, this.rosterFlags);
+    const rightResolvedPlacements = resolveBattlePlacements(rightPlacements, this.rosterFlags);
 
     // ボード配置をBattleUnitに変換
     const leftBattleUnits: BattleUnit[] = leftResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "left", index),
+      createBattleUnit(placement, "left", index, false, this.rosterFlags),
     );
 
     const rightBattleUnits: BattleUnit[] = rightResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "right", index),
+      createBattleUnit(placement, "right", index, false, this.rosterFlags),
     );
 
     // スペル効果を適用

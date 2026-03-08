@@ -329,6 +329,7 @@ describe("BattleResolutionService", () => {
         "vanguard",
         "ranger",
         null,
+        undefined,
       );
     });
 
@@ -378,6 +379,7 @@ describe("BattleResolutionService", () => {
         null,
         null,
         mockSubUnitConfig,
+        undefined,
       );
     });
   });

@@ -1,6 +1,8 @@
 import type { CommandResult, BoardUnitPlacement } from "../../shared/room-messages";
 import type { ItemType } from "../../shared/types";
+import type { FeatureFlags } from "../../shared/feature-flags";
 import { normalizeBoardPlacements } from "../combat/unit-effects";
+import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 import type {
   CommandPayload,
   ShopOffer,
@@ -53,9 +55,11 @@ export interface ExecutionDependencies {
   }>;
   getOwnedUnits: (playerId: string) => { vanguard: number; ranger: number; mage: number; assassin: number };
   getItemInventory: (playerId: string) => ItemType[];
+  getBoardPlacements: (playerId: string) => BoardUnitPlacement[];
   getShopOffers: (playerId: string) => ShopOffer[];
   getItemShopOffers: (playerId: string) => ItemShopOffer[];
   getBossShopOffers: (playerId: string) => ShopOffer[];
+  getRosterFlags: () => FeatureFlags;
 
   // Logging
   logBossShop: (
@@ -109,7 +113,11 @@ export function executePrepCommand(
     const offers = deps.getShopOffers(playerId);
     const targetOffer = offers[payload.shopBuySlotIndex];
     if (targetOffer) {
-      totalGoldCost += targetOffer.cost;
+      totalGoldCost += calculateDiscountedShopOfferCost(
+        targetOffer,
+        deps.getBoardPlacements(playerId),
+        deps.getRosterFlags(),
+      );
     }
   }
 

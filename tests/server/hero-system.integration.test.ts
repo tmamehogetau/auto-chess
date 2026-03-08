@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 describe("Hero System Integration Tests", () => {
   let controller: MatchRoomController;
@@ -118,6 +119,75 @@ describe("Hero System Integration Tests", () => {
       expect(scarletSynergy).toBeDefined();
       expect(scarletSynergy?.count).toBe(2);
       expect(scarletSynergy?.tier).toBe(1);
+    });
+
+    it("enableTouhouFactions=false のとき Touhou faction synergy は player status に出さない", async () => {
+      await withFlags({
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableTouhouRoster: true,
+        enableTouhouFactions: false,
+      }, async () => {
+        const touhouController = new MatchRoomController(playerIds, createdAtMs, {
+          readyAutoStartMs: 0,
+          prepDurationMs: 45_000,
+          battleDurationMs: 40_000,
+          settleDurationMs: 5_000,
+          eliminationDurationMs: 2_000,
+        });
+
+        expect(touhouController.startIfReady(createdAtMs, playerIds)).toBe(true);
+
+        const placementResult = touhouController.submitPrepCommand("player1", 1, createdAtMs + 1_000, {
+          boardPlacements: [
+            { cell: 0, unitType: "vanguard", unitId: "rin" },
+            { cell: 1, unitType: "mage", unitId: "satori" },
+          ],
+        });
+
+        expect(placementResult).toEqual({ accepted: true });
+
+        const status = touhouController.getPlayerStatus("player1");
+        expect(status.activeSynergies?.find((synergy) => synergy.unitType === "chireiden")).toBeUndefined();
+      });
+    });
+
+    it("enableTouhouFactions=true のとき Touhou faction synergy を player status に含める", async () => {
+      await withFlags({
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      }, async () => {
+        const touhouController = new MatchRoomController(playerIds, createdAtMs, {
+          readyAutoStartMs: 0,
+          prepDurationMs: 45_000,
+          battleDurationMs: 40_000,
+          settleDurationMs: 5_000,
+          eliminationDurationMs: 2_000,
+        });
+
+        expect(touhouController.startIfReady(createdAtMs, playerIds)).toBe(true);
+
+        const placementResult = touhouController.submitPrepCommand("player1", 1, createdAtMs + 1_000, {
+          boardPlacements: [
+            { cell: 0, unitType: "vanguard", unitId: "rin" },
+            { cell: 1, unitType: "mage", unitId: "satori" },
+            { cell: 2, unitType: "assassin", unitId: "koishi" },
+          ],
+        });
+
+        expect(placementResult).toEqual({ accepted: true });
+
+        const status = touhouController.getPlayerStatus("player1");
+        const factionSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "chireiden");
+        const classSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "mage");
+
+        expect(factionSynergy).toBeDefined();
+        expect(factionSynergy?.count).toBe(3);
+        expect(factionSynergy?.tier).toBe(1);
+        expect(classSynergy).toBeDefined();
+        expect(classSynergy?.count).toBe(1);
+        expect(classSynergy?.tier).toBe(0);
+      });
     });
   });
 

@@ -1,40 +1,84 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MatchRoomState } from "../../src/server/schema/match-room-state";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
+import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
+import { MVP_FLAGS, MIGRATION_FLAGS, FLAG_ENV_VARS } from "./feature-flag-test-helper";
+
+/**
+ * Helper to set env vars from flag configuration.
+ * Reduces duplication and drift risk in test setup.
+ */
+function setFlagEnvVars(
+  mvpConfig: Partial<Record<string, boolean>> = {},
+  migrationConfig: Partial<Record<string, boolean>> = {},
+): void {
+  // Set MVP flags
+  for (const flag of MVP_FLAGS) {
+    const value = mvpConfig[flag] ?? false;
+    process.env[FLAG_ENV_VARS[flag]] = String(value);
+  }
+  // Set migration flags
+  for (const flag of MIGRATION_FLAGS) {
+    const value = migrationConfig[flag] ?? false;
+    process.env[FLAG_ENV_VARS[flag]] = String(value);
+  }
+}
+
+/**
+ * Helper to clear all feature flag environment variables.
+ */
+function clearFlagEnvVars(): void {
+  for (const envVarName of Object.values(FLAG_ENV_VARS)) {
+    delete process.env[envVarName];
+  }
+}
 
 describe("Feature Flag Integration", () => {
+  // Store original env vars for proper restoration
+  const originalEnvVars: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    // Save all flag env vars before each test
+    for (const envVarName of Object.values(FLAG_ENV_VARS)) {
+      originalEnvVars[envVarName] = process.env[envVarName];
+    }
+    // Clear all flag env vars for clean state
+    clearFlagEnvVars();
+    // Reset singleton instance
+    (FeatureFlagService as any).instance = undefined;
+  });
+
+  afterEach(() => {
+    // Restore original env vars individually (not process.env = originalEnv which is brittle)
+    for (const [envVarName, originalValue] of Object.entries(originalEnvVars)) {
+      if (originalValue === undefined) {
+        delete process.env[envVarName];
+      } else {
+        process.env[envVarName] = originalValue;
+      }
+    }
+    // Reset singleton instance
+    (FeatureFlagService as any).instance = undefined;
+  });
+
   describe("FeatureFlagService", () => {
     it("should load default flags when no env vars set", () => {
-      const originalEnv = process.env;
-
-      process.env.FEATURE_ENABLE_HERO_SYSTEM = undefined;
-      process.env.FEATURE_ENABLE_SHARED_POOL = undefined;
-      process.env.FEATURE_ENABLE_PHASE_EXPANSION = undefined;
-      process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = undefined;
-
-      // Reset singleton instance
-      (FeatureFlagService as any).instance = undefined;
       const service = FeatureFlagService.getInstance();
-
       const flags = service.getFlags();
 
       expect(flags.enableHeroSystem).toBe(false);
       expect(flags.enableSharedPool).toBe(false);
       expect(flags.enablePhaseExpansion).toBe(false);
       expect(flags.enableSubUnitSystem).toBe(false);
-
-      process.env = originalEnv;
     });
 
     it("should override flags from env vars", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "1";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "1";
 
-      // Reset singleton instance
+      // Reset singleton instance to pick up new env vars
       (FeatureFlagService as any).instance = undefined;
       const service = FeatureFlagService.getInstance();
 
@@ -44,17 +88,13 @@ describe("Feature Flag Integration", () => {
       expect(flags.enableSharedPool).toBe(true);
       expect(flags.enablePhaseExpansion).toBe(false);
       expect(flags.enableSubUnitSystem).toBe(true);
-
-      process.env = originalEnv;
     });
 
     it("should handle invalid env var values", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "invalid";
       process.env.FEATURE_ENABLE_SHARED_POOL = "FALSE";
 
-      // Reset singleton instance
+      // Reset singleton instance to pick up new env vars
       (FeatureFlagService as any).instance = undefined;
       const service = FeatureFlagService.getInstance();
 
@@ -62,18 +102,14 @@ describe("Feature Flag Integration", () => {
 
       expect(flags.enableHeroSystem).toBe(false);
       expect(flags.enableSharedPool).toBe(false);
-
-      process.env = originalEnv;
     });
 
     it("should check feature enabled status", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "true";
 
-      // Reset singleton instance
+      // Reset singleton instance to pick up new env vars
       (FeatureFlagService as any).instance = undefined;
       const service = FeatureFlagService.getInstance();
 
@@ -81,13 +117,9 @@ describe("Feature Flag Integration", () => {
       expect(service.isFeatureEnabled("enableSharedPool")).toBe(false);
       expect(service.isFeatureEnabled("enablePhaseExpansion")).toBe(false);
       expect(service.isFeatureEnabled("enableSubUnitSystem")).toBe(true);
-
-      process.env = originalEnv;
     });
 
     it("should accept all disabled configuration", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
@@ -102,13 +134,9 @@ describe("Feature Flag Integration", () => {
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).not.toThrow();
-
-      process.env = originalEnv;
     });
 
     it("should reject unsupported multi-feature partial configuration", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "true";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
@@ -125,13 +153,9 @@ describe("Feature Flag Integration", () => {
       expect(() => service.validateFlagConfiguration()).toThrow(
         /MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration/,
       );
-
-      process.env = originalEnv;
     });
 
     it("should reject emblem-only configuration", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
@@ -148,13 +172,9 @@ describe("Feature Flag Integration", () => {
       expect(() => service.validateFlagConfiguration()).toThrow(
         /enableEmblemCells is only allowed in ALL_ENABLED configuration/,
       );
-
-      process.env = originalEnv;
     });
 
     it("should accept all enabled configuration", () => {
-      const originalEnv = process.env;
-
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "true";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "true";
@@ -164,13 +184,183 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "true";
       process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
       process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "true";
+      // Migration flags should be false in ALL_ENABLED mode (MVP flags only)
+      process.env.FEATURE_ENABLE_TOUHOU_ROSTER = "false";
+      process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "false";
+      process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "false";
 
       (FeatureFlagService as any).instance = undefined;
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).not.toThrow();
+    });
 
-      process.env = originalEnv;
+    describe("Migration flags (enableTouhouRoster, enableTouhouFactions, enablePerUnitSharedPool)", () => {
+      it("should have default values for migration flags", () => {
+        const flags = DEFAULT_FLAGS;
+        expect(flags.enableTouhouRoster).toBe(false);
+        expect(flags.enableTouhouFactions).toBe(false);
+        expect(flags.enablePerUnitSharedPool).toBe(false);
+      });
+
+      it("should load migration flags from env vars", () => {
+        process.env.FEATURE_ENABLE_TOUHOU_ROSTER = "true";
+        process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "true";
+        process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "true";
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        const flags = service.getFlags();
+        expect(flags.enableTouhouRoster).toBe(true);
+        expect(flags.enableTouhouFactions).toBe(true);
+        expect(flags.enablePerUnitSharedPool).toBe(true);
+      });
+
+      it("should accept false/false/false migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: false,
+          enableTouhouFactions: false,
+          enablePerUnitSharedPool: false,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).not.toThrow();
+      });
+
+      it("should accept true/false/false migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+          enablePerUnitSharedPool: false,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).not.toThrow();
+      });
+
+      it("should accept true/true/false migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+          enablePerUnitSharedPool: false,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).not.toThrow();
+      });
+
+      it("should accept true/true/true migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+          enablePerUnitSharedPool: true,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).not.toThrow();
+      });
+
+      it("should reject false/true/false migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: false,
+          enableTouhouFactions: true,
+          enablePerUnitSharedPool: false,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).toThrow(
+          /enableTouhouFactions requires enableTouhouRoster/,
+        );
+      });
+
+      it("should reject false/false/true migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: false,
+          enableTouhouFactions: false,
+          enablePerUnitSharedPool: true,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).toThrow(
+          /enablePerUnitSharedPool requires both enableTouhouRoster and enableTouhouFactions/,
+        );
+      });
+
+      it("should reject true/false/true migration configuration", () => {
+        // Use helper to set all flags, reducing duplication
+        setFlagEnvVars({}, {
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+          enablePerUnitSharedPool: true,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        expect(() => service.validateFlagConfiguration()).toThrow(
+          /enablePerUnitSharedPool requires both enableTouhouRoster and enableTouhouFactions/,
+        );
+      });
+
+      it("should reject emblem-only with migration flags active", () => {
+        // Use helper to set all flags, reducing duplication
+        // Emblem enabled (should fail), other MVP disabled, migration active
+        setFlagEnvVars({
+          enableEmblemCells: true,
+        }, {
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+          enablePerUnitSharedPool: false,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        // Emblem-only restriction should NOT be weakened by migration flags
+        expect(() => service.validateFlagConfiguration()).toThrow(
+          /enableEmblemCells is only allowed in ALL_ENABLED configuration/,
+        );
+      });
+
+      it("should reject partial MVP multi-feature with migration flags active", () => {
+        // Use helper to set all flags, reducing duplication
+        // Partial MVP config (hero + shared pool only), migration active
+        setFlagEnvVars({
+          enableHeroSystem: true,
+          enableSharedPool: true,
+        }, {
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+          enablePerUnitSharedPool: false,
+        });
+
+        (FeatureFlagService as any).instance = undefined;
+        const service = FeatureFlagService.getInstance();
+
+        // MVP partial multi-feature restriction should NOT be weakened
+        expect(() => service.validateFlagConfiguration()).toThrow(
+          /MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration/,
+        );
+      });
     });
   });
 

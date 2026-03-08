@@ -12,12 +12,12 @@
   "boss": {
     "id": "remilia",
     "name": "レミリア",
-    "hp": 3200,
-    "attack": 280,
-    "attackSpeed": 0.95,
+    "hp": 580,
+    "attack": 47,
+    "attackSpeed": 0.57,
     "range": 3,
     "healOnPhaseFail": 100,
-    "physicalReduction": 15,
-    "magicReduction": 10
+    "physicalReduction": 0,
+    "magicReduction": 0
   }
 }

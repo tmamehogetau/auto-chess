@@ -240,10 +240,12 @@ describe("SharedBoardBridge validation (T1-2)", () => {
     });
 
     it("applySharedBoardPlacement失敗時はconsole.errorが呼ばれる", async () => {
-      const { bridge } = createBridge();
+      const { bridge, controller } = createBridge();
 
-      // READY状態でない = エラー
-      Reflect.set(bridge, "state", "CONNECTING");
+      // controller.applyPrepPlacementForPlayer で例外を投げて catch path を通す
+      controller.applyPrepPlacementForPlayer.mockImplementation(() => {
+        throw new Error("Test exception from applyPrepPlacementForPlayer");
+      });
 
       const result = await bridge.applySharedBoardPlacement({
         opId: "op-1",
@@ -256,7 +258,16 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       });
 
       expect(result.success).toBe(false);
-      // エラーパスではログが出力される（または出力されてもOK）
+      expect(result.code).toBe("error");
+      // catch path で console.error が呼ばれることを検証
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const errorCall = consoleErrorSpy.mock.calls.find(
+        (call) =>
+          typeof call[0] === "string" &&
+          call[0].includes("[SharedBoardBridge]") &&
+          call[0].includes("Apply placement failed"),
+      );
+      expect(errorCall).toBeDefined();
     });
   });
 });

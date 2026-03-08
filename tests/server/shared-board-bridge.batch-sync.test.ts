@@ -264,14 +264,24 @@ describe("SharedBoardBridge batch sync", () => {
       // 実際にapplyPlacementsFromGameが呼ばれたことを確認（no-op化防止）
       expect(mockApplyPlacementsFromGame).toHaveBeenCalledWith("player-a", placements);
 
-      // placement payload（unitType等）がstdoutに出力されていないことを直接検証
-      const allLogs = consoleLogSpy.mock.calls.map((call) =>
-        call.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "),
-      );
-      const hasPlacementPayload = allLogs.some(
-        (log) => log.includes("vanguard") || log.includes('"cell":') || log.includes('"unitType":'),
+      // placements を持つ object が console.log に渡されていないことを構造的に検証
+      const hasPlacementPayload = consoleLogSpy.mock.calls.some((call) =>
+        call.some((arg) => {
+          if (typeof arg !== "object" || arg === null) return false;
+          const hasPlacementsProp = "placements" in arg && Array.isArray((arg as Record<string, unknown>).placements);
+          return hasPlacementsProp;
+        }),
       );
       expect(hasPlacementPayload).toBe(false);
+
+      // 削除されたログ prefix が呼ばれていないことも確認
+      const hasDeletedLogPrefix = consoleLogSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === "string" &&
+          (call[0].includes("[SharedBoardBridge] Applied placement:") ||
+            call[0].includes("[SharedBoardBridge] Sent placement to shared board:")),
+      );
+      expect(hasDeletedLogPrefix).toBe(false);
     });
 
     it("sendPlacementToSharedBoard失敗時にエラーログが出力される", async () => {

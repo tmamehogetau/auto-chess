@@ -781,6 +781,51 @@ describe("MatchRoomController", () => {
     });
   });
 
+  test("myourenji 割引購入ユニットを即売却しても差額goldは増えない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+        { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const goldBefore = controller.getPlayerStatus("p1").gold;
+      const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const goldAfterBuy = controller.getPlayerStatus("p1").gold;
+      const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
+        benchSellIndex: 0,
+      });
+      const status = controller.getPlayerStatus("p1");
+
+      expect(buyResult).toEqual({ accepted: true });
+      expect(sellResult).toEqual({ accepted: true });
+      expect(goldAfterBuy).toBe(goldBefore - 1);
+      expect(status.gold).toBe(goldBefore);
+    });
+  });
+
   test("ベンチ満杯でshopBuySlotIndexはBENCH_FULLで却下される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

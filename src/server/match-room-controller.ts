@@ -27,6 +27,7 @@ import {
   executePrepCommand,
   type ExecutionDependencies,
 } from "./match-room-controller/prep-command-executor";
+import { calculateDiscountedShopOfferCost } from "./match-room-controller/shop-cost-reduction";
 import {
   normalizeBoardPlacements,
   resolveBoardPowerFromState,
@@ -1400,10 +1401,16 @@ export class MatchRoomController {
     this.shopOffersByPlayer.set(playerId, offers);
 
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    const purchasedUnitCost = calculateDiscountedShopOfferCost(
+      boughtOffer,
+      boardPlacements,
+      this.rosterFlags,
+    );
 
     const purchasedBenchUnit: BenchUnit = {
       unitType: boughtOffer.unitType,
-      cost: boughtOffer.cost,
+      cost: purchasedUnitCost,
       starLevel: STAR_LEVEL_MIN,
       unitCount: 1,
     };

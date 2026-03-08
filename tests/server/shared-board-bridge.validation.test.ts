@@ -238,8 +238,8 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       );
 
       // placements を持つ object が console.log に渡されていないことを構造的に検証
-      const hasPlacementPayload = consoleLogSpy.mock.calls.some((call) =>
-        call.some((arg) => {
+      const hasPlacementPayload = consoleLogSpy.mock.calls.some((call: unknown[]) =>
+        call.some((arg: unknown) => {
           if (typeof arg !== "object" || arg === null) return false;
           // arg が placements プロパティを持つか、削除されたログ prefix があるか
           const hasPlacementsProp = "placements" in arg && Array.isArray((arg as Record<string, unknown>).placements);
@@ -250,7 +250,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
 
       // 削除されたログ prefix が呼ばれていないことも確認
       const hasDeletedLogPrefix = consoleLogSpy.mock.calls.some(
-        (call) =>
+        (call: unknown[]) =>
           typeof call[0] === "string" &&
           (call[0].includes("[SharedBoardBridge] Applied placement:") ||
             call[0].includes("[SharedBoardBridge] Sent placement to shared board:")),
@@ -280,7 +280,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       expect(result.code).toBe("error");
       // catch path で "[SharedBoardBridge] Apply placement failed:" が出力されることを厳密に検証
       const errorCall = consoleErrorSpy.mock.calls.find(
-        (call) =>
+        (call: unknown[]) =>
           typeof call[0] === "string" &&
           call[0].includes("[SharedBoardBridge] Apply placement failed:"),
       );

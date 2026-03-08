@@ -265,8 +265,8 @@ describe("SharedBoardBridge batch sync", () => {
       expect(mockApplyPlacementsFromGame).toHaveBeenCalledWith("player-a", placements);
 
       // placements を持つ object が console.log に渡されていないことを構造的に検証
-      const hasPlacementPayload = consoleLogSpy.mock.calls.some((call) =>
-        call.some((arg) => {
+      const hasPlacementPayload = consoleLogSpy.mock.calls.some((call: unknown[]) =>
+        call.some((arg: unknown) => {
           if (typeof arg !== "object" || arg === null) return false;
           const hasPlacementsProp = "placements" in arg && Array.isArray((arg as Record<string, unknown>).placements);
           return hasPlacementsProp;
@@ -276,7 +276,7 @@ describe("SharedBoardBridge batch sync", () => {
 
       // 削除されたログ prefix が呼ばれていないことも確認
       const hasDeletedLogPrefix = consoleLogSpy.mock.calls.some(
-        (call) =>
+        (call: unknown[]) =>
           typeof call[0] === "string" &&
           (call[0].includes("[SharedBoardBridge] Applied placement:") ||
             call[0].includes("[SharedBoardBridge] Sent placement to shared board:")),
@@ -303,7 +303,7 @@ describe("SharedBoardBridge batch sync", () => {
 
       // "[SharedBoardBridge] Send placement failed:" が出力されることを厳密に検証
       const errorCall = consoleErrorSpy.mock.calls.find(
-        (call) =>
+        (call: unknown[]) =>
           typeof call[0] === "string" &&
           call[0].includes("[SharedBoardBridge] Send placement failed:"),
       );

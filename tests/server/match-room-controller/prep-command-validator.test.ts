@@ -378,6 +378,20 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
     });
 
+    test("shopBuySlotIndex with depleted unitId pool returns POOL_DEPLETED", () => {
+      const deps = createDependencies({
+        isSharedPoolEnabled: vi.fn().mockReturnValue(true),
+        isPoolDepleted: vi.fn().mockImplementation((_cost: number, unitId?: string) => unitId === "rin"),
+        getShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", rarity: 1, cost: 1, unitId: "rin" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
+    });
+
     test("itemBuySlotIndex with full inventory returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         getItemInventory: vi.fn().mockReturnValue(new Array(9).fill("sword")),

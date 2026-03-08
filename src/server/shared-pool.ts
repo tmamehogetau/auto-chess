@@ -1,3 +1,5 @@
+import { getTouhouUnitsByCost } from "../data/touhou-units";
+
 /**
  * 共有プールの在庫管理クラス
  * Feature Flag: enableSharedPool が true の場合のみ有効化される
@@ -18,6 +20,7 @@ export class SharedPool {
       [5, 6],
     ]);
     this.inventoryByUnitId = new Map<string, number>();
+    this.seedPerUnitInventory();
   }
 
   /**
@@ -76,7 +79,7 @@ export class SharedPool {
     }
 
     const current = this.getAvailableByUnitId(unitId, cost);
-    if (current <= 0) {
+    if (current <= 0 || !this.decrease(cost)) {
       return false;
     }
 
@@ -90,6 +93,7 @@ export class SharedPool {
     }
 
     const current = this.getAvailableByUnitId(unitId, cost);
+    this.increase(cost);
     this.inventoryByUnitId.set(unitId, current + 1);
   }
 
@@ -98,7 +102,7 @@ export class SharedPool {
       return 0;
     }
 
-    return this.inventoryByUnitId.get(unitId) ?? this.getAvailable(cost);
+    return this.inventoryByUnitId.get(unitId) ?? 0;
   }
 
   public isDepletedByUnitId(unitId: string, cost: number): boolean {
@@ -114,6 +118,26 @@ export class SharedPool {
 
   private isValidUnitId(unitId: string): boolean {
     return typeof unitId === "string" && unitId.length > 0;
+  }
+
+  private seedPerUnitInventory(): void {
+    for (const cost of [1, 2, 3, 4, 5] as const) {
+      const units = getTouhouUnitsByCost(cost);
+      const total = this.inventory.get(cost) ?? 0;
+
+      if (units.length === 0) {
+        continue;
+      }
+
+      const baseCount = Math.floor(total / units.length);
+      let remainder = total % units.length;
+
+      for (const unit of units) {
+        const extraCount = remainder > 0 ? 1 : 0;
+        this.inventoryByUnitId.set(unit.unitId, baseCount + extraCount);
+        remainder = Math.max(0, remainder - 1);
+      }
+    }
   }
 
   /**

@@ -68,6 +68,10 @@ export interface BoardUnitPlacement {
   unitType: BoardUnitType;
   unitId?: UnitId;
   factionId?: TouhouFactionId | null;
+  hp?: number;
+  attack?: number;
+  attackSpeed?: number;
+  range?: number;
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;

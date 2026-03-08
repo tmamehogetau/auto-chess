@@ -249,6 +249,28 @@ describe("GameRoom Integration with Feature Flags", () => {
         });
       });
 
+      test("Touhou full migration では shared pool 実効フラグが state へ反映される", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(true);
+          expect(serverRoom.state.featureFlagsEnablePerUnitSharedPool).toBe(true);
+        });
+      });
+
       test("Prepの締切を過ぎるとBattleへ自動遷移する", async () => {
         await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
           const serverRoom = await testServer.createRoom<GameRoom>("game");
@@ -697,10 +719,18 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedRin.unitType).toBe("vanguard");
           expect(resolvedRin.unitId).toBe("rin");
           expect(resolvedRin.factionId).toBe("chireiden");
+          expect(resolvedRin.hp).toBe(620);
+          expect(resolvedRin.attack).toBe(40);
+          expect(resolvedRin.attackSpeed).toBe(0.85);
+          expect(resolvedRin.range).toBe(1);
 
           expect(resolvedZanmu.unitType).toBe("mage");
           expect(resolvedZanmu.unitId).toBe("zanmu");
           expect(resolvedZanmu.factionId).toBeNull();
+          expect(resolvedZanmu.hp).toBe(1180);
+          expect(resolvedZanmu.attack).toBe(118);
+          expect(resolvedZanmu.attackSpeed).toBe(0.85);
+          expect(resolvedZanmu.range).toBe(3);
         });
       });
     });

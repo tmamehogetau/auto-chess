@@ -9,6 +9,10 @@ type ResolvedUnitMetadata = {
   unitType: BoardUnitType;
   archetype?: string;
   factionId?: TouhouFactionId | null;
+  hp?: number;
+  attack?: number;
+  attackSpeed?: number;
+  range?: number;
 };
 
 const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
@@ -45,6 +49,13 @@ function getResolvedUnitMetadata(
     const resolvedMetadata: ResolvedUnitMetadata = {
       unitType: rosterUnit.type,
     };
+
+    if (flags.enableTouhouRoster) {
+      resolvedMetadata.hp = rosterUnit.hp;
+      resolvedMetadata.attack = rosterUnit.attack;
+      resolvedMetadata.attackSpeed = rosterUnit.attackSpeed;
+      resolvedMetadata.range = rosterUnit.range;
+    }
 
     if (rosterUnit.factionId !== undefined) {
       resolvedMetadata.factionId = rosterUnit.factionId;
@@ -90,6 +101,22 @@ export function resolveBattlePlacement(
       resolvedPlacement.factionId = resolvedMetadata.factionId;
     }
 
+    if (resolvedMetadata.hp !== undefined) {
+      resolvedPlacement.hp = resolvedMetadata.hp;
+    }
+
+    if (resolvedMetadata.attack !== undefined) {
+      resolvedPlacement.attack = resolvedMetadata.attack;
+    }
+
+    if (resolvedMetadata.attackSpeed !== undefined) {
+      resolvedPlacement.attackSpeed = resolvedMetadata.attackSpeed;
+    }
+
+    if (resolvedMetadata.range !== undefined) {
+      resolvedPlacement.range = resolvedMetadata.range;
+    }
+
     return resolvedPlacement;
   }
 
@@ -100,6 +127,22 @@ export function resolveBattlePlacement(
 
   if (resolvedMetadata.factionId !== undefined) {
     resolvedPlacement.factionId = resolvedMetadata.factionId;
+  }
+
+  if (resolvedMetadata.hp !== undefined) {
+    resolvedPlacement.hp = resolvedMetadata.hp;
+  }
+
+  if (resolvedMetadata.attack !== undefined) {
+    resolvedPlacement.attack = resolvedMetadata.attack;
+  }
+
+  if (resolvedMetadata.attackSpeed !== undefined) {
+    resolvedPlacement.attackSpeed = resolvedMetadata.attackSpeed;
+  }
+
+  if (resolvedMetadata.range !== undefined) {
+    resolvedPlacement.range = resolvedMetadata.range;
   }
 
   return resolvedPlacement;

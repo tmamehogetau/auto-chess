@@ -549,10 +549,38 @@ describe("MatchRoomController", () => {
       const nazrinAfter = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
 
       expect(result).toEqual({ accepted: true });
+      expect(before).toBe(5);
+      expect(after).toBe(4);
+      expect(nazrinBefore).toBe(5);
+      expect(nazrinAfter).toBe(5);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では sharedPoolInventory が実在庫総量を反映する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, rarity: 1 },
+      ]);
+
+      const before = controller.getPlayerStatus("p1").sharedPoolInventory?.get(1);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 0 });
+      const after = controller.getPlayerStatus("p1").sharedPoolInventory?.get(1);
+
+      expect(result).toEqual({ accepted: true });
       expect(before).toBe(18);
       expect(after).toBe(17);
-      expect(nazrinBefore).toBe(18);
-      expect(nazrinAfter).toBe(18);
     });
   });
 

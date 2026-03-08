@@ -227,6 +227,33 @@ describe("battle-simulator", () => {
       expect(unitWithDirectType.type).toBe("vanguard");
       expect(unitWithDirectType.hp).toBe(80); // base vanguard HP
     });
+
+    test("Touhou roster 有効時は unitId 解決した戦闘ステータスを使う", () => {
+      const touhouFlags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+
+      const unit = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", unitId: "rin", starLevel: 1 },
+        "left",
+        0,
+        false,
+        touhouFlags,
+      );
+
+      expect(unit).toMatchObject({
+        id: "left-vanguard-0",
+        type: "vanguard",
+        hp: 620,
+        maxHp: 620,
+        attackPower: 40,
+        attackSpeed: 0.85,
+        attackRange: 1,
+        defense: 3,
+      });
+    });
   });
 
   describe("calculateCellDistance", () => {
@@ -650,7 +677,21 @@ describe("battle-simulator", () => {
         createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 1_000);
+      simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        1_000,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
 
       expect(leftUnits[0]?.attackPower).toBe(6);
       expect(leftUnits[1]?.attackPower).toBe(6);
@@ -677,13 +718,69 @@ describe("battle-simulator", () => {
         createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 1_000);
+      simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        1_000,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
 
       expect(leftUnits[0]?.maxHp).toBeGreaterThan(50);
       expect(leftUnits[1]?.maxHp).toBeGreaterThan(80);
       expect(leftUnits[2]?.attackPower).toBeGreaterThan(6);
       expect(leftUnits[3]?.maxHp).toBe(40);
       expect(leftUnits[3]?.attackPower).toBe(6);
+    });
+
+    test("enableTouhouFactions=false では factionId があっても faction buff を適用しない", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index, false, {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+        }),
+      );
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+
+      simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        1_000,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: false,
+        },
+      );
+
+      expect(leftUnits[0]?.attackPower).toBe(45);
+      expect(leftUnits[1]?.attackPower).toBe(64);
     });
 
     test("戦闘ログにダメージ情報が記録される", () => {

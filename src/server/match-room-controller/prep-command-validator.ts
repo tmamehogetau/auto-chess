@@ -83,7 +83,7 @@ export interface ValidationDependencies {
   getBossShopOffers: (playerId: string) => ShopOffer[];
   isBossPlayer: (playerId: string) => boolean;
   isSharedPoolEnabled: () => boolean;
-  isPoolDepleted: (cost: number) => boolean;
+  isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
 }
 
@@ -452,7 +452,7 @@ function validatePreconditions(
     // Shared pool check
     if (deps.isSharedPoolEnabled()) {
       const targetOffer = offers[payload.shopBuySlotIndex];
-      if (targetOffer && deps.isPoolDepleted(targetOffer.cost)) {
+      if (targetOffer && deps.isPoolDepleted(targetOffer.cost, targetOffer.unitId)) {
         return { accepted: false, code: "POOL_DEPLETED" };
       }
     }

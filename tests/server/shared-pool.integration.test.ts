@@ -189,19 +189,30 @@ describe('SharedPool Integration Tests', () => {
 
       expect(rin).toBeDefined();
       expect(byakuren).toBeDefined();
-      expect(pool.getAvailableByUnitId('rin', rin!.cost)).toBe(18);
-      expect(pool.getAvailableByUnitId('byakuren', byakuren!.cost)).toBe(6);
+      expect(pool.getAvailableByUnitId('rin', rin!.cost)).toBe(5);
+      expect(pool.getAvailableByUnitId('byakuren', byakuren!.cost)).toBe(2);
     });
 
     it('unitId ベースで減算と枯渇判定ができること', () => {
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < 5; i++) {
         expect(pool.decreaseByUnitId('rin', 1)).toBe(true);
       }
 
       expect(pool.decreaseByUnitId('rin', 1)).toBe(false);
       expect(pool.isDepletedByUnitId('rin', 1)).toBe(true);
       expect(pool.getAvailableByUnitId('rin', 1)).toBe(0);
-      expect(pool.getAvailableByUnitId('nazrin', 1)).toBe(18);
+      expect(pool.getAvailableByUnitId('nazrin', 1)).toBe(5);
+      expect(pool.getAvailable(1)).toBe(13);
+    });
+
+    it('同コスト unitId 在庫の合計は cost 在庫総量を超えないこと', () => {
+      const cost1Units = TOUHOU_UNITS.filter((unit) => unit.cost === 1);
+      const totalAvailable = cost1Units.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, unit.cost),
+        0,
+      );
+
+      expect(totalAvailable).toBe(pool.getAvailable(1));
     });
   });
 

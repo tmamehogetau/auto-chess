@@ -517,6 +517,7 @@ export class MatchRoomController {
       subUnitAssistConfigByType: this.enableSubUnitSystem
         ? this.subUnitAssistConfigByType
         : null,
+      featureFlags: this.rosterFlags,
     };
     this.battleResolutionService = new BattleResolutionService(battleResolutionDeps);
 
@@ -1064,7 +1065,13 @@ export class MatchRoomController {
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       isBossPlayer: (id) => this.isBossPlayer(id),
       isSharedPoolEnabled: () => this.enableSharedPool,
-      isPoolDepleted: (cost) => this.sharedPool?.isDepleted(cost) ?? false,
+      isPoolDepleted: (cost, unitId) => {
+        if (this.rosterFlags.enablePerUnitSharedPool && unitId) {
+          return this.sharedPool?.isDepletedByUnitId(unitId, cost) ?? false;
+        }
+
+        return this.sharedPool?.isDepleted(cost) ?? false;
+      },
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
     };
 

@@ -1,6 +1,6 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
 import type { SubUnitConfig } from "../../shared/types";
-import type { FeatureFlags } from "../../shared/feature-flags";
+import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import {
@@ -104,7 +104,16 @@ export function createBattleUnit(
   flags: FeatureFlags,
 ): BattleUnit {
   const resolvedPlacement = resolveBattlePlacement(placement, flags);
-  const { unitType, starLevel = 1, cell, archetype } = resolvedPlacement;
+  const {
+    unitType,
+    starLevel = 1,
+    cell,
+    archetype,
+    hp: resolvedHp,
+    attack: resolvedAttack,
+    attackSpeed: resolvedAttackSpeed,
+    range: resolvedRange,
+  } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
 
   // Scarlet Mansionユニットの特殊ステータスをチェック
@@ -149,10 +158,10 @@ export function createBattleUnit(
   } else {
     // 通常ユニット: 星レベル倍率を適用
     const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
-    finalHp = baseStats.hp * starMultiplier;
-    finalAttack = baseStats.attack * starMultiplier;
-    finalAttackSpeed = baseStats.attackSpeed;
-    finalRange = baseStats.range;
+    finalHp = (resolvedHp ?? baseStats.hp) * starMultiplier;
+    finalAttack = (resolvedAttack ?? baseStats.attack) * starMultiplier;
+    finalAttackSpeed = resolvedAttackSpeed ?? baseStats.attackSpeed;
+    finalRange = resolvedRange ?? baseStats.range;
     finalDefense = unitType === "vanguard" ? 3 : 0;
   }
 
@@ -257,9 +266,10 @@ function applySynergyBuffs(
   units: BattleUnit[],
   boardPlacements: BoardUnitPlacement[],
   heroSynergyBonusType: BoardUnitType | null = null,
+  flags: FeatureFlags = DEFAULT_FLAGS,
 ): void {
   const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType, {
-    enableTouhouFactions: boardPlacements.some((placement) => placement.factionId !== undefined),
+    enableTouhouFactions: flags.enableTouhouFactions,
   });
   const scarletMansionSynergyActive = calculateScarletMansionSynergy(boardPlacements);
 
@@ -459,6 +469,7 @@ export class BattleSimulator {
     leftHeroSynergyBonusType: BoardUnitType | null = null,
     rightHeroSynergyBonusType: BoardUnitType | null = null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null = null,
+    flags: FeatureFlags = DEFAULT_FLAGS,
   ): BattleResult {
     try {
       // Bug #3 fix: Validate input teams
@@ -488,8 +499,8 @@ export class BattleSimulator {
       const rightScarletBossLifestealActive = hasScarletMansionBossLifesteal(rightPlacements);
 
       // シナジーバフを適用
-      applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType);
-      applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType);
+      applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType, flags);
+      applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType, flags);
 
       // アイテム効果を適用
       for (let i = 0; i < leftUnits.length; i++) {

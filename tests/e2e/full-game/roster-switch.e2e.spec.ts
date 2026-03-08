@@ -6,7 +6,7 @@ import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 import mvpPhase1UnitsData from "../../../src/data/mvp_phase1_units.json";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { FeatureFlagService } from "../../../src/server/feature-flag-service";
-import { FLAG_CONFIGURATIONS, withFlags } from "../../server/feature-flag-test-helper";
+import { createRoomWithForcedFlags, FLAG_CONFIGURATIONS, withFlags } from "../../server/feature-flag-test-helper";
 import { waitForCondition } from "../shared-board-bridge/helpers/wait";
 
 describe("E2E: Roster Switch", () => {
@@ -134,5 +134,87 @@ describe("E2E: Roster Switch", () => {
         client.connection.close();
       }
     });
+  });
+
+  /**
+   * Regression coverage: Legacy fallback hard boundary enforcement (E2E level)
+   * Uses controlled test fixture to force-set adjacent Touhou flags while keeping roster OFF.
+   * This bypasses FeatureFlagService validation to test the provider boundary directly.
+   */
+  it("LEGACY: TouhouFactions=true without TouhouRoster still offers MVP units (controlled fixture)", { timeout: 30_000 }, async () => {
+    // Use controlled fixture: force-set flags after room creation (bypasses validation)
+    const gameRoom = await createRoomWithForcedFlags(testServer, {
+      enableTouhouRoster: false,
+      enableTouhouFactions: true,
+    });
+    const clients = await setupGameWith4Players(gameRoom);
+    const player = gameRoom.state.players.get(clients[0]!.sessionId);
+    const offers = player?.shopOffers ?? [];
+
+    // Verify controlled fixture: adjacent flag is ON, main switch is OFF
+    const featureFlagService = FeatureFlagService.getInstance();
+    expect(featureFlagService.isFeatureEnabled("enableTouhouRoster")).toBe(false);
+    expect(featureFlagService.isFeatureEnabled("enableTouhouFactions")).toBe(true);
+
+    // Shop must still offer MVP units (roster provider boundary enforcement)
+    expect(offers.length).toBeGreaterThan(0);
+    expect(offers.every((offer) => mvpUnitTypes.has(offer.unitType))).toBe(true);
+    expect(offers.every((offer) => offer.unitId === "")).toBe(true);
+
+    for (const client of clients) {
+      client.connection.close();
+    }
+  });
+
+  it("LEGACY: PerUnitSharedPool=true without TouhouRoster still offers MVP units (controlled fixture)", { timeout: 30_000 }, async () => {
+    const gameRoom = await createRoomWithForcedFlags(testServer, {
+      enableTouhouRoster: false,
+      enablePerUnitSharedPool: true,
+    });
+    const clients = await setupGameWith4Players(gameRoom);
+    const player = gameRoom.state.players.get(clients[0]!.sessionId);
+    const offers = player?.shopOffers ?? [];
+
+    const featureFlagService = FeatureFlagService.getInstance();
+    expect(featureFlagService.isFeatureEnabled("enableTouhouRoster")).toBe(false);
+    expect(featureFlagService.isFeatureEnabled("enablePerUnitSharedPool")).toBe(true);
+
+    // Shop must still offer MVP units
+    expect(offers.length).toBeGreaterThan(0);
+    expect(offers.every((offer) => mvpUnitTypes.has(offer.unitType))).toBe(true);
+    expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 3)).toBe(true);
+
+    for (const client of clients) {
+      client.connection.close();
+    }
+  });
+
+  it("LEGACY: All adjacent Touhou flags ON but roster OFF keeps MVP offers (controlled fixture)", { timeout: 30_000 }, async () => {
+    const gameRoom = await createRoomWithForcedFlags(testServer, {
+      enableTouhouRoster: false,
+      enableTouhouFactions: true,
+      enablePerUnitSharedPool: true,
+      enableSharedPool: true,
+    });
+    const clients = await setupGameWith4Players(gameRoom);
+    const player = gameRoom.state.players.get(clients[0]!.sessionId);
+    const offers = player?.shopOffers ?? [];
+
+    // Verify controlled fixture: all adjacent flags are ON, main switch is OFF
+    const featureFlagService = FeatureFlagService.getInstance();
+    expect(featureFlagService.isFeatureEnabled("enableTouhouRoster")).toBe(false);
+    expect(featureFlagService.isFeatureEnabled("enableTouhouFactions")).toBe(true);
+    expect(featureFlagService.isFeatureEnabled("enablePerUnitSharedPool")).toBe(true);
+    expect(featureFlagService.isFeatureEnabled("enableSharedPool")).toBe(true);
+
+    // MVP offers must be maintained despite adjacent flags (hard boundary)
+    expect(offers.length).toBeGreaterThan(0);
+    expect(offers.every((offer) => mvpUnitTypes.has(offer.unitType))).toBe(true);
+    expect(offers.every((offer) => !touhouUnitIds.has(offer.unitId))).toBe(true);
+    expect(offers.every((offer) => offer.unitId === "")).toBe(true);
+
+    for (const client of clients) {
+      client.connection.close();
+    }
   });
 });

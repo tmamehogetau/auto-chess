@@ -54,6 +54,15 @@ class FeatureFlagService {
    * T5: フラグ構成の検証
    * 非許可の組み合わせを検出してエラーを投げる
    */
+  /**
+   * Force set flags without validation - for controlled test fixtures only.
+   * This bypasses validation rules to test specific edge cases.
+   * @param flags - Partial flags to override
+   */
+  public forceSetFlags(flags: Partial<FeatureFlags>): void {
+    this.flags = { ...this.flags, ...flags };
+  }
+
   public validateFlagConfiguration(): void {
     const flags = this.flags;
 

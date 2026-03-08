@@ -122,6 +122,45 @@ export async function createRoomWithFlags(
 }
 
 /**
+ * Create a controlled test fixture with forced flag values.
+ * Bypasses FeatureFlagService validation - use only for testing legacy fallback behavior.
+ *
+ * @param testServer - ColyseusTestServer instance
+ * @param forcedFlags - Flags to force-set (validation bypassed)
+ * @param roomOptions - Additional options to pass to createRoom
+ * @returns Promise resolving to the created GameRoom instance
+ */
+export async function createRoomWithForcedFlags(
+  testServer: ColyseusTestServer,
+  forcedFlags: Partial<FeatureFlags>,
+  roomOptions?: Record<string, unknown>,
+): Promise<GameRoom> {
+  const originalEnv = { ...process.env };
+
+  try {
+    // Set base environment (ALL_DISABLED)
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = "false";
+    }
+
+    // Reset singleton instance to pick up new environment variables
+    (FeatureFlagService as any).instance = undefined;
+
+    // Create room
+    const serverRoom = await testServer.createRoom<GameRoom>("game", roomOptions);
+
+    // Force-set flags after creation (bypasses validation)
+    const featureFlagService = FeatureFlagService.getInstance();
+    featureFlagService.forceSetFlags(forcedFlags);
+
+    return serverRoom;
+  } finally {
+    // Restore original environment variables
+    process.env = originalEnv;
+  }
+}
+
+/**
  * Predefined flag configurations for common test scenarios
  */
 export const FLAG_CONFIGURATIONS = {

@@ -13,6 +13,7 @@ describe("E2E: Roster Switch", () => {
   let testServer: ColyseusTestServer;
   const TEST_SERVER_PORT = 4576;
   const mvpUnitTypes = new Set(mvpPhase1UnitsData.units.map((unit) => unit.type));
+  const mvpUnitIds = new Set(mvpPhase1UnitsData.units.map((unit) => unit.unitId));
   const touhouUnitIds = new Set(TOUHOU_UNITS.map((unit) => unit.unitId));
 
   beforeAll(async () => {
@@ -159,9 +160,14 @@ describe("E2E: Roster Switch", () => {
 
     // Shop must offer MVP units (not Touhou), regardless of adjacent flags
     expect(offers.length).toBeGreaterThan(0);
+    // All offers must be from MVP roster types
     expect(offers.every((offer) => mvpUnitTypes.has(offer.unitType))).toBe(true);
-    // MVP units have cost 1-3, Touhou have 1-5 - this distinguishes them without brittle unitId check
+    // CRITICAL: No Touhou unitIds should be present (strong regression guard)
+    expect(offers.some((offer) => touhouUnitIds.has(offer.unitId))).toBe(false);
+    // MVP units have cost 1-3, Touhou have 1-5 - additional distinguishing factor
     expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 3)).toBe(true);
+    // All offers should have unitIds from MVP roster (or empty for legacy MVP)
+    expect(offers.every((offer) => offer.unitId === "" || mvpUnitIds.has(offer.unitId))).toBe(true);
 
     for (const client of clients) {
       client.connection.close();
@@ -181,10 +187,13 @@ describe("E2E: Roster Switch", () => {
     expect(featureFlagService.isFeatureEnabled("enableTouhouRoster")).toBe(false);
     expect(featureFlagService.isFeatureEnabled("enablePerUnitSharedPool")).toBe(true);
 
-    // Shop must still offer MVP units
+    // Shop must still offer MVP units (not Touhou)
     expect(offers.length).toBeGreaterThan(0);
     expect(offers.every((offer) => mvpUnitTypes.has(offer.unitType))).toBe(true);
+    // CRITICAL: No Touhou unitIds should be present
+    expect(offers.some((offer) => touhouUnitIds.has(offer.unitId))).toBe(false);
     expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 3)).toBe(true);
+    expect(offers.every((offer) => offer.unitId === "" || mvpUnitIds.has(offer.unitId))).toBe(true);
 
     for (const client of clients) {
       client.connection.close();
@@ -212,8 +221,12 @@ describe("E2E: Roster Switch", () => {
     // MVP offers must be maintained despite adjacent flags (hard boundary)
     expect(offers.length).toBeGreaterThan(0);
     expect(offers.every((offer) => mvpUnitTypes.has(offer.unitType))).toBe(true);
+    // CRITICAL: No Touhou unitIds should be present (most important regression guard)
+    expect(offers.some((offer) => touhouUnitIds.has(offer.unitId))).toBe(false);
     // Verify these are NOT Touhou units (by cost range)
     expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 3)).toBe(true);
+    // All offers should be from MVP roster only
+    expect(offers.every((offer) => offer.unitId === "" || mvpUnitIds.has(offer.unitId))).toBe(true);
 
     for (const client of clients) {
       client.connection.close();

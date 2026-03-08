@@ -122,17 +122,31 @@ export async function createRoomWithFlags(
 }
 
 /**
- * Store the original FeatureFlagService instance for restoration after tests.
+ * Store the original getInstance method for restoration after tests.
  * Used by createRoomWithForcedFlags to allow flag assertions in test body.
  */
-let originalInstance: FeatureFlagService | undefined;
+let originalGetInstance: (() => FeatureFlagService) | undefined;
+
+/**
+ * Create a mock FeatureFlagService that returns forced flags.
+ * Does not rely on private internals - uses public interface only.
+ */
+function createMockFeatureFlagService(forcedFlags: FeatureFlags): FeatureFlagService {
+  return {
+    getFlags: () => ({ ...forcedFlags }),
+    isFeatureEnabled: (featureName: keyof FeatureFlags) => forcedFlags[featureName] === true,
+    validateFlagConfiguration: () => {
+      // No-op: skip validation to allow invalid flag combinations for testing
+    },
+  } as FeatureFlagService;
+}
 
 /**
  * Create a GameRoom with forced feature flags, bypassing validation.
  * This helper ensures room state and controllers see the same flag snapshot.
  * 
- * Strategy: Create a mock FeatureFlagService instance with forced flags,
- * inject it before room creation. The mock persists until cleanup() is called.
+ * Strategy: Spy/mock FeatureFlagService.getInstance to return a mock service
+ * with forced flags. This avoids touching private internals.
  *
  * @param testServer - ColyseusTestServer instance
  * @param forcedFlags - Flags to force (validation bypassed)
@@ -144,9 +158,9 @@ export async function createRoomWithForcedFlags(
   forcedFlags: Partial<FeatureFlags>,
   roomOptions?: Record<string, unknown>,
 ): Promise<GameRoom> {
-  // Store original instance (if not already stored)
-  if (!originalInstance) {
-    originalInstance = (FeatureFlagService as any).instance;
+  // Store original getInstance (if not already stored)
+  if (!originalGetInstance) {
+    originalGetInstance = FeatureFlagService.getInstance.bind(FeatureFlagService);
   }
 
   // Set ALL env vars to false first (clean slate)
@@ -173,18 +187,8 @@ export async function createRoomWithForcedFlags(
   // Merge forced flags
   const mergedFlags = { ...baseFlags, ...forcedFlags };
 
-  // Create a mock service instance with forced flags
-  // We simulate what the constructor does but skip validation
-  const mockService = Object.create(FeatureFlagService.prototype);
-  (mockService as any).flags = mergedFlags;
-  
-  // Override validateFlagConfiguration to bypass validation for controlled fixtures
-  (mockService as any).validateFlagConfiguration = () => {
-    // No-op: skip validation to allow invalid flag combinations for testing
-  };
-  
-  // Inject the mock instance
-  (FeatureFlagService as any).instance = mockService;
+  // Mock getInstance to return our mock service
+  FeatureFlagService.getInstance = () => createMockFeatureFlagService(mergedFlags);
 
   // Create room - it will use our mock service
   const room = await testServer.createRoom<GameRoom>("game", roomOptions);
@@ -193,13 +197,13 @@ export async function createRoomWithForcedFlags(
 }
 
 /**
- * Restore the original FeatureFlagService instance after tests.
+ * Restore the original FeatureFlagService.getInstance after tests.
  * Call this in afterEach to prevent flag leakage between tests.
  */
 export function restoreFeatureFlagService(): void {
-  if (originalInstance) {
-    (FeatureFlagService as any).instance = originalInstance;
-    originalInstance = undefined;
+  if (originalGetInstance) {
+    FeatureFlagService.getInstance = originalGetInstance;
+    originalGetInstance = undefined;
   }
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { BoardUnitPlacement, BoardUnitType } from "../../../src/shared/room-messages";
-import type { SubUnitConfig } from "../../../src/shared/types";
+import { getMvpPhase1Boss, type SubUnitConfig } from "../../../src/shared/types";
 import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 import {
   BattleSimulator,
@@ -101,29 +101,69 @@ describe("battle-simulator", () => {
   });
 
   describe("boss passive", () => {
-    test("HP70%以上のレミリアは紅き夜の王でATK+20%になる", () => {
+    test("isBoss=true かつ remilia は boss data baseline を使う", () => {
+      const bossBaseline = getMvpPhase1Boss();
+      const boss = createBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+        DEFAULT_FLAGS,
+      );
+
+      expect(boss.maxHp).toBe(bossBaseline.hp);
+      expect(boss.hp).toBe(bossBaseline.hp);
+      expect(boss.attackPower).toBe(bossBaseline.attack);
+      expect(boss.attackSpeed).toBe(bossBaseline.attackSpeed);
+      expect(boss.attackRange).toBe(bossBaseline.range);
+      expect(boss.physicalReduction).toBe(bossBaseline.physicalReduction);
+      expect(boss.magicReduction).toBe(bossBaseline.magicReduction);
+    });
+
+    test("HP70%以上のレミリアは紅き夜の王でHP70%未満時より高いダメージを出す", () => {
       const simulator = new BattleSimulator();
-      const boss = createTestBattleUnit(
+      const bossWithPassive = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "left",
         0,
         true,
       );
-      const raidUnit = createTestBattleUnit(
+      const bossWithoutPassive = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "left",
+        0,
+        true,
+      );
+      bossWithoutPassive.hp = Math.floor(bossWithoutPassive.maxHp * 0.6);
+
+      const raidUnitForPassive = createTestBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const raidUnitWithoutPassive = createTestBattleUnit(
         { cell: 2, unitType: "vanguard", starLevel: 1 },
         "right",
         0,
       );
 
-      const result = simulator.simulateBattle(
-        [boss],
-        [raidUnit],
+      const passiveResult = simulator.simulateBattle(
+        [bossWithPassive],
+        [raidUnitForPassive],
         [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
         [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
         1_500,
       );
 
-      expect(result.damageDealt.left).toBe(333);
+      const nonPassiveResult = simulator.simulateBattle(
+        [bossWithoutPassive],
+        [raidUnitWithoutPassive],
+        [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
+        [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
+        1_500,
+      );
+
+      expect(passiveResult.damageDealt.left).toBeGreaterThan(nonPassiveResult.damageDealt.left);
     });
   });
 

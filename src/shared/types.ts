@@ -1,3 +1,5 @@
+import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
+
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
 
 export type UnitId = string;
@@ -65,14 +67,23 @@ export interface MvpPhase1Boss {
   magicReduction: number;
 }
 
+type MvpPhase1Data = {
+  units: MvpPhase1Unit[];
+  boss: MvpPhase1Boss;
+};
+
+const MVP_PHASE1_DATA = mvpPhase1UnitsData as MvpPhase1Data;
+
 // Load MVP Phase 1 Units from JSON
 export async function loadMvpPhase1Units(): Promise<MvpPhase1Unit[]> {
-  const data = await import('../data/mvp_phase1_units.json');
-  return data.units as MvpPhase1Unit[];
+  return MVP_PHASE1_DATA.units;
 }
 
 // Load MVP Phase 1 Boss from JSON
 export async function loadMvpPhase1Boss(): Promise<MvpPhase1Boss> {
-  const data = await import('../data/mvp_phase1_units.json');
-  return data.boss as MvpPhase1Boss;
+  return MVP_PHASE1_DATA.boss;
+}
+
+export function getMvpPhase1Boss(): MvpPhase1Boss {
+  return MVP_PHASE1_DATA.boss;
 }

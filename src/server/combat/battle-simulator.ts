@@ -1,5 +1,5 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
-import type { SubUnitConfig } from "../../shared/types";
+import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
@@ -120,6 +120,7 @@ export function createBattleUnit(
     range: resolvedRange,
   } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
+  const bossStats = isBoss && archetype === "remilia" ? getMvpPhase1Boss() : null;
 
   // Scarlet Mansionユニットの特殊ステータスをチェック
   let finalHp: number;
@@ -130,15 +131,15 @@ export function createBattleUnit(
   let finalPhysicalReduction: number | undefined = undefined;
   let finalMagicReduction: number | undefined = undefined;
 
-  if (isBoss && archetype === "remilia") {
+  if (bossStats) {
     // ボス（remilia）の場合、ボスステータスを適用
-    finalHp = 3200;
-    finalAttack = 280;
-    finalAttackSpeed = 0.95;
-    finalRange = 3;
+    finalHp = bossStats.hp;
+    finalAttack = bossStats.attack;
+    finalAttackSpeed = bossStats.attackSpeed;
+    finalRange = bossStats.range;
     finalDefense = 0; // ボスは reduction を使用
-    finalPhysicalReduction = 15;
-    finalMagicReduction = 10;
+    finalPhysicalReduction = bossStats.physicalReduction;
+    finalMagicReduction = bossStats.magicReduction;
   } else if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
     // Scarlet Mansionユニットの場合、特殊ステータスを適用
     const scarletUnit = getScarletMansionUnitById(archetype);

@@ -684,14 +684,7 @@ export class SharedBoardBridge {
       this.currentVersion += 1;
       this.markOpApplied(request.opId);
 
-      // 成功ログ
-      console.log("[SharedBoardBridge] Applied placement:", {
-        playerId: request.playerId,
-        placements: request.placements,
-        opId: request.opId,
-        correlationId: request.correlationId,
-        newVersion: this.currentVersion,
-      });
+      // 成功ログは抑制（ノイズ削減）- 失敗時のみログ出力
 
       return {
         success: true,
@@ -723,14 +716,8 @@ export class SharedBoardBridge {
     }
 
     try {
-      const syncResult = this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
-
-      console.log("[SharedBoardBridge] Sent placement to shared board:", {
-        playerId,
-        placements,
-        applied: syncResult.applied,
-        skipped: syncResult.skipped,
-      });
+      // 成功ログは抑制（ノイズ削減）- エラー時のみログ出力
+      this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
     } catch (error) {
       console.error("[SharedBoardBridge] Send placement failed:", error);
       // fail-open: エラー時もGameRoom動作は継続

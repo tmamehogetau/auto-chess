@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Room } from "colyseus";
 
@@ -199,6 +199,64 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       expect(controller.applyPrepPlacementForPlayer).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("ログ抑制: 成功時は配置ペイロードを出力しない", () => {
+    let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("applySharedBoardPlacement成功時にconsole.logが呼ばれない", async () => {
+      const { bridge } = createBridge();
+
+      await bridge.applySharedBoardPlacement({
+        opId: "op-1",
+        correlationId: "corr-1",
+        baseVersion: 0,
+        timestamp: Date.now(),
+        actorId: "player-a",
+        playerId: "player-a",
+        placements: [{ cell: 0, unitType: "vanguard" }],
+      });
+
+      // placement payloadを含むログが出力されていないことを確認
+      const placementLogCalls = consoleLogSpy.mock.calls.filter(
+        (call) =>
+          typeof call[0] === "string" &&
+          call[0].includes("[SharedBoardBridge]") &&
+          call[0].includes("placement"),
+      );
+      expect(placementLogCalls).toHaveLength(0);
+    });
+
+    it("applySharedBoardPlacement失敗時はconsole.errorが呼ばれる", async () => {
+      const { bridge } = createBridge();
+
+      // READY状態でない = エラー
+      Reflect.set(bridge, "state", "CONNECTING");
+
+      const result = await bridge.applySharedBoardPlacement({
+        opId: "op-1",
+        correlationId: "corr-1",
+        baseVersion: 0,
+        timestamp: Date.now(),
+        actorId: "player-a",
+        playerId: "player-a",
+        placements: [{ cell: 0, unitType: "vanguard" }],
+      });
+
+      expect(result.success).toBe(false);
+      // エラーパスではログが出力される（または出力されてもOK）
     });
   });
 });

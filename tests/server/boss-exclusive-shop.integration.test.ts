@@ -171,6 +171,35 @@ describe("Boss Exclusive Shop Integration", () => {
         expect(regularShop.length).toBe(5);
       }
     });
+
+    it("ボスショップ購入は専用レーンだけを消費して通常ショップ金額を汚染しない", () => {
+      const bossId = controller.getBossPlayerId();
+      expect(bossId).not.toBeNull();
+
+      if (!bossId) {
+        return;
+      }
+
+      const goldBefore = controller.getPlayerStatus(bossId).gold;
+      const regularShopBefore = controller.getShopOffersForPlayer(bossId);
+      const bossShopBefore = controller.getBossShopOffersForPlayer(bossId);
+      const targetOffer = bossShopBefore[0];
+
+      expect(targetOffer).toBeDefined();
+
+      const result = controller.submitPrepCommand(bossId, 1, Date.now(), {
+        bossShopBuySlotIndex: 0,
+      });
+
+      expect(result.accepted).toBe(true);
+
+      const bossStatusAfter = controller.getPlayerStatus(bossId);
+      expect(bossStatusAfter.gold).toBe(goldBefore - (targetOffer?.cost ?? 0));
+      expect(controller.getShopOffersForPlayer(bossId)).toEqual(regularShopBefore);
+      expect(controller.getBossShopOffersForPlayer(bossId)[0]?.purchased).toBe(true);
+      expect(bossStatusAfter.bossShopOffers.length).toBe(2);
+      expect(bossStatusAfter.shopOffers).toEqual(regularShopBefore);
+    });
   });
 
   describe("Feature Flag無効時の動作", () => {

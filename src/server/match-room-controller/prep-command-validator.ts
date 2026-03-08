@@ -596,9 +596,13 @@ function validateGold(
     }
   }
 
-  // Calculate boss shop buy cost (always 0)
+  // Calculate boss shop buy cost
   if (payload.bossShopBuySlotIndex !== undefined) {
-    bossShopBuyCost = 0;
+    const bossOffers = deps.getBossShopOffers(playerId);
+    const bossOffer = bossOffers[payload.bossShopBuySlotIndex];
+    if (bossOffer) {
+      bossShopBuyCost = bossOffer.cost;
+    }
   }
 
   const currentGold = deps.getGold(playerId);

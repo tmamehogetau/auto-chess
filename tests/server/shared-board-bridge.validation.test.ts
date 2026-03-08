@@ -216,10 +216,10 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it("applySharedBoardPlacement成功時にconsole.logが呼ばれない", async () => {
-      const { bridge } = createBridge();
+    it("applySharedBoardPlacement成功時に配置ペイロードを含むログが出力されない", async () => {
+      const { bridge, controller } = createBridge();
 
-      await bridge.applySharedBoardPlacement({
+      const result = await bridge.applySharedBoardPlacement({
         opId: "op-1",
         correlationId: "corr-1",
         baseVersion: 0,
@@ -229,17 +229,25 @@ describe("SharedBoardBridge validation (T1-2)", () => {
         placements: [{ cell: 0, unitType: "vanguard" }],
       });
 
-      // placement payloadを含むログが出力されていないことを確認
-      const placementLogCalls = consoleLogSpy.mock.calls.filter(
-        (call) =>
-          typeof call[0] === "string" &&
-          call[0].includes("[SharedBoardBridge]") &&
-          call[0].includes("placement"),
+      // 実処理が呼ばれ、成功していることを確認（no-op化防止）
+      expect(result.success).toBe(true);
+      expect(result.code).toBe("success");
+      expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledWith(
+        "player-a",
+        expect.arrayContaining([expect.objectContaining({ unitType: "vanguard" })]),
       );
-      expect(placementLogCalls).toHaveLength(0);
+
+      // placement payload（unitType等）がstdoutに出力されていないことを直接検証
+      const allLogs = consoleLogSpy.mock.calls.map((call) =>
+        call.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "),
+      );
+      const hasPlacementPayload = allLogs.some(
+        (log) => log.includes("vanguard") || log.includes('"cell":') || log.includes('"unitType":'),
+      );
+      expect(hasPlacementPayload).toBe(false);
     });
 
-    it("applySharedBoardPlacement失敗時はconsole.errorが呼ばれる", async () => {
+    it("applySharedBoardPlacement失敗時にエラーログが出力される", async () => {
       const { bridge, controller } = createBridge();
 
       // controller.applyPrepPlacementForPlayer で例外を投げて catch path を通す
@@ -259,15 +267,14 @@ describe("SharedBoardBridge validation (T1-2)", () => {
 
       expect(result.success).toBe(false);
       expect(result.code).toBe("error");
-      // catch path で console.error が呼ばれることを検証
-      expect(consoleErrorSpy).toHaveBeenCalled();
+      // catch path で "[SharedBoardBridge] Apply placement failed:" が出力されることを厳密に検証
       const errorCall = consoleErrorSpy.mock.calls.find(
         (call) =>
           typeof call[0] === "string" &&
-          call[0].includes("[SharedBoardBridge]") &&
-          call[0].includes("Apply placement failed"),
+          call[0].includes("[SharedBoardBridge] Apply placement failed:"),
       );
       expect(errorCall).toBeDefined();
+      expect(errorCall![0]).toBe("[SharedBoardBridge] Apply placement failed:");
     });
   });
 });

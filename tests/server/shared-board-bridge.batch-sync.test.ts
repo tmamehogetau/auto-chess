@@ -246,32 +246,35 @@ describe("SharedBoardBridge batch sync", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it("sendPlacementToSharedBoard成功時にconsole.logが呼ばれない", async () => {
+    it("sendPlacementToSharedBoard成功時に配置ペイロードを含むログが出力されない", async () => {
       const { bridge } = createBridge();
 
       // sharedBoardRoomのモックを設定
+      const mockApplyPlacementsFromGame = vi.fn(() => ({ applied: true, skipped: 0 }));
       const mockSharedBoardRoom = {
-        applyPlacementsFromGame: vi.fn(() => ({ applied: true, skipped: 0 })),
+        applyPlacementsFromGame: mockApplyPlacementsFromGame,
         offPlacementChange: vi.fn(),
       };
       Reflect.set(bridge, "sharedBoardRoom", mockSharedBoardRoom);
       Reflect.set(bridge, "state", "READY");
 
-      await bridge.sendPlacementToSharedBoard("player-a", [
-        { cell: 0, unitType: "vanguard" },
-      ]);
+      const placements = [{ cell: 0, unitType: "vanguard" as const }];
+      await bridge.sendPlacementToSharedBoard("player-a", placements);
 
-      // placement payloadを含むログが出力されていないことを確認
-      const placementLogCalls = consoleLogSpy.mock.calls.filter(
-        (call) =>
-          typeof call[0] === "string" &&
-          call[0].includes("[SharedBoardBridge]") &&
-          call[0].includes("placement"),
+      // 実際にapplyPlacementsFromGameが呼ばれたことを確認（no-op化防止）
+      expect(mockApplyPlacementsFromGame).toHaveBeenCalledWith("player-a", placements);
+
+      // placement payload（unitType等）がstdoutに出力されていないことを直接検証
+      const allLogs = consoleLogSpy.mock.calls.map((call) =>
+        call.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" "),
       );
-      expect(placementLogCalls).toHaveLength(0);
+      const hasPlacementPayload = allLogs.some(
+        (log) => log.includes("vanguard") || log.includes('"cell":') || log.includes('"unitType":'),
+      );
+      expect(hasPlacementPayload).toBe(false);
     });
 
-    it("sendPlacementToSharedBoard失敗時はconsole.errorが呼ばれる", async () => {
+    it("sendPlacementToSharedBoard失敗時にエラーログが出力される", async () => {
       const { bridge } = createBridge();
 
       // sharedBoardRoomのモックを設定（エラーを投げる）
@@ -288,8 +291,14 @@ describe("SharedBoardBridge batch sync", () => {
         { cell: 0, unitType: "vanguard" },
       ]);
 
-      // エラーログが出力されていることを確認
-      expect(consoleErrorSpy).toHaveBeenCalled();
+      // "[SharedBoardBridge] Send placement failed:" が出力されることを厳密に検証
+      const errorCall = consoleErrorSpy.mock.calls.find(
+        (call) =>
+          typeof call[0] === "string" &&
+          call[0].includes("[SharedBoardBridge] Send placement failed:"),
+      );
+      expect(errorCall).toBeDefined();
+      expect(errorCall![0]).toBe("[SharedBoardBridge] Send placement failed:");
     });
   });
 });

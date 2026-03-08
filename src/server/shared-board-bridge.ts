@@ -684,8 +684,6 @@ export class SharedBoardBridge {
       this.currentVersion += 1;
       this.markOpApplied(request.opId);
 
-      // 成功ログは抑制（ノイズ削減）- 失敗時のみログ出力
-
       return {
         success: true,
         code: "success",
@@ -716,7 +714,6 @@ export class SharedBoardBridge {
     }
 
     try {
-      // 成功ログは抑制（ノイズ削減）- エラー時のみログ出力
       this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
     } catch (error) {
       console.error("[SharedBoardBridge] Send placement failed:", error);

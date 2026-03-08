@@ -631,6 +631,61 @@ describe("battle-simulator", () => {
       expect(result.winner).toBe("left");
     });
 
+    test("grassroot_network tier1 は該当 faction ユニットにだけ攻撃バフを適用する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
+        { cell: 2, unitType: "vanguard", starLevel: 1, unitId: "zanmu", factionId: null },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+
+      simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 1_000);
+
+      expect(leftUnits[0]?.attackPower).toBe(6);
+      expect(leftUnits[1]?.attackPower).toBe(6);
+      expect(leftUnits[2]?.attackPower).toBe(4);
+    });
+
+    test("myourenji tier2 は該当 faction ユニットに HP と攻撃バフを適用する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "vanguard", starLevel: 1, unitId: "ichirin", factionId: "myourenji" },
+        { cell: 2, unitType: "mage", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 3, unitType: "mage", starLevel: 1, unitId: "zanmu", factionId: null },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+      ];
+
+      simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 1_000);
+
+      expect(leftUnits[0]?.maxHp).toBeGreaterThan(50);
+      expect(leftUnits[1]?.maxHp).toBeGreaterThan(80);
+      expect(leftUnits[2]?.attackPower).toBeGreaterThan(6);
+      expect(leftUnits[3]?.maxHp).toBe(40);
+      expect(leftUnits[3]?.attackPower).toBe(6);
+    });
+
     test("戦闘ログにダメージ情報が記録される", () => {
       const simulator = new BattleSimulator();
 

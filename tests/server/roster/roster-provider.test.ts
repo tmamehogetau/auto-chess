@@ -107,6 +107,16 @@ describe("roster-provider", () => {
       expect(activeUnits).toHaveLength(draftUnits.length);
     });
 
+    it("should expose factionId for Touhou draft roster units", () => {
+      const draftUnits = getTouhouDraftRosterUnits();
+
+      const rin = draftUnits.find((unit) => unit.unitId === "rin");
+      const zanmu = draftUnits.find((unit) => unit.unitId === "zanmu");
+
+      expect(rin?.factionId).toBe("chireiden");
+      expect(zanmu?.factionId).toBeNull();
+    });
+
     it("should expose roster unit definitions with required fields from production source", () => {
       const flags = createFeatureFlags();
 

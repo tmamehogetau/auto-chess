@@ -178,6 +178,12 @@ export class MatchRoomState extends Schema {
 
   declare public featureFlagsEnableSharedBoardShadow: boolean;
 
+  declare public featureFlagsEnableTouhouRoster: boolean;
+
+  declare public featureFlagsEnableTouhouFactions: boolean;
+
+  declare public featureFlagsEnablePerUnitSharedPool: boolean;
+
   declare public declaredSpellId: string;
 
   declare public usedSpellIds: ArraySchema<string>;
@@ -203,6 +209,9 @@ export class MatchRoomState extends Schema {
     this.featureFlagsEnableRumorInfluence = false;
     this.featureFlagsEnableBossExclusiveShop = false;
     this.featureFlagsEnableSharedBoardShadow = false;
+    this.featureFlagsEnableTouhouRoster = false;
+    this.featureFlagsEnableTouhouFactions = false;
+    this.featureFlagsEnablePerUnitSharedPool = false;
     this.declaredSpellId = "";
     this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
@@ -284,6 +293,9 @@ defineTypes(MatchRoomState, {
   featureFlagsEnableRumorInfluence: "boolean",
   featureFlagsEnableBossExclusiveShop: "boolean",
   featureFlagsEnableSharedBoardShadow: "boolean",
+  featureFlagsEnableTouhouRoster: "boolean",
+  featureFlagsEnableTouhouFactions: "boolean",
+  featureFlagsEnablePerUnitSharedPool: "boolean",
   declaredSpellId: "string",
   usedSpellIds: ["string"],
   bossPlayerId: "string",

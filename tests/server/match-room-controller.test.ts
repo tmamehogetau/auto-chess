@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const controllerOptions = {
   readyAutoStartMs: 60_000,
@@ -517,6 +518,115 @@ describe("MatchRoomController", () => {
     expect(status.gold).toBe(beforeSellGold + unitCost);
     expect(status.benchUnits.length).toBe(0);
     expect(status.ownedUnits[soldOwnedKey]).toBe(beforeSellOwned[soldOwnedKey] - 1);
+  });
+
+  test("enablePerUnitSharedPool=true では Touhou unitId ごとに購入在庫が減る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          getAvailableByUnitId: (unitId: string, cost: number) => number;
+          decreaseByUnitId: (unitId: string, cost: number) => boolean;
+        };
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, rarity: 1 },
+      ]);
+
+      const before = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinBefore = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 0 });
+      const after = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinAfter = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+
+      expect(result).toEqual({ accepted: true });
+      expect(before).toBe(18);
+      expect(after).toBe(17);
+      expect(nazrinBefore).toBe(18);
+      expect(nazrinAfter).toBe(18);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では Touhou unitId の売却で同じ在庫へ返る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          getAvailableByUnitId: (unitId: string, cost: number) => number;
+          decreaseByUnitId: (unitId: string, cost: number) => boolean;
+        };
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; starLevel: number; unitCount: number }>>;
+      };
+
+      internals.benchUnitsByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 },
+      ]);
+
+      const before = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinBefore = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { benchSellIndex: 0 });
+      const after = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinAfter = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+
+      expect(result).toEqual({ accepted: true });
+      expect(after).toBe(before + 1);
+      expect(nazrinAfter).toBe(nazrinBefore);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では removePlayer 時に board/bench の unitId 在庫が返る", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          getAvailableByUnitId: (unitId: string, cost: number) => number;
+          decreaseByUnitId: (unitId: string, cost: number) => boolean;
+        };
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; starLevel: number; unitCount: number }>>;
+        boardPlacementsByPlayer: Map<string, Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; sellValue?: number; unitCount?: number }>>;
+      };
+
+      internals.benchUnitsByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 },
+      ]);
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "ranger", unitId: "nazrin", sellValue: 1, unitCount: 1 },
+      ]);
+
+      internals.sharedPool.decreaseByUnitId("rin", 1);
+      internals.sharedPool.decreaseByUnitId("nazrin", 1);
+
+      const rinBefore = internals.sharedPool.getAvailableByUnitId("rin", 1);
+      const nazrinBefore = internals.sharedPool.getAvailableByUnitId("nazrin", 1);
+
+      controller.removePlayer("p1");
+
+      expect(internals.sharedPool.getAvailableByUnitId("rin", 1)).toBe(rinBefore + 1);
+      expect(internals.sharedPool.getAvailableByUnitId("nazrin", 1)).toBe(nazrinBefore + 1);
+    });
   });
 
   test("同種3体購入でベンチ上で自動合成されて★2になる", () => {

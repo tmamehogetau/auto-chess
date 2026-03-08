@@ -1,3 +1,4 @@
+import type { TouhouFactionId } from '../data/touhou-units';
 import type { ItemType, UnitId } from './types';
 
 export const CLIENT_MESSAGE_TYPES = {
@@ -66,6 +67,7 @@ export interface BoardUnitPlacement {
   cell: number;
   unitType: BoardUnitType;
   unitId?: UnitId;
+  factionId?: TouhouFactionId | null;
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;

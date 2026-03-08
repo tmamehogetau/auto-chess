@@ -76,6 +76,10 @@ export interface ShopOfferBuilderDependencies {
   isSharedPoolEnabled: () => boolean;
   /** Check if a specific pool cost is depleted */
   isPoolDepleted: (cost: number) => boolean;
+  /** Check if per-unit pool migration is enabled */
+  isPerUnitPoolEnabled: () => boolean;
+  /** Check if a specific unitId pool is depleted */
+  isUnitIdPoolDepleted: (unitId: string, cost: number) => boolean;
   /** Whether rumor influence feature is enabled */
   isRumorInfluenceEnabled: () => boolean;
   /** Set ID for seed generation */
@@ -302,9 +306,13 @@ export class ShopOfferBuilder {
     let costPool = this.getTouhouCostPool(rosterUnits, selectedCost);
 
     if (this.deps.isSharedPoolEnabled()) {
-      while (selectedCost > 1 && (costPool.length === 0 || this.deps.isPoolDepleted(selectedCost))) {
+      while (selectedCost > 1 && (costPool.length === 0 || this.isTouhouCostPoolDepleted(costPool, selectedCost))) {
         selectedCost = (selectedCost - 1) as TouhouCost;
         costPool = this.getTouhouCostPool(rosterUnits, selectedCost);
+      }
+
+      if (this.deps.isPerUnitPoolEnabled()) {
+        costPool = costPool.filter((unit) => !this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost));
       }
     }
 
@@ -350,5 +358,13 @@ export class ShopOfferBuilder {
 
   private getTouhouCostPool(rosterUnits: RosterUnit[], cost: TouhouCost): RosterUnit[] {
     return rosterUnits.filter((unit) => unit.cost === cost);
+  }
+
+  private isTouhouCostPoolDepleted(costPool: RosterUnit[], cost: TouhouCost): boolean {
+    if (this.deps.isPerUnitPoolEnabled()) {
+      return costPool.every((unit) => this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost));
+    }
+
+    return this.deps.isPoolDepleted(cost);
   }
 }

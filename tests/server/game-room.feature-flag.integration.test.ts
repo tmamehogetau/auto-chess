@@ -668,6 +668,41 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolved.unitId).toBe("warrior_a");
         });
       });
+
+      test("unit-id-resolver attaches Touhou faction metadata on the active roster path", async () => {
+        await withFlags({
+          ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        }, async () => {
+          const { resolveBattlePlacement } = await import("../../src/server/unit-id-resolver");
+          const { FeatureFlagService } = await import("../../src/server/feature-flag-service");
+
+          const flags = FeatureFlagService.getInstance().getFlags();
+
+          const rinPlacement = {
+            cell: 1,
+            unitType: "vanguard" as const,
+            unitId: "rin",
+          };
+          const zanmuPlacement = {
+            cell: 2,
+            unitType: "mage" as const,
+            unitId: "zanmu",
+          };
+
+          const resolvedRin = resolveBattlePlacement(rinPlacement, flags);
+          const resolvedZanmu = resolveBattlePlacement(zanmuPlacement, flags);
+
+          expect(resolvedRin.unitType).toBe("vanguard");
+          expect(resolvedRin.unitId).toBe("rin");
+          expect(resolvedRin.factionId).toBe("chireiden");
+
+          expect(resolvedZanmu.unitType).toBe("mage");
+          expect(resolvedZanmu.unitId).toBe("zanmu");
+          expect(resolvedZanmu.factionId).toBeNull();
+        });
+      });
     });
   });
 });

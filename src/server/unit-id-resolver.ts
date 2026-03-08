@@ -1,5 +1,6 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../shared/room-messages";
 import { SCARLET_MANSION_UNITS } from "../data/scarlet-mansion-units";
+import type { TouhouFactionId } from "../data/touhou-units";
 import { RUMOR_UNITS_BY_ROUND } from "../data/rumor-units";
 import { getActiveRosterUnits } from "./roster/roster-provider";
 import type { FeatureFlags } from "../shared/feature-flags";
@@ -7,6 +8,7 @@ import type { FeatureFlags } from "../shared/feature-flags";
 type ResolvedUnitMetadata = {
   unitType: BoardUnitType;
   archetype?: string;
+  factionId?: TouhouFactionId | null;
 };
 
 const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
@@ -40,7 +42,15 @@ function getResolvedUnitMetadata(
   const rosterUnits = getActiveRosterUnits(flags);
   const rosterUnit = rosterUnits.find((u) => u.unitId === unitId);
   if (rosterUnit) {
-    return { unitType: rosterUnit.type };
+    const resolvedMetadata: ResolvedUnitMetadata = {
+      unitType: rosterUnit.type,
+    };
+
+    if (rosterUnit.factionId !== undefined) {
+      resolvedMetadata.factionId = rosterUnit.factionId;
+    }
+
+    return resolvedMetadata;
   }
 
   // Unit not found in any roster
@@ -70,17 +80,29 @@ export function resolveBattlePlacement(
   }
 
   if (resolvedMetadata.archetype !== undefined) {
-    return {
+    const resolvedPlacement: BoardUnitPlacement = {
       ...placement,
       unitType: resolvedMetadata.unitType,
       archetype: resolvedMetadata.archetype,
     };
+
+    if (resolvedMetadata.factionId !== undefined) {
+      resolvedPlacement.factionId = resolvedMetadata.factionId;
+    }
+
+    return resolvedPlacement;
   }
 
-  return {
+  const resolvedPlacement: BoardUnitPlacement = {
     ...placement,
     unitType: resolvedMetadata.unitType,
   };
+
+  if (resolvedMetadata.factionId !== undefined) {
+    resolvedPlacement.factionId = resolvedMetadata.factionId;
+  }
+
+  return resolvedPlacement;
 }
 
 /**

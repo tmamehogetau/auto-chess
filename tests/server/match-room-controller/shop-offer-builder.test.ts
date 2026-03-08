@@ -38,6 +38,8 @@ describe("ShopOfferBuilder", () => {
       getPlayerLevel: vi.fn(() => 1),
       isSharedPoolEnabled: vi.fn(() => false),
       isPoolDepleted: vi.fn(() => false),
+      isPerUnitPoolEnabled: vi.fn(() => false),
+      isUnitIdPoolDepleted: vi.fn(() => false),
       isRumorInfluenceEnabled: vi.fn(() => false),
       setId: "default",
       random: vi.fn(() => 0.5),
@@ -363,6 +365,36 @@ describe("ShopOfferBuilder", () => {
       expect(offers.every((offer) => offer.unitId)).toBe(true);
       expect(offers.every((offer) => offer.cost >= 1 && offer.cost <= 5)).toBe(true);
       expect(offers.every((offer) => offer.rarity === offer.cost)).toBe(true);
+    });
+
+    test("filters only depleted Touhou unitIds when per-unit shared pool is enabled", () => {
+      mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() =>
+        TOUHOU_UNITS.filter((unit) => unit.cost === 1).map((unit) => ({
+          id: unit.unitId,
+          unitId: unit.unitId,
+          name: unit.displayName,
+          type: unit.unitType,
+          cost: unit.cost,
+          hp: unit.hp,
+          attack: unit.attack,
+          attackSpeed: unit.attackSpeed,
+          range: unit.range,
+          synergy: unit.factionId ? [unit.factionId] : [],
+        })),
+      );
+      mockDeps.isSharedPoolEnabled = vi.fn(() => true);
+      mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
+      mockDeps.isUnitIdPoolDepleted = vi.fn((unitId: string) => unitId === "rin");
+      mockDeps.seedToUnitFloat = vi.fn(() => 0);
+
+      builder = new ShopOfferBuilder(mockDeps);
+
+      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+      expect(offers).toHaveLength(5);
+      expect(offers.every((offer) => offer.unitId !== "rin")).toBe(true);
+      expect(mockDeps.isUnitIdPoolDepleted).toHaveBeenCalled();
     });
 
     test("produces deterministic results with same seed (MVP behavior)", () => {

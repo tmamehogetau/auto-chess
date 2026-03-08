@@ -6,6 +6,7 @@
  */
 export class SharedPool {
   private readonly inventory: Map<number, number>;
+  private readonly inventoryByUnitId: Map<string, number>;
 
   constructor() {
     // コスト別の初期在庫: 1G:18, 2G:14, 3G:11, 4G:8, 5G:6
@@ -16,6 +17,7 @@ export class SharedPool {
       [4, 8],
       [5, 6],
     ]);
+    this.inventoryByUnitId = new Map<string, number>();
   }
 
   /**
@@ -68,11 +70,50 @@ export class SharedPool {
     return this.getAvailable(cost) <= 0;
   }
 
+  public decreaseByUnitId(unitId: string, cost: number): boolean {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return false;
+    }
+
+    const current = this.getAvailableByUnitId(unitId, cost);
+    if (current <= 0) {
+      return false;
+    }
+
+    this.inventoryByUnitId.set(unitId, current - 1);
+    return true;
+  }
+
+  public increaseByUnitId(unitId: string, cost: number): void {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return;
+    }
+
+    const current = this.getAvailableByUnitId(unitId, cost);
+    this.inventoryByUnitId.set(unitId, current + 1);
+  }
+
+  public getAvailableByUnitId(unitId: string, cost: number): number {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return 0;
+    }
+
+    return this.inventoryByUnitId.get(unitId) ?? this.getAvailable(cost);
+  }
+
+  public isDepletedByUnitId(unitId: string, cost: number): boolean {
+    return this.getAvailableByUnitId(unitId, cost) <= 0;
+  }
+
   /**
    * 有効なコスト（1-5）か判定
    */
   private isValidCost(cost: number): boolean {
     return Number.isInteger(cost) && cost >= 1 && cost <= 5;
+  }
+
+  private isValidUnitId(unitId: string): boolean {
+    return typeof unitId === "string" && unitId.length > 0;
   }
 
   /**

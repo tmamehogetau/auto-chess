@@ -99,6 +99,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableRumorInfluence = flags.enableRumorInfluence;
     this.state.featureFlagsEnableBossExclusiveShop = flags.enableBossExclusiveShop;
     this.state.featureFlagsEnableSharedBoardShadow = flags.enableSharedBoardShadow;
+    this.state.featureFlagsEnableTouhouRoster = flags.enableTouhouRoster;
+    this.state.featureFlagsEnableTouhouFactions = flags.enableTouhouFactions;
+    this.state.featureFlagsEnablePerUnitSharedPool = flags.enablePerUnitSharedPool;
     this.enableSharedBoardShadow = flags.enableSharedBoardShadow;
 
     validateRosterAvailability(flags);

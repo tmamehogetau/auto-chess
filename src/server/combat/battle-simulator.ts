@@ -5,11 +5,12 @@ import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import {
   SYNERGY_DEFINITIONS,
+  TOUHOU_FACTION_DEFINITIONS,
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
   calculateSynergyDetails,
   hasScarletMansionBossLifesteal,
-  SynergyTier,
+  type SynergyEffects,
 } from "./synergy-definitions";
 import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
@@ -257,68 +258,78 @@ function applySynergyBuffs(
   boardPlacements: BoardUnitPlacement[],
   heroSynergyBonusType: BoardUnitType | null = null,
 ): void {
-  const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType);
+  const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType, {
+    enableTouhouFactions: boardPlacements.some((placement) => placement.factionId !== undefined),
+  });
   const scarletMansionSynergyActive = calculateScarletMansionSynergy(boardPlacements);
 
-  for (const unit of units) {
+  for (const [index, unit] of units.entries()) {
     applyScarletMansionSynergyToBoss(unit, scarletMansionSynergyActive);
 
     const tier = synergyDetails.activeTiers[unit.type];
-    if (tier === 0) continue;
-
-    const def = SYNERGY_DEFINITIONS[unit.type];
-    const idx = tier - 1; // tier 1 -> index 0
-
-    // Apply defense buff
-    if (def.effects.defense) {
-      const defenseValue = def.effects.defense[idx];
-      if (defenseValue !== undefined) {
-        unit.defense += defenseValue;
-      }
+    if (tier > 0) {
+      applySynergyEffects(unit, SYNERGY_DEFINITIONS[unit.type].effects, tier);
     }
 
-    // Apply HP multiplier
-    if (def.effects.hpMultiplier) {
-      const multiplier = def.effects.hpMultiplier[idx];
-      if (multiplier !== undefined) {
-        unit.maxHp = Math.floor(unit.maxHp * multiplier);
-        unit.hp = Math.floor(unit.hp * multiplier);
-      }
+    const factionId = boardPlacements[index]?.factionId;
+    if (!factionId) {
+      continue;
     }
 
-    // Apply attack power buff
-    if (def.effects.attackPower) {
-      const attackPowerValue = def.effects.attackPower[idx];
-      if (attackPowerValue !== undefined) {
-        unit.attackPower += attackPowerValue;
-      }
+    const factionTier = synergyDetails.factionActiveTiers[factionId] ?? 0;
+    const factionDef = TOUHOU_FACTION_DEFINITIONS[factionId];
+    if (factionTier > 0 && factionDef) {
+      applySynergyEffects(unit, factionDef.effects, factionTier);
     }
+  }
+}
 
-    // Apply attack speed multiplier
-    if (def.effects.attackSpeedMultiplier) {
-      const attackSpeedValue = def.effects.attackSpeedMultiplier[idx];
-      if (attackSpeedValue !== undefined) {
-        unit.buffModifiers.attackSpeedMultiplier *= attackSpeedValue;
-      }
+function applySynergyEffects(unit: BattleUnit, effects: SynergyEffects, tier: number): void {
+  const idx = tier - 1;
+
+  if (effects.defense) {
+    const defenseValue = effects.defense[idx];
+    if (defenseValue !== undefined) {
+      unit.defense += defenseValue;
     }
+  }
 
-    // Apply crit rate
-    if (def.effects.critRate) {
-      const critRateValue = def.effects.critRate[idx];
-      if (critRateValue !== undefined) {
-        unit.critRate += critRateValue;
-      }
+  if (effects.hpMultiplier) {
+    const multiplier = effects.hpMultiplier[idx];
+    if (multiplier !== undefined) {
+      unit.maxHp = Math.floor(unit.maxHp * multiplier);
+      unit.hp = Math.floor(unit.hp * multiplier);
     }
+  }
 
-    // Apply crit damage multiplier
-    if (def.effects.critDamageMultiplier) {
-      const critDamageValue = def.effects.critDamageMultiplier[idx];
-      if (critDamageValue !== undefined) {
-        unit.critDamageMultiplier = Math.max(
-          unit.critDamageMultiplier,
-          critDamageValue
-        );
-      }
+  if (effects.attackPower) {
+    const attackPowerValue = effects.attackPower[idx];
+    if (attackPowerValue !== undefined) {
+      unit.attackPower += attackPowerValue;
+    }
+  }
+
+  if (effects.attackSpeedMultiplier) {
+    const attackSpeedValue = effects.attackSpeedMultiplier[idx];
+    if (attackSpeedValue !== undefined) {
+      unit.buffModifiers.attackSpeedMultiplier *= attackSpeedValue;
+    }
+  }
+
+  if (effects.critRate) {
+    const critRateValue = effects.critRate[idx];
+    if (critRateValue !== undefined) {
+      unit.critRate += critRateValue;
+    }
+  }
+
+  if (effects.critDamageMultiplier) {
+    const critDamageValue = effects.critDamageMultiplier[idx];
+    if (critDamageValue !== undefined) {
+      unit.critDamageMultiplier = Math.max(
+        unit.critDamageMultiplier,
+        critDamageValue,
+      );
     }
   }
 }

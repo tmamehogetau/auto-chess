@@ -1,5 +1,6 @@
 import type { BoardUnitPlacement } from '../../shared/room-messages';
 import { BoardUnitType } from '../../shared/types';
+import type { TouhouFactionId } from '../../data/touhou-units';
 import type { BattleUnit } from './battle-simulator';
 
 export type SynergyTier = 0 | 1 | 2 | 3;
@@ -14,7 +15,7 @@ export interface SynergyEffects {
 }
 
 export interface SynergyDefinition {
-  thresholds: [number, number, number]; // [3, 6, 9]
+  thresholds: readonly number[];
   effects: SynergyEffects;
 }
 
@@ -67,6 +68,43 @@ export const SYNERGY_DEFINITIONS: Record<BoardUnitType, SynergyDefinition> = {
 
 export const SCARLET_MANSION_ARCHETYPES = ["meiling", "sakuya", "patchouli"] as const;
 
+export const TOUHOU_FACTION_THRESHOLDS: Record<TouhouFactionId, readonly number[]> = {
+  chireiden: [2, 4],
+  myourenji: [2, 3, 5],
+  shinreibyou: [2, 3, 5],
+  grassroot_network: [2, 3],
+  niji_ryuudou: [2, 4],
+  kanjuden: [2, 3],
+};
+
+export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, SynergyDefinition>> = {
+  chireiden: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.chireiden,
+    effects: {
+      defense: [1, 2],
+    },
+  },
+  myourenji: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.myourenji,
+    effects: {
+      hpMultiplier: [1.05, 1.1, 1.15],
+      attackPower: [0, 1, 2],
+    },
+  },
+  grassroot_network: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.grassroot_network,
+    effects: {
+      attackPower: [1, 2],
+    },
+  },
+  kanjuden: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.kanjuden,
+    effects: {
+      attackPower: [1, 2],
+    },
+  },
+};
+
 export function calculateScarletMansionSynergy(
   boardPlacements: BoardUnitPlacement[],
 ): boolean {
@@ -103,10 +141,10 @@ export function hasScarletMansionBossLifesteal(
 /**
  * Get the synergy tier based on unit count
  */
-export function getSynergyTier(count: number, thresholds: [number, number, number]): SynergyTier {
-  if (count >= thresholds[2]) return 3;
-  if (count >= thresholds[1]) return 2;
-  if (count >= thresholds[0]) return 1;
+export function getSynergyTier(count: number, thresholds: readonly number[]): SynergyTier {
+  if (thresholds[2] !== undefined && count >= thresholds[2]) return 3;
+  if (thresholds[1] !== undefined && count >= thresholds[1]) return 2;
+  if (thresholds[0] !== undefined && count >= thresholds[0]) return 1;
   return 0;
 }
 
@@ -116,11 +154,18 @@ export function getSynergyTier(count: number, thresholds: [number, number, numbe
 export interface SynergyDetails {
   countsByType: Record<BoardUnitType, number>;
   activeTiers: Record<BoardUnitType, SynergyTier>;
+  factionCounts: Partial<Record<TouhouFactionId, number>>;
+  factionActiveTiers: Partial<Record<TouhouFactionId, SynergyTier>>;
+}
+
+export interface SynergyCalculationOptions {
+  enableTouhouFactions?: boolean;
 }
 
 export function calculateSynergyDetails(
-  boardPlacements: Array<{ unitType: BoardUnitType }>,
+  boardPlacements: Array<{ unitType: BoardUnitType; factionId?: TouhouFactionId | null }>,
   heroSynergyBonusType: BoardUnitType | null = null,
+  options: SynergyCalculationOptions = {},
 ): SynergyDetails {
   const countsByType: Record<BoardUnitType, number> = {
     vanguard: 0,
@@ -128,6 +173,7 @@ export function calculateSynergyDetails(
     mage: 0,
     assassin: 0,
   };
+  const factionCounts: Partial<Record<TouhouFactionId, number>> = {};
 
   for (const placement of boardPlacements) {
     const unitType = placement.unitType;
@@ -147,6 +193,10 @@ export function calculateSynergyDetails(
       // If no specific synergies, count by unit type directly
       countsByType[unitType]++;
     }
+
+    if (options.enableTouhouFactions && placement.factionId) {
+      factionCounts[placement.factionId] = (factionCounts[placement.factionId] ?? 0) + 1;
+    }
   }
 
   if (heroSynergyBonusType) {
@@ -165,5 +215,16 @@ export function calculateSynergyDetails(
     activeTiers[unitType] = getSynergyTier(countsByType[unitType], def.thresholds);
   }
 
-  return { countsByType, activeTiers };
+  const factionActiveTiers: Partial<Record<TouhouFactionId, SynergyTier>> = {};
+
+  if (options.enableTouhouFactions) {
+    for (const factionId of Object.keys(TOUHOU_FACTION_THRESHOLDS) as TouhouFactionId[]) {
+      factionActiveTiers[factionId] = getSynergyTier(
+        factionCounts[factionId] ?? 0,
+        TOUHOU_FACTION_THRESHOLDS[factionId],
+      );
+    }
+  }
+
+  return { countsByType, activeTiers, factionCounts, factionActiveTiers };
 }

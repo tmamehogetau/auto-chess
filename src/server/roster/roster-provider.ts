@@ -1,3 +1,4 @@
+import type { TouhouFactionId } from "../../data/touhou-units";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import type { BoardUnitType, UnitSkill } from "../../shared/types";
 import mvpPhase1UnitsData from "../../data/mvp_phase1_units.json";
@@ -12,6 +13,7 @@ export interface RosterUnit {
   unitId: string;
   name: string;
   type: BoardUnitType;
+  factionId?: TouhouFactionId | null;
   cost: number;
   hp: number;
   attack: number;
@@ -80,6 +82,7 @@ export function getTouhouDraftRosterUnits(): RosterUnit[] {
     unitId: unit.unitId,
     name: unit.displayName,
     type: unit.unitType,
+    factionId: unit.factionId,
     cost: unit.cost,
     hp: unit.hp,
     attack: unit.attack,

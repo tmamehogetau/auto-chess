@@ -122,41 +122,28 @@ export async function createRoomWithFlags(
 }
 
 /**
- * Create a controlled test fixture with forced flag values.
- * Bypasses FeatureFlagService validation - use only for testing legacy fallback behavior.
+ * Set FeatureFlagService flags directly by manipulating the private 'flags' field.
+ * This bypasses validation and is intended for controlled test fixtures only.
+ * Automatically resets the singleton after use to prevent flag leakage.
  *
- * @param testServer - ColyseusTestServer instance
- * @param forcedFlags - Flags to force-set (validation bypassed)
- * @param roomOptions - Additional options to pass to createRoom
- * @returns Promise resolving to the created GameRoom instance
+ * @param flags - Partial flags to override
+ * @param testFn - Test function to execute with forced flags
  */
-export async function createRoomWithForcedFlags(
-  testServer: ColyseusTestServer,
-  forcedFlags: Partial<FeatureFlags>,
-  roomOptions?: Record<string, unknown>,
-): Promise<GameRoom> {
-  const originalEnv = { ...process.env };
+export async function withForcedFlags(
+  flags: Partial<FeatureFlags>,
+  testFn: () => Promise<void>,
+): Promise<void> {
+  const service = FeatureFlagService.getInstance();
+  const originalFlags = service.getFlags();
 
   try {
-    // Set base environment (ALL_DISABLED)
-    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
-      process.env[envVarName] = "false";
-    }
+    // Directly set private flags field (bypasses validation)
+    (service as any).flags = { ...originalFlags, ...flags };
 
-    // Reset singleton instance to pick up new environment variables
-    (FeatureFlagService as any).instance = undefined;
-
-    // Create room
-    const serverRoom = await testServer.createRoom<GameRoom>("game", roomOptions);
-
-    // Force-set flags after creation (bypasses validation)
-    const featureFlagService = FeatureFlagService.getInstance();
-    featureFlagService.forceSetFlags(forcedFlags);
-
-    return serverRoom;
+    await testFn();
   } finally {
-    // Restore original environment variables
-    process.env = originalEnv;
+    // Restore original flags
+    (service as any).flags = originalFlags;
   }
 }
 

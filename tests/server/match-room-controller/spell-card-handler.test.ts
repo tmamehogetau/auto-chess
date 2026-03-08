@@ -58,6 +58,30 @@ vi.mock("../../../src/data/spell-cards", () => ({
         },
       ];
     }
+    if (roundIndex >= 5 && roundIndex <= 8) {
+      return [
+        {
+          id: "instant-2",
+          name: "必殺「ハートブレイク」",
+          description: "レイドメンバー全員に65ダメージを与える",
+          roundRange: [5, 8],
+          category: "instantLaser",
+          effect: { type: "damage", target: "raid", value: 65 },
+        },
+      ];
+    }
+    if (roundIndex === 12) {
+      return [
+        {
+          id: "last-word",
+          name: "「紅色の幻想郷」",
+          description: "レイドメンバー全員に100ダメージを与える",
+          roundRange: [12, 12],
+          category: "lastWord",
+          effect: { type: "damage", target: "raid", value: 100 },
+        },
+      ];
+    }
     return [];
   }),
 }));
@@ -170,6 +194,17 @@ describe("SpellCardHandler", () => {
       // R5-8のスペルを宣言
       handler.declareSpell(5);
       expect(handler.getDeclaredSpell()?.id).toBe("instant-2");
+    });
+
+    it("ラウンド帯ごとに対応するスペルを宣言する", () => {
+      handler.declareSpell(1);
+      expect(handler.getDeclaredSpellId()).toBe("instant-1");
+
+      handler.declareSpell(5);
+      expect(handler.getDeclaredSpellId()).toBe("instant-2");
+
+      handler.declareSpell(12);
+      expect(handler.getDeclaredSpellId()).toBe("last-word");
     });
   });
 

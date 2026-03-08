@@ -7,7 +7,6 @@
 
 import {
   type SpellCard,
-  getAvailableSpellsForRound,
   getSpellCardSetForRound,
 } from "../../data/spell-cards";
 import type { MatchLogger } from "../match-logger";
@@ -145,7 +144,7 @@ export class SpellCardHandler {
       return;
     }
 
-    const availableSpells = getAvailableSpellsForRound(roundIndex);
+    const availableSpells = getSpellCardSetForRound(roundIndex);
 
     if (availableSpells.length === 0) {
       this.declaredSpell = null;

@@ -261,6 +261,19 @@ describe("SpellCard Integration", () => {
       expect(controller.getUsedSpellIds()).toEqual(["instant-1"]);
     });
 
+    it("R5帯ではR5-8用のスペルが宣言される", () => {
+      (controller as any).gameLoopState.roundIndex = 5;
+
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      expect(controller.getDeclaredSpellId()).toBe("instant-2");
+    });
+
     it("boss target healでボスHPが回復する", () => {
       process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
       (FeatureFlagService as any).instance = undefined;

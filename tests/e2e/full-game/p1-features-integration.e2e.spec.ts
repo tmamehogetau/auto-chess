@@ -91,6 +91,78 @@ describe("E2E: P1 Features Integration", () => {
     },
   );
 
+  it(
+    "Spell Card有効時はSettleまで進むとusedSpellIdsへ同期される",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(
+        { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableSpellCard: true },
+        async () => {
+          const gameRoom = await testServer.createRoom<GameRoom>("game");
+
+          const clients = await Promise.all([
+            testServer.connectTo(gameRoom),
+            testServer.connectTo(gameRoom),
+            testServer.connectTo(gameRoom),
+            testServer.connectTo(gameRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage("round_state", () => {});
+            client.send("ready", { ready: true });
+          }
+
+          await waitForCondition(() => gameRoom.state.phase !== "Waiting", 5_000);
+          await waitForPhase(gameRoom, "Battle", 5_000);
+          const declaredSpellId = gameRoom.state.declaredSpellId;
+          expect(declaredSpellId).not.toBe("");
+
+          await waitForPhase(gameRoom, "Settle", 5_000);
+          await waitForCondition(() => gameRoom.state.usedSpellIds.length > 0, 3_000);
+
+          expect(Array.from(gameRoom.state.usedSpellIds)).toContain(declaredSpellId);
+
+          for (const client of clients) {
+            client.connection.close();
+          }
+        },
+      );
+    },
+  );
+
+  it(
+    "Spell Card無効時はdeclaredSpellIdが空のまま",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+        const gameRoom = await testServer.createRoom<GameRoom>("game");
+
+        const clients = await Promise.all([
+          testServer.connectTo(gameRoom),
+          testServer.connectTo(gameRoom),
+          testServer.connectTo(gameRoom),
+          testServer.connectTo(gameRoom),
+        ]);
+
+        for (const client of clients) {
+          client.onMessage("round_state", () => {});
+          client.send("ready", { ready: true });
+        }
+
+        await waitForCondition(() => gameRoom.state.phase !== "Waiting", 5_000);
+        await waitForPhase(gameRoom, "Battle", 5_000);
+
+        expect(gameRoom.state.featureFlagsEnableSpellCard).toBe(false);
+        expect(gameRoom.state.declaredSpellId).toBe("");
+        expect(Array.from(gameRoom.state.usedSpellIds)).toEqual([]);
+
+        for (const client of clients) {
+          client.connection.close();
+        }
+      });
+    },
+  );
+
   /**
    * Boss Exclusive Shop有効時はボスプレイヤーに専用ショップofferが出る
    */

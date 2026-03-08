@@ -1,14 +1,30 @@
 # Touhou Special Effects Follow-up Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status**: Completed on 2026-03-08. Tasks 1-7 are implemented, verified, and pushed on `feature/f4-roster-switch`. The current stage is PR review plus broader rollout validation.
 
 **Goal:** Finalize and implement the unresolved Touhou faction special effects and unresolved faction rows after numeric-only G2 metadata has been stabilized.
 
-**Architecture:** Treat this as a follow-up phase after `docs/plans/2026-03-08-g2-faction-effect-tuning.md`. Freeze concrete values first in the matrix, then implement one effect family at a time with TDD so battle, shop, and skill systems consume explicit typed metadata rather than ad-hoc branching. Keep legacy MVP behavior and fully-off flags as hard regression boundaries throughout.
+**Architecture:** This plan executed the special-effects phase after `docs/plans/2026-03-08-g2-faction-effect-tuning.md`. It froze concrete values first in the matrix, then implemented one effect family at a time with TDD so battle, shop, and skill systems consume explicit typed metadata rather than ad-hoc branching. Legacy MVP behavior and fully-off flags remained hard regression boundaries throughout.
 
 **Tech Stack:** TypeScript, Vitest, Colyseus, npm
 
 ---
+
+## Completion Summary
+
+- Task 1 completed: unresolved matrix rows and ownership were frozen in docs.
+- Task 2 completed: typed faction metadata was extended for `shinreibyou` and `niji_ryuudou`.
+- Task 3 completed: `chireiden` reflection was added in battle simulation.
+- Task 4 completed: `kanjuden` debuff immunity was added in battle/skill application.
+- Task 5 completed: `myourenji` / `niji_ryuudou` shop cost reduction was added.
+- Task 6 completed: `shinreibyou` ultimate-specific modifiers were added.
+- Task 7 completed: regression coverage and rollout docs were broadened.
+- Post-plan review fix completed: discounted Touhou purchases now store actual paid resale cost, preventing immediate-resale gold gain.
+
+Current next stage:
+- PR review follow-up
+- broader rollout validation and migration monitoring
 
 ### Task 1: Freeze unresolved faction rows and special-effect ownership in the matrix
 
@@ -51,7 +67,7 @@ For each effect family, document:
 
 **Step 3: Update roadmap docs**
 
-Make `feature-flag-design.md` and `touhou-units-migration-plan.md` point at the finalized matrix rows instead of generic follow-up language.
+Make `feature-flag-design.md` and `touhou-units-migration-plan.md` point at the finalized matrix rows instead of generic planning language.
 
 **Step 4: Review for execution readiness**
 
@@ -288,7 +304,6 @@ Expected: FAIL because the rollout-level special-effect expectations are not cov
 
 Update docs to record:
 - which special-effect rows are now complete
-- which rows remain deferred, if any
 - rollout cautions for balance and PR review
 
 **Step 4: Run focused verification**
@@ -314,5 +329,5 @@ git commit -m "test: broaden Touhou special-effect regression coverage"
 
 - Do not start runtime work until Task 1 removes all ambiguity from the matrix rows being implemented.
 - Keep `.serena/project.yml` out of commits.
-- If one effect family still lacks concrete values after Task 1, split that family into another follow-up plan instead of guessing.
+- If one effect family still lacks concrete values after Task 1, split that family into another plan instead of guessing.
 - Before claiming completion, run `npm run verify:ci` fresh in the execution turn.

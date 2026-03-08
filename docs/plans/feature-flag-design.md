@@ -90,14 +90,14 @@ When `enableTouhouRoster=true`, the active runtime path now uses the 25-unit Tou
 
 When `enableTouhouFactions=true`, the runtime now resolves Touhou `factionId` metadata from the active roster path, exposes faction tier activations in shared synergy calculation and player status, and applies the finalized faction hooks currently implemented in combat and shop runtime.
 
-Still deferred:
-- `enableTouhouFactions=true` now includes reflection, shop cost reduction, debuff immunity, `shinreibyou` ultimate damage modifiers, and `niji_ryuudou` tier2 first item/equip draw; remaining follow-up work is broader rollout validation only
-- `enablePerUnitSharedPool=true` now switches Touhou shared pool inventory to `unitId`-granular stock for shop generation and buy/sell/remove return paths, but broader rollout still needs additional gameplay balancing and migration validation
-- roster-switch ON/OFF E2E now covers legacy MVP shop state vs Touhou active runtime shop state, but broader migration rollout should still keep using gated validation
+Current rollout notes:
+- `enableTouhouFactions=true` now includes reflection, shop cost reduction, debuff immunity, `shinreibyou` ultimate damage modifiers, and `niji_ryuudou` tier2 first item/equip draw
+- `enablePerUnitSharedPool=true` now switches Touhou shared pool inventory to `unitId`-granular stock for shop generation and buy/sell/remove return paths
+- roster-switch ON/OFF E2E now covers legacy MVP shop state vs Touhou active runtime shop state, and broader migration rollout should continue using gated validation
 
 G2 effect tuning must now use `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/touhou-faction-effect-matrix.md` as the code-facing matrix. Runtime implementation should not continue for rows that still lack concrete values there.
 
-**Source of truth**: See `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/reference/touhou-units-migration-plan.md` for the current remaining blockers (final faction effect tuning, non-numeric faction effects, and broader migration rollout gates) and migration roadmap.
+**Source of truth**: See `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/reference/touhou-units-migration-plan.md` for current rollout cautions and migration roadmap.
 
 ## Flag Definitions
 
@@ -154,14 +154,14 @@ G2 effect tuning must now use `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/sp
 - **Purpose**: Enable Touhou character roster (25 units, 6 factions)
 - **Default**: false
 - **Env Var**: `FEATURE_ENABLE_TOUHOU_ROSTER`
-- **Note**: The active runtime path now uses the 25-unit Touhou draft roster, and faction / per-unit shared-pool follow-up work now lives mainly in rollout validation.
+- **Note**: The active runtime path now uses the 25-unit Touhou draft roster, and the remaining work here is rollout validation rather than missing faction-effect implementation.
 
 #### enableTouhouFactions
 - **Purpose**: Enable faction synergy system for Touhou units
 - **Default**: false
 - **Env Var**: `FEATURE_ENABLE_TOUHOU_FACTIONS`
 - **Dependency**: Requires `enableTouhouRoster=true`
-- **Current scope**: Resolves `factionId` from active roster data, reports faction tier activations in runtime/player status, and applies numeric buffs plus implemented special effects (reflection, shop discount, debuff immunity, `shinreibyou` ultimate modifiers, `niji_ryuudou` tier2 first item/equip draw). Remaining follow-up work is limited to broader rollout validation.
+- **Current scope**: Resolves `factionId` from active roster data, reports faction tier activations in runtime/player status, and applies numeric buffs plus implemented special effects (reflection, shop discount, debuff immunity, `shinreibyou` ultimate modifiers, `niji_ryuudou` tier2 first item/equip draw). The next stage is broader rollout validation.
 
 #### enablePerUnitSharedPool
 - **Purpose**: Enable per-unit shared pool (Map<unitId, count>)

@@ -22,7 +22,9 @@ export interface SynergyDefinition {
 export type TouhouFactionEffectId =
   | 'faction.chireiden'
   | 'faction.myourenji'
+  | 'faction.shinreibyou'
   | 'faction.grassroot_network'
+  | 'faction.niji_ryuudou'
   | 'faction.kanjuden';
 
 export interface TouhouFactionTierEffect {
@@ -32,6 +34,14 @@ export interface TouhouFactionTierEffect {
     attackPower?: number;
     hpMultiplier?: number;
     attackSpeedMultiplier?: number;
+  };
+  special?: {
+    reflectRatio?: number;
+    ultimateDamageMultiplier?: number;
+    bonusDamageVsDebuffedTarget?: number;
+    shopCostReduction?: number;
+    firstItemUseDraws?: number;
+    debuffImmunityCategories?: string[];
   };
 }
 
@@ -107,11 +117,19 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
       attackPower: [0, 1, 2],
     },
   },
+  shinreibyou: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.shinreibyou,
+    effects: {},
+  },
   grassroot_network: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.grassroot_network,
     effects: {
       attackPower: [1, 2],
     },
+  },
+  niji_ryuudou: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.niji_ryuudou,
+    effects: {},
   },
   kanjuden: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.kanjuden,
@@ -124,8 +142,35 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
 export const TOUHOU_FACTION_EFFECT_IDS: Partial<Record<TouhouFactionId, TouhouFactionEffectId>> = {
   chireiden: 'faction.chireiden',
   myourenji: 'faction.myourenji',
+  shinreibyou: 'faction.shinreibyou',
   grassroot_network: 'faction.grassroot_network',
+  niji_ryuudou: 'faction.niji_ryuudou',
   kanjuden: 'faction.kanjuden',
+};
+
+const TOUHOU_FACTION_SPECIAL_EFFECTS: Partial<Record<TouhouFactionId, Array<TouhouFactionTierEffect['special'] | undefined>>> = {
+  chireiden: [
+    { reflectRatio: 0.1 },
+    { reflectRatio: 0.2 },
+  ],
+  myourenji: [
+    undefined,
+    { shopCostReduction: 1 },
+    { shopCostReduction: 1 },
+  ],
+  shinreibyou: [
+    { ultimateDamageMultiplier: 1.1 },
+    { ultimateDamageMultiplier: 1.2, bonusDamageVsDebuffedTarget: 0.12 },
+    { ultimateDamageMultiplier: 1.35, bonusDamageVsDebuffedTarget: 0.18 },
+  ],
+  niji_ryuudou: [
+    { shopCostReduction: 1 },
+    { shopCostReduction: 1, firstItemUseDraws: 1 },
+  ],
+  kanjuden: [
+    { debuffImmunityCategories: ['crowd_control'] },
+    { debuffImmunityCategories: ['crowd_control', 'stat_down', 'dot'] },
+  ],
 };
 
 export function getTouhouFactionTierEffect(
@@ -145,6 +190,7 @@ export function getTouhouFactionTierEffect(
 
   const tierIndex = tier - 1;
   const statModifiers: TouhouFactionTierEffect['statModifiers'] = {};
+  const special = TOUHOU_FACTION_SPECIAL_EFFECTS[factionId]?.[tierIndex];
 
   if (definition.effects.defense?.[tierIndex] !== undefined) {
     statModifiers.defense = definition.effects.defense[tierIndex];
@@ -159,10 +205,17 @@ export function getTouhouFactionTierEffect(
     statModifiers.attackSpeedMultiplier = definition.effects.attackSpeedMultiplier[tierIndex];
   }
 
-  return {
-    effectId,
-    statModifiers,
-  };
+  const result: TouhouFactionTierEffect = { effectId };
+
+  if (Object.keys(statModifiers).length > 0) {
+    result.statModifiers = statModifiers;
+  }
+
+  if (special) {
+    result.special = special;
+  }
+
+  return result;
 }
 
 export function calculateScarletMansionSynergy(

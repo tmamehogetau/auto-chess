@@ -11,7 +11,7 @@ import { GameRoom } from "../../../src/server/rooms/game-room";
 import { FeatureFlagService } from "../../../src/server/feature-flag-service";
 import { withFlags, FLAG_CONFIGURATIONS } from "../../server/feature-flag-test-helper";
 import { waitForCondition } from "../shared-board-bridge/helpers/wait";
-import { SERVER_MESSAGE_TYPES } from "../../../src/shared/room-messages";
+import { CLIENT_MESSAGE_TYPES, SERVER_MESSAGE_TYPES } from "../../../src/shared/room-messages";
 
 describe("E2E: Full Game with Phase 2 Features", () => {
   let testServer: ColyseusTestServer;
@@ -296,6 +296,93 @@ describe("E2E: Full Game with Phase 2 Features", () => {
           }
         },
       );
+    },
+  );
+
+  it(
+    "Touhou full migration: shop discount と unitId 購入結果が通る",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+        const gameRoom = await testServer.createRoom<GameRoom>("game");
+        const clients = await setupGameWith4Players(gameRoom);
+        const sessionId = clients[0]!.sessionId;
+        const controller = (gameRoom as unknown as {
+          controller: {
+            boardPlacementsByPlayer: Map<string, unknown[]>;
+            shopOffersByPlayer: Map<string, unknown[]>;
+          };
+        }).controller;
+
+        controller.boardPlacementsByPlayer.set(sessionId, [
+          { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+          { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+          { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+        ]);
+        controller.shopOffersByPlayer.set(sessionId, [
+          { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+        ]);
+
+        const goldBefore = gameRoom.state.players.get(sessionId)?.gold ?? 0;
+        clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+          cmdSeq: 1,
+          shopBuySlotIndex: 0,
+        });
+
+        await waitForCondition(
+          () => (gameRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
+          2_000,
+        );
+
+        const player = gameRoom.state.players.get(sessionId);
+        expect(player?.gold).toBe(goldBefore - 1);
+        expect(player?.benchUnits.length).toBe(1);
+
+        for (const client of clients) {
+          client.connection.close();
+        }
+      });
+    },
+  );
+
+  it(
+    "Legacy MVP: special-effect rollout が無効でも通常コストを維持する",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+        const gameRoom = await testServer.createRoom<GameRoom>("game");
+        const clients = await setupGameWith4Players(gameRoom);
+        const sessionId = clients[0]!.sessionId;
+        const controller = (gameRoom as unknown as {
+          controller: {
+            boardPlacementsByPlayer: Map<string, unknown[]>;
+            shopOffersByPlayer: Map<string, unknown[]>;
+          };
+        }).controller;
+
+        controller.shopOffersByPlayer.set(sessionId, [
+          { unitType: "mage", rarity: 2, cost: 2 },
+        ]);
+
+        const goldBefore = gameRoom.state.players.get(sessionId)?.gold ?? 0;
+        clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+          cmdSeq: 1,
+          shopBuySlotIndex: 0,
+        });
+
+        await waitForCondition(
+          () => (gameRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 2,
+          2_000,
+        );
+
+        const player = gameRoom.state.players.get(sessionId);
+        expect(player?.gold).toBe(goldBefore - 2);
+        expect(player?.benchUnits.length).toBe(1);
+
+        for (const client of clients) {
+          client.connection.close();
+        }
+      });
     },
   );
 });

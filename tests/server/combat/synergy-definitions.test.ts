@@ -82,11 +82,13 @@ describe("synergy-definitions", () => {
   });
 
   describe("Touhou faction effect metadata", () => {
-    test("4勢力スコープで stable effectId を公開する", () => {
+    test("確定済み faction row の stable effectId を公開する", () => {
       expect(TOUHOU_FACTION_EFFECT_IDS).toEqual({
         chireiden: "faction.chireiden",
         myourenji: "faction.myourenji",
+        shinreibyou: "faction.shinreibyou",
         grassroot_network: "faction.grassroot_network",
+        niji_ryuudou: "faction.niji_ryuudou",
         kanjuden: "faction.kanjuden",
       });
     });
@@ -97,11 +99,17 @@ describe("synergy-definitions", () => {
         statModifiers: {
           defense: 1,
         },
+        special: {
+          reflectRatio: 0.1,
+        },
       });
       expect(getTouhouFactionTierEffect("chireiden", 2)).toEqual({
         effectId: "faction.chireiden",
         statModifiers: {
           defense: 2,
+        },
+        special: {
+          reflectRatio: 0.2,
         },
       });
     });
@@ -114,18 +122,65 @@ describe("synergy-definitions", () => {
           attackPower: 0,
         },
       });
+      expect(getTouhouFactionTierEffect("myourenji", 2)).toEqual({
+        effectId: "faction.myourenji",
+        statModifiers: {
+          hpMultiplier: 1.1,
+          attackPower: 1,
+        },
+        special: {
+          shopCostReduction: 1,
+        },
+      });
       expect(getTouhouFactionTierEffect("myourenji", 3)).toEqual({
         effectId: "faction.myourenji",
         statModifiers: {
           hpMultiplier: 1.15,
           attackPower: 2,
         },
+        special: {
+          shopCostReduction: 1,
+        },
       });
     });
 
-    test("未実装スコープの faction は metadata 未解決のまま返す", () => {
-      expect(getTouhouFactionTierEffect("shinreibyou", 1)).toBeNull();
-      expect(getTouhouFactionTierEffect("niji_ryuudou", 1)).toBeNull();
+    test("shinreibyou tier effect から ultimate metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("shinreibyou", 1)).toEqual({
+        effectId: "faction.shinreibyou",
+        special: {
+          ultimateDamageMultiplier: 1.1,
+        },
+      });
+      expect(getTouhouFactionTierEffect("shinreibyou", 2)).toEqual({
+        effectId: "faction.shinreibyou",
+        special: {
+          ultimateDamageMultiplier: 1.2,
+          bonusDamageVsDebuffedTarget: 0.12,
+        },
+      });
+      expect(getTouhouFactionTierEffect("shinreibyou", 3)).toEqual({
+        effectId: "faction.shinreibyou",
+        special: {
+          ultimateDamageMultiplier: 1.35,
+          bonusDamageVsDebuffedTarget: 0.18,
+        },
+      });
+    });
+
+    test("niji_ryuudou tier effect から shop/item metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("niji_ryuudou", 1)).toEqual({
+        effectId: "faction.niji_ryuudou",
+        special: {
+          shopCostReduction: 1,
+        },
+      });
+      expect(getTouhouFactionTierEffect("niji_ryuudou", 2)).toEqual({
+        effectId: "faction.niji_ryuudou",
+        special: {
+          shopCostReduction: 1,
+          firstItemUseDraws: 1,
+        },
+      });
     });
   });
 });

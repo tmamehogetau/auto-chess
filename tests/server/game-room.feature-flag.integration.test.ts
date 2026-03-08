@@ -733,6 +733,158 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedZanmu.range).toBe(3);
         });
       });
+
+      test("true/true/false では Touhou faction shop discount が反映される", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+          ]);
+
+          const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
+          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+            cmdSeq: 1,
+            shopBuySlotIndex: 0,
+          });
+
+          await waitForCondition(
+            () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
+            1_000,
+          );
+
+          const player = serverRoom.state.players.get(sessionId);
+          expect(player?.gold).toBe(goldBefore - 1);
+        });
+      });
+
+      test("true/true/true では discount と per-unit 購入結果が両立する", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+          ]);
+
+          const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
+          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+            cmdSeq: 1,
+            shopBuySlotIndex: 0,
+          });
+
+          await waitForCondition(
+            () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
+            1_000,
+          );
+
+          const player = serverRoom.state.players.get(sessionId);
+          expect(player?.gold).toBe(goldBefore - 1);
+          expect(player?.benchUnits.length).toBe(1);
+        });
+      });
+
+      test("false/false/false では legacy MVP buy cost を維持する", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "vanguard", starLevel: 1 },
+            { cell: 1, unitType: "mage", starLevel: 1 },
+            { cell: 2, unitType: "assassin", starLevel: 1 },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "mage", rarity: 2, cost: 2 },
+          ]);
+
+          const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
+          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+            cmdSeq: 1,
+            shopBuySlotIndex: 0,
+          });
+
+          await waitForCondition(
+            () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 2,
+            1_000,
+          );
+
+          const player = serverRoom.state.players.get(sessionId);
+          expect(player?.gold).toBe(goldBefore - 2);
+          expect(player?.benchUnits.length).toBe(1);
+        });
+      });
     });
   });
 });

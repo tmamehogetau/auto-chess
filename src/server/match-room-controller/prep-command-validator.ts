@@ -5,6 +5,8 @@ import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
 } from "../../shared/board-geometry";
+import type { FeatureFlags } from "../../shared/feature-flags";
+import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 
 // Constants from the controller
 const XP_PURCHASE_COST = 4;
@@ -85,6 +87,7 @@ export interface ValidationDependencies {
   isSharedPoolEnabled: () => boolean;
   isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
+  getRosterFlags: () => FeatureFlags;
 }
 
 export interface ValidationContext {
@@ -573,7 +576,12 @@ function validateGold(
     const offers = deps.getShopOffers(playerId);
     const targetOffer = offers[payload.shopBuySlotIndex];
     if (targetOffer) {
-      shopBuyCost = targetOffer.cost;
+      const boardPlacements = payload.boardPlacements ?? deps.getBoardPlacements(playerId);
+      shopBuyCost = calculateDiscountedShopOfferCost(
+        targetOffer,
+        boardPlacements,
+        deps.getRosterFlags(),
+      );
     }
   }
 

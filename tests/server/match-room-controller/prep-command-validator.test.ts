@@ -31,6 +31,20 @@ describe("PrepCommandValidator", () => {
     isSharedPoolEnabled: vi.fn().mockReturnValue(false),
     isPoolDepleted: vi.fn().mockReturnValue(false),
     getPrepDeadlineAtMs: vi.fn().mockReturnValue(32000),
+    getRosterFlags: vi.fn().mockReturnValue({
+      enableHeroSystem: false,
+      enableSharedPool: false,
+      enablePhaseExpansion: false,
+      enableSubUnitSystem: false,
+      enableEmblemCells: false,
+      enableSpellCard: false,
+      enableRumorInfluence: false,
+      enableBossExclusiveShop: false,
+      enableSharedBoardShadow: false,
+      enableTouhouRoster: false,
+      enableTouhouFactions: false,
+      enablePerUnitSharedPool: false,
+    }),
     ...overrides,
   });
 

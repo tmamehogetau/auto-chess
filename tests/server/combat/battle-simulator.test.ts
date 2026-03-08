@@ -26,6 +26,7 @@ import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
 } from "../../../src/server/combat/synergy-definitions";
+import { HERO_SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
 
 describe("battle-simulator", () => {
   describe("scarlet mansion synergy", () => {
@@ -123,6 +124,144 @@ describe("battle-simulator", () => {
       );
 
       expect(result.damageDealt.left).toBe(333);
+    });
+  });
+
+  describe("kanjuden debuff immunity", () => {
+    test("kanjuden tier1 は crowd_control の攻撃速度低下を無効化する", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", starLevel: 1 }, "left", 0);
+      const immuneTarget = createTestBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1, factionId: "kanjuden" },
+        "right",
+        0,
+        false,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      ) as BattleUnit & { debuffImmunityCategories?: string[] };
+      immuneTarget.debuffImmunityCategories = ["crowd_control"];
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [immuneTarget], log);
+
+      expect(immuneTarget.buffModifiers.attackSpeedMultiplier).toBe(1);
+    });
+
+    test("kanjuden でないユニットには咲夜の攻撃速度低下が適用される", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", starLevel: 1 }, "left", 0);
+      const normalTarget = createTestBattleUnit(
+        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [normalTarget], log);
+
+      expect(normalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+    });
+  });
+
+  describe("shinreibyou ultimate modifiers", () => {
+    test("shinreibyou tier1 は damaging skill に x1.10 を乗せる", () => {
+      const flags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: 1, unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index, false, flags)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, false, flags)),
+        leftPlacements,
+        rightPlacements,
+        2_500,
+        null,
+        null,
+        null,
+        flags,
+      );
+
+      expect(result.combatLog.some((log) => log.includes("Backstab! Deals 264 damage"))).toBe(true);
+    });
+
+    test("shinreibyou tier2 は debuffed target に +12% bonus damage を乗せる", () => {
+      const flags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: 1, unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+        { cell: 2, unitType: "ranger", unitId: "tojiko", starLevel: 1, factionId: "shinreibyou" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+      ];
+      const leftUnits = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index, false, flags),
+      );
+      const rightUnits = rightPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "right", index, false, flags),
+      );
+      rightUnits[0]!.buffModifiers.attackSpeedMultiplier = 0.7;
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        2_500,
+        null,
+        null,
+        null,
+        flags,
+      );
+
+      expect(result.combatLog.some((log) => log.includes("Backstab! Deals 322 damage"))).toBe(true);
+    });
+
+    test("shinreibyou tier inactive では ultimate modifier が発動しない", () => {
+      const flags = {
+        ...DEFAULT_FLAGS,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+      };
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index, false, flags)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, false, flags)),
+        leftPlacements,
+        rightPlacements,
+        2_500,
+        null,
+        null,
+        null,
+        flags,
+      );
+
+      expect(result.combatLog.some((log) => log.includes("Backstab! Deals 240 damage"))).toBe(true);
     });
   });
 
@@ -677,12 +816,12 @@ describe("battle-simulator", () => {
         createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      simulator.simulateBattle(
+      const result = simulator.simulateBattle(
         leftUnits,
         rightUnits,
         leftPlacements,
         rightPlacements,
-        1_000,
+        10,
         null,
         null,
         null,
@@ -718,12 +857,12 @@ describe("battle-simulator", () => {
         createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      simulator.simulateBattle(
+      const result = simulator.simulateBattle(
         leftUnits,
         rightUnits,
         leftPlacements,
         rightPlacements,
-        1_000,
+        10,
         null,
         null,
         null,
@@ -763,12 +902,12 @@ describe("battle-simulator", () => {
         createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
       ];
 
-      simulator.simulateBattle(
+      const result = simulator.simulateBattle(
         leftUnits,
         rightUnits,
         leftPlacements,
         rightPlacements,
-        1_000,
+        10,
         null,
         null,
         null,
@@ -781,6 +920,82 @@ describe("battle-simulator", () => {
 
       expect(leftUnits[0]?.attackPower).toBe(45);
       expect(leftUnits[1]?.attackPower).toBe(64);
+    });
+
+    test("chireiden tier1 は軽減後ダメージの10%を攻撃元へ反射する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 3, unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: 7, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "right", index),
+      );
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
+
+      expect(leftUnits[0]?.hp).toBe(48);
+    });
+
+    test("chireiden reflection は反射ダメージを再反射しない", () => {
+      const simulator = new BattleSimulator();
+
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 0, unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3, factionId: "chireiden" },
+        { cell: 1, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 3, unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: 7, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+      ];
+
+      const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "left", index),
+      );
+      const rightUnits: BattleUnit[] = rightPlacements.map((placement, index) =>
+        createTestBattleUnit(placement, "right", index),
+      );
+
+      const result = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        leftPlacements,
+        rightPlacements,
+        10,
+        null,
+        null,
+        null,
+        {
+          ...DEFAULT_FLAGS,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+        },
+      );
+
+      expect(leftUnits[0]?.hp).toBe(48);
+      expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(2);
     });
 
     test("戦闘ログにダメージ情報が記録される", () => {

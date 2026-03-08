@@ -9,6 +9,7 @@ import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
   calculateSynergyDetails,
+  getTouhouFactionTierEffect,
   hasScarletMansionBossLifesteal,
   type SynergyEffects,
 } from "./synergy-definitions";
@@ -54,6 +55,10 @@ export interface BattleUnit {
     defenseMultiplier: number; // デフォルト 1.0
     attackSpeedMultiplier: number; // デフォルト 1.0
   };
+  reflectRatio?: number;
+  ultimateDamageMultiplier?: number;
+  bonusDamageVsDebuffedTarget?: number;
+  debuffImmunityCategories?: string[];
 }
 
 /**
@@ -188,6 +193,8 @@ export function createBattleUnit(
       defenseMultiplier: 1.0,
       attackSpeedMultiplier: 1.0,
     },
+    reflectRatio: 0,
+    debuffImmunityCategories: [],
   };
 }
 
@@ -290,6 +297,20 @@ function applySynergyBuffs(
     const factionDef = TOUHOU_FACTION_DEFINITIONS[factionId];
     if (factionTier > 0 && factionDef) {
       applySynergyEffects(unit, factionDef.effects, factionTier);
+
+      const factionEffect = getTouhouFactionTierEffect(factionId, factionTier);
+      if (factionEffect?.special?.reflectRatio !== undefined) {
+        unit.reflectRatio = factionEffect.special.reflectRatio;
+      }
+      if (factionEffect?.special?.ultimateDamageMultiplier !== undefined) {
+        unit.ultimateDamageMultiplier = factionEffect.special.ultimateDamageMultiplier;
+      }
+      if (factionEffect?.special?.bonusDamageVsDebuffedTarget !== undefined) {
+        unit.bonusDamageVsDebuffedTarget = factionEffect.special.bonusDamageVsDebuffedTarget;
+      }
+      if (factionEffect?.special?.debuffImmunityCategories !== undefined) {
+        unit.debuffImmunityCategories = factionEffect.special.debuffImmunityCategories;
+      }
     }
   }
 }
@@ -619,6 +640,19 @@ export class BattleSimulator {
           }
 
           target.hp -= actualDamage;
+
+          if ((target.reflectRatio ?? 0) > 0 && actualDamage > 0) {
+            const reflectedDamage = Math.max(1, Math.floor(actualDamage * (target.reflectRatio ?? 0)));
+            action.unit.hp -= reflectedDamage;
+            combatLog.push(
+              `${generateUnitName(target)} reflects ${reflectedDamage} damage to ${generateUnitName(action.unit)}`,
+            );
+
+            if (action.unit.hp <= 0) {
+              action.unit.isDead = true;
+              combatLog.push(`${generateUnitName(action.unit)} has been defeated!`);
+            }
+          }
 
           // ボスパッシブ「紅色の世界」の回復効果（与えたダメージの5%回復）
           if (bossPassiveActive && actualDamage > 0) {

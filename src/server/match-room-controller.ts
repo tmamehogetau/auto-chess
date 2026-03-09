@@ -1941,11 +1941,23 @@ export class MatchRoomController {
       ? [nextRoundRumorUnit.unitType]
       : [];
 
+    // 噂勢力eligibleを付与されたプレイヤーID一覧（ボス以外）
+    const grantedPlayerIds: string[] = [];
+    if (this.enableRumorInfluence && this.phaseResult === "success") {
+      const bossPlayerId = state.bossPlayerId;
+      for (const playerId of state.alivePlayerIds) {
+        if (playerId !== bossPlayerId) {
+          grantedPlayerIds.push(playerId);
+        }
+      }
+    }
+
     if (this.matchLogger) {
       this.matchLogger.logRumorInfluence(
         state.roundIndex,
         rumorFactions,
         guaranteedRumorSlotApplied,
+        grantedPlayerIds,
       );
     }
 

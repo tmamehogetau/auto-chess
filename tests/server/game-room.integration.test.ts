@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi, beforeEach } from "vitest";
 
 import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
@@ -1404,6 +1404,120 @@ describe("GameRoom integration", () => {
       expect(logsResponse.kind).toBe("logs");
       expect(logsResponse.correlationId).toBe("corr_admin_logs");
       expect(Array.isArray(logsResponse.data)).toBe(true);
+    });
+  });
+
+  describe("Rumor Influence - Pre-submit Snapshot Regression", () => {
+    beforeEach(() => {
+      // Enable rumor influence for these tests
+      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "true";
+    });
+
+    afterEach(() => {
+      delete process.env.FEATURE_ENABLE_RUMOR_INFLUENCE;
+    });
+
+    test("shopBuySlotIndex preserves isRumorUnit flag in action log after slot replacement", async () => {
+      // This test verifies the fix for the bug where isRumorUnit was lost
+      // because shop slot was replaced before logging occurred.
+      // The fix captures a snapshot of shop offers before submitPrepCommand.
+
+      await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
+        const serverRoom = await testServer.createRoom<GameRoom>("game");
+        const clients = await Promise.all([
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+        ]);
+
+        for (const client of clients) {
+          client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+        }
+
+        for (const client of clients) {
+          client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+        }
+
+        await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+        // Access the match logger to verify action logging
+        const matchLogger = (serverRoom as unknown as {
+          matchLogger?: {
+            getActionLogs: () => Array<{
+              playerId: string;
+              roundIndex: number;
+              actionType: string;
+              details: {
+                unitType?: string;
+                cost?: number;
+                isRumorUnit?: boolean;
+                goldBefore?: number;
+                goldAfter?: number;
+              };
+            }>;
+          };
+        }).matchLogger;
+
+        const targetClient = clients[0];
+
+        // Force a shop offer with isRumorUnit flag via internal controller
+        const internalController = (serverRoom as unknown as {
+          controller?: {
+            shopOffersByPlayer: Map<
+              string,
+              Array<{
+                unitType: "vanguard" | "ranger" | "mage" | "assassin";
+                rarity: 1 | 2 | 3;
+                cost: number;
+                isRumorUnit?: boolean;
+              }>
+            >;
+          };
+        }).controller;
+
+        if (!internalController) {
+          throw new Error("Expected internal controller");
+        }
+
+        // Set up a shop offer with isRumorUnit flag
+        const forcedOffers = [
+          { unitType: "vanguard" as const, rarity: 1 as const, cost: 3, isRumorUnit: true },
+          { unitType: "ranger" as const, rarity: 1 as const, cost: 2 },
+          { unitType: "mage" as const, rarity: 2 as const, cost: 4 },
+          { unitType: "assassin" as const, rarity: 2 as const, cost: 4 },
+          { unitType: "vanguard" as const, rarity: 1 as const, cost: 3 },
+        ];
+        internalController.shopOffersByPlayer.set(targetClient.sessionId, forcedOffers);
+
+        // Buy the rumor unit at slot 0
+        targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+          cmdSeq: 1,
+          shopBuySlotIndex: 0,
+        });
+
+        const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+        expect(result).toEqual({ accepted: true });
+
+        // Verify the action was logged with isRumorUnit flag preserved
+        // This tests that the pre-submit snapshot captured the flag correctly
+        // even though the slot was replaced after purchase
+        if (matchLogger) {
+          const actionLogs = matchLogger.getActionLogs();
+          const buyAction = actionLogs.find(
+            (log) =>
+              log.playerId === targetClient.sessionId &&
+              log.actionType === "buy_unit" &&
+              log.details.unitType === "vanguard"
+          );
+
+          // The key assertion: isRumorUnit should be preserved in the log
+          // even though the shop slot was replaced after purchase
+          expect(buyAction).toBeDefined();
+          expect(buyAction!.details.isRumorUnit).toBe(true);
+          expect(buyAction!.details.cost).toBe(3);
+        }
+      });
     });
   });
 });

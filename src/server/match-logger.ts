@@ -3,6 +3,11 @@
  * ゲーム全体の結果記録用
  */
 
+import {
+  buildRumorKpiSummary,
+  type RumorKpiSummary,
+} from "./analytics/rumor-kpi";
+
 export interface MatchSummaryLog {
   matchId: string;
   roomId: string;
@@ -63,6 +68,8 @@ export interface RoundSummaryLog {
   eliminations: string[];
   rumorFactions?: string[];
   guaranteedRumorSlotApplied?: boolean;
+  /** 噂勢力eligibleを付与されたプレイヤーID一覧（ボス以外） */
+  grantedPlayerIds?: string[];
 }
 
 export interface BattleSummaryLog {
@@ -108,6 +115,8 @@ export interface PlayerActionLog {
     toCell?: number;
     cell?: number;
     benchIndex?: number;
+    benchIndices?: number[];
+    boardCells?: number[];
     heroId?: string;
     itemCount?: number;
     itemType?: string;
@@ -115,6 +124,7 @@ export interface PlayerActionLog {
     itemSlotIndex?: number;
     locked?: boolean;
     benchUnit?: string;
+    isRumorUnit?: boolean;
     goldBefore: number;
     goldAfter: number;
   };
@@ -252,7 +262,15 @@ export class MatchLogger {
       playerId,
       actionType,
       timestamp: Date.now(),
-      details,
+      details: {
+        ...details,
+        ...(details.benchIndices !== undefined && {
+          benchIndices: [...details.benchIndices],
+        }),
+        ...(details.boardCells !== undefined && {
+          boardCells: [...details.boardCells],
+        }),
+      },
     });
   }
 
@@ -361,6 +379,7 @@ export class MatchLogger {
     roundIndex: number,
     rumorFactions: string[],
     guaranteedRumorSlotApplied: boolean,
+    grantedPlayerIds?: string[],
   ): void {
     let roundLog = this.roundLogs.find((log) => log.roundIndex === roundIndex);
 
@@ -379,6 +398,9 @@ export class MatchLogger {
 
     roundLog.rumorFactions = [...rumorFactions];
     roundLog.guaranteedRumorSlotApplied = guaranteedRumorSlotApplied;
+    if (grantedPlayerIds !== undefined) {
+      roundLog.grantedPlayerIds = [...grantedPlayerIds];
+    }
   }
 
   getRoundLogs(): RoundSummaryLog[] {
@@ -391,6 +413,10 @@ export class MatchLogger {
 
       if (roundLog.rumorFactions) {
         clonedRoundLog.rumorFactions = [...roundLog.rumorFactions];
+      }
+
+      if (roundLog.grantedPlayerIds) {
+        clonedRoundLog.grantedPlayerIds = [...roundLog.grantedPlayerIds];
       }
 
       return clonedRoundLog;
@@ -419,8 +445,15 @@ export class MatchLogger {
   ): void {
     const stats = this.playerStats.get(playerId);
     if (stats) {
-      stats.finalBoardUnits = boardUnits;
-      stats.finalBenchUnits = benchUnits;
+      // Snapshot: 入力配列の防御的コピー
+      stats.finalBoardUnits = boardUnits.map((unit) => ({
+        ...unit,
+        items: [...unit.items],
+      }));
+      stats.finalBenchUnits = benchUnits.map((unit) => ({
+        ...unit,
+        items: [...unit.items],
+      }));
     }
   }
 
@@ -448,8 +481,14 @@ export class MatchLogger {
           battleWins: stats.battleWins,
           battleLosses: stats.battleLosses,
           selectedHeroId: stats.selectedHeroId,
-          finalBoardUnits: stats.finalBoardUnits,
-          finalBenchUnits: stats.finalBenchUnits,
+          finalBoardUnits: stats.finalBoardUnits.map((unit) => ({
+            ...unit,
+            items: [...unit.items],
+          })),
+          finalBenchUnits: stats.finalBenchUnits.map((unit) => ({
+            ...unit,
+            items: [...unit.items],
+          })),
         });
       }
     }
@@ -518,10 +557,10 @@ export class MatchLogger {
       roundIndex,
       playerId,
       timestamp: Date.now(),
-      offers,
+      offers: offers.map((offer) => ({ ...offer })),
     };
     if (purchased !== undefined) {
-      log.purchased = purchased;
+      log.purchased = { ...purchased };
     }
     this.bossShopLogs.push(log);
   }
@@ -541,7 +580,7 @@ export class MatchLogger {
       timestamp: Date.now(),
       synergyType,
       unitCount,
-      effects,
+      effects: effects.map((effect) => ({ ...effect })),
     });
   }
 
@@ -565,20 +604,63 @@ export class MatchLogger {
   }
 
   // ゲッターメソッド
+  getActionLogs(): PlayerActionLog[] {
+    return this.actionLogs.map((log) => ({
+      ...log,
+      details: {
+        ...log.details,
+        ...(log.details.benchIndices !== undefined && {
+          benchIndices: [...log.details.benchIndices],
+        }),
+        ...(log.details.boardCells !== undefined && {
+          boardCells: [...log.details.boardCells],
+        }),
+      },
+    }));
+  }
+
   getSpellEffectLogs(): SpellEffectLog[] {
-    return [...this.spellEffectLogs];
+    return this.spellEffectLogs.map((log) => ({ ...log }));
   }
 
   getBossShopLogs(): BossShopLog[] {
-    return [...this.bossShopLogs];
+    return this.bossShopLogs.map((log) => ({
+      ...log,
+      offers: log.offers.map((offer) => ({ ...offer })),
+      ...(log.purchased !== undefined && {
+        purchased: { ...log.purchased },
+      }),
+    }));
   }
 
   getSynergyActivationLogs(): SynergyActivationLog[] {
-    return [...this.synergyActivationLogs];
+    return this.synergyActivationLogs.map((log) => ({
+      ...log,
+      effects: log.effects.map((effect) => ({ ...effect })),
+    }));
   }
 
   getHpChangeLogs(): HpChangeLog[] {
-    return [...this.hpChangeLogs];
+    return this.hpChangeLogs.map((log) => ({ ...log }));
+  }
+
+  /**
+   * 噂勢力 KPI サマリーを取得する
+   * ログから派生したメトリクスを計算して返す
+   */
+  getRumorKpiSummary(): RumorKpiSummary {
+    return buildRumorKpiSummary(this.getRoundLogs(), this.getActionLogs());
+  }
+
+  /**
+   * 噂勢力 KPI サマリーを構造化JSONとして出力する
+   * W6手動レビュー用の機械可読レポート
+   */
+  outputRumorKpiSummary(): void {
+    console.log(JSON.stringify({
+      type: "rumor_kpi_summary",
+      data: this.getRumorKpiSummary(),
+    }));
   }
 }
 

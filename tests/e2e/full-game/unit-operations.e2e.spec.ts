@@ -17,7 +17,7 @@ import {
 
 describe("E2E: Unit Operations Flow", () => {
   let testServer: ColyseusTestServer;
-  const TEST_SERVER_PORT = 4576;
+  const TEST_SERVER_PORT = 4578;
 
   beforeAll(async () => {
     const server = defineServer({

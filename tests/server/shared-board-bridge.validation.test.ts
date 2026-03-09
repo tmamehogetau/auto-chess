@@ -334,5 +334,46 @@ describe("SharedBoardBridge validation (T1-2)", () => {
         expect.any(Error),
       );
     });
+
+    it("READY前の想定内 shared_board 未起動では console.error を呼ばない", async () => {
+      const { bridge } = createBridge();
+
+      // まだREADYになったことがない状態をシミュレート
+      Reflect.set(bridge, "enabled", true);
+      Reflect.set(bridge, "state", "CONNECTING");
+      Reflect.set(bridge, "sharedBoardRoomId", null);
+      Reflect.set(bridge, "maxReconnectAttempts", 0);
+      // hasEverBeenReady はデフォルトで false
+      Reflect.set(bridge, "findSharedBoardRoomIdWithRetry", vi.fn(async () => {
+        throw new Error("No shared_board room found");
+      }));
+
+      await invokeConnect(bridge);
+
+      // 想定内のエラーは console.error を呼ばない
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it("READY後の同じエラーは console.error を呼ぶ", async () => {
+      const { bridge } = createBridge();
+
+      // 一度READYになった後の状態をシミュレート
+      Reflect.set(bridge, "enabled", true);
+      Reflect.set(bridge, "state", "CONNECTING");
+      Reflect.set(bridge, "sharedBoardRoomId", null);
+      Reflect.set(bridge, "maxReconnectAttempts", 0);
+      Reflect.set(bridge, "hasEverBeenReady", true); // READYになったことがある
+      Reflect.set(bridge, "findSharedBoardRoomIdWithRetry", vi.fn(async () => {
+        throw new Error("No shared_board room found");
+      }));
+
+      await invokeConnect(bridge);
+
+      // READY後は同じエラーでも console.error を呼ぶ
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[SharedBoardBridge] Connection failed:",
+        expect.any(Error),
+      );
+    });
   });
 });

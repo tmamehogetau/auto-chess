@@ -87,6 +87,7 @@ export class SharedBoardBridge {
   private lastObservationTime = 0;
   private readonly minObservationIntervalMs = 100;
   private reconnectAttempts = 0;
+  private hasEverBeenReady = false;
   private readonly maxReconnectAttempts = 5;
   private readonly reconnectBaseDelayMs = 250;
   private readonly reconnectMaxDelayMs = 30_000;
@@ -195,6 +196,7 @@ export class SharedBoardBridge {
       this.setupStateChangeListener();
 
       this.state = "READY";
+      this.hasEverBeenReady = true;
       this.reconnectAttempts = 0;
 
       if (this.reconnectTimer) {
@@ -202,7 +204,7 @@ export class SharedBoardBridge {
         this.reconnectTimer = null;
       }
     } catch (error) {
-      const shouldSuppressConnectLogs = this.isExpectedSharedBoardUnavailableError(error);
+      const shouldSuppressConnectLogs = !this.hasEverBeenReady && this.isExpectedSharedBoardUnavailableError(error);
 
       if (!shouldSuppressConnectLogs) {
         console.error("[SharedBoardBridge] Connection failed:", error);

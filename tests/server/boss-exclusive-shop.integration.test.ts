@@ -181,7 +181,10 @@ describe("Boss Exclusive Shop Integration", () => {
       }
 
       const goldBefore = controller.getPlayerStatus(bossId).gold;
-      const regularShopBefore = controller.getShopOffersForPlayer(bossId);
+      // Deep copy for immutable snapshot to avoid reference comparison issues
+      const regularShopBefore = JSON.parse(
+        JSON.stringify(controller.getShopOffersForPlayer(bossId))
+      );
       const bossShopBefore = controller.getBossShopOffersForPlayer(bossId);
       const targetOffer = bossShopBefore[0];
 

@@ -234,7 +234,7 @@ describe("buildRumorKpiSummary", () => {
       ]);
 
       expect(summary.rumorPurchaseCount).toBe(1);
-      expect(summary.roundsWithoutPurchase).toBe(1); // b didn't purchase
+      expect(summary.opportunitiesWithoutPurchase).toBe(1); // b didn't purchase
     });
 
     it("ignores purchases without corresponding opportunity", () => {
@@ -267,7 +267,7 @@ describe("buildRumorKpiSummary", () => {
     });
   });
 
-  describe("roundsWithoutPurchase", () => {
+  describe("opportunitiesWithoutPurchase", () => {
     it("counts opportunities with guaranteed grant but no purchase", () => {
       // R1: guaranteed, granted to ["a", "b"]
       // Only a purchased (in round 2)
@@ -280,7 +280,7 @@ describe("buildRumorKpiSummary", () => {
       // Opportunities: (R1,a), (R1,b) = 2
       // Purchases: (R1,a) = 1
       // Without purchase: 1
-      expect(summary.roundsWithoutPurchase).toBe(1);
+      expect(summary.opportunitiesWithoutPurchase).toBe(1);
     });
 
     it("returns 0 when all opportunities have purchases", () => {
@@ -291,7 +291,7 @@ describe("buildRumorKpiSummary", () => {
         rumorBuy(2, "b"),
       ]);
 
-      expect(summary.roundsWithoutPurchase).toBe(0);
+      expect(summary.opportunitiesWithoutPurchase).toBe(0);
     });
 
     it("excludes non-guaranteed rounds", () => {
@@ -299,7 +299,7 @@ describe("buildRumorKpiSummary", () => {
         normalRound(1, [["a", "b"]]), // not guaranteed
       ], []);
 
-      expect(summary.roundsWithoutPurchase).toBe(0);
+      expect(summary.opportunitiesWithoutPurchase).toBe(0);
     });
   });
 
@@ -359,7 +359,7 @@ describe("buildRumorKpiSummary", () => {
       expect(summary.perPlayerRumorPurchases).toEqual({
         p1: 1, p2: 1, p3: 0, p4: 0,
       });
-      expect(summary.roundsWithoutPurchase).toBe(4); // 6 opportunities - 2 purchases
+      expect(summary.opportunitiesWithoutPurchase).toBe(4); // 6 opportunities - 2 purchases
       expect(summary.rumorPurchaseRate).toBe(2 / 6); // purchases / total opportunities
     });
 
@@ -380,7 +380,7 @@ describe("buildRumorKpiSummary", () => {
         r3: 1,
       });
       expect(summary.rumorPurchaseCount).toBe(2);
-      expect(summary.roundsWithoutPurchase).toBe(1); // r3 didn't purchase
+      expect(summary.opportunitiesWithoutPurchase).toBe(1); // r3 didn't purchase
       expect(summary.rumorPurchaseRate).toBe(2 / 3); // 2 purchases / 3 opportunities
     });
   });

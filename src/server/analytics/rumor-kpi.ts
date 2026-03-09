@@ -21,8 +21,8 @@ export interface RumorKpiSummary {
   rumorPurchaseCount: number;
   /** 購入率（購入回数 / guaranteed opportunities） */
   rumorPurchaseRate: number;
-  /** 購入がなかった確定ラウンド数 */
-  roundsWithoutPurchase: number;
+  /** 購入がなかった確定機会数（player-round単位） */
+  opportunitiesWithoutPurchase: number;
   /** プレイヤー別確定ラウンド数 */
   perPlayerGuaranteedRounds: Record<string, number>;
   /** プレイヤー別購入回数 */
@@ -158,10 +158,10 @@ function calculatePurchases(
 }
 
 /**
- * roundsWithoutPurchase を計算
+ * opportunitiesWithoutPurchase を計算
  * opportunities - purchase opportunities
  */
-function calculateRoundsWithoutPurchase(
+function calculateOpportunitiesWithoutPurchase(
   opportunities: Set<string>,
   purchaseOpportunities: Set<string>,
 ): number {
@@ -211,8 +211,8 @@ export function buildRumorKpiSummary(
     playerIds,
   );
   
-  // Step 5: roundsWithoutPurchase
-  const roundsWithoutPurchase = calculateRoundsWithoutPurchase(
+  // Step 5: opportunitiesWithoutPurchase
+  const opportunitiesWithoutPurchase = calculateOpportunitiesWithoutPurchase(
     opportunities,
     purchaseOpportunities,
   );
@@ -228,7 +228,7 @@ export function buildRumorKpiSummary(
     guaranteedRounds,
     rumorPurchaseCount: purchaseCount,
     rumorPurchaseRate,
-    roundsWithoutPurchase,
+    opportunitiesWithoutPurchase,
     perPlayerGuaranteedRounds,
     perPlayerRumorPurchases: perPlayerPurchases,
   };

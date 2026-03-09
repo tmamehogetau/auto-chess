@@ -262,16 +262,59 @@ describe("SpellCard Integration", () => {
     });
 
     it("R5帯ではR5-8用のスペルが宣言される", () => {
-      (controller as any).gameLoopState.roundIndex = 5;
+      // 8人プレイヤーでR5に到達（脱落防止のため毎ラウンド回復）
+      const r5PlayerIds = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"] as const;
+      const r5Controller = new MatchRoomController([...r5PlayerIds], Date.now(), {
+        readyAutoStartMs: 10,
+        prepDurationMs: 10,
+        battleDurationMs: 10,
+        settleDurationMs: 10,
+        eliminationDurationMs: 10,
+      });
 
-      const prepDeadline = controller.prepDeadlineAtMs;
-      expect(prepDeadline).not.toBeNull();
+      for (const playerId of r5PlayerIds) {
+        r5Controller.setReady(playerId, true);
+      }
+      expect(r5Controller.startIfReady(Date.now(), [...r5PlayerIds])).toBe(true);
 
-      if (prepDeadline) {
-        controller.advanceByTime(prepDeadline + 100);
+      // R5に到達するまで進行（スペルダメージで脱落しないよう回復）
+      let iterations = 0;
+      const maxIterations = 200;
+
+      while (r5Controller.roundIndex < 5 && r5Controller.phase !== "End" && iterations < maxIterations) {
+        iterations++;
+
+        // Prepフェーズ: スペルダメージを回復
+        if (r5Controller.phase === "Prep" && r5Controller.roundIndex > 1) {
+          for (const pid of r5PlayerIds) {
+            if (r5Controller.getPlayerHp(pid) < 100) {
+              r5Controller.setPlayerHp(pid, 100);
+            }
+          }
+        }
+
+        // Prepフェーズを進める
+        if (r5Controller.prepDeadlineAtMs && r5Controller.phase === "Prep") {
+          r5Controller.advanceByTime(r5Controller.prepDeadlineAtMs + 1);
+        }
+
+        // Battle→Settle→Eliminationを進める（Endフェーズで抜ける）
+        while (r5Controller.phase !== "Prep" && r5Controller.phaseDeadlineAtMs) {
+          // Endフェーズに入ったらループを抜ける
+          if ((r5Controller.phase as string) === "End") break;
+          r5Controller.advanceByTime(r5Controller.phaseDeadlineAtMs + 1);
+        }
       }
 
-      expect(controller.getDeclaredSpellId()).toBe("instant-2");
+      expect(r5Controller.roundIndex).toBe(5);
+      expect(r5Controller.phase).toBe("Prep");
+
+      // Prep→Battleでスペル宣言
+      if (r5Controller.prepDeadlineAtMs) {
+        r5Controller.advanceByTime(r5Controller.prepDeadlineAtMs + 1);
+      }
+
+      expect(r5Controller.getDeclaredSpellId()).toBe("instant-2");
     });
 
     it("boss target healでボスHPが回復する", () => {

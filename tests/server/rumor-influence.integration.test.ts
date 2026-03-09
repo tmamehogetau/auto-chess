@@ -175,6 +175,13 @@ describe("Rumor Influence Integration", () => {
         [actualBoss!]: 600,
       });
 
+      // Battle → Settle → Elimination → Prep と遷移
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
       if (controller.phaseDeadlineAtMs) {
         controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
       }
@@ -243,6 +250,13 @@ describe("Rumor Influence Integration", () => {
         [actualBoss!]: 10,
       });
 
+      // Battle → Settle → Elimination → Prep と遷移
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
       if (controller.phaseDeadlineAtMs) {
         controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
       }
@@ -387,8 +401,8 @@ describe("Rumor Influence Integration", () => {
       expect(summary.guaranteedRounds).toBe(1);
       expect(summary.rumorPurchaseCount).toBe(0);
       expect(summary.rumorPurchaseRate).toBe(0);
-      // roundsWithoutPurchase = grantedPlayerIds の数（ボスを除く）
-      expect(summary.roundsWithoutPurchase).toBe(r1Log!.grantedPlayerIds!.length);
+      // opportunitiesWithoutPurchase = grantedPlayerIds の数（ボスを除く）
+      expect(summary.opportunitiesWithoutPurchase).toBe(r1Log!.grantedPlayerIds!.length);
     });
 
     it("should correctly attribute round R purchase to round R-1 grant", () => {

@@ -33,7 +33,7 @@
 
 ---
 
-### Task 1: Silence noisy SharedBoardBridge success logs without losing failures
+## Task 1: Silence noisy SharedBoardBridge success logs without losing failures
 
 **Files:**
 - Modify: `src/server/shared-board-bridge.ts`
@@ -73,7 +73,7 @@ git add src/server/shared-board-bridge.ts tests/server/shared-board-bridge.valid
 git commit -m "fix: reduce shared board bridge log noise"
 ```
 
-### Task 2: Make BridgeMonitor structured logging opt-in for runtime noise control
+## Task 2: Make BridgeMonitor structured logging opt-in for runtime noise control
 
 **Files:**
 - Modify: `src/server/shared-board-bridge-monitor.ts`
@@ -112,7 +112,7 @@ git add src/server/shared-board-bridge-monitor.ts tests/server/shared-board-brid
 git commit -m "fix: gate bridge monitor structured logs"
 ```
 
-### Task 3: Broaden roster-switch regression coverage around legacy fallback
+## Task 3: Broaden roster-switch regression coverage around legacy fallback
 
 **Files:**
 - Modify: `tests/server/roster/roster-provider.test.ts`
@@ -148,7 +148,7 @@ git add tests/server/roster/roster-provider.test.ts tests/e2e/full-game/roster-s
 git commit -m "test: harden roster switch fallback coverage"
 ```
 
-### Task 4: Sync active docs to the real post-merge state
+## Task 4: Sync active docs to the real post-merge state
 
 **Files:**
 - Modify: `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/Game_Specification_Summary.md`
@@ -186,7 +186,7 @@ git add 00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/Game_Specification_
 git commit -m "docs: sync W4 phase2 hardening status"
 ```
 
-### Task 5: Run final hardening verification
+## Task 5: Run final hardening verification
 
 **Files:**
 - Verify only: touched test files, docs, `package.json`

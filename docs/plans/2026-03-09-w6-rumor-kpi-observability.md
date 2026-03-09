@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Tag rumor purchases in the existing action log stream
+## Task 1: Tag rumor purchases in the existing action log stream
 
 **Files:**
 - Modify: `src/server/match-logger.ts`
@@ -73,7 +73,7 @@ git add src/server/match-logger.ts src/server/rooms/game-room/prep-command-loggi
 git commit -m "feat: log rumor purchase signals"
 ```
 
-### Task 2: Build a derived rumor KPI summary from existing logs
+## Task 2: Build a derived rumor KPI summary from existing logs
 
 **Files:**
 - Create: `src/server/analytics/rumor-kpi.ts`
@@ -140,7 +140,7 @@ git add src/server/analytics/rumor-kpi.ts src/server/match-logger.ts tests/serve
 git commit -m "feat: add rumor kpi summary"
 ```
 
-### Task 3: Add one structured report output for manual W6 review
+## Task 3: Add one structured report output for manual W6 review
 
 **Files:**
 - Modify: `src/server/match-logger.ts`
@@ -196,7 +196,7 @@ git add src/server/match-logger.ts tests/server/match-logger.test.ts
 git commit -m "feat: add rumor kpi report output"
 ```
 
-### Task 4: Sync W6 docs and verification evidence
+## Task 4: Sync W6 docs and verification evidence
 
 **Files:**
 - Modify: `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/Game_Specification_Summary.md`

@@ -1502,21 +1502,22 @@ describe("GameRoom integration", () => {
         // Verify the action was logged with isRumorUnit flag preserved
         // This tests that the pre-submit snapshot captured the flag correctly
         // even though the slot was replaced after purchase
-        if (matchLogger) {
-          const actionLogs = matchLogger.getActionLogs();
-          const buyAction = actionLogs.find(
-            (log) =>
-              log.playerId === targetClient.sessionId &&
-              log.actionType === "buy_unit" &&
-              log.details.unitType === "vanguard"
-          );
-
-          // The key assertion: isRumorUnit should be preserved in the log
-          // even though the shop slot was replaced after purchase
-          expect(buyAction).toBeDefined();
-          expect(buyAction!.details.isRumorUnit).toBe(true);
-          expect(buyAction!.details.cost).toBe(3);
+        if (!matchLogger) {
+          throw new Error("Expected matchLogger to be available");
         }
+        const actionLogs = matchLogger.getActionLogs();
+        const buyAction = actionLogs.find(
+          (log) =>
+            log.playerId === targetClient.sessionId &&
+            log.actionType === "buy_unit" &&
+            log.details.unitType === "vanguard"
+        );
+
+        // The key assertion: isRumorUnit should be preserved in the log
+        // even though the shop slot was replaced after purchase
+        expect(buyAction).toBeDefined();
+        expect(buyAction!.details.isRumorUnit).toBe(true);
+        expect(buyAction!.details.cost).toBe(3);
       });
     });
   });

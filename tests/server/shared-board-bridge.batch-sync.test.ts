@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Room } from "colyseus";
 
@@ -230,5 +230,85 @@ describe("SharedBoardBridge batch sync", () => {
     );
     expect(alertStatus.hasAlert).toBe(true);
     expect(alertStatus.triggeredRules).toContain("p95_latency");
+  });
+
+  describe("ログ抑制: sendPlacementToSharedBoard", () => {
+    let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("sendPlacementToSharedBoard成功時に配置ペイロードを含むログが出力されない", async () => {
+      const { bridge } = createBridge();
+
+      // sharedBoardRoomのモックを設定
+      const mockApplyPlacementsFromGame = vi.fn(() => ({ applied: true, skipped: 0 }));
+      const mockSharedBoardRoom = {
+        applyPlacementsFromGame: mockApplyPlacementsFromGame,
+        offPlacementChange: vi.fn(),
+      };
+      Reflect.set(bridge, "sharedBoardRoom", mockSharedBoardRoom);
+      Reflect.set(bridge, "state", "READY");
+
+      const placements = [{ cell: 0, unitType: "vanguard" as const }];
+      await bridge.sendPlacementToSharedBoard("player-a", placements);
+
+      // 実際にapplyPlacementsFromGameが呼ばれたことを確認（no-op化防止）
+      expect(mockApplyPlacementsFromGame).toHaveBeenCalledWith("player-a", placements);
+
+      // placements を持つ object が console.log に渡されていないことを構造的に検証
+      const hasPlacementPayload = consoleLogSpy.mock.calls.some((call: unknown[]) =>
+        call.some((arg: unknown) => {
+          if (typeof arg !== "object" || arg === null) return false;
+          const hasPlacementsProp = "placements" in arg && Array.isArray((arg as Record<string, unknown>).placements);
+          return hasPlacementsProp;
+        }),
+      );
+      expect(hasPlacementPayload).toBe(false);
+
+      // 削除されたログ prefix が呼ばれていないことも確認
+      const hasDeletedLogPrefix = consoleLogSpy.mock.calls.some(
+        (call: unknown[]) =>
+          typeof call[0] === "string" &&
+          (call[0].includes("[SharedBoardBridge] Applied placement:") ||
+            call[0].includes("[SharedBoardBridge] Sent placement to shared board:")),
+      );
+      expect(hasDeletedLogPrefix).toBe(false);
+    });
+
+    it("sendPlacementToSharedBoard失敗時にエラーログが出力される", async () => {
+      const { bridge } = createBridge();
+
+      // sharedBoardRoomのモックを設定（エラーを投げる）
+      const mockSharedBoardRoom = {
+        applyPlacementsFromGame: vi.fn(() => {
+          throw new Error("Test error");
+        }),
+        offPlacementChange: vi.fn(),
+      };
+      Reflect.set(bridge, "sharedBoardRoom", mockSharedBoardRoom);
+      Reflect.set(bridge, "state", "READY");
+
+      await bridge.sendPlacementToSharedBoard("player-a", [
+        { cell: 0, unitType: "vanguard" },
+      ]);
+
+      // "[SharedBoardBridge] Send placement failed:" が出力されることを厳密に検証
+      const errorCall = consoleErrorSpy.mock.calls.find(
+        (call: unknown[]) =>
+          typeof call[0] === "string" &&
+          call[0].includes("[SharedBoardBridge] Send placement failed:"),
+      );
+      expect(errorCall).toBeDefined();
+      expect(errorCall![0]).toBe("[SharedBoardBridge] Send placement failed:");
+    });
   });
 });

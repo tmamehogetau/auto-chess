@@ -89,7 +89,16 @@ export interface AlertStatus {
   dashboard: DashboardMetrics;
 }
 
+export interface BridgeMonitorOptions {
+  /** デバッグ用構造化ログ出力を有効にする (default: false) */
+  enableDebugLogs?: boolean;
+}
+
 export const DEFAULT_DASHBOARD_WINDOW_MS = 5 * 60_000;
+
+export const DEFAULT_MONITOR_OPTIONS: Required<BridgeMonitorOptions> = {
+  enableDebugLogs: false,
+};
 
 export const DEFAULT_ALERT_THRESHOLDS: AlertThresholds = {
   windowMs: DEFAULT_DASHBOARD_WINDOW_MS,
@@ -104,6 +113,7 @@ export const DEFAULT_ALERT_THRESHOLDS: AlertThresholds = {
  */
 export class BridgeMonitor {
   private readonly roomId: string;
+  private readonly options: Required<BridgeMonitorOptions>;
   private eventLogs: SyncEventLog[] = [];
   private readonly maxLogSize = 100;
 
@@ -115,8 +125,9 @@ export class BridgeMonitor {
   private totalLatencyMs = 0;
   private lastEventAt = 0;
 
-  constructor(roomId: string) {
+  constructor(roomId: string, options?: BridgeMonitorOptions) {
     this.roomId = roomId;
+    this.options = { ...DEFAULT_MONITOR_OPTIONS, ...options };
   }
 
   /**
@@ -149,8 +160,10 @@ export class BridgeMonitor {
       this.conflictEvents++;
     }
 
-    // 構造化ログ出力
-    this.outputStructuredLog(fullEvent);
+    // 構造化ログ出力（デバッグが有効な場合のみ）
+    if (this.options.enableDebugLogs) {
+      this.outputStructuredLog(fullEvent);
+    }
   }
 
   /**

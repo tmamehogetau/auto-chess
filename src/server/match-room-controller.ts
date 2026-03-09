@@ -214,6 +214,7 @@ interface MatchupOutcome {
 }
 
 interface MvpPhase1UnitForSubUnit {
+  unitId: string;
   type: BoardUnitType;
   subUnit?: SubUnitConfig;
 }
@@ -254,6 +255,7 @@ function resolveSubUnitAssistConfigByType(): ReadonlyMap<BoardUnitType, SubUnitC
     const normalizedConfig: SubUnitConfig = {
       unitId: subUnit.unitId,
       mode: "assist",
+      parentUnitId: unitRow.unitId,
     };
 
     if (subUnit.bonusAttackPct !== undefined) {
@@ -392,6 +394,12 @@ export class MatchRoomController {
 
   private readonly shopOfferBuilder: ShopOfferBuilder;
   private readonly battleResolutionService: BattleResolutionService;
+
+  private pendingRumorInfluence: {
+    roundIndex: number;
+    rumorFactions: string[];
+    guaranteedRumorSlotApplied: boolean;
+  } | null = null;
 
   public constructor(
     playerIds: string[],
@@ -889,7 +897,16 @@ export class MatchRoomController {
         const starLevel = placement.starLevel ?? 1;
         const hasSubUnitAssist =
           this.enableSubUnitSystem &&
-          this.subUnitAssistConfigByType.has(placement.unitType);
+          (() => {
+            const config = this.subUnitAssistConfigByType.get(placement.unitType);
+            if (!config) {
+              return false;
+            }
+            if (!config.parentUnitId) {
+              return true;
+            }
+            return placement.unitId === config.parentUnitId;
+          })();
 
         if (starLevel > 1 || hasSubUnitAssist) {
           const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;
@@ -1028,6 +1045,8 @@ export class MatchRoomController {
 
           this.pendingRoundDamageByPlayer.clear();
           this.applyPrepIncome();
+          // 噂勢力: elimination 解決後に正しい grantedPlayerIds でログを記録
+          this.logRumorInfluenceWithAlivePlayersAfterElimination();
           this.refreshShopsForPrep();
           this.hpAtBattleStartByPlayer = new Map<string, number>();
           this.hpAfterBattleByPlayer = new Map<string, number>();
@@ -1296,8 +1315,8 @@ export class MatchRoomController {
         ),
       );
 
-      // 噂勢力: ショップ生成後、eligibleフラグをリセット
-      if (this.enableRumorInfluence) {
+      // 噂勢力: 確定枠を消費したらeligibleフラグをリセット
+      if (this.enableRumorInfluence && isRumorEligible) {
         this.rumorInfluenceEligibleByPlayer.set(playerId, false);
       }
 
@@ -1341,6 +1360,10 @@ export class MatchRoomController {
     this.shopRefreshCountByPlayer.set(playerId, nextCount);
     this.shopPurchaseCountByPlayer.set(playerId, 0);
     this.shopOffersByPlayer.set(playerId, nextOffers);
+
+    if (this.enableRumorInfluence && isRumorEligible) {
+      this.rumorInfluenceEligibleByPlayer.set(playerId, false);
+    }
   }
 
   private areShopOffersEqual(left: ShopOffer[], right: ShopOffer[]): boolean {
@@ -1918,21 +1941,28 @@ export class MatchRoomController {
     }
 
     const nextRoundRumorUnit = getRumorUnitForRound(state.roundIndex + 1);
-    const rumorFactions = nextRoundRumorUnit ? [nextRoundRumorUnit.unitType] : [];
     const guaranteedRumorSlotApplied =
       this.enableRumorInfluence &&
       this.phaseResult === "success" &&
-      rumorFactions.length > 0;
+      nextRoundRumorUnit !== null;
+    const rumorFactions = guaranteedRumorSlotApplied && nextRoundRumorUnit
+      ? [nextRoundRumorUnit.unitType]
+      : [];
 
-    if (this.matchLogger) {
-      this.matchLogger.logRumorInfluence(
-        state.roundIndex,
-        rumorFactions,
-        guaranteedRumorSlotApplied,
-      );
-    }
+    // 噂勢力eligibleを付与されたプレイヤーID一覧（ボス以外）は
+    // elimination 解決後に計算するため、ここではログ出力しない
+    // logRumorInfluence は logRumorInfluenceWithAlivePlayersAfterElimination で呼び出す
+
+    // 噂勢力のメタ情報を一時保存（elimination 後に使用）
+    this.pendingRumorInfluence = {
+      roundIndex: state.roundIndex,
+      rumorFactions,
+      guaranteedRumorSlotApplied,
+    };
 
     // 噂勢力: フェーズ成功時、全レイドプレイヤーを次ラウンド eligible に設定
+    // 注意: この時点では elimination 解決前なので、elimination されるプレイヤーも含まれる
+    // 実際の eligibility は elimination 解決後に適用される
     if (this.enableRumorInfluence && this.phaseResult === "success") {
       const bossPlayerId = state.bossPlayerId;
       for (const playerId of state.alivePlayerIds) {
@@ -1942,6 +1972,40 @@ export class MatchRoomController {
         }
       }
     }
+  }
+
+  /**
+   * Elimination 解決後に呼び出し、正しい grantedPlayerIds で噂勢力ログを記録する
+   * elimination 解決後の alivePlayerIds を使用することで、脱落プレイヤーを除外する
+   */
+  private logRumorInfluenceWithAlivePlayersAfterElimination(): void {
+    if (!this.pendingRumorInfluence || !this.matchLogger) {
+      return;
+    }
+
+    const state = this.ensureStarted();
+    const { roundIndex, rumorFactions, guaranteedRumorSlotApplied } = this.pendingRumorInfluence;
+
+    // elimination 解決後の alivePlayerIds を使用
+    const grantedPlayerIds: string[] = [];
+    if (this.enableRumorInfluence && guaranteedRumorSlotApplied) {
+      const bossPlayerId = state.bossPlayerId;
+      for (const playerId of state.alivePlayerIds) {
+        if (playerId !== bossPlayerId) {
+          grantedPlayerIds.push(playerId);
+        }
+      }
+    }
+
+    this.matchLogger.logRumorInfluence(
+      roundIndex,
+      rumorFactions,
+      guaranteedRumorSlotApplied,
+      grantedPlayerIds,
+    );
+
+    // 一時保存データをクリア
+    this.pendingRumorInfluence = null;
   }
 
   private resetPhaseProgressForRound(roundIndex: number): void {

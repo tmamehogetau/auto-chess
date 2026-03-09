@@ -50,18 +50,34 @@ function createStartedController(): MatchRoomController {
 }
 
 describe("Sub Unit System Integration", () => {
-  test("enableSubUnitSystem ON時はvanguard配置がsub-unit有効トークンになる", () => {
+  test("enableSubUnitSystem ON時は対応fixed pairだけがsub-unit有効トークンになる", () => {
     withSubUnitFlag(true, () => {
       const controller = createStartedController();
 
       const commandResult = controller.submitPrepCommand("p1", 1, 3_000, {
-        boardPlacements: [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+        boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 }],
       });
 
       expect(commandResult).toEqual({ accepted: true });
 
       const status = controller.getPlayerStatus("p1");
       expect(status.boardUnits).toContain("0:vanguard:1:sub");
+    });
+  });
+
+  test("enableSubUnitSystem ONでも非対応unitIdは従来トークンのまま", () => {
+    withSubUnitFlag(true, () => {
+      const controller = createStartedController();
+
+      const commandResult = controller.submitPrepCommand("p1", 1, 3_000, {
+        boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 }],
+      });
+
+      expect(commandResult).toEqual({ accepted: true });
+
+      const status = controller.getPlayerStatus("p1");
+      expect(status.boardUnits).toContain("0:vanguard");
+      expect(status.boardUnits.some((unit) => unit.includes(":sub"))).toBe(false);
     });
   });
 

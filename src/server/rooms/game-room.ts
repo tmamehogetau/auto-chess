@@ -293,6 +293,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     const commandPayload = this.buildPrepCommandPayload(message);
 
+    // Capture shop offers snapshot before submit to preserve isRumorUnit info
+    const shopOffersSnapshot = commandPayload?.shopBuySlotIndex !== undefined
+      ? this.controller.getShopOffersForPlayer(client.sessionId)
+      : undefined;
+
     this.sharedBoardBridge?.logGameCommandEvent({
       playerId: client.sessionId,
       eventType: "apply_request",
@@ -321,7 +326,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         correlationId,
       });
 
-      this.logPrepCommandActions(client.sessionId, commandPayload);
+      this.logPrepCommandActions(client.sessionId, commandPayload, shopOffersSnapshot);
     } else {
       this.sharedBoardBridge?.logGameCommandEvent({
         playerId: client.sessionId,
@@ -433,6 +438,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           bossShopBuySlotIndex?: number;
         }
       | undefined,
+    shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
   ): void {
     logPrepCommandActions(sessionId, commandPayload, {
       logger: this.matchLogger,
@@ -441,7 +447,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       getPlayerStatus: (sid) => this.controller?.getPlayerStatus(sid) ?? null,
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
-    });
+    }, { shopOffersSnapshot });
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {

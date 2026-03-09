@@ -3,11 +3,18 @@ import {
   logPrepCommandActions,
   type PrepCommandLoggingDeps,
 } from "../../../src/server/rooms/game-room/prep-command-logging";
-import type { MatchLogger } from "../../../src/server/match-logger";
+import type { MatchLogger, PlayerActionLog } from "../../../src/server/match-logger";
+
+interface LoggedAction {
+  sessionId: string;
+  roundIndex: number;
+  action: PlayerActionLog["actionType"];
+  details: PlayerActionLog["details"];
+}
 
 describe("prep-command-logging", () => {
   let mockLogger: MatchLogger;
-  let mockGetShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
+  let mockGetShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
   let mockGetPlayerStatus: (sessionId: string) => {
     gold: number;
     itemShopOffers: Array<{ itemType: string; cost: number }>;
@@ -16,22 +23,22 @@ describe("prep-command-logging", () => {
   } | null;
   let mockRoundIndex: number;
   let deps: PrepCommandLoggingDeps;
-  let loggedActions: Array<{ sessionId: string; roundIndex: number; action: string; details: unknown }>;
+  let loggedActions: LoggedAction[];
 
   beforeEach(() => {
     loggedActions = [];
     mockRoundIndex = 5;
 
     mockLogger = {
-      logAction: vi.fn((sessionId, roundIndex, action, details) => {
-        loggedActions.push({ sessionId, roundIndex, action, details });
+      logAction: vi.fn((sessionId: string, roundIndex: number, actionType: PlayerActionLog["actionType"], details: PlayerActionLog["details"]) => {
+        loggedActions.push({ sessionId, roundIndex, action: actionType, details });
       }),
     } as unknown as MatchLogger;
 
     mockGetShopOffers = vi.fn(() => [
-      { unitType: "vanguard", cost: 3 },
-      { unitType: "ranger", cost: 2 },
-      { unitType: "mage", cost: 4 },
+      { unitType: "vanguard", cost: 3, isRumorUnit: false },
+      { unitType: "ranger", cost: 2, isRumorUnit: false },
+      { unitType: "mage", cost: 4, isRumorUnit: false },
     ]);
 
     mockGetPlayerStatus = vi.fn(() => ({
@@ -387,6 +394,11 @@ describe("prep-command-logging", () => {
         goldBefore: 10,
         goldAfter: 10,
       });
+
+      // Type check: ensure boardCells is an array of numbers
+      expect(Array.isArray(loggedActions[0]!.details.boardCells)).toBe(true);
+      expect(loggedActions[0]!.details.boardCells).toEqual([5, 10, 15]);
+      expect(loggedActions[0]!.details).not.toHaveProperty("benchIndices");
     });
 
     it("should log merge action without benchIndices when not provided", () => {
@@ -438,6 +450,118 @@ describe("prep-command-logging", () => {
       logPrepCommandActions("player1", undefined as unknown as Record<string, unknown>, deps);
 
       expect(loggedActions).toHaveLength(0);
+    });
+
+    it("should include isRumorUnit: true when buying a guaranteed rumor offer", () => {
+      mockGetShopOffers = vi.fn(() => [
+        { unitType: "vanguard", cost: 3 },
+        { unitType: "reimu", cost: 4, isRumorUnit: true },
+        { unitType: "mage", cost: 4 },
+      ]);
+      deps.getShopOffers = mockGetShopOffers;
+
+      const payload = {
+        shopBuySlotIndex: 1,
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("buy_unit");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "reimu",
+        cost: 4,
+        isRumorUnit: true,
+        goldBefore: 10,
+        goldAfter: 6,
+      });
+    });
+
+    it("should not include isRumorUnit when buying a non-rumor unit", () => {
+      mockGetShopOffers = vi.fn(() => [
+        { unitType: "vanguard", cost: 3 },
+        { unitType: "ranger", cost: 2 },
+        { unitType: "mage", cost: 4 },
+      ]);
+      deps.getShopOffers = mockGetShopOffers;
+
+      const payload = {
+        shopBuySlotIndex: 0,
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("buy_unit");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "vanguard",
+        cost: 3,
+        goldBefore: 10,
+        goldAfter: 7,
+      });
+      expect(loggedActions[0]!.details).not.toHaveProperty("isRumorUnit");
+    });
+
+    it("should not include isRumorUnit when offer has isRumorUnit: false", () => {
+      mockGetShopOffers = vi.fn(() => [
+        { unitType: "vanguard", cost: 3, isRumorUnit: false },
+        { unitType: "ranger", cost: 2 },
+      ]);
+      deps.getShopOffers = mockGetShopOffers;
+
+      const payload = {
+        shopBuySlotIndex: 0,
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.details).not.toHaveProperty("isRumorUnit");
+    });
+
+    it("should use shopOffersSnapshot when provided instead of getShopOffers (regression test)", () => {
+      // Simulate shop slot replacement after buy: getShopOffers returns new offers
+      mockGetShopOffers = vi.fn(() => [
+        { unitType: "replaced_unit", cost: 5 }, // slot 0 replaced with different unit
+        { unitType: "ranger", cost: 2 },
+      ]);
+      deps.getShopOffers = mockGetShopOffers;
+
+      // But snapshot contains original offer with isRumorUnit flag
+      const shopOffersSnapshot = [
+        { unitType: "reimu", cost: 4, isRumorUnit: true },
+        { unitType: "ranger", cost: 2 },
+      ];
+
+      const payload = {
+        shopBuySlotIndex: 0,
+      };
+
+      logPrepCommandActions("player1", payload, deps, { shopOffersSnapshot });
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("buy_unit");
+      // Should use snapshot data, not getShopOffers data
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "reimu",
+        cost: 4,
+        isRumorUnit: true,
+      });
+    });
+
+    it("should fallback to getShopOffers when shopOffersSnapshot is not provided", () => {
+      const payload = {
+        shopBuySlotIndex: 0,
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("buy_unit");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "vanguard",
+        cost: 3,
+      });
     });
 
     it("should log all action types in a complex payload", () => {

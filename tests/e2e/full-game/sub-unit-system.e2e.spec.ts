@@ -76,7 +76,7 @@ describe("E2E: Sub Unit System", () => {
    * Sub Unit System有効時、盤面トークンにsub-unit有効化が反映される
    */
   it(
-    "Sub Unit System有効時、vanguard配置がsub-unit有効トークンになる",
+    "Sub Unit System有効時、対応fixed pairだけがsub-unit有効トークンになる",
     { timeout: 30_000 },
     async () => {
       await withFlags(
@@ -105,7 +105,7 @@ describe("E2E: Sub Unit System", () => {
           // vanguard配置を直接送信
           clients[0]!.send("prep_command", {
             cmdSeq: 1,
-            boardPlacements: [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+            boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 }],
           });
 
           await waitForCondition(() => {
@@ -118,6 +118,54 @@ describe("E2E: Sub Unit System", () => {
 
           const boardUnits = Array.from(playerAfter?.boardUnits ?? []);
           expect(boardUnits).toContain("0:vanguard:1:sub");
+
+          for (const client of clients) {
+            client.connection.close();
+          }
+        },
+      );
+    },
+  );
+
+  it(
+    "Sub Unit System有効時でも非対応unitIdはsub-unitトークンにならない",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(
+        { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableSubUnitSystem: true },
+        async () => {
+          const gameRoom = await testServer.createRoom<GameRoom>("game");
+
+          const clients = await Promise.all([
+            testServer.connectTo(gameRoom),
+            testServer.connectTo(gameRoom),
+            testServer.connectTo(gameRoom),
+            testServer.connectTo(gameRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage("round_state", () => {});
+            client.onMessage("command_result", () => {});
+            client.send("ready", { ready: true });
+          }
+
+          await waitForCondition(() => gameRoom.state.phase !== "Waiting", 5_000);
+          await waitForPhase(gameRoom, "Prep", 5_000);
+
+          clients[0]!.send("prep_command", {
+            cmdSeq: 1,
+            boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 }],
+          });
+
+          await waitForCondition(() => {
+            const currentPlayer = gameRoom.state.players.get(clients[0]!.sessionId);
+            return (currentPlayer?.boardUnits ?? []).length > 0;
+          }, 3_000);
+
+          const playerAfter = gameRoom.state.players.get(clients[0]!.sessionId);
+          const boardUnits = Array.from(playerAfter?.boardUnits ?? []);
+          expect(boardUnits).toContain("0:vanguard");
+          expect(boardUnits.some((unit) => unit.includes(":sub"))).toBe(false);
 
           for (const client of clients) {
             client.connection.close();

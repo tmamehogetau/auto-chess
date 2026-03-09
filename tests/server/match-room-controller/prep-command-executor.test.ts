@@ -229,17 +229,17 @@ describe("PrepCommandExecutor", () => {
   });
 
   describe("Boss Shop Buy", () => {
-    test("buys boss shop offer without spending gold", () => {
+    test("spends gold and buys boss shop offer", () => {
       const deps = createDependencies({
         getBossShopOffers: vi.fn().mockReturnValue([
-          { unitType: "vanguard", rarity: 1, cost: 0 },
+          { unitType: "vanguard", rarity: 2, cost: 2 },
         ]),
       });
       const payload: CommandPayload = { bossShopBuySlotIndex: 0 };
 
       executePrepCommand("p1", 1, payload, deps);
 
-      expect(deps.addGold).not.toHaveBeenCalled();
+      expect(deps.addGold).toHaveBeenCalledWith("p1", -2);
       expect(deps.buyBossShopOffer).toHaveBeenCalledWith("p1", 0);
       expect(deps.logBossShop).toHaveBeenCalled();
     });

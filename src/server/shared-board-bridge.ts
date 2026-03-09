@@ -87,6 +87,7 @@ export class SharedBoardBridge {
   private lastObservationTime = 0;
   private readonly minObservationIntervalMs = 100;
   private reconnectAttempts = 0;
+  private hasEverBeenReady = false;
   private readonly maxReconnectAttempts = 5;
   private readonly reconnectBaseDelayMs = 250;
   private readonly reconnectMaxDelayMs = 30_000;
@@ -195,6 +196,7 @@ export class SharedBoardBridge {
       this.setupStateChangeListener();
 
       this.state = "READY";
+      this.hasEverBeenReady = true;
       this.reconnectAttempts = 0;
 
       if (this.reconnectTimer) {
@@ -202,9 +204,25 @@ export class SharedBoardBridge {
         this.reconnectTimer = null;
       }
     } catch (error) {
-      console.error("[SharedBoardBridge] Connection failed:", error);
-      this.scheduleReconnect();
+      const shouldSuppressConnectLogs = !this.hasEverBeenReady && this.isExpectedSharedBoardUnavailableError(error);
+
+      if (!shouldSuppressConnectLogs) {
+        console.error("[SharedBoardBridge] Connection failed:", error);
+      }
+
+      this.scheduleReconnect({ silent: shouldSuppressConnectLogs });
     }
+  }
+
+  private isExpectedSharedBoardUnavailableError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    return (
+      error.message === "No shared_board room found"
+      || error.message.includes("not found in local process")
+    );
   }
 
   private async findSharedBoardRoomIdWithRetry(): Promise<string> {
@@ -684,15 +702,6 @@ export class SharedBoardBridge {
       this.currentVersion += 1;
       this.markOpApplied(request.opId);
 
-      // 成功ログ
-      console.log("[SharedBoardBridge] Applied placement:", {
-        playerId: request.playerId,
-        placements: request.placements,
-        opId: request.opId,
-        correlationId: request.correlationId,
-        newVersion: this.currentVersion,
-      });
-
       return {
         success: true,
         code: "success",
@@ -723,14 +732,7 @@ export class SharedBoardBridge {
     }
 
     try {
-      const syncResult = this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
-
-      console.log("[SharedBoardBridge] Sent placement to shared board:", {
-        playerId,
-        placements,
-        applied: syncResult.applied,
-        skipped: syncResult.skipped,
-      });
+      this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
     } catch (error) {
       console.error("[SharedBoardBridge] Send placement failed:", error);
       // fail-open: エラー時もGameRoom動作は継続
@@ -740,13 +742,17 @@ export class SharedBoardBridge {
   /**
    * 再接続スケジュール
    */
-  private scheduleReconnect(): void {
+  private scheduleReconnect(options: { silent?: boolean } = {}): void {
+    const silent = options.silent ?? false;
+
     if (this.reconnectTimer) {
       return;
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error("[SharedBoardBridge] Max reconnection attempts reached");
+      if (!silent) {
+        console.error("[SharedBoardBridge] Max reconnection attempts reached");
+      }
       this.state = "DEGRADED";
       return;
     }
@@ -758,8 +764,10 @@ export class SharedBoardBridge {
       this.reconnectBaseDelayMs * Math.pow(2, this.reconnectAttempts - 1),
       this.reconnectMaxDelayMs,
     );
-    
-    console.log(`[SharedBoardBridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
+    if (!silent) {
+      console.log(`[SharedBoardBridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    }
     
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;

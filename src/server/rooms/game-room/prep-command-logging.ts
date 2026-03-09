@@ -3,7 +3,7 @@ import type { PrepCommandMessage } from "../../../shared/room-messages";
 
 export interface PrepCommandLoggingDeps {
   logger: MatchLogger | null;
-  getShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
+  getShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
   getBossShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
   getPlayerStatus: (sessionId: string) => {
     gold: number;
@@ -15,11 +15,16 @@ export interface PrepCommandLoggingDeps {
   getPlayerGold: (sessionId: string) => number;
 }
 
+export interface LogPrepCommandActionsOptions {
+  shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
+}
+
 /**
  * Prepコマンドのアクションをログに記録する
  * @param sessionId - プレイヤーセッションID
  * @param commandPayload - コマンドペイロード
  * @param deps - 依存関係（logger, controller accessors）
+ * @param options - オプション（shopOffersSnapshot: submit前のショップ状態を使用）
  */
 export function logPrepCommandActions(
   sessionId: string,
@@ -43,6 +48,7 @@ export function logPrepCommandActions(
       }
     | undefined,
   deps: PrepCommandLoggingDeps,
+  options?: LogPrepCommandActionsOptions,
 ): void {
   if (!deps.logger || !commandPayload) {
     return;
@@ -52,12 +58,13 @@ export function logPrepCommandActions(
   const roundIndex = deps.getRoundIndex();
 
   if (commandPayload.shopBuySlotIndex !== undefined) {
-    const offers = deps.getShopOffers(sessionId);
+    const offers = options?.shopOffersSnapshot ?? deps.getShopOffers(sessionId);
     const offer = offers?.[commandPayload.shopBuySlotIndex];
     if (offer) {
       deps.logger.logAction(sessionId, roundIndex, "buy_unit", {
         unitType: offer.unitType,
         cost: offer.cost,
+        ...(offer.isRumorUnit === true && { isRumorUnit: true }),
         goldBefore,
         goldAfter: goldBefore - offer.cost,
       });

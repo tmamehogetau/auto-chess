@@ -552,6 +552,20 @@ describe("PrepCommandValidator", () => {
 
       expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
     });
+
+    test("bossShopBuySlotIndex with insufficient gold returns INSUFFICIENT_GOLD", () => {
+      const deps = createDependencies({
+        isBossPlayer: vi.fn().mockReturnValue(true),
+        getGold: vi.fn().mockReturnValue(1),
+        getBossShopOffers: vi.fn().mockReturnValue([
+          { unitType: "mage", rarity: 4, cost: 4 },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { bossShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
+    });
   });
 
   describe("Gold Check Validation", () => {

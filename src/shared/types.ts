@@ -34,6 +34,7 @@ export type SubUnitMode = "assist";
 export interface SubUnitConfig {
   unitId: string;
   mode: SubUnitMode;
+  parentUnitId?: string;
   bonusAttackPct?: number;
   bonusHpPct?: number;
 }

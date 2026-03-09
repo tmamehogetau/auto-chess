@@ -132,6 +132,15 @@ export function executePrepCommand(
     }
   }
 
+  // Boss shop buy cost
+  if (payload.bossShopBuySlotIndex !== undefined) {
+    const bossOffers = deps.getBossShopOffers(playerId);
+    const bossOffer = bossOffers[payload.bossShopBuySlotIndex];
+    if (bossOffer) {
+      totalGoldCost += bossOffer.cost;
+    }
+  }
+
   // Apply gold deduction if any
   if (totalGoldCost > 0) {
     deps.addGold(playerId, -totalGoldCost);

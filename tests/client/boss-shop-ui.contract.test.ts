@@ -33,4 +33,15 @@ describe("boss shop ui contract", () => {
       /data-boss-shop-section[^>]*>[\s\S]*?<[^>]*data-boss-shop-grid/.test(html),
     ).toBe(true);
   });
+
+  test("boss専用ショップカードが visual badge と sold state 用のクラスを保持する", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes("boss-exclusive")).toBe(true);
+    expect(html.includes("boss-shop-badge")).toBe(true);
+    expect(html.includes("EXCLUSIVE")).toBe(true);
+    expect(html.includes("is-purchased")).toBe(true);
+    expect(html.includes("boss-shop-sold")).toBe(true);
+    expect(html.includes("SOLD")).toBe(true);
+  });
 });

@@ -755,7 +755,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
 
       // W6-2: 集計用文字列形式
-      expect(kpi.top1CompositionSignature).toBe("vanguard:2,ranger:1");
+      expect(kpi.top1CompositionSignature).toBe("ranger:1,vanguard:2");
     });
 
     it("should return empty signature when winner has no board units", () => {
@@ -795,21 +795,20 @@ describe("MatchLogger - P1 Feature Logs", () => {
   });
 
   describe("prep command metrics integration", () => {
-    it("should track prep command validation attempts through MatchLogger", () => {
-      // Success attempts (execution completed after validation)
-      logger.recordPrepExecutionSuccess();
-      logger.recordPrepExecutionSuccess();
+    it("should track prep commands by validation boundary, not execution outcome", () => {
+      logger.recordPrepValidationPass();
+      logger.recordPrepValidationPass();
 
       // Failed validation attempts with error codes
       logger.recordPrepValidationFailure({ errorCode: "INSUFFICIENT_GOLD" });
-      logger.recordPrepValidationFailure({ errorCode: "INVALID_SLOT" });
+      logger.recordPrepValidationFailure({ errorCode: "DUPLICATE_CMD" });
 
       const metrics = logger.getPrepCommandMetrics();
       expect(metrics.totalPrepCommands).toBe(4);
       expect(metrics.failedPrepCommands).toBe(2);
       expect(metrics.prepInputFailureRate).toBe(0.5);
       expect(metrics.failuresByErrorCode["INSUFFICIENT_GOLD"]).toBe(1);
-      expect(metrics.failuresByErrorCode["INVALID_SLOT"]).toBe(1);
+      expect(metrics.failuresByErrorCode["DUPLICATE_CMD"]).toBe(1);
     });
 
     it("should return zero metrics when no commands recorded", () => {
@@ -852,7 +851,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       ], []);
 
       // Some prep commands with failures
-      logger.recordPrepExecutionSuccess();
+      logger.recordPrepValidationPass();
       logger.recordPrepValidationFailure({ errorCode: "INSUFFICIENT_GOLD" });
 
       // Execute the new output method
@@ -906,14 +905,14 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
       const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
       // W6-2: 集計用文字列形式
-      expect(output.data.top1CompositionSignature).toBe("vanguard:2,ranger:1");
+      expect(output.data.top1CompositionSignature).toBe("ranger:1,vanguard:2");
     });
 
     it("should include prep command counts and failure rate", () => {
       // 2 successes, 1 failure = 0.333... failure rate
-      logger.recordPrepExecutionSuccess();
-      logger.recordPrepExecutionSuccess();
-      logger.recordPrepValidationFailure({ errorCode: "INVALID_SLOT" });
+      logger.recordPrepValidationPass();
+      logger.recordPrepValidationPass();
+      logger.recordPrepValidationFailure({ errorCode: "DUPLICATE_CMD" });
 
       logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
 

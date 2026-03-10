@@ -130,8 +130,8 @@ describe("buildTop1CompositionSignature", () => {
     const signature = buildTop1CompositionSignature(summary);
 
     expect(signature).toEqual([
-      { unitType: "vanguard", starLevel: 2 },
       { unitType: "ranger", starLevel: 1 },
+      { unitType: "vanguard", starLevel: 2 },
     ]);
   });
 
@@ -168,23 +168,22 @@ describe("buildTop1CompositionSignature", () => {
     expect(signature).toEqual([]);
   });
 
-  it("sorts units by cell ascending for deterministic order", () => {
+  it("canonicalizes units by unitType then starLevel regardless of board slot", () => {
     const players = [
       playerSummary("p1", 1, 8, [
         { unitType: "middle", starLevel: 1, cell: 5, items: [] },
-        { unitType: "first", starLevel: 3, cell: 2, items: [] },
-        { unitType: "last", starLevel: 2, cell: 8, items: [] },
+        { unitType: "first", starLevel: 3, cell: 8, items: [] },
+        { unitType: "last", starLevel: 2, cell: 2, items: [] },
       ]),
     ];
     const summary = matchSummary(8, players, "p1");
 
     const signature = buildTop1CompositionSignature(summary);
 
-    // cell昇順: 2 → 5 → 8
     expect(signature).toEqual([
       { unitType: "first", starLevel: 3 },
-      { unitType: "middle", starLevel: 1 },
       { unitType: "last", starLevel: 2 },
+      { unitType: "middle", starLevel: 1 },
     ]);
   });
 
@@ -257,7 +256,7 @@ describe("buildGameplayKpiSummary", () => {
     const kpi = buildGameplayKpiSummary(summary);
 
     // W6-2: 集計用文字列形式
-    expect(kpi.top1CompositionSignature).toBe("vanguard:3,ranger:2");
+    expect(kpi.top1CompositionSignature).toBe("ranger:2,vanguard:3");
   });
 
   it("handles empty match gracefully", () => {

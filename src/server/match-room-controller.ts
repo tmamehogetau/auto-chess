@@ -1119,6 +1119,8 @@ export class MatchRoomController {
       return validationError;
     }
 
+    this.matchLogger?.recordPrepValidationPass();
+
     // Step 3: Build execution dependencies
     const executionDeps: ExecutionDependencies = {
       setBoardUnitCount: (id, count) => this.boardUnitCountByPlayer.set(id, count),

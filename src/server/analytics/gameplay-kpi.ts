@@ -66,18 +66,24 @@ export function calculateR8CompletionRate(
 
 /**
  * ボードユニットからシグネチャを構築
- * アイテム情報は除外、cell昇順で決定論的にソート
+ * アイテム情報と配置セルを除外し、構成そのものが同じなら同一順序になるよう正規化
  *
  * @param units - ボードユニットスナップショット配列
- * @returns ユニットシグネチャ配列（cell昇順）
+ * @returns ユニットシグネチャ配列（unitType → starLevel 順）
  */
 function buildUnitSignatures(units: BoardUnitSnapshot[]): UnitSignature[] {
-  // cell昇順でソートして決定論的な順序を保証
-  const sortedUnits = [...units].sort((a, b) => a.cell - b.cell);
-  return sortedUnits.map((unit) => ({
-    unitType: unit.unitType,
-    starLevel: unit.starLevel,
-  }));
+  return units
+    .map((unit) => ({
+      unitType: unit.unitType,
+      starLevel: unit.starLevel,
+    }))
+    .sort((left, right) => {
+      const unitTypeCompare = left.unitType.localeCompare(right.unitType);
+      if (unitTypeCompare !== 0) {
+        return unitTypeCompare;
+      }
+      return left.starLevel - right.starLevel;
+    });
 }
 
 /**

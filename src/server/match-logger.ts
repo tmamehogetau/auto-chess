@@ -748,13 +748,23 @@ export class MatchLogger {
   }
 
   /**
+   * Prepコマンドのバリデーション通過を記録する
+   * W6-2 KPI測定: バリデーション境界を通過した入力を分母へ加算する
+   *
+   * 呼び出しタイミング: validatePrepCommand() が成功した直後
+   */
+  recordPrepValidationPass(): void {
+    this.totalPrepCommands += 1;
+  }
+
+  /**
    * Prepコマンドの実行成功を記録する
-   * W6-2 KPI測定: バリデーション通過後、実行完了した入力を追跡
+   * 将来の成功メトリクス拡張用フック。現在のW6-2集計では副作用を持たない。
    * 
    * 呼び出しタイミング: executePrepCommand() が成功して返った直後
    */
   recordPrepExecutionSuccess(): void {
-    this.totalPrepCommands += 1;
+    // no-op for now
   }
 
   /**

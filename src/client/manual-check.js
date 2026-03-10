@@ -1696,7 +1696,7 @@ function updateBossShop(offers, visible) {
 
   bossShopSection.style.display = visible ? "block" : "none";
   if (!visible) {
-    return;
+    offers = [];
   }
 
   for (let index = 0; index < 2; index += 1) {
@@ -1706,11 +1706,21 @@ function updateBossShop(offers, visible) {
     }
 
     const offer = Array.isArray(offers) ? offers[index] : offers?.[index];
-    if (!offer) {
+    const hasOffer = Boolean(offer) && visible;
+    const isPurchased = offer?.purchased === true;
+    const badgeText = hasOffer ? "EXCLUSIVE" : "";
+    const soldText = isPurchased ? "SOLD" : "";
+
+    card.classList.toggle("boss-exclusive", hasOffer);
+    card.classList.toggle("is-purchased", isPurchased);
+
+    if (!hasOffer) {
       card.innerHTML = `
+        <span class="boss-shop-badge">${badgeText}</span>
         <div class="icon">❓</div>
         <div class="name">-</div>
         <div class="cost">-</div>
+        <span class="boss-shop-sold" aria-hidden="true">${soldText}</span>
       `;
       card.classList.add("disabled");
       continue;
@@ -1718,11 +1728,11 @@ function updateBossShop(offers, visible) {
 
     const icon = UNIT_ICONS[offer.unitType] || "🦇";
     const cost = offer.cost || 0;
-    const isPurchased = offer.purchased === true;
     const canAfford = currentGold >= cost && !isPurchased;
     const displayName = SCARLET_MANSION_DATA.displayNames[offer.unitType] || offer.unitType;
     const details = SCARLET_MANSION_DATA.cardDetails[offer.unitType] || null;
     card.innerHTML = `
+      <span class="boss-shop-badge">${badgeText}</span>
       <div class="scarlet-badge">紅魔館</div>
       <div class="icon">${icon}</div>
       <div class="name">${displayName}</div>
@@ -1730,7 +1740,7 @@ function updateBossShop(offers, visible) {
       <div class="cost">${cost}G</div>
       ${details ? `<div class="boss-shop-skill">${details.skillDescription}</div>` : ''}
       ${details ? `<div class="boss-shop-flavor">${details.flavorText}</div>` : ''}
-      ${isPurchased ? '<div class="purchased-badge">Purchased</div>' : ''}
+      <span class="boss-shop-sold" aria-hidden="true">${soldText}</span>
     `;
     card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
   }

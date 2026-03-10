@@ -928,6 +928,45 @@
         border-color: rgba(155, 89, 182, 0.6);
       }
 
+      .shop-card.boss-exclusive {
+        border-color: rgba(155, 89, 182, 0.85);
+        background: linear-gradient(135deg, rgba(155, 89, 182, 0.16), rgba(22, 33, 62, 0.92));
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+      }
+
+      .shop-card.boss-exclusive:hover {
+        border-color: #d6a6ff;
+      }
+
+      .shop-card.boss-exclusive.is-purchased {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+
+      .shop-card .boss-shop-badge,
+      .shop-card .boss-shop-sold {
+        position: absolute;
+        left: 6px;
+        font-size: 10px;
+        line-height: 1;
+        padding: 3px 6px;
+        border-radius: 999px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+      }
+
+      .shop-card .boss-shop-badge {
+        top: 6px;
+        background: rgba(155, 89, 182, 0.24);
+        color: #f0d6ff;
+      }
+
+      .shop-card .boss-shop-sold {
+        bottom: 6px;
+        background: rgba(127, 140, 141, 0.35);
+        color: #f5f6fa;
+      }
+
       .shop-card .icon {
         font-size: 32px;
         margin-bottom: 5px;
@@ -2097,14 +2136,18 @@
         <div class="shop-title" data-boss-shop-title>👑 Boss Exclusive</div>
         <div class="shop-grid boss-shop-grid" data-boss-shop data-boss-shop-grid>
           <div class="shop-card boss" data-boss-shop-slot="0">
+            <span class="boss-shop-badge">EXCLUSIVE</span>
             <div class="icon">❓</div>
             <div class="name">-</div>
             <div class="cost">0G</div>
+            <span class="boss-shop-sold">SOLD</span>
           </div>
           <div class="shop-card boss" data-boss-shop-slot="1">
+            <span class="boss-shop-badge">EXCLUSIVE</span>
             <div class="icon">❓</div>
             <div class="name">-</div>
             <div class="cost">0G</div>
+            <span class="boss-shop-sold">SOLD</span>
           </div>
         </div>
       </div>

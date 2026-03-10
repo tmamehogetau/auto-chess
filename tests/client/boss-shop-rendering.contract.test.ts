@@ -37,4 +37,19 @@ describe("boss shop rendering contract", () => {
     expect(html.includes("var(--scarlet-badge-bg)")).toBe(true);
     expect(html.includes("var(--scarlet-text)")).toBe(true);
   });
+
+  test("boss shop rendering toggles visual badge, sold state, and off-path visibility", () => {
+    const source = readFileSync(manualCheckPath, "utf-8");
+
+    expect(source.includes('classList.toggle("boss-exclusive"')).toBe(true);
+    expect(source.includes('classList.toggle("is-purchased"')).toBe(true);
+    expect(source.includes('boss-shop-badge')).toBe(true);
+    expect(source.includes('EXCLUSIVE')).toBe(true);
+    expect(source.includes('boss-shop-sold')).toBe(true);
+    expect(source.includes('SOLD')).toBe(true);
+    expect(source.includes('badgeText = hasOffer ? "EXCLUSIVE" : ""')).toBe(true);
+    expect(source.includes('soldText = isPurchased ? "SOLD" : ""')).toBe(true);
+    expect(source.includes('bossShopSection.style.display = visible ? "block" : "none"')).toBe(true);
+    expect(source.includes("if (!visible) {")).toBe(true);
+  });
 });

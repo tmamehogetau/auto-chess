@@ -618,6 +618,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       const featureFlags = {
         enableHeroSystem: flags.enableHeroSystem,
         enableSharedPool: flags.enableSharedPool,
+        enablePerUnitSharedPool: flags.enablePerUnitSharedPool,
         enableSpellCard: flags.enableSpellCard,
         enableRumorInfluence: flags.enableRumorInfluence,
         enableBossExclusiveShop: flags.enableBossExclusiveShop,

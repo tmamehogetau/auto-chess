@@ -77,6 +77,7 @@ function matchSummary(
     featureFlags: {
       enableHeroSystem: false,
       enableSharedPool: false,
+      enablePerUnitSharedPool: false,
       enableSpellCard: false,
       enableRumorInfluence: false,
       enableBossExclusiveShop: false,

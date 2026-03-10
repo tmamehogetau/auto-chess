@@ -392,6 +392,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const summary = logger.generateSummary(null, ["player-1", "player-2"], 5, {
         enableHeroSystem: false,
         enableSharedPool: false,
+        enablePerUnitSharedPool: false,
         enableSpellCard: false,
         enableRumorInfluence: false,
         enableBossExclusiveShop: false,
@@ -416,6 +417,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const summary1 = logger.generateSummary(null, ["player-1", "player-2"], 5, {
         enableHeroSystem: false,
         enableSharedPool: false,
+        enablePerUnitSharedPool: false,
         enableSpellCard: false,
         enableRumorInfluence: false,
         enableBossExclusiveShop: false,
@@ -423,6 +425,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const summary2 = logger.generateSummary(null, ["player-1", "player-2"], 5, {
         enableHeroSystem: false,
         enableSharedPool: false,
+        enablePerUnitSharedPool: false,
         enableSpellCard: false,
         enableRumorInfluence: false,
         enableBossExclusiveShop: false,
@@ -445,6 +448,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const summary3 = logger.generateSummary(null, ["player-1", "player-2"], 5, {
         enableHeroSystem: false,
         enableSharedPool: false,
+        enablePerUnitSharedPool: false,
         enableSpellCard: false,
         enableRumorInfluence: false,
         enableBossExclusiveShop: false,
@@ -680,6 +684,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const featureFlags = {
         enableHeroSystem: false,
         enableSharedPool: false,
+        enablePerUnitSharedPool: false,
         enableSpellCard: false,
         enableRumorInfluence: true,
         enableBossExclusiveShop: false,
@@ -709,6 +714,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
     const featureFlags = {
       enableHeroSystem: false,
       enableSharedPool: false,
+      enablePerUnitSharedPool: false,
       enableSpellCard: false,
       enableRumorInfluence: false,
       enableBossExclusiveShop: false,
@@ -829,6 +835,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
     const featureFlags = {
       enableHeroSystem: false,
       enableSharedPool: false,
+      enablePerUnitSharedPool: false,
       enableSpellCard: false,
       enableRumorInfluence: false,
       enableBossExclusiveShop: false,

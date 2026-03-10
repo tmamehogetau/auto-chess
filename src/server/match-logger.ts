@@ -7,6 +7,10 @@ import {
   buildRumorKpiSummary,
   type RumorKpiSummary,
 } from "./analytics/rumor-kpi";
+import {
+  buildGameplayKpiSummary,
+  type GameplayKpiSummary,
+} from "./analytics/gameplay-kpi";
 
 /**
  * Prepコマンド入力バリデーションメトリクス
@@ -33,10 +37,6 @@ export interface PrepValidationFailure {
   /** バリデーション拒否のエラーコード (例: "INSUFFICIENT_GOLD", "DUPLICATE_CMD") */
   errorCode: string;
 }
-import {
-  buildGameplayKpiSummary,
-  type GameplayKpiSummary,
-} from "./analytics/gameplay-kpi";
 
 export interface MatchSummaryLog {
   matchId: string;
@@ -51,6 +51,7 @@ export interface MatchSummaryLog {
   featureFlags: {
     enableHeroSystem: boolean;
     enableSharedPool: boolean;
+    enablePerUnitSharedPool: boolean;
     enableSpellCard: boolean;
     enableRumorInfluence: boolean;
     enableBossExclusiveShop: boolean;

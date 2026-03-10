@@ -5,7 +5,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 describe("w6-kpi-report.mjs", () => {
-  const scriptPath = "./00_Source_Codes/auto-chess-mvp/scripts/w6-kpi-report.mjs";
+  const scriptPath = join(process.cwd(), "scripts", "w6-kpi-report.mjs");
   let tempDir: string;
 
   beforeEach(() => {

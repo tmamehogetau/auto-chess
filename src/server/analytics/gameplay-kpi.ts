@@ -30,11 +30,11 @@ export interface UnitSignature {
 export interface GameplayKpiSummary {
   /** 総ラウンド数 */
   totalRounds: number;
-  /** プレイヤー数 */
+  /** マッチサマリー表示用のプレイヤー数（raw summary と同じ粒度） */
   playerCount: number;
   /** R8到達プレイヤー数（ラウンド8以上生存）- オフライン集計用 */
   playersSurvivedR8: number;
-  /** 総プレイヤー数 - オフライン集計用 */
+  /** 集計式 `playersSurvivedR8 / totalPlayers` の分母として使う総プレイヤー数 */
   totalPlayers: number;
   /** マッチ単位のR8完走率（playersSurvivedR8 / totalPlayers） */
   r8CompletionRate: number;

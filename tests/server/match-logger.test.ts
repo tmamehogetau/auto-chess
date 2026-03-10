@@ -704,4 +704,261 @@ describe("MatchLogger - P1 Feature Logs", () => {
       });
     });
   });
+
+  describe("getGameplayKpiSummary", () => {
+    const featureFlags = {
+      enableHeroSystem: false,
+      enableSharedPool: false,
+      enableSpellCard: false,
+      enableRumorInfluence: false,
+      enableBossExclusiveShop: false,
+    };
+
+    it("should calculate r8CompletionRate and counts for aggregation (R8到達バイナリ)", () => {
+      // Setup: Player 1 survives 8 rounds (R8到達), Player 2 survives 5 rounds (R8未到達)
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1");
+      logger.incrementRoundsSurvived("player-1"); // 8 rounds
+
+      logger.incrementRoundsSurvived("player-2");
+      logger.incrementRoundsSurvived("player-2");
+      logger.incrementRoundsSurvived("player-2");
+      logger.incrementRoundsSurvived("player-2");
+      logger.incrementRoundsSurvived("player-2"); // 5 rounds
+
+      const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      // W6-2: 集計用カウントとマッチ単位率
+      expect(kpi.playersSurvivedR8).toBe(1);
+      expect(kpi.totalPlayers).toBe(2);
+      expect(kpi.r8CompletionRate).toBe(0.5); // 1/2 = 0.5
+    });
+
+    it("should include top1CompositionSignature as string from winner's board", () => {
+      // Setup: Winner has board units
+      logger.updateFinalUnits("player-1", [
+        { unitType: "vanguard", starLevel: 2, cell: 0, items: ["sword"] },
+        { unitType: "ranger", starLevel: 1, cell: 1, items: [] },
+      ], []);
+
+      const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      // W6-2: 集計用文字列形式
+      expect(kpi.top1CompositionSignature).toBe("vanguard:2,ranger:1");
+    });
+
+    it("should return empty signature when winner has no board units", () => {
+      const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      expect(kpi.top1CompositionSignature).toBe("");
+    });
+
+    it("should return empty signature when winner is null", () => {
+      logger.updateFinalUnits("player-1", [
+        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+      ], []);
+
+      const kpi = logger.getGameplayKpiSummary(null, ["player-1", "player-2"], 8, featureFlags);
+
+      expect(kpi.top1CompositionSignature).toBe("");
+    });
+
+    it("should preserve totalRounds and playerCount", () => {
+      const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 10, featureFlags);
+
+      expect(kpi.totalRounds).toBe(10);
+      expect(kpi.playerCount).toBe(2);
+    });
+
+    it("should handle empty match gracefully", () => {
+      const emptyLogger = new MatchLogger("empty-match", "empty-room");
+      const kpi = emptyLogger.getGameplayKpiSummary(null, [], 0, featureFlags);
+
+      expect(kpi.playersSurvivedR8).toBe(0);
+      expect(kpi.totalPlayers).toBe(0);
+      expect(kpi.r8CompletionRate).toBe(0);
+      expect(kpi.top1CompositionSignature).toBe("");
+      expect(kpi.totalRounds).toBe(0);
+      expect(kpi.playerCount).toBe(0);
+    });
+  });
+
+  describe("prep command metrics integration", () => {
+    it("should track prep command validation attempts through MatchLogger", () => {
+      // Success attempts (execution completed after validation)
+      logger.recordPrepExecutionSuccess();
+      logger.recordPrepExecutionSuccess();
+
+      // Failed validation attempts with error codes
+      logger.recordPrepValidationFailure({ errorCode: "INSUFFICIENT_GOLD" });
+      logger.recordPrepValidationFailure({ errorCode: "INVALID_SLOT" });
+
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(4);
+      expect(metrics.failedPrepCommands).toBe(2);
+      expect(metrics.prepInputFailureRate).toBe(0.5);
+      expect(metrics.failuresByErrorCode["INSUFFICIENT_GOLD"]).toBe(1);
+      expect(metrics.failuresByErrorCode["INVALID_SLOT"]).toBe(1);
+    });
+
+    it("should return zero metrics when no commands recorded", () => {
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(0);
+      expect(metrics.failedPrepCommands).toBe(0);
+      expect(metrics.prepInputFailureRate).toBe(0);
+      expect(Object.keys(metrics.failuresByErrorCode)).toHaveLength(0);
+    });
+  });
+
+  describe("outputGameplayKpiSummary", () => {
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
+    const featureFlags = {
+      enableHeroSystem: false,
+      enableSharedPool: false,
+      enableSpellCard: false,
+      enableRumorInfluence: false,
+      enableBossExclusiveShop: false,
+    };
+
+    it("should emit structured gameplay KPI report at match end", () => {
+      // Setup: Player survives 8 rounds and wins
+      logger.incrementRoundsSurvived("player-1");
+      for (let i = 0; i < 7; i++) {
+        logger.incrementRoundsSurvived("player-1");
+      }
+      logger.updateFinalUnits("player-1", [
+        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+      ], []);
+
+      // Some prep commands with failures
+      logger.recordPrepExecutionSuccess();
+      logger.recordPrepValidationFailure({ errorCode: "INSUFFICIENT_GOLD" });
+
+      // Execute the new output method
+      logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      // Verify the output structure
+      expect(consoleSpy).toHaveBeenCalledTimes(1);
+      const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+      expect(output).toEqual({
+        type: "gameplay_kpi_summary",
+        data: expect.objectContaining({
+          totalRounds: 8,
+          playerCount: 2,
+          playersSurvivedR8: expect.any(Number),
+          totalPlayers: expect.any(Number),
+          r8CompletionRate: expect.any(Number),
+          top1CompositionSignature: expect.any(String),
+          failedPrepCommands: expect.any(Number),
+          totalPrepCommands: expect.any(Number),
+          prepInputFailureRate: expect.any(Number),
+        }),
+      });
+    });
+
+    it("should include r8CompletionRate as match-level rate", () => {
+      // Player 1 survives 8 rounds (R8 reached)
+      for (let i = 0; i < 8; i++) {
+        logger.incrementRoundsSurvived("player-1");
+      }
+      // Player 2 survives 5 rounds (R8 not reached)
+      for (let i = 0; i < 5; i++) {
+        logger.incrementRoundsSurvived("player-2");
+      }
+
+      logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+      // W6-2: マッチ単位の完走率（集計可能なカウントも含む）
+      expect(output.data.playersSurvivedR8).toBe(1);
+      expect(output.data.totalPlayers).toBe(2);
+      expect(output.data.r8CompletionRate).toBe(0.5); // 1/2 = 0.5
+    });
+
+    it("should include top1 composition signature as string from winner's board", () => {
+      logger.updateFinalUnits("player-1", [
+        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+        { unitType: "ranger", starLevel: 1, cell: 1, items: [] },
+      ], []);
+
+      logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+      // W6-2: 集計用文字列形式
+      expect(output.data.top1CompositionSignature).toBe("vanguard:2,ranger:1");
+    });
+
+    it("should include prep command counts and failure rate", () => {
+      // 2 successes, 1 failure = 0.333... failure rate
+      logger.recordPrepExecutionSuccess();
+      logger.recordPrepExecutionSuccess();
+      logger.recordPrepValidationFailure({ errorCode: "INVALID_SLOT" });
+
+      logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+      // W6-2: 集計可能なカウントとマッチ単位の失敗率
+      expect(output.data.failedPrepCommands).toBe(1);
+      expect(output.data.totalPrepCommands).toBe(3);
+      expect(output.data.prepInputFailureRate).toBeCloseTo(0.333, 2);
+    });
+
+    it("should not change existing outputSummary semantics", () => {
+      // Setup complete match
+      logger.incrementRoundsSurvived("player-1");
+      logger.updateFinalUnits("player-1", [
+        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+      ], []);
+
+      // Call both output methods
+      logger.outputSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+      logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      // Verify both outputs exist with correct types
+      expect(consoleSpy).toHaveBeenCalledTimes(2);
+
+      const outputs = consoleSpy.mock.calls.map((call: unknown[]) => JSON.parse((call as string[])[0] as string));
+      const matchSummary = outputs.find((o: { type: string }) => o.type === "match_summary");
+      const gameplayKpi = outputs.find((o: { type: string }) => o.type === "gameplay_kpi_summary");
+
+      expect(matchSummary).toBeDefined();
+      expect(matchSummary.data).toHaveProperty("matchId");
+      expect(matchSummary.data).toHaveProperty("winner");
+
+      expect(gameplayKpi).toBeDefined();
+      expect(gameplayKpi.data).toHaveProperty("r8CompletionRate");
+      expect(gameplayKpi.data).toHaveProperty("top1CompositionSignature");
+    });
+
+    it("should handle null winner gracefully", () => {
+      logger.outputGameplayKpiSummary(null, ["player-1", "player-2"], 8, featureFlags);
+
+      const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+      expect(output.type).toBe("gameplay_kpi_summary");
+      expect(output.data.top1CompositionSignature).toBe("");
+    });
+
+    it("should return zero prep metrics when no commands recorded", () => {
+      logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
+
+      const output = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+      expect(output.data.failedPrepCommands).toBe(0);
+      expect(output.data.totalPrepCommands).toBe(0);
+      expect(output.data.prepInputFailureRate).toBe(0);
+    });
+  });
 });

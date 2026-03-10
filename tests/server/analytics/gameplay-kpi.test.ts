@@ -67,7 +67,7 @@ function matchSummary(
     startTime: Date.now() - 60000,
     durationMs: 60000,
     winner,
-    ranking: players.sort((a, b) => a.rank - b.rank).map((p) => p.playerId),
+    ranking: [...players].sort((a, b) => a.rank - b.rank).map((p) => p.playerId),
     totalRounds,
     players: players.map((p) => ({
       ...p,

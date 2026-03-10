@@ -48,6 +48,8 @@ export interface GameplayKpiSummary {
   prepInputFailureRate: number;
 }
 
+const R8_COMPLETION_ROUND = 8;
+
 /**
  * R8到達率を計算
  * ラウンド8以上生存したかどうかのバイナリ指標
@@ -61,7 +63,7 @@ export function calculateR8CompletionRate(
   _totalRounds: number,
 ): number {
   // R8到達：ラウンド8以上生存したか（W6-2定義）
-  return roundsSurvived >= 8 ? 1.0 : 0.0;
+  return roundsSurvived >= R8_COMPLETION_ROUND ? 1.0 : 0.0;
 }
 
 /**

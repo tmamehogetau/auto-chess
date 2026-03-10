@@ -7,6 +7,36 @@ import {
   buildRumorKpiSummary,
   type RumorKpiSummary,
 } from "./analytics/rumor-kpi";
+import {
+  buildGameplayKpiSummary,
+  type GameplayKpiSummary,
+} from "./analytics/gameplay-kpi";
+
+/**
+ * Prepコマンド入力バリデーションメトリクス
+ * W6-2 KPI測定: バリデーション境界でのPrepコマンド試行を追跡
+ * 
+ * Note: これらのメトリクスは「バリデーション境界での入力試行」を測定するものであり、
+ * 実行時のランタイム失敗（例: 実行中の例外）とは区別される。
+ */
+export interface PrepCommandMetrics {
+  /** バリデーション境界を通過した総Prepコマンド入力試行回数 */
+  totalPrepCommands: number;
+  /** バリデーションで拒否されたPrepコマンド入力回数 */
+  failedPrepCommands: number;
+  /** エラーコード別のバリデーション拒否カウント */
+  failuresByErrorCode: Record<string, number>;
+  /** 入力失敗率 (failedPrepCommands / totalPrepCommands) */
+  prepInputFailureRate: number;
+}
+
+/**
+ * Prepコマンドバリデーション拒否記録用パラメータ
+ */
+export interface PrepValidationFailure {
+  /** バリデーション拒否のエラーコード (例: "INSUFFICIENT_GOLD", "DUPLICATE_CMD") */
+  errorCode: string;
+}
 
 export interface MatchSummaryLog {
   matchId: string;
@@ -21,6 +51,7 @@ export interface MatchSummaryLog {
   featureFlags: {
     enableHeroSystem: boolean;
     enableSharedPool: boolean;
+    enablePerUnitSharedPool: boolean;
     enableSpellCard: boolean;
     enableRumorInfluence: boolean;
     enableBossExclusiveShop: boolean;
@@ -201,6 +232,11 @@ export class MatchLogger {
   private bossShopLogs: BossShopLog[] = [];
   private synergyActivationLogs: SynergyActivationLog[] = [];
   private hpChangeLogs: HpChangeLog[] = [];
+
+  // Prepコマンドメトリクス（W6-2 KPI測定）
+  private totalPrepCommands: number = 0;
+  private failedPrepCommands: number = 0;
+  private failuresByErrorCode: Map<string, number> = new Map();
 
   constructor(matchId: string, roomId: string) {
     this.matchId = matchId;
@@ -465,12 +501,12 @@ export class MatchLogger {
   ): MatchSummaryLog {
     const players: PlayerMatchSummary[] = [];
 
-    for (const playerId of ranking) {
+    for (const [index, playerId] of ranking.entries()) {
       const stats = this.playerStats.get(playerId);
       if (stats) {
         players.push({
           playerId,
-          rank: ranking.indexOf(playerId) + 1,
+          rank: index + 1,
           finalHp: stats.finalHp,
           maxHp: stats.maxHp,
           totalGoldEarned: stats.totalGoldEarned,
@@ -661,6 +697,99 @@ export class MatchLogger {
       type: "rumor_kpi_summary",
       data: this.getRumorKpiSummary(),
     }));
+  }
+
+  /**
+   * ゲームプレイ KPI サマリーを取得する
+   * generateSummary の結果から派生メトリクスを計算して返す
+   */
+  getGameplayKpiSummary(
+    winner: string | null,
+    ranking: string[],
+    totalRounds: number,
+    featureFlags: MatchSummaryLog["featureFlags"],
+  ): GameplayKpiSummary {
+    const summary = this.generateSummary(winner, ranking, totalRounds, featureFlags);
+    const prepMetrics = this.getPrepCommandMetrics();
+    return buildGameplayKpiSummary(summary, prepMetrics);
+  }
+
+  /**
+   * ゲームプレイ KPI サマリーを構造化JSONとして出力する
+   * W6-2 KPI測定用の機械可読レポート
+   * 既存のmatch_summary出力とは別に、追加の分析データとして出力される
+   */
+  outputGameplayKpiSummary(
+    winner: string | null,
+    ranking: string[],
+    totalRounds: number,
+    featureFlags: MatchSummaryLog["featureFlags"],
+  ): void {
+    const kpiSummary = this.getGameplayKpiSummary(winner, ranking, totalRounds, featureFlags);
+
+    console.log(JSON.stringify({
+      type: "gameplay_kpi_summary",
+      data: kpiSummary,
+    }));
+  }
+
+  /**
+   * Prepコマンドのバリデーション拒否を記録する
+   * W6-2 KPI測定: バリデーション境界で失敗した入力を追跡
+   * 
+   * 呼び出しタイミング: validatePrepCommand() がエラーを返した直後
+   */
+  recordPrepValidationFailure(failure: PrepValidationFailure): void {
+    this.totalPrepCommands += 1;
+    this.failedPrepCommands += 1;
+
+    const currentCount = this.failuresByErrorCode.get(failure.errorCode) ?? 0;
+    this.failuresByErrorCode.set(failure.errorCode, currentCount + 1);
+  }
+
+  /**
+   * Prepコマンドのバリデーション通過を記録する
+   * W6-2 KPI測定: バリデーション境界を通過した入力を分母へ加算する
+   *
+   * 呼び出しタイミング: validatePrepCommand() が成功した直後
+   */
+  recordPrepValidationPass(): void {
+    this.totalPrepCommands += 1;
+  }
+
+  /**
+   * Prepコマンドの実行成功を記録する
+   * 将来の成功メトリクス拡張用フック。現在のW6-2集計では副作用を持たない。
+   * 
+   * 呼び出しタイミング: executePrepCommand() が成功して返った直後
+   */
+  recordPrepExecutionSuccess(): void {
+    // no-op for now
+  }
+
+  /**
+   * Prepコマンドメトリクスを取得する
+   * @returns PrepCommandMetrics（防御的コピー）
+   */
+  getPrepCommandMetrics(): PrepCommandMetrics {
+    // failuresByErrorCode をプレーンオブジェクトに変換（防御的コピー）
+    const failuresByErrorCode: Record<string, number> = {};
+    for (const [code, count] of this.failuresByErrorCode.entries()) {
+      failuresByErrorCode[code] = count;
+    }
+
+    // 失敗率を計算
+    const prepInputFailureRate =
+      this.totalPrepCommands > 0
+        ? this.failedPrepCommands / this.totalPrepCommands
+        : 0;
+
+    return {
+      totalPrepCommands: this.totalPrepCommands,
+      failedPrepCommands: this.failedPrepCommands,
+      failuresByErrorCode,
+      prepInputFailureRate,
+    };
   }
 }
 

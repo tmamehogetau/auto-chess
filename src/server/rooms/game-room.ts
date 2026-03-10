@@ -615,17 +615,29 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       const winner = ranking.length > 0 ? (ranking[0] ?? null) : null;
       const flags = FeatureFlagService.getInstance().getFlags();
 
+      const featureFlags = {
+        enableHeroSystem: flags.enableHeroSystem,
+        enableSharedPool: flags.enableSharedPool,
+        enablePerUnitSharedPool: flags.enablePerUnitSharedPool,
+        enableSpellCard: flags.enableSpellCard,
+        enableRumorInfluence: flags.enableRumorInfluence,
+        enableBossExclusiveShop: flags.enableBossExclusiveShop,
+      };
+
+      // W6-2: 既存のmatch_summary出力（変更なし）
       this.matchLogger.outputSummary(
         winner,
         ranking,
         this.controller.roundIndex,
-        {
-          enableHeroSystem: flags.enableHeroSystem,
-          enableSharedPool: flags.enableSharedPool,
-          enableSpellCard: flags.enableSpellCard,
-          enableRumorInfluence: flags.enableRumorInfluence,
-          enableBossExclusiveShop: flags.enableBossExclusiveShop,
-        },
+        featureFlags,
+      );
+
+      // W6-2 Task 4: 新規gameplay_kpi_summary出力（機械可読KPIレポート）
+      this.matchLogger.outputGameplayKpiSummary(
+        winner,
+        ranking,
+        this.controller.roundIndex,
+        featureFlags,
       );
     }
 

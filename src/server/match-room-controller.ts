@@ -1110,9 +1110,16 @@ export class MatchRoomController {
       validationDeps,
     );
 
+    // W6-2 KPI: バリデーション境界で拒否された場合は失敗を記録
     if (validationError) {
+      // validationErrorはバリデーション失敗時のみ返されるため、必ずaccepted: false
+      this.matchLogger?.recordPrepValidationFailure({
+        errorCode: (validationError as { accepted: false; code: string }).code,
+      });
       return validationError;
     }
+
+    this.matchLogger?.recordPrepValidationPass();
 
     // Step 3: Build execution dependencies
     const executionDeps: ExecutionDependencies = {
@@ -1218,7 +1225,13 @@ export class MatchRoomController {
     };
 
     // Step 4: Execute the command
-    return executePrepCommand(playerId, cmdSeq, commandPayload ?? {}, executionDeps);
+    const result = executePrepCommand(playerId, cmdSeq, commandPayload ?? {}, executionDeps);
+
+    // W6-2 KPI: バリデーション通過後、実行が完了したら成功を記録
+    // Note: executePrepCommandが返る = 実行成功（実行内で例外が発生した場合は別のエラーハンドリング）
+    this.matchLogger?.recordPrepExecutionSuccess();
+
+    return result;
   }
 
   private applyPrepIncome(): void {

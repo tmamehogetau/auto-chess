@@ -22,7 +22,8 @@
     "verify:full": "npm run verify:ci && npm run test:coverage",
     "client:check": "node scripts/serve-client-check.mjs",
     "server": "tsx server.ts",
-    "play": "npm-run-all --parallel server client:check"
+    "play": "npm-run-all --parallel server client:check",
+    "w6:kpi-report": "node scripts/w6-kpi-report.mjs"
   },
   "keywords": [],
   "author": "",

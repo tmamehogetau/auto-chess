@@ -309,6 +309,50 @@ describe("Rumor Influence Integration", () => {
       // Flag無効時は通常のショップ生成（ランダム5枠）
       // 噂勢力による確定枠は存在しない
     });
+
+    it("enableRumorInfluence=falseの場合、getRumorKpiSummary()はゼロ値を返す", () => {
+      // Arrange: ゲームを進行させる（噂勢力無効状態）
+      for (const playerId of playerIds) {
+        controller.setReady(playerId, true);
+      }
+      const started = controller.startIfReady(Date.now(), [...playerIds]);
+      expect(started).toBe(true);
+
+      const logger = new MatchLogger("match-off-path", "room-off-path");
+      controller.setMatchLogger(logger);
+
+      // Act: ラウンドを進行（フェーズ成功しても噂勢力は発動しない）
+      const actualBoss = controller.getBossPlayerId();
+      expect(actualBoss).not.toBeNull();
+
+      // R1: Prep → Battle
+      if (controller.prepDeadlineAtMs) {
+        controller.advanceByTime(controller.prepDeadlineAtMs + 100);
+      }
+
+      // ダメージを設定（本来ならフェーズ成功）
+      controller.setPendingRoundDamage({
+        [actualBoss!]: 600,
+      });
+
+      // Battle → Settle → Elimination → R2 Prep
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+      if (controller.phaseDeadlineAtMs) {
+        controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
+      }
+
+      // Assert: KPIサマリーが全てゼロ値であることを直接検証
+      const summary = logger.getRumorKpiSummary();
+      expect(summary.guaranteedRounds).toBe(0);
+      expect(summary.rumorPurchaseCount).toBe(0);
+      expect(summary.rumorPurchaseRate).toBe(0);
+      expect(summary.opportunitiesWithoutPurchase).toBe(0);
+    });
   });
 
   describe("ボス除外", () => {
@@ -561,6 +605,129 @@ describe("Rumor Influence Integration", () => {
 
       // Note: Purchase action logging is tested at GameRoom boundary.
       // Controller direct usage only verifies command acceptance.
+    });
+  });
+
+  describe("Prep Command KPI Metrics Integration", () => {
+    beforeEach(() => {
+      // 全プレイヤーをreadyにする
+      for (const playerId of playerIds) {
+        controller.setReady(playerId, true);
+      }
+
+      // ゲームを開始
+      const started = controller.startIfReady(Date.now(), [...playerIds]);
+      expect(started).toBe(true);
+    });
+
+    it("should track successful prep commands through controller", () => {
+      const logger = new MatchLogger("match-prep-success", "room-prep-success");
+      controller.setMatchLogger(logger);
+
+      // 成功するPrepコマンドを送信
+      const result = controller.submitPrepCommand("player1", 1, Date.now(), {
+        shopRefreshCount: 1,
+      });
+
+      expect(result.accepted).toBe(true);
+
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(1);
+      expect(metrics.failedPrepCommands).toBe(0);
+      expect(metrics.prepInputFailureRate).toBe(0);
+    });
+
+    it("should track failed prep commands with error codes", () => {
+      const logger = new MatchLogger("match-prep-fail", "room-prep-fail");
+      controller.setMatchLogger(logger);
+
+      // 同じcmdSeqを2回送信するとDUPLICATE_CMDエラー
+      controller.submitPrepCommand("player1", 1, Date.now(), { shopRefreshCount: 1 });
+      const result = controller.submitPrepCommand("player1", 1, Date.now(), { shopRefreshCount: 1 });
+
+      expect(result.accepted).toBe(false);
+      expect((result as { accepted: false; code: string }).code).toBe("DUPLICATE_CMD");
+
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(2);
+      expect(metrics.failedPrepCommands).toBe(1);
+      expect(metrics.failuresByErrorCode["DUPLICATE_CMD"]).toBe(1);
+      expect(metrics.prepInputFailureRate).toBe(0.5);
+    });
+
+    it("should track multiple error types", () => {
+      const logger = new MatchLogger("match-prep-multi", "room-prep-multi");
+      controller.setMatchLogger(logger);
+
+      // 成功
+      controller.submitPrepCommand("player1", 1, Date.now(), { shopRefreshCount: 1 });
+
+      // DUPLICATE_CMDエラー
+      controller.submitPrepCommand("player1", 1, Date.now(), { shopRefreshCount: 1 });
+
+      // 別のプレイヤーで成功
+      controller.submitPrepCommand("player2", 1, Date.now(), { shopRefreshCount: 1 });
+
+      // player2でもDUPLICATE_CMD
+      controller.submitPrepCommand("player2", 1, Date.now(), { shopRefreshCount: 1 });
+
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(4);
+      expect(metrics.failedPrepCommands).toBe(2);
+      expect(metrics.failuresByErrorCode["DUPLICATE_CMD"]).toBe(2);
+      expect(metrics.prepInputFailureRate).toBe(0.5);
+    });
+
+    it("should not corrupt counter with OFF-path flows", () => {
+      const logger = new MatchLogger("match-prep-offpath", "room-prep-offpath");
+      controller.setMatchLogger(logger);
+
+      // 通常のPrepコマンドをいくつか送信
+      controller.submitPrepCommand("player1", 1, Date.now(), { shopRefreshCount: 1 });
+      controller.submitPrepCommand("player1", 2, Date.now(), { shopRefreshCount: 1 });
+
+      // Phase外の操作（このテストではシミュレートしないが、
+      // カウンターが破損していないことを確認）
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(2);
+      expect(metrics.failedPrepCommands).toBe(0);
+      expect(metrics.prepInputFailureRate).toBe(0);
+    });
+
+    it("should work correctly when matchLogger is null", () => {
+      // matchLoggerを設定せずにコマンドを送信
+      const result = controller.submitPrepCommand("player1", 1, Date.now(), {
+        shopRefreshCount: 1,
+      });
+
+      expect(result.accepted).toBe(true);
+      // エラーが発生しないことを確認
+    });
+
+    it("should handle phase mismatch errors", () => {
+      const logger = new MatchLogger("match-phase-error", "room-phase-error");
+      controller.setMatchLogger(logger);
+
+      // Prepフェーズを終了させる
+      const prepDeadline = controller.prepDeadlineAtMs;
+      expect(prepDeadline).not.toBeNull();
+      if (prepDeadline) {
+        controller.advanceByTime(prepDeadline + 100);
+      }
+
+      // Battleフェーズ中にPrepコマンドを送信
+      const result = controller.submitPrepCommand("player1", 1, Date.now(), {
+        shopRefreshCount: 1,
+      });
+
+      expect(result.accepted).toBe(false);
+      expect((result as { accepted: false; code: string }).code).toBe("PHASE_MISMATCH");
+
+      const metrics = logger.getPrepCommandMetrics();
+      expect(metrics.totalPrepCommands).toBe(1);
+      expect(metrics.failedPrepCommands).toBe(1);
+      expect(metrics.failuresByErrorCode["PHASE_MISMATCH"]).toBe(1);
+      expect(metrics.prepInputFailureRate).toBe(1);
     });
   });
 });

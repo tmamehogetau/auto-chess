@@ -10,6 +10,18 @@ import {
   SERVER_MESSAGE_TYPES,
 } from "../../src/shared/room-messages";
 
+type TestClient = {
+  sessionId: string;
+  send: (type: string, msg: unknown) => void;
+  waitForMessage: (type: string) => Promise<unknown>;
+  onMessage: (type: string, handler: (msg: unknown) => void) => void;
+};
+
+type ScenarioUnitPlacement = {
+  unitType: string;
+  cell: number;
+};
+
 const waitForCondition = async (
   predicate: () => boolean,
   timeoutMs: number,
@@ -28,6 +40,134 @@ const waitForCondition = async (
 
   throw new Error("Timed out while waiting for condition");
 };
+
+async function sendPrepCommand(
+  client: TestClient,
+  cmdSeq: number,
+  payload: Record<string, unknown>,
+): Promise<{ accepted: boolean; code?: string }> {
+  client.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, { cmdSeq, ...payload });
+  return (await client.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)) as {
+    accepted: boolean;
+    code?: string;
+  };
+}
+
+function injectForcedOffers(serverRoom: GameRoom, playerId: string, unitTypes: string[]): void {
+  const internalController = (serverRoom as unknown as {
+    controller?: {
+      shopOffersByPlayer: Map<string, Array<{ unitType: string; rarity: number; cost: number }>>;
+      getBoardPlacementsForPlayer?: (playerId: string) => Array<{ cell: number; unitType: string }>;
+    };
+  }).controller;
+
+  internalController?.shopOffersByPlayer.set(
+    playerId,
+    unitTypes.map((unitType) => ({ unitType, rarity: 1, cost: 1 })),
+  );
+}
+
+function getCurrentBoardPlacements(
+  serverRoom: GameRoom,
+  playerId: string,
+): Array<{ cell: number; unitType: string }> {
+  const internalController = (serverRoom as unknown as {
+    controller?: {
+      getBoardPlacementsForPlayer?: (playerId: string) => Array<{ cell: number; unitType: string }>;
+    };
+  }).controller;
+
+  return internalController?.getBoardPlacementsForPlayer?.(playerId) ?? [];
+}
+
+async function buildCompositionViaPrepActions(
+  serverRoom: GameRoom,
+  playerId: string,
+  client: TestClient,
+  startingCmdSeq: number,
+  unitAndCellPairs: ScenarioUnitPlacement[],
+): Promise<number> {
+  let cmdSeq = startingCmdSeq;
+
+  for (const { unitType, cell } of unitAndCellPairs) {
+    const existingPlacement = getCurrentBoardPlacements(serverRoom, playerId).some(
+      (placement) => placement.cell === cell && placement.unitType === unitType,
+    );
+    if (existingPlacement) {
+      continue;
+    }
+
+    injectForcedOffers(serverRoom, playerId, [unitType]);
+    const buyResult = await sendPrepCommand(client, cmdSeq++, { shopBuySlotIndex: 0 });
+    if (buyResult.accepted) {
+      await sendPrepCommand(client, cmdSeq++, {
+        benchToBoardCell: { benchIndex: 0, cell },
+      });
+    }
+  }
+
+  return cmdSeq;
+}
+
+async function runEvidenceMatch(
+  serverRoom: GameRoom,
+  clients: TestClient[],
+  options: {
+    roundTargets: Record<number, number>;
+    finalRound: number;
+    placements?: ScenarioUnitPlacement[];
+    maxDurationMs?: number;
+  },
+): Promise<void> {
+  const placements = options.placements ?? [
+    { unitType: "vanguard", cell: 0 },
+    { unitType: "vanguard", cell: 1 },
+    { unitType: "vanguard", cell: 2 },
+  ];
+  const nextCmdSeqByClient = new Map<string, number>();
+
+  await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+  let lastRound = 0;
+  const startTime = Date.now();
+  const maxDuration = options.maxDurationMs ?? 50_000;
+
+  while (
+    serverRoom.state.phase !== "End" &&
+    serverRoom.state.roundIndex < options.finalRound + 1 &&
+    Date.now() - startTime < maxDuration
+  ) {
+    const currentRound = serverRoom.state.roundIndex;
+
+    if (currentRound !== lastRound && serverRoom.state.phase === "Prep") {
+      lastRound = currentRound;
+      for (const client of clients) {
+        const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
+        const updatedCmdSeq = await buildCompositionViaPrepActions(
+          serverRoom,
+          client.sessionId,
+          client,
+          nextCmdSeq,
+          placements,
+        );
+        nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
+      }
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
+
+    const target = options.roundTargets[serverRoom.state.roundIndex];
+    if (target !== undefined && target > 0) {
+      serverRoom.setPendingPhaseDamageForTest(target);
+    }
+
+    if (serverRoom.state.roundIndex < options.finalRound) {
+      await waitForCondition(() => serverRoom.state.phase === "Prep" || serverRoom.state.phase === "End", 5_000);
+    } else {
+      await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
+    }
+  }
+}
 
 describe("Full Game Simulation (R1-R8)", () => {
   let testServer!: ColyseusTestServer;
@@ -89,56 +229,20 @@ describe("Full Game Simulation (R1-R8)", () => {
         client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
       }
 
-      // Wait for game to start
-      await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
-
-      // Verify all 4 players are in the game initially
       expect(serverRoom.state.players.size).toBe(4);
 
-      // 各ラウンドでダメージを設定してフェーズ成功にする（dominationCount増加を回避）
-      const roundTargets: Record<number, number> = {
-        1: 600,
-        2: 750,
-        3: 900,
-        4: 1050,
-        5: 1250,
-        6: 1450,
-        7: 1650,
-        8: 1850,
-      };
+      await runEvidenceMatch(serverRoom, clients, {
+        roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850 },
+        finalRound: 8,
+        placements: [
+          { unitType: "vanguard", cell: 0 },
+          { unitType: "vanguard", cell: 1 },
+          { unitType: "ranger", cell: 2 },
+        ],
+      });
 
-      let currentRound = serverRoom.state.roundIndex;
-      const maxDuration = 45_000;
-      const startTime = Date.now();
-
-      // R1-R8 まで進行
-      while (
-        serverRoom.state.phase !== "End" &&
-        serverRoom.state.roundIndex < 9 &&
-        Date.now() - startTime < maxDuration
-      ) {
-        // Prep → Battle の遷移を待機
-        await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
-
-        // Battle フェーズでダメージを設定してフェーズ成功にする
-        const target = roundTargets[serverRoom.state.roundIndex];
-        if (target !== undefined) {
-          serverRoom.setPendingRoundDamageForTest({ [clients[0].sessionId]: target });
-        }
-
-        // 次の Prep または End を待機
-        if (serverRoom.state.roundIndex < 8) {
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
-        } else {
-          await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
-        }
-      }
-
-      // Verify final state
       expect(serverRoom.state.phase).toBe("End");
       expect(serverRoom.state.roundIndex).toBe(8);
-
-      // Verify all 4 players are still in the game
       expect(serverRoom.state.players.size).toBe(4);
     },
     50_000,
@@ -228,53 +332,143 @@ describe("Full Game Simulation (R1-R8)", () => {
           client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
         }
 
-        await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
-
         expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
 
-        // 各ラウンドでダメージを設定してフェーズ成功にする（dominationCount増加を回避）
-        const roundTargets: Record<number, number> = {
-          1: 600,
-          2: 750,
-          3: 900,
-          4: 1050,
-          5: 1250,
-          6: 1450,
-          7: 1650,
-          8: 1850,
-          9: 2100,
-          10: 2400,
-          11: 2700,
-          12: 0,
-        };
-
-        // R1-R12 まで進行
-        while (
-          serverRoom.state.phase !== "End" &&
-          serverRoom.state.roundIndex < 13
-        ) {
-          // Prep → Battle の遷移を待機
-          await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
-
-          // Battle フェーズでダメージを設定してフェーズ成功にする
-          const target = roundTargets[serverRoom.state.roundIndex];
-          if (target !== undefined && target > 0) {
-            serverRoom.setPendingRoundDamageForTest({ [clients[0].sessionId]: target });
-          }
-
-          // 次の Prep または End を待機
-          if (serverRoom.state.roundIndex < 12) {
-            await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
-          } else {
-            await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
-          }
-        }
+        await runEvidenceMatch(serverRoom, clients, {
+          roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850, 9: 2100, 10: 2400, 11: 2700, 12: 0 },
+          finalRound: 12,
+          maxDurationMs: 65_000,
+          placements: [
+            { unitType: "mage", cell: 4 },
+            { unitType: "mage", cell: 5 },
+            { unitType: "ranger", cell: 6 },
+          ],
+        });
 
         expect(serverRoom.state.phase).toBe("End");
         expect(serverRoom.state.roundIndex).toBe(12);
       });
     },
     65_000,
+  );
+
+  test(
+    "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する",
+    async () => {
+      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(
+          SERVER_MESSAGE_TYPES.ROUND_STATE,
+          (_message: unknown) => {},
+        );
+      }
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await runEvidenceMatch(serverRoom, clients, {
+        roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850 },
+        finalRound: 8,
+        placements: [
+          { unitType: "ranger", cell: 4 },
+          { unitType: "ranger", cell: 5 },
+          { unitType: "ranger", cell: 6 },
+        ],
+      });
+
+      expect(serverRoom.state.phase).toBe("End");
+      expect(serverRoom.state.roundIndex).toBe(8);
+      expect(serverRoom.state.players.size).toBe(4);
+    },
+    50_000,
+  );
+
+  test(
+    "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する",
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
+        const serverRoom = await testServer.createRoom<GameRoom>("game");
+        const clients = await Promise.all([
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+          testServer.connectTo(serverRoom),
+        ]);
+
+        for (const client of clients) {
+          client.onMessage(
+            SERVER_MESSAGE_TYPES.ROUND_STATE,
+            (_message: unknown) => {},
+          );
+        }
+
+        for (const client of clients) {
+          client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+        }
+
+        await runEvidenceMatch(serverRoom, clients, {
+          roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850, 9: 2100, 10: 2400, 11: 2700, 12: 0 },
+          finalRound: 12,
+          maxDurationMs: 65_000,
+          placements: [
+            { unitType: "mage", cell: 4 },
+            { unitType: "ranger", cell: 5 },
+            { unitType: "vanguard", cell: 1 },
+          ],
+        });
+
+        expect(serverRoom.state.phase).toBe("End");
+        expect(serverRoom.state.roundIndex).toBe(12);
+      });
+    },
+    65_000,
+  );
+
+  test(
+    "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する",
+    async () => {
+      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(
+          SERVER_MESSAGE_TYPES.ROUND_STATE,
+          (_message: unknown) => {},
+        );
+      }
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await runEvidenceMatch(serverRoom, clients, {
+        roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850 },
+        finalRound: 8,
+        placements: [
+          { unitType: "mage", cell: 4 },
+          { unitType: "mage", cell: 5 },
+          { unitType: "vanguard", cell: 1 },
+        ],
+      });
+
+      expect(serverRoom.state.phase).toBe("End");
+      expect(serverRoom.state.roundIndex).toBe(8);
+      expect(serverRoom.state.players.size).toBe(4);
+    },
+    50_000,
   );
 
   test(

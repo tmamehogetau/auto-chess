@@ -624,6 +624,31 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         enableBossExclusiveShop: flags.enableBossExclusiveShop,
       };
 
+      // W6-3 Task 3: Capture final board state for all players before outputting summaries
+      // This ensures top1CompositionSignature is populated in gameplay_kpi_summary
+      for (const playerId of this.state.players.keys()) {
+        const boardPlacements = this.controller.getBoardPlacementsForPlayer(playerId);
+        const benchUnits = this.controller.getBenchUnitsForPlayer?.(playerId) ?? [];
+
+        // Convert placements to BoardUnitSnapshot format
+        const finalBoardUnits = boardPlacements.map((placement) => ({
+          unitType: placement.unitType,
+          starLevel: placement.starLevel ?? 1,
+          cell: placement.cell,
+          items: placement.items ?? [],
+        }));
+
+        // Convert bench units to BenchUnitSnapshot format
+        const finalBenchUnits = benchUnits.map((unit, index) => ({
+          unitType: unit.unitType,
+          starLevel: unit.starLevel ?? 1,
+          benchIndex: index,
+          items: unit.items ?? [],
+        }));
+
+        this.matchLogger.updateFinalUnits(playerId, finalBoardUnits, finalBenchUnits);
+      }
+
       // W6-2: 既存のmatch_summary出力（変更なし）
       this.matchLogger.outputSummary(
         winner,
@@ -658,5 +683,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     this.controller.setPendingRoundDamage(damageByPlayer);
+  }
+
+  /**
+   * テスト用：phase progress だけを強制する
+   * @param damageValue フェーズ進捗用の合計ダメージ値
+   */
+  public setPendingPhaseDamageForTest(damageValue: number): void {
+    if (!this.controller) {
+      return;
+    }
+
+    this.controller.setPendingPhaseDamageForTest(damageValue);
   }
 }

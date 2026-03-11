@@ -137,4 +137,112 @@ describe("w6-kpi-report.mjs", () => {
       execSync(`node ${scriptPath} "/nonexistent/file.ndjson"`, { encoding: "utf-8" });
     }).toThrow();
   });
+
+  it("should split eligible and incidental bundles by suitePath", () => {
+    const testData = [
+      {
+        type: "gameplay_kpi_summary",
+        suitePath: "tests/server/full-game-simulation.integration.test.ts",
+        testName: "4人でR8完走後にEndフェーズへ遷移する",
+        data: {
+          totalRounds: 8,
+          playerCount: 4,
+          playersSurvivedR8: 3,
+          totalPlayers: 4,
+          r8CompletionRate: 0.75,
+          top1CompositionSignature: "vanguard:1",
+          failedPrepCommands: 0,
+          totalPrepCommands: 0,
+          prepInputFailureRate: 0,
+        },
+      },
+      {
+        type: "gameplay_kpi_summary",
+        suitePath: "tests/server/realistic-kpi-simulation.integration.test.ts",
+        data: {
+          totalRounds: 8,
+          playerCount: 4,
+          playersSurvivedR8: 4,
+          totalPlayers: 4,
+          r8CompletionRate: 1,
+          top1CompositionSignature: "mage:1",
+          failedPrepCommands: 0,
+          totalPrepCommands: 24,
+          prepInputFailureRate: 0,
+        },
+      },
+      {
+        type: "gameplay_kpi_summary",
+        suitePath: "tests/server/game-room.feature-flag.integration.test.ts",
+        data: {
+          totalRounds: 1,
+          playerCount: 4,
+          playersSurvivedR8: 0,
+          totalPlayers: 4,
+          r8CompletionRate: 0,
+          top1CompositionSignature: "",
+          failedPrepCommands: 0,
+          totalPrepCommands: 0,
+          prepInputFailureRate: 0,
+        },
+      },
+    ];
+
+    const testFile = join(tempDir, "split-data.ndjson");
+    writeFileSync(testFile, testData.map((d) => JSON.stringify(d)).join("\n"));
+
+    const result = execSync(`node ${scriptPath} "${testFile}"`, { encoding: "utf-8" });
+    const output = JSON.parse(result);
+
+    expect(output.eligibleBundle.sampledMatches).toBe(2);
+    expect(output.incidentalBundle.sampledMatches).toBe(1);
+    expect(output.combinedBundle.sampledMatches).toBe(3);
+  });
+
+  it("should split full-game suite records by testName metadata", () => {
+    const testData = [
+      {
+        type: "gameplay_kpi_summary",
+        suitePath: "tests/server/full-game-simulation.integration.test.ts",
+        testName: "4人でR8完走後にEndフェーズへ遷移する",
+        data: {
+          totalRounds: 8,
+          playerCount: 4,
+          playersSurvivedR8: 3,
+          totalPlayers: 4,
+          r8CompletionRate: 0.75,
+          top1CompositionSignature: "vanguard:1",
+          failedPrepCommands: 0,
+          totalPrepCommands: 0,
+          prepInputFailureRate: 0,
+        },
+      },
+      {
+        type: "gameplay_kpi_summary",
+        suitePath: "tests/server/full-game-simulation.integration.test.ts",
+        testName: "各ラウンドで正しいフェーズサイクルが実行される",
+        data: {
+          totalRounds: 2,
+          playerCount: 4,
+          playersSurvivedR8: 0,
+          totalPlayers: 4,
+          r8CompletionRate: 0,
+          top1CompositionSignature: "",
+          failedPrepCommands: 0,
+          totalPrepCommands: 0,
+          prepInputFailureRate: 0,
+        },
+      },
+    ];
+
+    const testFile = join(tempDir, "case-split-data.ndjson");
+    writeFileSync(testFile, testData.map((d) => JSON.stringify(d)).join("\n"));
+
+    const result = execSync(`node ${scriptPath} "${testFile}"`, { encoding: "utf-8" });
+    const output = JSON.parse(result);
+
+    expect(output.eligibleBundle.sampledMatches).toBe(1);
+    expect(output.incidentalBundle.sampledMatches).toBe(1);
+    expect(output.eligibleBundle.r8CompletionRate).toBeCloseTo(0.75, 2);
+  });
 });

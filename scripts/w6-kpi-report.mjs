@@ -9,6 +9,44 @@
 
 import { readFileSync } from "fs";
 
+const KPI_EVIDENCE_SUITE_MANIFEST = {
+  "tests/server/full-game-simulation.integration.test.ts": "eligible",
+  "tests/server/realistic-kpi-simulation.integration.test.ts": "eligible",
+  "tests/server/game-room.feature-flag.integration.test.ts": "incidental",
+  "tests/server/kpi-replan-classification.integration.test.ts": "incidental",
+};
+
+const FULL_GAME_EVIDENCE_CASE_MANIFEST = {
+  "4人でR8完走後にEndフェーズへ遷移する": "eligible",
+  "phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する": "eligible",
+  "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する": "eligible",
+  "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する": "eligible",
+  "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する": "eligible",
+  "各ラウンドで正しいフェーズサイクルが実行される": "incidental",
+  "プレイヤーが4人接続したままゲームが継続する": "incidental",
+  "round_stateメッセージが各フェーズで送信される": "incidental",
+};
+
+function stripAnsi(text) {
+  return text.replace(/\x1B\[[0-9;]*m/g, "");
+}
+
+function getSuiteBucket(suitePath) {
+  if (!suitePath) {
+    return "incidental";
+  }
+
+  return KPI_EVIDENCE_SUITE_MANIFEST[suitePath] ?? "incidental";
+}
+
+function getRecordBucket(record) {
+  if (record.suitePath === "tests/server/full-game-simulation.integration.test.ts") {
+    return FULL_GAME_EVIDENCE_CASE_MANIFEST[record.testName] ?? "incidental";
+  }
+
+  return getSuiteBucket(record.suitePath);
+}
+
 // Note: top1CompositionSignature is now emitted as a pre-formatted string
 // This function is kept for backward compatibility if needed
 function formatCompositionSignature(signature) {
@@ -26,10 +64,59 @@ function formatCompositionSignature(signature) {
  * @param {string} filePath - Path to the NDJSON file
  * @returns {object} Aggregated KPI report
  */
-function aggregateKpiData(filePath) {
-  const content = readFileSync(filePath, "utf-8");
-  const lines = content.split("\n").filter((line) => line.trim() !== "");
+function createEmptyAggregate() {
+  return {
+    sampledMatches: 0,
+    r8CompletionRate: 0,
+    prepInputFailureRate: 0,
+    top1CompositionShare: 0,
+    mostCommonTop1Composition: null,
+  };
+}
 
+function parseKpiRecords(content) {
+  const lines = content.split("\n").filter((line) => line.trim() !== "");
+  const records = [];
+  let currentSuitePath = null;
+  let currentTestName = null;
+
+  for (const rawLine of lines) {
+    const line = stripAnsi(rawLine);
+    const suiteMatch = line.match(/stdout \| (tests\/[^(>\s]+\.ts)/);
+    if (suiteMatch) {
+      currentSuitePath = suiteMatch[1];
+    }
+
+    if (currentSuitePath === "tests/server/full-game-simulation.integration.test.ts") {
+      const parts = line.split(" > ");
+      if (parts.length >= 3) {
+        currentTestName = parts[parts.length - 1].trim();
+      }
+    }
+
+    let record;
+    try {
+      const jsonCandidate = line.slice(line.indexOf("{"));
+      record = JSON.parse(jsonCandidate);
+    } catch {
+      continue;
+    }
+
+    if (record.type !== "gameplay_kpi_summary") {
+      continue;
+    }
+
+    records.push({
+      ...record,
+      suitePath: record.suitePath ?? currentSuitePath,
+      testName: record.testName ?? currentTestName,
+    });
+  }
+
+  return records;
+}
+
+function aggregateRecords(records) {
   let sampledMatches = 0;
   let totalPlayersSurvivedR8 = 0;
   let totalPlayers = 0;
@@ -37,21 +124,8 @@ function aggregateKpiData(filePath) {
   let totalPrepCommands = 0;
   const compositionCounts = new Map();
 
-  for (const line of lines) {
-    let record;
-    try {
-      record = JSON.parse(line);
-    } catch {
-      // Skip malformed JSON lines
-      continue;
-    }
+  for (const record of records) {
 
-    // Only process gameplay_kpi_summary records (actual log shape uses 'type')
-    if (record.type !== "gameplay_kpi_summary") {
-      continue;
-    }
-
-    // Get data from nested data field
     const data = record.data || {};
 
     sampledMatches++;
@@ -113,6 +187,34 @@ function aggregateKpiData(filePath) {
     prepInputFailureRate,
     top1CompositionShare,
     mostCommonTop1Composition,
+  };
+}
+
+function aggregateKpiData(filePath) {
+  const content = readFileSync(filePath, "utf-8");
+  const records = parseKpiRecords(content);
+
+  const eligibleRecords = records.filter((record) => getRecordBucket(record) === "eligible");
+  const incidentalRecords = records.filter((record) => getRecordBucket(record) !== "eligible");
+
+  const combinedBundle = records.length > 0 ? aggregateRecords(records) : createEmptyAggregate();
+  const eligibleBundle = eligibleRecords.length > 0 ? aggregateRecords(eligibleRecords) : createEmptyAggregate();
+  const incidentalBundle = incidentalRecords.length > 0 ? aggregateRecords(incidentalRecords) : createEmptyAggregate();
+
+  return {
+    ...combinedBundle,
+    combinedBundle,
+    eligibleBundle,
+    incidentalBundle,
+    suiteClassification: {
+      eligible: Object.keys(KPI_EVIDENCE_SUITE_MANIFEST).filter(
+        (suitePath) => KPI_EVIDENCE_SUITE_MANIFEST[suitePath] === "eligible",
+      ),
+      incidental: Object.keys(KPI_EVIDENCE_SUITE_MANIFEST).filter(
+        (suitePath) => KPI_EVIDENCE_SUITE_MANIFEST[suitePath] === "incidental",
+      ),
+      fullGameCases: FULL_GAME_EVIDENCE_CASE_MANIFEST,
+    },
   };
 }
 

@@ -344,6 +344,8 @@ export class MatchRoomController {
 
   private readonly pendingRoundDamageByPlayer: Map<string, number>;
 
+  private pendingPhaseDamageForTest: number | null;
+
   private hpAtBattleStartByPlayer: Map<string, number>;
 
   private hpAfterBattleByPlayer: Map<string, number>;
@@ -442,6 +444,7 @@ export class MatchRoomController {
     this.settleDeadlineAtMs = null;
     this.eliminationDeadlineAtMs = null;
     this.pendingRoundDamageByPlayer = new Map<string, number>();
+    this.pendingPhaseDamageForTest = null;
     this.hpAtBattleStartByPlayer = new Map<string, number>();
     this.hpAfterBattleByPlayer = new Map<string, number>();
     this.battleParticipantIds = [];
@@ -858,6 +861,30 @@ export class MatchRoomController {
     return [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
   }
 
+  /**
+   * 指定プレイヤーのベンチユニットを取得
+   * @param playerId プレイヤーID
+   * @returns ベンチユニット配列
+   */
+  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; starLevel: number; items?: string[] }> {
+    this.ensureKnownPlayer(playerId);
+    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+    return benchUnits.map((unit) => {
+      if (unit.items === undefined) {
+        return {
+          unitType: unit.unitType,
+          starLevel: unit.starLevel,
+        };
+      }
+
+      return {
+        unitType: unit.unitType,
+        starLevel: unit.starLevel,
+        items: unit.items,
+      };
+    });
+  }
+
   public getPlayerStatus(playerId: string): ControllerPlayerStatus {
     const state = this.ensureStarted();
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
@@ -983,6 +1010,15 @@ export class MatchRoomController {
     }
   }
 
+  public setPendingPhaseDamageForTest(damageValue: number): void {
+    if (!Number.isFinite(damageValue) || damageValue <= 0) {
+      this.pendingPhaseDamageForTest = null;
+      return;
+    }
+
+    this.pendingPhaseDamageForTest = Math.floor(damageValue);
+  }
+
   public advanceByTime(nowMs: number): boolean {
     if (!this.gameLoopState) {
       return false;
@@ -1044,6 +1080,7 @@ export class MatchRoomController {
           }
 
           this.pendingRoundDamageByPlayer.clear();
+          this.pendingPhaseDamageForTest = null;
           this.applyPrepIncome();
           // 噂勢力: elimination 解決後に正しい grantedPlayerIds でログを記録
           this.logRumorInfluenceWithAlivePlayersAfterElimination();
@@ -1937,11 +1974,11 @@ export class MatchRoomController {
   private capturePhaseProgressFromPendingDamage(): void {
     const state = this.ensureStarted();
     const targetHp = this.resolvePhaseHpTarget(state.roundIndex);
-    let totalDamage = 0;
-
-    for (const damageValue of this.pendingRoundDamageByPlayer.values()) {
-      totalDamage += damageValue;
-    }
+    const totalDamage = this.pendingPhaseDamageForTest ?? Array.from(this.pendingRoundDamageByPlayer.values()).reduce(
+      (sum, damageValue) => sum + damageValue,
+      0,
+    );
+    this.pendingPhaseDamageForTest = null;
 
     this.phaseHpTarget = targetHp;
     this.phaseDamageDealt = totalDamage;

@@ -1,29 +1,15 @@
 # Auto-Chess MVP Documentation
 
-This directory contains project documentation for the Auto-Chess MVP project.
+This directory contains repository-local technical documentation for `auto-chess-mvp`.
 
-## Index
+## Quick Links
 
-### Architecture Decision Records (ADR)
-- [`adr/0001-defer-emblem-cell-implementation.md`](adr/0001-defer-emblem-cell-implementation.md) - Decision to defer emblem cell implementation
-
-### Plans & Design
-- [`plans/2026-02-28-week2-day8-9-phase-hp.md`](plans/2026-02-28-week2-day8-9-phase-hp.md) - Week 2 Day 8-9 phase HP design
-- [`plans/feature-flag-design.md`](plans/feature-flag-design.md) - Feature flag design document
-- [`plans/full-game-simulation-test-design.md`](plans/full-game-simulation-test-design.md) - Full game simulation test design
-
-### Checklists & Notes
-- [`archive/shared-board-day2-checklist.md`](archive/shared-board-day2-checklist.md) - Day 2 shared board checklist (archived)
-
-## Documentation Conventions
-- All documentation files use Markdown format
-- ADRs follow numbered naming convention
-- Plans use YYYY-MM-DD prefix for dated documents
-- Test designs are organized under `plans/` directory
+- `plans/` - code-coupled implementation notes and design docs
+- `adr/` - architecture decisions
+- `archive/` - archived checklists and historical notes
 
 ## Source Of Truth Boundary
-- Code-coupled docs (contracts, ADRs, technical designs) are managed in this `docs/` directory.
-- Project planning/progress docs are managed in:
-  `C:\Users\kou-1\Dev_Workspace\00_Obsidian_Vault\Projects\auto-chess-mvp_Docs`
-- MVP master spec remains at:
-  `C:\Users\kou-1\Dev_Workspace\00_Source_Codes\auto-chess-mvp\mvp_spec_unified_v0_1_2.md`
+
+- Repository-local technical docs live under `docs/`
+- Project planning and progress docs live under `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/`
+- The project spec remains in `mvp_spec_unified_v0_1_2.md`

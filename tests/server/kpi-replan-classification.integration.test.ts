@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { ColyseusTestServer } from "@colyseus/testing";
@@ -15,6 +16,23 @@ import {
 } from "../../src/shared/room-messages";
 
 const execFileAsync = promisify(execFile);
+const vitestCliPath = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
+
+function runVitestForKpiEvidence() {
+  return execFileAsync(
+    process.execPath,
+    [
+      vitestCliPath,
+      "run",
+      "tests/server/full-game-simulation.integration.test.ts",
+      "tests/server/realistic-kpi-simulation.integration.test.ts",
+    ],
+    {
+      cwd: process.cwd(),
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
+}
 
 interface AggregateReport {
   sampledMatches: number;
@@ -506,19 +524,7 @@ async function collectHarnessProgressComparison(): Promise<HarnessProgressCompar
 }
 
 async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassification> {
-  const { stdout } = await execFileAsync(
-    "npx",
-    [
-      "vitest",
-      "run",
-      "tests/server/full-game-simulation.integration.test.ts",
-      "tests/server/realistic-kpi-simulation.integration.test.ts",
-    ],
-    {
-      cwd: process.cwd(),
-      maxBuffer: 8 * 1024 * 1024,
-    },
-  );
+  const { stdout } = await runVitestForKpiEvidence();
 
   const matchSummaries = extractTypedLogRecords<MatchSummaryLog>(stdout, "match_summary");
   const kpiSummaries = extractTypedLogRecords<GameplayKpiSummary>(stdout, "gameplay_kpi_summary");
@@ -533,19 +539,7 @@ async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassi
 }
 
 async function collectCurrentRealisticAggregate(): Promise<AggregateReport> {
-  const { stdout } = await execFileAsync(
-    "npx",
-    [
-      "vitest",
-      "run",
-      "tests/server/full-game-simulation.integration.test.ts",
-      "tests/server/realistic-kpi-simulation.integration.test.ts",
-    ],
-    {
-      cwd: process.cwd(),
-      maxBuffer: 8 * 1024 * 1024,
-    },
-  );
+  const { stdout } = await runVitestForKpiEvidence();
 
   const summaries = extractTypedLogRecords<GameplayKpiSummary>(stdout, "gameplay_kpi_summary");
 
@@ -594,25 +588,13 @@ async function collectRefinedEligibleBundle(): Promise<RefinedEligibleAggregate>
   }
 
   // Run vitest and capture output
-  const vitestResult = await execFileAsync(
-    "npx",
-    [
-      "vitest",
-      "run",
-      "tests/server/full-game-simulation.integration.test.ts",
-      "tests/server/realistic-kpi-simulation.integration.test.ts",
-    ],
-    {
-      cwd: process.cwd(),
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+  const vitestResult = await runVitestForKpiEvidence();
 
   // Write combined stdout/stderr to log file
   writeFileSync(logPath, vitestResult.stdout + "\n" + vitestResult.stderr);
 
   const { stdout } = await execFileAsync(
-    "node",
+    process.execPath,
     ["scripts/w6-kpi-report.mjs", "w6-server-kpi.log"],
     {
       cwd: process.cwd(),
@@ -633,19 +615,7 @@ async function collectEligibleFailureClassification(): Promise<EligibleFailureCl
   }
 
   cachedEligibleFailureClassification = (async () => {
-  const { stdout } = await execFileAsync(
-    "npx",
-    [
-      "vitest",
-      "run",
-      "tests/server/full-game-simulation.integration.test.ts",
-      "tests/server/realistic-kpi-simulation.integration.test.ts",
-    ],
-    {
-      cwd: process.cwd(),
-      maxBuffer: 8 * 1024 * 1024,
-    },
-  );
+  const { stdout } = await runVitestForKpiEvidence();
 
   const suiteManifest = getKpiEvidenceSuiteManifest();
   const caseManifest = getFullGameEvidenceCaseManifest();

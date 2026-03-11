@@ -507,10 +507,12 @@ async function collectHarnessProgressComparison(): Promise<HarnessProgressCompar
 
 async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassification> {
   const { stdout } = await execFileAsync(
-    "cmd.exe",
+    "npx",
     [
-      "/c",
-      "npx vitest run tests/server/full-game-simulation.integration.test.ts tests/server/realistic-kpi-simulation.integration.test.ts",
+      "vitest",
+      "run",
+      "tests/server/full-game-simulation.integration.test.ts",
+      "tests/server/realistic-kpi-simulation.integration.test.ts",
     ],
     {
       cwd: process.cwd(),
@@ -532,10 +534,12 @@ async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassi
 
 async function collectCurrentRealisticAggregate(): Promise<AggregateReport> {
   const { stdout } = await execFileAsync(
-    "cmd.exe",
+    "npx",
     [
-      "/c",
-      "npx vitest run tests/server/full-game-simulation.integration.test.ts tests/server/realistic-kpi-simulation.integration.test.ts",
+      "vitest",
+      "run",
+      "tests/server/full-game-simulation.integration.test.ts",
+      "tests/server/realistic-kpi-simulation.integration.test.ts",
     ],
     {
       cwd: process.cwd(),
@@ -579,11 +583,24 @@ async function collectCurrentRealisticAggregate(): Promise<AggregateReport> {
 }
 
 async function collectRefinedEligibleBundle(): Promise<RefinedEligibleAggregate> {
-  await execFileAsync(
-    "cmd.exe",
+  const { writeFileSync, unlinkSync, existsSync } = await import("node:fs");
+  const { join } = await import("node:path");
+
+  const logPath = join(process.cwd(), "w6-server-kpi.log");
+
+  // Remove existing log file if present
+  if (existsSync(logPath)) {
+    unlinkSync(logPath);
+  }
+
+  // Run vitest and capture output
+  const vitestResult = await execFileAsync(
+    "npx",
     [
-      "/c",
-      "npx vitest run tests/server/full-game-simulation.integration.test.ts tests/server/realistic-kpi-simulation.integration.test.ts > w6-server-kpi.log 2>&1",
+      "vitest",
+      "run",
+      "tests/server/full-game-simulation.integration.test.ts",
+      "tests/server/realistic-kpi-simulation.integration.test.ts",
     ],
     {
       cwd: process.cwd(),
@@ -591,9 +608,12 @@ async function collectRefinedEligibleBundle(): Promise<RefinedEligibleAggregate>
     },
   );
 
+  // Write combined stdout/stderr to log file
+  writeFileSync(logPath, vitestResult.stdout + "\n" + vitestResult.stderr);
+
   const { stdout } = await execFileAsync(
-    "cmd.exe",
-    ["/c", "node scripts/w6-kpi-report.mjs w6-server-kpi.log"],
+    "node",
+    ["scripts/w6-kpi-report.mjs", "w6-server-kpi.log"],
     {
       cwd: process.cwd(),
       maxBuffer: 4 * 1024 * 1024,
@@ -614,10 +634,12 @@ async function collectEligibleFailureClassification(): Promise<EligibleFailureCl
 
   cachedEligibleFailureClassification = (async () => {
   const { stdout } = await execFileAsync(
-    "cmd.exe",
+    "npx",
     [
-      "/c",
-      "npx vitest run tests/server/full-game-simulation.integration.test.ts tests/server/realistic-kpi-simulation.integration.test.ts",
+      "vitest",
+      "run",
+      "tests/server/full-game-simulation.integration.test.ts",
+      "tests/server/realistic-kpi-simulation.integration.test.ts",
     ],
     {
       cwd: process.cwd(),

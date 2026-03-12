@@ -17,6 +17,11 @@ import {
 
 const execFileAsync = promisify(execFile);
 const vitestCliPath = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
+const kpiEvidenceVitestEnv = {
+  ...process.env,
+  FULL_GAME_SIMULATION_TEST_PORT: "26772",
+  REALISTIC_KPI_SIMULATION_TEST_PORT: "26774",
+};
 
 function runVitestForKpiEvidence() {
   return execFileAsync(
@@ -29,6 +34,7 @@ function runVitestForKpiEvidence() {
     ],
     {
       cwd: process.cwd(),
+      env: kpiEvidenceVitestEnv,
       maxBuffer: 16 * 1024 * 1024,
     },
   );

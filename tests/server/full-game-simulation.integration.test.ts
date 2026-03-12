@@ -10,6 +10,11 @@ import {
   SERVER_MESSAGE_TYPES,
 } from "../../src/shared/room-messages";
 
+function getFullGameSimulationTestServerPort(): number {
+  const configuredPort = Number(process.env.FULL_GAME_SIMULATION_TEST_PORT ?? "2572");
+  return Number.isFinite(configuredPort) ? configuredPort : 2_572;
+}
+
 type TestClient = {
   sessionId: string;
   send: (type: string, msg: unknown) => void;
@@ -172,7 +177,7 @@ async function runEvidenceMatch(
 describe("Full Game Simulation (R1-R8)", () => {
   let testServer!: ColyseusTestServer;
 
-  const TEST_SERVER_PORT = 2_572;
+  const TEST_SERVER_PORT = getFullGameSimulationTestServerPort();
 
   beforeAll(async () => {
     const server = defineServer({

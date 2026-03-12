@@ -10,6 +10,11 @@ import {
 } from "../../src/shared/room-messages";
 import type { GameplayKpiSummary } from "../../src/server/analytics/gameplay-kpi";
 
+function getRealisticKpiSimulationTestServerPort(): number {
+  const configuredPort = Number(process.env.REALISTIC_KPI_SIMULATION_TEST_PORT ?? "2574");
+  return Number.isFinite(configuredPort) ? configuredPort : 2_574;
+}
+
 // =============================================================================
 // Shared Test Helpers
 // =============================================================================
@@ -291,6 +296,7 @@ async function runScenarioAndCollectKpi(
 
 describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
   let ctx: TestContext;
+  const testServerPort = getRealisticKpiSimulationTestServerPort();
 
   const additionalScenarios: CompositionScenario[] = [
     {
@@ -343,7 +349,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
       },
     });
 
-    await server.listen(2_574);
+    await server.listen(testServerPort);
     const testServer = new ColyseusTestServer(server);
     
     ctx = {
@@ -354,14 +360,16 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
   });
 
   afterEach(async () => {
-    if (ctx.testServer) {
+    if (ctx?.testServer) {
       await ctx.testServer.cleanup();
     }
-    ctx.kpiOutputs = [];
+    if (ctx) {
+      ctx.kpiOutputs = [];
+    }
   });
 
   afterAll(async () => {
-    if (ctx.testServer) {
+    if (ctx?.testServer) {
       await ctx.testServer.shutdown();
     }
   });

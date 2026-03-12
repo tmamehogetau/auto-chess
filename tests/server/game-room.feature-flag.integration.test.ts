@@ -33,6 +33,21 @@ const waitForCondition = async (
 };
 
 describe("GameRoom Integration with Feature Flags", () => {
+  async function sendPrepCommand(
+    client: {
+      send: (type: string, message: unknown) => void;
+      waitForMessage: (type: string) => Promise<unknown>;
+    },
+    cmdSeq: number,
+    payload: Record<string, unknown>,
+  ): Promise<{ accepted: boolean; code?: string }> {
+    client.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, { cmdSeq, ...payload });
+    return (await client.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)) as {
+      accepted: boolean;
+      code?: string;
+    };
+  }
+
   describe("Main Test Scenarios with Dual Flag Configurations", () => {
     let testServer!: ColyseusTestServer;
 
@@ -662,9 +677,24 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
-          const target = serverRoom.state.players.get(clients[0].sessionId);
+          const target = serverRoom.state.players.get(clients[0].sessionId) as unknown as {
+            shopOffers: Array<{
+              unitId: string;
+              cost: number;
+              displayName: string;
+              factionId: string;
+            }>;
+          } | undefined;
           expect(target?.shopOffers.length).toBe(5);
           expect(target?.shopOffers.every((offer) => offer.unitId.length > 0)).toBe(true);
+          expect(target?.shopOffers.every((offer) => offer.displayName.length > 0)).toBe(true);
+          expect(activeRoster.some((unit) =>
+            target?.shopOffers.some((offer) =>
+              offer.unitId === unit.unitId
+              && offer.cost === unit.cost
+              && offer.displayName === unit.name,
+            ),
+          )).toBe(true);
         });
       });
 
@@ -832,6 +862,67 @@ describe("GameRoom Integration with Feature Flags", () => {
           const player = serverRoom.state.players.get(sessionId);
           expect(player?.gold).toBe(goldBefore - 1);
           expect(player?.benchUnits.length).toBe(1);
+        });
+      });
+
+      test("true/true/true では割引購入した Touhou unit を売却しても shared pool cost bucket が元に戻る", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+          }
+
+          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+          const sessionId = clients[0]!.sessionId;
+          const controller = (serverRoom as unknown as {
+            controller: {
+              boardPlacementsByPlayer: Map<string, unknown[]>;
+              shopOffersByPlayer: Map<string, unknown[]>;
+              sharedPool: {
+                getAllInventory: () => ReadonlyMap<number, number>;
+                getAvailableByUnitId: (unitId: string, cost: number) => number;
+              };
+            };
+          }).controller;
+
+          controller.boardPlacementsByPlayer.set(sessionId, [
+            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+          ]);
+          controller.shopOffersByPlayer.set(sessionId, [
+            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+          ]);
+
+          const inventoryBefore = controller.sharedPool.getAllInventory();
+          const cost1Before = inventoryBefore.get(1);
+          const cost2Before = inventoryBefore.get(2);
+          const unitIdBefore = controller.sharedPool.getAvailableByUnitId("ichirin", 2);
+
+          const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
+          const sellResult = await sendPrepCommand(clients[0]!, 2, { benchSellIndex: 0 });
+
+          const inventoryAfter = controller.sharedPool.getAllInventory();
+          const cost1After = inventoryAfter.get(1);
+          const cost2After = inventoryAfter.get(2);
+          const unitIdAfter = controller.sharedPool.getAvailableByUnitId("ichirin", 2);
+
+          expect(buyResult).toEqual({ accepted: true });
+          expect(sellResult).toEqual({ accepted: true });
+          expect(cost1Before).toBeDefined();
+          expect(cost2Before).toBeDefined();
+          expect(unitIdAfter).toBe(unitIdBefore);
+          expect(cost1After).toBe(cost1Before);
+          expect(cost2After).toBe(cost2Before);
         });
       });
 

@@ -123,6 +123,13 @@ export function getActiveRosterUnits(flags: FeatureFlags): RosterUnit[] {
   }
 }
 
+export function getActiveRosterUnitById(
+  flags: FeatureFlags,
+  unitId: string,
+): RosterUnit | undefined {
+  return getActiveRosterUnits(flags).find((unit) => unit.unitId === unitId);
+}
+
 export function validateRosterAvailability(flags: FeatureFlags): void {
   void getActiveRosterUnits(flags);
 }

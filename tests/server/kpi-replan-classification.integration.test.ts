@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 
 import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import type { MatchSummaryLog } from "../../src/server/match-logger";
 import { GameRoom } from "../../src/server/rooms/game-room";
@@ -17,10 +17,15 @@ import {
 
 const execFileAsync = promisify(execFile);
 const vitestCliPath = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
+const previousEnableStructuredMatchLogs = process.env.ENABLE_STRUCTURED_MATCH_LOGS;
+const previousSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
 const kpiEvidenceVitestEnv = {
   ...process.env,
   FULL_GAME_SIMULATION_TEST_PORT: "26772",
   REALISTIC_KPI_SIMULATION_TEST_PORT: "26774",
+  SUPPRESS_VERBOSE_TEST_LOGS: "true",
+  ENABLE_STRUCTURED_MATCH_LOGS: "true",
+  FORWARD_CAPTURED_KPI_LOGS: "true",
 };
 
 function runVitestForKpiEvidence() {
@@ -106,6 +111,8 @@ function getFullGameEvidenceCaseManifest(): Record<string, KpiEvidenceCaseBucket
     "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する": "eligible",
     "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する": "eligible",
     "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する": "eligible",
+    "Touhou unitId は buy -> bench -> board -> sell で共有プール返却まで維持される": "incidental",
+    "MVP unit は unitId なしでも buy -> bench -> board が従来どおり動く": "incidental",
     "各ラウンドで正しいフェーズサイクルが実行される": "incidental",
     "プレイヤーが4人接続したままゲームが継続する": "incidental",
     "round_stateメッセージが各フェーズで送信される": "incidental",
@@ -249,7 +256,9 @@ async function destroyTestContext(ctx: TestContext): Promise<void> {
 function setupLogCapture(ctx: TestContext): void {
   ctx.originalConsoleLog = console.log;
   console.log = (...args: unknown[]) => {
-    ctx.originalConsoleLog(...args);
+    if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+      ctx.originalConsoleLog(...args);
+    }
 
     if (args.length !== 1 || typeof args[0] !== "string") {
       return;
@@ -672,12 +681,34 @@ async function collectEligibleFailureClassification(): Promise<EligibleFailureCl
 }
 
 describe("KPI REPLAN classification", () => {
+  beforeAll(() => {
+    process.env.ENABLE_STRUCTURED_MATCH_LOGS = "true";
+    process.env.SUPPRESS_VERBOSE_TEST_LOGS = "true";
+  });
+
+  afterAll(() => {
+    if (previousEnableStructuredMatchLogs === undefined) {
+      delete process.env.ENABLE_STRUCTURED_MATCH_LOGS;
+    } else {
+      process.env.ENABLE_STRUCTURED_MATCH_LOGS = previousEnableStructuredMatchLogs;
+    }
+
+    if (previousSuppressVerboseLogs === undefined) {
+      delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+      return;
+    }
+
+    process.env.SUPPRESS_VERBOSE_TEST_LOGS = previousSuppressVerboseLogs;
+  });
+
   test("full-game evidence cases are classified explicitly", () => {
     const manifest = getFullGameEvidenceCaseManifest();
     const eligibleCases = Object.values(manifest).filter((bucket) => bucket === "eligible");
 
     expect(manifest["4人でR8完走後にEndフェーズへ遷移する"]).toBe("eligible");
     expect(manifest["phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する"]).toBe("eligible");
+    expect(manifest["Touhou unitId は buy -> bench -> board -> sell で共有プール返却まで維持される"]).toBe("incidental");
+    expect(manifest["MVP unit は unitId なしでも buy -> bench -> board が従来どおり動く"]).toBe("incidental");
     expect(manifest["各ラウンドで正しいフェーズサイクルが実行される"]).toBe("incidental");
     expect(manifest["プレイヤーが4人接続したままゲームが継続する"]).toBe("incidental");
     expect(manifest["round_stateメッセージが各フェーズで送信される"]).toBe("incidental");

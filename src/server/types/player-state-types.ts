@@ -26,6 +26,8 @@ export interface PlayerStatusBattleResult {
 export interface ShopOfferView {
   unitType: string;
   unitId?: string;
+  displayName?: string;
+  factionId?: string;
   cost: number;
   rarity: number;
   isRumorUnit?: boolean;

@@ -78,11 +78,15 @@ import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansion
 import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
 import type { SubUnitConfig } from "../shared/types";
 import type { ControllerPlayerStatus } from "./types/player-state-types";
-import { resolveBattlePlacements } from "./unit-id-resolver";
+import { resolveBattlePlacements, resolveSharedPoolCost } from "./unit-id-resolver";
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
 } from "../shared/board-geometry";
+
+function shouldEmitVerboseBattleLogs(): boolean {
+  return process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true";
+}
 
 interface MatchRoomControllerOptions {
   readyAutoStartMs: number;
@@ -157,6 +161,8 @@ type LegacyRarity = 1 | 2 | 3;
 interface ShopOffer {
   unitType: BoardUnitType;
   unitId?: string;
+  displayName?: string;
+  factionId?: string;
   rarity: UnitRarity;
   cost: number;
   isRumorUnit?: boolean;
@@ -1429,8 +1435,8 @@ export class MatchRoomController {
         return false;
       }
 
-      const leftKey: ShopOfferKey = `${leftOffer.unitId ?? leftOffer.unitType}:${leftOffer.rarity}:${leftOffer.cost}`;
-      const rightKey: ShopOfferKey = `${rightOffer.unitId ?? rightOffer.unitType}:${rightOffer.rarity}:${rightOffer.cost}`;
+      const leftKey: ShopOfferKey = `${leftOffer.unitId ?? leftOffer.unitType}:${leftOffer.displayName ?? ""}:${leftOffer.factionId ?? ""}:${leftOffer.rarity}:${leftOffer.cost}`;
+      const rightKey: ShopOfferKey = `${rightOffer.unitId ?? rightOffer.unitType}:${rightOffer.displayName ?? ""}:${rightOffer.factionId ?? ""}:${rightOffer.rarity}:${rightOffer.cost}`;
 
       if (leftKey !== rightKey) {
         return false;
@@ -1782,11 +1788,13 @@ export class MatchRoomController {
       return;
     }
 
+    const resolvedPoolCost = resolveSharedPoolCost(unitId, cost, this.rosterFlags);
+
     for (let i = 0; i < count; i += 1) {
       if (this.rosterFlags.enablePerUnitSharedPool && unitId) {
-        this.sharedPool.increaseByUnitId(unitId, cost);
+        this.sharedPool.increaseByUnitId(unitId, resolvedPoolCost);
       } else {
-        this.sharedPool.increase(cost);
+        this.sharedPool.increase(resolvedPoolCost);
       }
     }
   }
@@ -2200,9 +2208,10 @@ export class MatchRoomController {
         leftHeroId: leftHeroId ?? null,
         rightHeroId: rightHeroId ?? null,
       });
-    // T3: 常時出力（環境変数依存を廃止）
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(battleTraceLog));
+    if (shouldEmitVerboseBattleLogs()) {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify(battleTraceLog));
+    }
 
     // バトル解決サービスで戦闘を実行
     const battleIndex = this.currentRoundPairings.findIndex(
@@ -2285,9 +2294,10 @@ export class MatchRoomController {
       timestamp: Date.now(),
     };
 
-    // T3: 常時出力（環境変数依存を廃止）
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify(resultTraceLog));
+    if (shouldEmitVerboseBattleLogs()) {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify(resultTraceLog));
+    }
   }
 
   private resolveUnitCount(playerId: string): number {

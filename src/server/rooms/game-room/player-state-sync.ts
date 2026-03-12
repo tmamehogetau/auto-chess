@@ -71,6 +71,8 @@ export function syncPlayerStateFromController(
     const nextOffer = new ShopOfferState();
     nextOffer.unitType = toBoardUnitType(offer.unitType);
     nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
@@ -104,6 +106,8 @@ export function syncPlayerStateFromController(
     const nextOffer = new ShopOfferState();
     nextOffer.unitType = toBoardUnitType(offer.unitType);
     nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
@@ -184,6 +188,8 @@ export function syncPlayerStateFromCommandResult(
     const nextOffer = new ShopOfferState();
     nextOffer.unitType = toBoardUnitType(offer.unitType);
     nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
@@ -217,6 +223,8 @@ export function syncPlayerStateFromCommandResult(
     const nextOffer = new ShopOfferState();
     nextOffer.unitType = toBoardUnitType(offer.unitType);
     nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;

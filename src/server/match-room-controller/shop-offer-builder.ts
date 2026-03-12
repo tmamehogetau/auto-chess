@@ -12,6 +12,8 @@ type TouhouCost = 1 | 2 | 3 | 4 | 5;
 interface ShopOffer {
   unitType: BoardUnitType;
   unitId?: string;
+  displayName?: string;
+  factionId?: string;
   rarity: UnitRarity;
   cost: number;
   isRumorUnit?: boolean;
@@ -325,6 +327,8 @@ export class ShopOfferBuilder {
       return {
         unitType: fallback.type,
         unitId: fallback.unitId,
+        displayName: fallback.name,
+        factionId: fallback.factionId ?? "",
         rarity: fallback.cost as UnitRarity,
         cost: fallback.cost,
       };
@@ -336,6 +340,8 @@ export class ShopOfferBuilder {
     return {
       unitType: selectedUnit.type,
       unitId: selectedUnit.unitId,
+      displayName: selectedUnit.name,
+      factionId: selectedUnit.factionId ?? "",
       rarity: selectedUnit.cost as UnitRarity,
       cost: selectedUnit.cost,
     };

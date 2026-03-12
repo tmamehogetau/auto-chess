@@ -2,11 +2,12 @@ import type { BoardUnitPlacement, BoardUnitType } from "../shared/room-messages"
 import { SCARLET_MANSION_UNITS } from "../data/scarlet-mansion-units";
 import type { TouhouFactionId } from "../data/touhou-units";
 import { RUMOR_UNITS_BY_ROUND } from "../data/rumor-units";
-import { getActiveRosterUnits } from "./roster/roster-provider";
+import { getActiveRosterUnitById } from "./roster/roster-provider";
 import type { FeatureFlags } from "../shared/feature-flags";
 
 type ResolvedUnitMetadata = {
   unitType: BoardUnitType;
+  cost?: number;
   archetype?: string;
   factionId?: TouhouFactionId | null;
   hp?: number;
@@ -16,11 +17,18 @@ type ResolvedUnitMetadata = {
 };
 
 const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
-  SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, { unitType: unit.unitType, archetype: unit.id }]),
+  SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, {
+    unitType: unit.unitType,
+    cost: unit.cost,
+    archetype: unit.id,
+  }]),
 );
 
 const rumorUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
-  Object.values(RUMOR_UNITS_BY_ROUND).map((unit) => [unit.unitId, { unitType: unit.unitType }]),
+  Object.values(RUMOR_UNITS_BY_ROUND).map((unit) => [unit.unitId, {
+    unitType: unit.unitType,
+    cost: unit.rarity,
+  }]),
 );
 
 /**
@@ -43,11 +51,11 @@ function getResolvedUnitMetadata(
   }
 
   // For MVP units, ALWAYS use roster provider (flags is now required)
-  const rosterUnits = getActiveRosterUnits(flags);
-  const rosterUnit = rosterUnits.find((u) => u.unitId === unitId);
+  const rosterUnit = getActiveRosterUnitById(flags, unitId);
   if (rosterUnit) {
     const resolvedMetadata: ResolvedUnitMetadata = {
       unitType: rosterUnit.type,
+      cost: rosterUnit.cost,
     };
 
     if (flags.enableTouhouRoster) {
@@ -161,4 +169,16 @@ export function resolveBattlePlacements(
   flags: FeatureFlags
 ): BoardUnitPlacement[] {
   return placements.map((placement) => resolveBattlePlacement(placement, flags));
+}
+
+export function resolveSharedPoolCost(
+  unitId: string | undefined,
+  fallbackCost: number,
+  flags: FeatureFlags,
+): number {
+  if (!unitId) {
+    return fallbackCost;
+  }
+
+  return getResolvedUnitMetadata(unitId, flags)?.cost ?? fallbackCost;
 }

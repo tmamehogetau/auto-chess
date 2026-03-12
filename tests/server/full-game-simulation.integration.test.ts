@@ -27,6 +27,22 @@ type ScenarioUnitPlacement = {
   cell: number;
 };
 
+type BenchUnitView = {
+  unitType: string;
+  unitId?: string;
+  cost: number;
+  starLevel: number;
+  unitCount: number;
+};
+
+type BoardPlacementView = {
+  cell: number;
+  unitType: string;
+  unitId?: string;
+  sellValue?: number;
+  unitCount?: number;
+};
+
 const waitForCondition = async (
   predicate: () => boolean,
   timeoutMs: number,
@@ -252,6 +268,149 @@ describe("Full Game Simulation (R1-R8)", () => {
     },
     50_000,
   );
+
+  test("Touhou unitId は buy -> bench -> board -> sell で共有プール返却まで維持される", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+      const sessionId = clients[0]!.sessionId;
+      const controller = (serverRoom as unknown as {
+        controller: {
+          shopOffersByPlayer: Map<string, Array<{ unitType: string; unitId?: string; rarity: number; cost: number }>>;
+          benchUnitsByPlayer: Map<string, BenchUnitView[]>;
+          boardPlacementsByPlayer: Map<string, BoardPlacementView[]>;
+          sharedPool: {
+            getAvailableByUnitId: (unitId: string, cost: number) => number;
+          };
+        };
+      }).controller;
+
+      controller.shopOffersByPlayer.set(sessionId, [
+        { unitType: "vanguard", unitId: "rin", rarity: 1, cost: 1 },
+      ]);
+
+      const poolBefore = controller.sharedPool.getAvailableByUnitId("rin", 1);
+      const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
+      const benchUnit = controller.benchUnitsByPlayer.get(sessionId)?.[0];
+      const deployResult = await sendPrepCommand(clients[0]!, 2, {
+        benchToBoardCell: { benchIndex: 0, cell: 0 },
+      });
+      const boardUnit = controller.boardPlacementsByPlayer.get(sessionId)?.[0];
+      const sellResult = await sendPrepCommand(clients[0]!, 3, { boardSellIndex: 0 });
+      const poolAfter = controller.sharedPool.getAvailableByUnitId("rin", 1);
+
+      expect(buyResult).toEqual({ accepted: true });
+      expect(benchUnit?.unitId).toBe("rin");
+      expect(deployResult).toEqual({ accepted: true });
+      expect(boardUnit?.unitId).toBe("rin");
+      expect(sellResult).toEqual({ accepted: true });
+      expect(poolAfter).toBe(poolBefore);
+    });
+  });
+
+  test("Touhou roster only では shop metadata 付き offer から valid board state を作れる", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_ONLY, async () => {
+      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+      const sessionId = clients[0]!.sessionId;
+      const targetPlayer = serverRoom.state.players.get(sessionId) as unknown as {
+        shopOffers: Array<{
+          unitType: string;
+          unitId: string;
+          displayName: string;
+          factionId: string;
+        }>;
+      } | undefined;
+      const controller = (serverRoom as unknown as {
+        controller: {
+          boardPlacementsByPlayer: Map<string, BoardPlacementView[]>;
+        };
+      }).controller;
+
+      const firstOffer = targetPlayer?.shopOffers[0];
+      const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
+      const deployResult = await sendPrepCommand(clients[0]!, 2, {
+        benchToBoardCell: { benchIndex: 0, cell: 0 },
+      });
+      const boardUnit = controller.boardPlacementsByPlayer.get(sessionId)?.[0];
+
+      expect(firstOffer?.unitId.length).toBeGreaterThan(0);
+      expect(firstOffer?.displayName.length).toBeGreaterThan(0);
+      expect(buyResult).toEqual({ accepted: true });
+      expect(deployResult).toEqual({ accepted: true });
+      expect(boardUnit?.unitId).toBe(firstOffer?.unitId);
+    });
+  });
+
+  test("MVP unit は unitId なしでも buy -> bench -> board が従来どおり動く", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
+      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+      const sessionId = clients[0]!.sessionId;
+      const controller = (serverRoom as unknown as {
+        controller: {
+          shopOffersByPlayer: Map<string, Array<{ unitType: string; rarity: number; cost: number }>>;
+          benchUnitsByPlayer: Map<string, BenchUnitView[]>;
+          boardPlacementsByPlayer: Map<string, BoardPlacementView[]>;
+        };
+      }).controller;
+
+      controller.shopOffersByPlayer.set(sessionId, [
+        { unitType: "vanguard", rarity: 1, cost: 1 },
+      ]);
+
+      const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
+      const benchUnit = controller.benchUnitsByPlayer.get(sessionId)?.[0];
+      const deployResult = await sendPrepCommand(clients[0]!, 2, {
+        benchToBoardCell: { benchIndex: 0, cell: 0 },
+      });
+      const boardUnit = controller.boardPlacementsByPlayer.get(sessionId)?.[0];
+
+      expect(buyResult).toEqual({ accepted: true });
+      expect(benchUnit?.unitId).toBeUndefined();
+      expect(deployResult).toEqual({ accepted: true });
+      expect(boardUnit?.unitId).toBeUndefined();
+    });
+  });
 
   test(
     "各ラウンドで正しいフェーズサイクルが実行される",

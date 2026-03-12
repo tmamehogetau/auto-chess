@@ -9,6 +9,10 @@ export class ShopOfferState extends Schema {
 
   declare public unitId: string;
 
+  declare public displayName: string;
+
+  declare public factionId: string;
+
   declare public cost: number;
 
   declare public rarity: number;
@@ -19,6 +23,8 @@ export class ShopOfferState extends Schema {
     super();
     this.unitType = "vanguard";
     this.unitId = "";
+    this.displayName = "";
+    this.factionId = "";
     this.cost = 1;
     this.rarity = 1;
     this.isRumorUnit = false;
@@ -222,6 +228,8 @@ export class MatchRoomState extends Schema {
 defineTypes(ShopOfferState, {
   unitType: "string",
   unitId: "string",
+  displayName: "string",
+  factionId: "string",
   cost: "number",
   rarity: "number",
   isRumorUnit: "boolean",

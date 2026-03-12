@@ -406,6 +406,34 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
     });
 
+    test("enablePerUnitSharedPool=true かつ unitId 未指定オファーは cost pool 枯渇を POOL_DEPLETED で返す", () => {
+      const deps = createDependencies({
+        isSharedPoolEnabled: vi.fn().mockReturnValue(true),
+        isPoolDepleted: vi.fn().mockImplementation((_cost: number, unitId?: string) => unitId === undefined),
+        getShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", rarity: 1, cost: 1 },
+        ]),
+        getRosterFlags: vi.fn().mockReturnValue({
+          enableHeroSystem: false,
+          enableSharedPool: true,
+          enablePhaseExpansion: false,
+          enableSubUnitSystem: false,
+          enableEmblemCells: false,
+          enableSpellCard: false,
+          enableRumorInfluence: false,
+          enableBossExclusiveShop: false,
+          enableSharedBoardShadow: false,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+          enablePerUnitSharedPool: true,
+        }),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
+    });
+
     test("itemBuySlotIndex with full inventory returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         getItemInventory: vi.fn().mockReturnValue(new Array(9).fill("sword")),

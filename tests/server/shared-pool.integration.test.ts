@@ -214,6 +214,73 @@ describe('SharedPool Integration Tests', () => {
 
       expect(totalAvailable).toBe(pool.getAvailable(1));
     });
+
+    it('1つの unitId が枯渇しても sibling は残り、cost bucket と per-unit total が崩れないこと', () => {
+      const targetUnitId = 'rin';
+      const targetCost = 1;
+      const siblingUnitId = 'nazrin';
+      const cost1Units = TOUHOU_UNITS.filter((unit) => unit.cost === targetCost);
+
+      while (pool.decreaseByUnitId(targetUnitId, targetCost)) {
+        // target unitId を枯渇させる
+      }
+
+      expect(pool.getAvailableByUnitId(targetUnitId, targetCost)).toBe(0);
+      expect(pool.getAvailableByUnitId(siblingUnitId, targetCost)).toBeGreaterThan(0);
+
+      const totalAfterDeplete = cost1Units.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, targetCost),
+        0,
+      );
+      expect(totalAfterDeplete).toBe(pool.getAvailable(targetCost));
+
+      const cost5BeforeInvalidIncrease = pool.getAvailable(5);
+      pool.increaseByUnitId(targetUnitId, 5);
+
+      expect(pool.getAvailableByUnitId(targetUnitId, targetCost)).toBe(0);
+      expect(pool.getAvailable(5)).toBe(cost5BeforeInvalidIncrease);
+
+      const totalAfterInvalidIncrease = cost1Units.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, targetCost),
+        0,
+      );
+      expect(totalAfterInvalidIncrease).toBe(pool.getAvailable(targetCost));
+    });
+
+    it('wrong-cost decrease は拒否され在庫が不変であること', () => {
+      const targetUnitId = 'rin';
+      const targetCost = 1;
+      const wrongCost = 2;
+      const siblingUnitId = 'nazrin';
+      const targetCostUnits = TOUHOU_UNITS.filter((unit) => unit.cost === targetCost);
+
+      expect(pool.getAvailableByUnitId(targetUnitId, targetCost)).toBeGreaterThan(0);
+
+      const targetBefore = pool.getAvailableByUnitId(targetUnitId, targetCost);
+      const siblingBefore = pool.getAvailableByUnitId(siblingUnitId, targetCost);
+      const targetBucketBefore = pool.getAvailable(targetCost);
+      const wrongBucketBefore = pool.getAvailable(wrongCost);
+      const perUnitTotalBefore = targetCostUnits.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, targetCost),
+        0,
+      );
+
+      const decreased = pool.decreaseByUnitId(targetUnitId, wrongCost);
+
+      expect(decreased).toBe(false);
+      expect(pool.getAvailableByUnitId(targetUnitId, targetCost)).toBe(targetBefore);
+      expect(pool.getAvailableByUnitId(siblingUnitId, targetCost)).toBe(siblingBefore);
+
+      const perUnitTotalAfterWrongCostDecrease = targetCostUnits.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, targetCost),
+        0,
+      );
+
+      expect(pool.getAvailable(targetCost)).toBe(targetBucketBefore);
+      expect(pool.getAvailable(wrongCost)).toBe(wrongBucketBefore);
+      expect(perUnitTotalAfterWrongCostDecrease).toBe(perUnitTotalBefore);
+      expect(pool.getAvailable(targetCost)).toBe(perUnitTotalAfterWrongCostDecrease);
+    });
   });
 
   describe('コスト別の枯渇テスト', () => {

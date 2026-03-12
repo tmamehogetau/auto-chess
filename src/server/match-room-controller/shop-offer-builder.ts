@@ -303,17 +303,47 @@ export class ShopOfferBuilder {
     const costRoll = this.deps.seedToUnitFloat(seedBase + 1);
     const unitRoll = this.deps.seedToUnitFloat(seedBase + 2);
     const rosterUnits = this.deps.getTouhouDraftRosterUnits();
+    const isSharedPoolEnabled = this.deps.isSharedPoolEnabled();
+    const isPerUnitPoolEnabled = this.deps.isPerUnitPoolEnabled();
 
-    let selectedCost = this.pickTouhouCost(odds, costRoll);
-    let costPool = this.getTouhouCostPool(rosterUnits, selectedCost);
+    const selectedCost = this.pickTouhouCost(odds, costRoll);
 
-    if (this.deps.isSharedPoolEnabled()) {
-      while (selectedCost > 1 && (costPool.length === 0 || this.isTouhouCostPoolDepleted(costPool, selectedCost))) {
-        selectedCost = (selectedCost - 1) as TouhouCost;
-        costPool = this.getTouhouCostPool(rosterUnits, selectedCost);
+    if (isSharedPoolEnabled && isPerUnitPoolEnabled) {
+      const selectedCostPool = this.getTouhouCostPool(rosterUnits, selectedCost);
+      const nonDepletedSelectedCostPool = selectedCostPool.filter(
+        (unit) => !this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost),
+      );
+
+      if (nonDepletedSelectedCostPool.length > 0) {
+        const selectedUnit =
+          nonDepletedSelectedCostPool[
+            Math.floor(unitRoll * nonDepletedSelectedCostPool.length) % nonDepletedSelectedCostPool.length
+          ] ?? nonDepletedSelectedCostPool[0]!;
+
+        return {
+          unitType: selectedUnit.type,
+          unitId: selectedUnit.unitId,
+          displayName: selectedUnit.name,
+          factionId: selectedUnit.factionId ?? "",
+          rarity: selectedUnit.cost as UnitRarity,
+          cost: selectedUnit.cost,
+        };
+      }
+    }
+
+    let resolvedCost = selectedCost;
+    let costPool = this.getTouhouCostPool(rosterUnits, resolvedCost);
+
+    if (isSharedPoolEnabled) {
+      while (
+        resolvedCost > 1
+        && (costPool.length === 0 || this.isTouhouCostPoolDepleted(costPool, resolvedCost))
+      ) {
+        resolvedCost = (resolvedCost - 1) as TouhouCost;
+        costPool = this.getTouhouCostPool(rosterUnits, resolvedCost);
       }
 
-      if (this.deps.isPerUnitPoolEnabled()) {
+      if (isPerUnitPoolEnabled) {
         costPool = costPool.filter((unit) => !this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost));
       }
     }
@@ -352,14 +382,20 @@ export class ShopOfferBuilder {
     roll: number,
   ): TouhouCost {
     let cumulative = 0;
+    let highestWeightedCost: TouhouCost = 1;
     for (let index = 0; index < odds.length; index += 1) {
-      cumulative += odds[index] ?? 0;
+      const weight = odds[index] ?? 0;
+      if (weight > 0) {
+        highestWeightedCost = (index + 1) as TouhouCost;
+      }
+
+      cumulative += weight;
       if (roll < cumulative) {
         return (index + 1) as TouhouCost;
       }
     }
 
-    return 5;
+    return highestWeightedCost;
   }
 
   private getTouhouCostPool(rosterUnits: RosterUnit[], cost: TouhouCost): RosterUnit[] {

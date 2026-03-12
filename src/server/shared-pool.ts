@@ -9,6 +9,7 @@ import { getTouhouUnitsByCost } from "../data/touhou-units";
 export class SharedPool {
   private readonly inventory: Map<number, number>;
   private readonly inventoryByUnitId: Map<string, number>;
+  private readonly unitCostByUnitId: Map<string, number>;
 
   constructor() {
     // コスト別の初期在庫: 1G:18, 2G:14, 3G:11, 4G:8, 5G:6
@@ -20,6 +21,7 @@ export class SharedPool {
       [5, 6],
     ]);
     this.inventoryByUnitId = new Map<string, number>();
+    this.unitCostByUnitId = new Map<string, number>();
     this.seedPerUnitInventory();
   }
 
@@ -74,11 +76,11 @@ export class SharedPool {
   }
 
   public decreaseByUnitId(unitId: string, cost: number): boolean {
-    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+    if (!this.isValidUnitCostPair(unitId, cost)) {
       return false;
     }
 
-    const current = this.getAvailableByUnitId(unitId, cost);
+    const current = this.inventoryByUnitId.get(unitId) ?? 0;
     if (current <= 0 || !this.decrease(cost)) {
       return false;
     }
@@ -88,7 +90,7 @@ export class SharedPool {
   }
 
   public increaseByUnitId(unitId: string, cost: number): void {
-    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+    if (!this.isValidUnitCostPair(unitId, cost)) {
       return;
     }
 
@@ -98,7 +100,7 @@ export class SharedPool {
   }
 
   public getAvailableByUnitId(unitId: string, cost: number): number {
-    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+    if (!this.isValidUnitCostPair(unitId, cost)) {
       return 0;
     }
 
@@ -120,6 +122,14 @@ export class SharedPool {
     return typeof unitId === "string" && unitId.length > 0;
   }
 
+  private isValidUnitCostPair(unitId: string, cost: number): boolean {
+    if (!this.isValidUnitId(unitId) || !this.isValidCost(cost)) {
+      return false;
+    }
+
+    return this.unitCostByUnitId.get(unitId) === cost;
+  }
+
   private seedPerUnitInventory(): void {
     for (const cost of [1, 2, 3, 4, 5] as const) {
       const units = getTouhouUnitsByCost(cost);
@@ -135,6 +145,7 @@ export class SharedPool {
       for (const unit of units) {
         const extraCount = remainder > 0 ? 1 : 0;
         this.inventoryByUnitId.set(unit.unitId, baseCount + extraCount);
+        this.unitCostByUnitId.set(unit.unitId, cost);
         remainder = Math.max(0, remainder - 1);
       }
     }

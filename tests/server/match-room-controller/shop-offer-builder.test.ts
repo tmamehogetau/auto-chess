@@ -5,8 +5,11 @@ import {
 } from "../../../src/server/match-room-controller/shop-offer-builder";
 import type { BoardUnitType } from "../../../src/shared/room-messages";
 import type { ItemType } from "../../../src/server/combat/item-definitions";
-import { ROSTER_KIND_MVP, ROSTER_KIND_TOUHOU } from "../../../src/server/roster/roster-provider";
-import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
+import {
+  ROSTER_KIND_MVP,
+  ROSTER_KIND_TOUHOU,
+  getTouhouDraftRosterUnits,
+} from "../../../src/server/roster/roster-provider";
 
 describe("ShopOfferBuilder", () => {
   let builder: ShopOfferBuilder;
@@ -250,21 +253,6 @@ describe("ShopOfferBuilder", () => {
       expect(offers).toHaveLength(5);
       expect(mockDeps.isPoolDepleted).toHaveBeenCalled();
     });
-
-    test("falls back to lower rarity when all units depleted", () => {
-      mockDeps.isSharedPoolEnabled = vi.fn(() => true);
-      mockDeps.isPoolDepleted = vi.fn(() => true);
-      mockDeps.pickRarity = vi.fn((): 1 | 2 | 3 => 3); // Try to get rarity 3
-      mockDeps.getPlayerLevel = vi.fn(() => 6); // High level to allow rarity 3
-
-      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
-
-      expect(offers).toHaveLength(5);
-      // Should still produce offers even when pool is depleted
-      offers.forEach((offer) => {
-        expect(offer.unitType).toBeDefined();
-      });
-    });
   });
 
   describe("deterministic behavior", () => {
@@ -342,20 +330,7 @@ describe("ShopOfferBuilder", () => {
 
     test("builds Touhou unitId-based offers when Touhou roster is active", () => {
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-      mockDeps.getTouhouDraftRosterUnits = vi.fn(() =>
-        TOUHOU_UNITS.map((unit) => ({
-          id: unit.unitId,
-          unitId: unit.unitId,
-          name: unit.displayName,
-          type: unit.unitType,
-          cost: unit.cost,
-          hp: unit.hp,
-          attack: unit.attack,
-          attackSpeed: unit.attackSpeed,
-          range: unit.range,
-          synergy: unit.factionId ? [unit.factionId] : [],
-        })),
-      );
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() => getTouhouDraftRosterUnits());
       
       // Re-create builder with new mock
       builder = new ShopOfferBuilder(mockDeps);
@@ -368,34 +343,68 @@ describe("ShopOfferBuilder", () => {
       expect(offers.every((offer) => offer.rarity === offer.cost)).toBe(true);
     });
 
-    test("filters only depleted Touhou unitIds when per-unit shared pool is enabled", () => {
+    test("shared+per-unit excludes depleted unitId and keeps same-cost Touhou alternative", () => {
+      const touhouRoster = getTouhouDraftRosterUnits();
+      const cost2Units = touhouRoster.filter((unit) => unit.cost === 2).map((unit) => unit.unitId);
+      expect(cost2Units.length).toBeGreaterThan(1);
+      const depletedCost2UnitId = cost2Units[0]!;
+      const nonDepletedCost2UnitIds = new Set(cost2Units.slice(1));
+
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-      mockDeps.getTouhouDraftRosterUnits = vi.fn(() =>
-        TOUHOU_UNITS.filter((unit) => unit.cost === 1).map((unit) => ({
-          id: unit.unitId,
-          unitId: unit.unitId,
-          name: unit.displayName,
-          type: unit.unitType,
-          cost: unit.cost,
-          hp: unit.hp,
-          attack: unit.attack,
-          attackSpeed: unit.attackSpeed,
-          range: unit.range,
-          synergy: unit.factionId ? [unit.factionId] : [],
-        })),
-      );
+      mockDeps.getPlayerLevel = vi.fn(() => 2);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
       mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
-      mockDeps.isUnitIdPoolDepleted = vi.fn((unitId: string) => unitId === "rin");
-      mockDeps.seedToUnitFloat = vi.fn(() => 0);
+      mockDeps.hashToUint32 = vi.fn(() => 0);
+      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.8 : 0));
+      const isUnitIdPoolDepletedMock = vi.fn(
+        (unitId: string, cost: number) => cost === 2 && unitId === depletedCost2UnitId,
+      );
+      mockDeps.isUnitIdPoolDepleted = isUnitIdPoolDepletedMock;
 
       builder = new ShopOfferBuilder(mockDeps);
 
       const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
 
       expect(offers).toHaveLength(5);
-      expect(offers.every((offer) => offer.unitId !== "rin")).toBe(true);
-      expect(mockDeps.isUnitIdPoolDepleted).toHaveBeenCalled();
+      expect(offers.every((offer) => offer.unitId !== depletedCost2UnitId)).toBe(true);
+      expect(offers.every((offer) => offer.cost === 2)).toBe(true);
+      expect(
+        offers.every(
+          (offer) => offer.unitId !== undefined && nonDepletedCost2UnitIds.has(offer.unitId),
+        ),
+      ).toBe(true);
+      expect(offers.every((offer) => offer.unitId === cost2Units[1])).toBe(true);
+      expect(isUnitIdPoolDepletedMock).toHaveBeenCalled();
+      expect(
+        isUnitIdPoolDepletedMock.mock.calls.every(([, cost]) => cost === 2),
+      ).toBe(true);
+      expect(isUnitIdPoolDepletedMock).toHaveBeenCalledTimes(cost2Units.length * offers.length);
+    });
+
+    test("uses Touhou level 2 weighting boundaries deterministically", () => {
+      const touhouRoster = getTouhouDraftRosterUnits();
+      const cases: Array<{ roll: number; expectedCost: number }> = [
+        { roll: 0.749999, expectedCost: 1 },
+        { roll: 0.75, expectedCost: 2 },
+        { roll: 0.999999, expectedCost: 2 },
+        { roll: 1, expectedCost: 2 },
+      ];
+
+      mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getPlayerLevel = vi.fn(() => 2);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
+      mockDeps.hashToUint32 = vi.fn(() => 0);
+
+      for (const testCase of cases) {
+        mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? testCase.roll : 0));
+        builder = new ShopOfferBuilder(mockDeps);
+
+        const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+        expect(offers).toHaveLength(5);
+        expect(offers.every((offer) => offer.cost === testCase.expectedCost)).toBe(true);
+      }
     });
 
     test("produces deterministic results with same seed (MVP behavior)", () => {

@@ -969,6 +969,37 @@ describe("MatchRoomController", () => {
     });
   });
 
+  test("enablePerUnitSharedPool=true で unitId なしオファーは cost pool 枯渇時に POOL_DEPLETED になる", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          isDepleted: (cost: number) => boolean;
+        };
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", unitId: "rin", cost: 1, rarity: 1 },
+        { unitType: "ranger", cost: 1, rarity: 1 },
+      ]);
+
+      const isDepletedSpy = vi.spyOn(internals.sharedPool, "isDepleted").mockReturnValue(true);
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 1 });
+
+      expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
+
+      isDepletedSpy.mockRestore();
+    });
+  });
+
   test("enablePerUnitSharedPool=true では sharedPoolInventory が実在庫総量を反映する", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
       const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);

@@ -118,13 +118,14 @@ class FeatureFlagService {
       );
     }
 
-    // 許可構成のログ出力（T3の observability と連携）
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify({
-      type: "feature_flag_config",
-      flags: { ...flags },
-      timestamp: Date.now(),
-    }));
+    if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify({
+        type: "feature_flag_config",
+        flags: { ...flags },
+        timestamp: Date.now(),
+      }));
+    }
   }
 }
 

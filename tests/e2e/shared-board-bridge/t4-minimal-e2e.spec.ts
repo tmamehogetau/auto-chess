@@ -134,6 +134,8 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
       await withFlags(
         { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableSharedBoardShadow: true },
         async () => {
+          const originalSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+          delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
           const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
           // 1. Setup: SharedBoardRoom作成
@@ -278,6 +280,11 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
           expect(gameRoom.state.roundIndex).toBe(2); // R2から開始
 
           logSpy.mockRestore();
+          if (originalSuppressVerboseLogs === undefined) {
+            delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+          } else {
+            process.env.SUPPRESS_VERBOSE_TEST_LOGS = originalSuppressVerboseLogs;
+          }
         },
       );
     },

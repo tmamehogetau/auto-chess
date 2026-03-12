@@ -635,13 +635,21 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
   describe("outputRumorKpiSummary", () => {
     let consoleSpy: ReturnType<typeof vi.spyOn>;
+    const previousEnableStructuredMatchLogs = process.env.ENABLE_STRUCTURED_MATCH_LOGS;
 
     beforeEach(() => {
+      process.env.ENABLE_STRUCTURED_MATCH_LOGS = "true";
       consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     });
 
     afterEach(() => {
       consoleSpy.mockRestore();
+      if (previousEnableStructuredMatchLogs === undefined) {
+        delete process.env.ENABLE_STRUCTURED_MATCH_LOGS;
+        return;
+      }
+
+      process.env.ENABLE_STRUCTURED_MATCH_LOGS = previousEnableStructuredMatchLogs;
     });
 
     it("should emit structured rumor KPI report without changing existing summary output", () => {
@@ -822,13 +830,21 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
   describe("outputGameplayKpiSummary", () => {
     let consoleSpy: ReturnType<typeof vi.spyOn>;
+    const previousEnableStructuredMatchLogs = process.env.ENABLE_STRUCTURED_MATCH_LOGS;
 
     beforeEach(() => {
+      process.env.ENABLE_STRUCTURED_MATCH_LOGS = "true";
       consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     });
 
     afterEach(() => {
       consoleSpy.mockRestore();
+      if (previousEnableStructuredMatchLogs === undefined) {
+        delete process.env.ENABLE_STRUCTURED_MATCH_LOGS;
+        return;
+      }
+
+      process.env.ENABLE_STRUCTURED_MATCH_LOGS = previousEnableStructuredMatchLogs;
     });
 
     const featureFlags = {

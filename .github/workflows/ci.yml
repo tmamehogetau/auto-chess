@@ -27,6 +27,8 @@ jobs:
 
     - name: Run verify:ci
       run: npm run verify:ci
+      env:
+        SUPPRESS_VERBOSE_TEST_LOGS: "true"
 
     - name: Run coverage gate
       run: npm run test:coverage

@@ -12,6 +12,11 @@ import {
   type GameplayKpiSummary,
 } from "./analytics/gameplay-kpi";
 
+function shouldEmitStructuredMatchLogs(): boolean {
+  return process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true"
+    || process.env.ENABLE_STRUCTURED_MATCH_LOGS === "true";
+}
+
 /**
  * Prepコマンド入力バリデーションメトリクス
  * W6-2 KPI測定: バリデーション境界でのPrepコマンド試行を追跡
@@ -551,11 +556,12 @@ export class MatchLogger {
   ): void {
     const summary = this.generateSummary(winner, ranking, totalRounds, featureFlags);
 
-    // 構造化ログとして出力
-    console.log(JSON.stringify({
-      type: "match_summary",
-      data: summary,
-    }));
+    if (shouldEmitStructuredMatchLogs()) {
+      console.log(JSON.stringify({
+        type: "match_summary",
+        data: summary,
+      }));
+    }
   }
 
   // スペル効果ログ
@@ -727,10 +733,12 @@ export class MatchLogger {
   ): void {
     const kpiSummary = this.getGameplayKpiSummary(winner, ranking, totalRounds, featureFlags);
 
-    console.log(JSON.stringify({
-      type: "gameplay_kpi_summary",
-      data: kpiSummary,
-    }));
+    if (shouldEmitStructuredMatchLogs()) {
+      console.log(JSON.stringify({
+        type: "gameplay_kpi_summary",
+        data: kpiSummary,
+      }));
+    }
   }
 
   /**

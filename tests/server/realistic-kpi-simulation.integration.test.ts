@@ -51,16 +51,27 @@ interface CompositionScenario {
 function setupKpiCapture(ctx: TestContext): void {
   ctx.originalConsoleLog = console.log;
   console.log = (...args: unknown[]) => {
-    ctx.originalConsoleLog(...args);
     if (args.length === 1 && typeof args[0] === "string") {
       try {
         const parsed = JSON.parse(args[0]);
+        if (process.env.FORWARD_CAPTURED_KPI_LOGS === "true") {
+          ctx.originalConsoleLog(args[0]);
+        } else if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+          ctx.originalConsoleLog(...args);
+        }
         if (parsed.type === "gameplay_kpi_summary" && parsed.data) {
           ctx.kpiOutputs.push(parsed.data as GameplayKpiSummary);
         }
       } catch {
-        // Not JSON, ignore
+        if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+          ctx.originalConsoleLog(...args);
+        }
       }
+      return;
+    }
+
+    if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+      ctx.originalConsoleLog(...args);
     }
   };
 }
@@ -297,6 +308,7 @@ async function runScenarioAndCollectKpi(
 describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
   let ctx: TestContext;
   const testServerPort = getRealisticKpiSimulationTestServerPort();
+  const previousEnableStructuredMatchLogs = process.env.ENABLE_STRUCTURED_MATCH_LOGS;
 
   const additionalScenarios: CompositionScenario[] = [
     {
@@ -337,6 +349,8 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
   ];
 
   beforeAll(async () => {
+    process.env.ENABLE_STRUCTURED_MATCH_LOGS = "true";
+
     const server = defineServer({
       rooms: {
         game: defineRoom(GameRoom, {
@@ -372,6 +386,13 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
     if (ctx?.testServer) {
       await ctx.testServer.shutdown();
     }
+
+    if (previousEnableStructuredMatchLogs === undefined) {
+      delete process.env.ENABLE_STRUCTURED_MATCH_LOGS;
+      return;
+    }
+
+    process.env.ENABLE_STRUCTURED_MATCH_LOGS = previousEnableStructuredMatchLogs;
   });
 
   test(
@@ -414,8 +435,10 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
         // SCENARIO A: 勝者の構成を解析
         const composition = parseCompositionSignature(kpi.top1CompositionSignature);
         
-        ctx.originalConsoleLog(`[Scenario A] Winner: ${kpi.top1CompositionSignature}`);
-        ctx.originalConsoleLog(`[Scenario A] Vanguards: ${composition.vanguards}, Backline: ${composition.backlineUnits}`);
+        if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+          ctx.originalConsoleLog(`[Scenario A] Winner: ${kpi.top1CompositionSignature}`);
+          ctx.originalConsoleLog(`[Scenario A] Vanguards: ${composition.vanguards}, Backline: ${composition.backlineUnits}`);
+        }
         
         // 強化された検証: vanguard-heavy構成
         expect(composition.vanguards).toBeGreaterThan(composition.backlineUnits);
@@ -467,8 +490,10 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
         // SCENARIO B: 勝者の構成を解析
         const composition = parseCompositionSignature(kpi.top1CompositionSignature);
         
-        ctx.originalConsoleLog(`[Scenario B] Winner: ${kpi.top1CompositionSignature}`);
-        ctx.originalConsoleLog(`[Scenario B] Vanguards: ${composition.vanguards}, Rangers: ${composition.rangers}, Total backline: ${composition.backlineUnits}`);
+        if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
+          ctx.originalConsoleLog(`[Scenario B] Winner: ${kpi.top1CompositionSignature}`);
+          ctx.originalConsoleLog(`[Scenario B] Vanguards: ${composition.vanguards}, Rangers: ${composition.rangers}, Total backline: ${composition.backlineUnits}`);
+        }
         
         // 強化された検証: backline-heavy構成
         expect(composition.backlineUnits).toBeGreaterThan(composition.vanguards);

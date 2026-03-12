@@ -1526,7 +1526,9 @@ describe("MatchRoomController", () => {
 
   test("Battle開始時スナップショットが戦闘入力として固定される", () => {
     const originalDebugLogs = process.env.MATCH_DEBUG_LOGS;
+    const originalSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
     process.env.MATCH_DEBUG_LOGS = "1";
+    delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     try {
@@ -1594,6 +1596,12 @@ describe("MatchRoomController", () => {
       } else {
         process.env.MATCH_DEBUG_LOGS = originalDebugLogs;
       }
+
+      if (originalSuppressVerboseLogs === undefined) {
+        delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+      } else {
+        process.env.SUPPRESS_VERBOSE_TEST_LOGS = originalSuppressVerboseLogs;
+      }
     }
   });
 
@@ -1638,6 +1646,8 @@ describe("MatchRoomController", () => {
 
   test("T3: 戦闘単位で入力と結果を追跡できるトレースログが常時出力される", () => {
     // 環境変数を設定せずにテスト（常時出力の確認）
+    const originalSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+    delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     try {
@@ -1697,6 +1707,11 @@ describe("MatchRoomController", () => {
       expect(resultTrace).toHaveProperty("rightDamageTaken");
     } finally {
       logSpy.mockRestore();
+      if (originalSuppressVerboseLogs === undefined) {
+        delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+      } else {
+        process.env.SUPPRESS_VERBOSE_TEST_LOGS = originalSuppressVerboseLogs;
+      }
     }
   });
 

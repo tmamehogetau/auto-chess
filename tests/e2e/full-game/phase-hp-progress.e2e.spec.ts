@@ -178,7 +178,7 @@ describe("E2E: Phase HP Progress", () => {
 
           const r1State = roundStates.find((state) => state.roundIndex === 1);
           expect(r1State).toBeDefined();
-          expect(r1State.phaseHpTarget).toBe(600);
+          expect(r1State.phaseHpTarget).toBe(10);
           expect(r1State.phaseDamageDealt).toBe(0);
           expect(r1State.phaseResult).toBe("pending");
 

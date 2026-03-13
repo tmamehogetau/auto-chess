@@ -166,6 +166,11 @@ export function handleAdminResponse(response) {
 
   if (!response.ok) {
     const errorMessage = response.error || "Unknown admin query error";
+
+    if (errorMessage === "SharedBoardBridge is not available") {
+      return;
+    }
+
     deps.addCombatLogEntry(`Monitor error: ${errorMessage}`, "lose");
     return;
   }

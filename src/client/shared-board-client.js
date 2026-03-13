@@ -3,7 +3,7 @@
  * 共有ボードルームの接続・状態管理・UI操作
  */
 
-import { mapGet, shortPlayerId } from "./utils/pure-utils.js";
+import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
 
 /**
  * @typedef {Object} SharedBoardDOMRefs
@@ -321,7 +321,7 @@ function renderSharedCursorList(state) {
     return;
   }
 
-  const entries = Object.entries(state.cursors);
+  const entries = mapEntries(state.cursors);
   if (entries.length === 0) {
     domRefs.cursorListElement.textContent = "No cursors";
     return;
@@ -332,7 +332,7 @@ function renderSharedCursorList(state) {
   for (const [playerId, cursor] of entries) {
     const item = document.createElement("span");
     item.className = "cursor-list-item";
-    item.style.color = cursor.color ?? "#999999";
+    item.style.color = cursor?.color ?? "#999999";
     const suffix = sharedBoardRoom && sharedBoardRoom.sessionId === playerId ? " (you)" : "";
     item.textContent = `${shortPlayerId(playerId)}${suffix}`;
     domRefs.cursorListElement.appendChild(item);

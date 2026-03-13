@@ -107,7 +107,7 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
   chireiden: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.chireiden,
     effects: {
-      defense: [1, 2],
+      defense: [0, 1],
     },
   },
   myourenji: {
@@ -124,7 +124,7 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
   grassroot_network: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.grassroot_network,
     effects: {
-      attackPower: [1, 2],
+      attackPower: [1, 1],
     },
   },
   niji_ryuudou: {

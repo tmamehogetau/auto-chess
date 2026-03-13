@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { getTouhouFactionTierEffect } from "../../src/server/combat/synergy-definitions";
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { MatchLogger } from "../../src/server/match-logger";
 import type { BoardUnitPlacement } from "../../src/shared/room-messages";
@@ -824,6 +825,82 @@ describe("MatchRoomController", () => {
       expect(sellResult).toEqual({ accepted: true });
       expect(goldAfterBuy).toBe(goldBefore - 1);
       expect(status.gold).toBe(goldBefore);
+    });
+  });
+
+  test("Touhou faction numeric contracts は W11 tuning target を維持する", () => {
+    expect(getTouhouFactionTierEffect("myourenji", 1)).toEqual({
+      effectId: "faction.myourenji",
+      statModifiers: {
+        hpMultiplier: 1.05,
+        attackPower: 0,
+      },
+    });
+    expect(getTouhouFactionTierEffect("myourenji", 2)).toEqual({
+      effectId: "faction.myourenji",
+      statModifiers: {
+        hpMultiplier: 1.1,
+        attackPower: 1,
+      },
+      special: {
+        shopCostReduction: 1,
+      },
+    });
+    expect(getTouhouFactionTierEffect("myourenji", 3)).toEqual({
+      effectId: "faction.myourenji",
+      statModifiers: {
+        hpMultiplier: 1.15,
+        attackPower: 2,
+      },
+      special: {
+        shopCostReduction: 1,
+      },
+    });
+
+    expect(getTouhouFactionTierEffect("chireiden", 1)).toEqual({
+      effectId: "faction.chireiden",
+      statModifiers: {
+        defense: 0,
+      },
+      special: {
+        reflectRatio: 0.1,
+      },
+    });
+    expect(getTouhouFactionTierEffect("chireiden", 2)).toEqual({
+      effectId: "faction.chireiden",
+      statModifiers: {
+        defense: 1,
+      },
+      special: {
+        reflectRatio: 0.2,
+      },
+    });
+
+    expect(getTouhouFactionTierEffect("grassroot_network", 1)).toEqual({
+      effectId: "faction.grassroot_network",
+      statModifiers: {
+        attackPower: 1,
+      },
+    });
+    expect(getTouhouFactionTierEffect("grassroot_network", 2)).toEqual({
+      effectId: "faction.grassroot_network",
+      statModifiers: {
+        attackPower: 1,
+      },
+    });
+
+    expect(getTouhouFactionTierEffect("niji_ryuudou", 1)).toEqual({
+      effectId: "faction.niji_ryuudou",
+      special: {
+        shopCostReduction: 1,
+      },
+    });
+    expect(getTouhouFactionTierEffect("niji_ryuudou", 2)).toEqual({
+      effectId: "faction.niji_ryuudou",
+      special: {
+        shopCostReduction: 1,
+        firstItemUseDraws: 1,
+      },
     });
   });
 

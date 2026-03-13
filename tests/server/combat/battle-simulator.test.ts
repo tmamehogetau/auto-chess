@@ -996,7 +996,7 @@ describe("battle-simulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.hp).toBe(48);
+      expect(leftUnits[0]?.hp).toBe(46);
     });
 
     test("chireiden reflection は反射ダメージを再反射しない", () => {
@@ -1034,7 +1034,7 @@ describe("battle-simulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.hp).toBe(48);
+      expect(leftUnits[0]?.hp).toBe(46);
       expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(2);
     });
 

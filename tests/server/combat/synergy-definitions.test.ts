@@ -97,7 +97,7 @@ describe("synergy-definitions", () => {
       expect(getTouhouFactionTierEffect("chireiden", 1)).toEqual({
         effectId: "faction.chireiden",
         statModifiers: {
-          defense: 1,
+          defense: 0,
         },
         special: {
           reflectRatio: 0.1,
@@ -106,7 +106,7 @@ describe("synergy-definitions", () => {
       expect(getTouhouFactionTierEffect("chireiden", 2)).toEqual({
         effectId: "faction.chireiden",
         statModifiers: {
-          defense: 2,
+          defense: 1,
         },
         special: {
           reflectRatio: 0.2,

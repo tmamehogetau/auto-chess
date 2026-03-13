@@ -9,10 +9,11 @@ import {
   SERVER_MESSAGE_TYPES,
 } from "../../src/shared/room-messages";
 import type { GameplayKpiSummary } from "../../src/server/analytics/gameplay-kpi";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 function getRealisticKpiSimulationTestServerPort(): number {
-  const configuredPort = Number(process.env.REALISTIC_KPI_SIMULATION_TEST_PORT ?? "2574");
-  return Number.isFinite(configuredPort) ? configuredPort : 2_574;
+  const configuredPort = Number(process.env.REALISTIC_KPI_SIMULATION_TEST_PORT ?? "26784");
+  return Number.isFinite(configuredPort) ? configuredPort : 26_784;
 }
 
 // =============================================================================
@@ -163,12 +164,14 @@ function getCurrentBoardPlacements(
 }
 
 /**
- * Run a match from R1 to R8
+ * Run a match through the configured final round
  */
-async function runMatchToR8(
+async function runMatchToFinalRound(
   ctx: TestContext,
   options: {
+    applyForcedPhaseProgress?: boolean;
     buildCompositions?: (serverRoom: GameRoom, clients: Array<{ send: (type: string, msg: unknown) => void; waitForMessage: (type: string) => Promise<unknown>; sessionId: string }>) => Promise<void>;
+    finalRound?: number;
   } = {},
 ): Promise<{ serverRoom: GameRoom; clients: Array<{ sessionId: string; send: (type: string, msg: unknown) => void; waitForMessage: (type: string) => Promise<unknown>; onMessage: (type: string, handler: (msg: unknown) => void) => void }> }> {
   const serverRoom = await ctx.testServer.createRoom<GameRoom>("game");
@@ -187,8 +190,20 @@ async function runMatchToR8(
   await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
   const roundTargets: Record<number, number> = {
-    1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850,
+    1: 600,
+    2: 750,
+    3: 900,
+    4: 1050,
+    5: 1250,
+    6: 1450,
+    7: 1650,
+    8: 1850,
+    9: 2100,
+    10: 2400,
+    11: 2700,
+    12: 0,
   };
+  const finalRound = options.finalRound ?? 8;
 
   let lastRound = 0;
   const maxDuration = 50_000;
@@ -196,7 +211,7 @@ async function runMatchToR8(
 
   while (
     serverRoom.state.phase !== "End" &&
-    serverRoom.state.roundIndex < 9 &&
+    serverRoom.state.roundIndex < finalRound + 1 &&
     Date.now() - startTime < maxDuration
   ) {
     const currentRound = serverRoom.state.roundIndex;
@@ -211,12 +226,15 @@ async function runMatchToR8(
     await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
 
     const target = roundTargets[serverRoom.state.roundIndex];
-    if (target !== undefined) {
+    if ((options.applyForcedPhaseProgress ?? true) && target !== undefined) {
       serverRoom.setPendingPhaseDamageForTest(target);
     }
 
-    if (serverRoom.state.roundIndex < 8) {
-      await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
+    if (serverRoom.state.roundIndex < finalRound) {
+      await waitForCondition(
+        () => serverRoom.state.phase === "Prep" || serverRoom.state.phase === "End",
+        5_000,
+      );
     } else {
       await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
     }
@@ -272,7 +290,7 @@ async function runScenarioAndCollectKpi(
   const nextCmdSeqByClient = new Map<string, number>();
 
   try {
-    const { serverRoom } = await runMatchToR8(ctx, {
+    const { serverRoom } = await runMatchToFinalRound(ctx, {
       buildCompositions: async (serverRoom, clients) => {
         for (const client of clients) {
           const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
@@ -402,7 +420,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
       const nextCmdSeqByClient = new Map<string, number>();
 
       try {
-        const { serverRoom } = await runMatchToR8(ctx, {
+        const { serverRoom } = await runMatchToFinalRound(ctx, {
           buildCompositions: async (serverRoom, clients) => {
             for (const client of clients) {
               injectForcedOffers(serverRoom, client.sessionId, ["vanguard", "vanguard", "vanguard"]);
@@ -460,7 +478,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
       const nextCmdSeqByClient = new Map<string, number>();
 
       try {
-        const { serverRoom } = await runMatchToR8(ctx, {
+        const { serverRoom } = await runMatchToFinalRound(ctx, {
           buildCompositions: async (serverRoom, clients) => {
             for (const client of clients) {
               const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
@@ -519,4 +537,50 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
     expect(kpi.top1CompositionSignature).toBeTruthy();
     scenario.assertProfile(composition);
   });
+
+  test(
+    "realistic harness reaches R12 without forced phase damage",
+    async () => {
+      await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
+        setupKpiCapture(ctx);
+        const nextCmdSeqByClient = new Map<string, number>();
+
+        try {
+          const { serverRoom } = await runMatchToFinalRound(ctx, {
+            applyForcedPhaseProgress: false,
+            finalRound: 12,
+            buildCompositions: async (serverRoom, clients) => {
+              for (const client of clients) {
+                injectForcedOffers(serverRoom, client.sessionId, ["vanguard", "vanguard", "vanguard"]);
+                const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
+                const updatedCmdSeq = await buildCompositionViaPrepActions(serverRoom, client.sessionId, client, nextCmdSeq, [
+                  { unitType: "vanguard", cell: 0 },
+                  { unitType: "vanguard", cell: 1 },
+                  { unitType: "vanguard", cell: 2 },
+                ]);
+                nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
+              }
+            },
+          });
+
+          expect(serverRoom.state.phase).toBe("End");
+          expect(serverRoom.state.roundIndex).toBe(12);
+
+          await serverRoom.disconnect();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          expect(ctx.kpiOutputs.length).toBeGreaterThan(0);
+          const kpi = getLatestKpiOutput(ctx);
+
+          expect(kpi.totalRounds).toBe(12);
+          expect(kpi.failedPrepCommands).toBe(0);
+          expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
+          expect(kpi.top1CompositionSignature).toBeTruthy();
+        } finally {
+          restoreConsoleLog(ctx);
+        }
+      });
+    },
+    60_000,
+  );
 });

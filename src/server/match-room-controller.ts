@@ -145,6 +145,21 @@ const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   12: 0,
 };
 
+const PHASE_EXPANSION_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
+  1: 10,
+  2: 10,
+  3: 10,
+  4: 10,
+  5: 10,
+  6: 10,
+  7: 10,
+  8: 10,
+  9: 10,
+  10: 10,
+  11: 10,
+  12: 0,
+};
+
 const ITEM_SHOP_SIZE = 5;
 const MAX_INVENTORY_SIZE = 9;
 const MAX_ITEMS_PER_UNIT = 3;
@@ -2082,15 +2097,19 @@ export class MatchRoomController {
   }
 
   private resolvePhaseHpTarget(roundIndex: number): number {
+    const phaseTargets = this.featureFlags.enablePhaseExpansion
+      ? PHASE_EXPANSION_HP_TARGET_BY_ROUND
+      : PHASE_HP_TARGET_BY_ROUND;
+
     if (roundIndex <= 1) {
-      return PHASE_HP_TARGET_BY_ROUND[1] ?? 400;
+      return phaseTargets[1] ?? 400;
     }
 
-    if (PHASE_HP_TARGET_BY_ROUND[roundIndex] !== undefined) {
-      return PHASE_HP_TARGET_BY_ROUND[roundIndex];
+    if (phaseTargets[roundIndex] !== undefined) {
+      return phaseTargets[roundIndex];
     }
 
-    return PHASE_HP_TARGET_BY_ROUND[12] ?? 0;
+    return phaseTargets[12] ?? 0;
   }
 
   private resolveMissingRoundDamage(): void {

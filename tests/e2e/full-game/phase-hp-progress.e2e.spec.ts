@@ -135,7 +135,7 @@ describe("E2E: Phase HP Progress", () => {
    * Phase Expansion有効時はround_stateに値が露出する
    */
   it(
-    "Phase Expansion有効時もR1のphaseHp進捗がround_stateに露出する",
+    "Phase Expansion有効時もR2までのphaseHp進捗がround_stateに露出する",
     { timeout: 30_000 },
     async () => {
       await withFlags(
@@ -178,9 +178,20 @@ describe("E2E: Phase HP Progress", () => {
 
           const r1State = roundStates.find((state) => state.roundIndex === 1);
           expect(r1State).toBeDefined();
-          expect(r1State.phaseHpTarget).toBe(600);
+          expect(r1State.phaseHpTarget).toBe(10);
           expect(r1State.phaseDamageDealt).toBe(0);
           expect(r1State.phaseResult).toBe("pending");
+
+          await waitForCondition(() => gameRoom.state.roundIndex >= 2, 5_000);
+          await waitForPhase(gameRoom, "Prep", 5_000);
+
+          const r2State = roundStates.find(
+            (state) => state.roundIndex === 2 && state.phase === "Prep",
+          );
+          expect(r2State).toBeDefined();
+          expect(r2State.phaseHpTarget).toBe(10);
+          expect(r2State.phaseDamageDealt).toBe(0);
+          expect(r2State.phaseResult).toBe("pending");
 
           for (const client of clients) {
             client.connection.close();

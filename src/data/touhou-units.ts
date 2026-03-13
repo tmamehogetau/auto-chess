@@ -36,7 +36,7 @@ export const TOUHOU_UNITS: readonly TouhouUnit[] = [
   { unitId: "yoshika", displayName: "宮古芳香", unitType: "vanguard", cost: 1, hp: 550, attack: 43, attackSpeed: 0.9, range: 1, factionId: "shinreibyou" },
   { unitId: "seiga", displayName: "霍青娥", unitType: "assassin", cost: 3, hp: 650, attack: 80, attackSpeed: 1.05, range: 1, factionId: "shinreibyou" },
   { unitId: "tojiko", displayName: "蘇我屠自古", unitType: "ranger", cost: 2, hp: 540, attack: 64, attackSpeed: 1.05, range: 4, factionId: "shinreibyou" },
-  { unitId: "futo", displayName: "物部布都", unitType: "mage", cost: 4, hp: 870, attack: 90, attackSpeed: 0.95, range: 3, factionId: "shinreibyou" },
+  { unitId: "futo", displayName: "物部布都", unitType: "mage", cost: 4, hp: 900, attack: 90, attackSpeed: 0.95, range: 3, factionId: "shinreibyou" },
   { unitId: "miko", displayName: "豊聡耳神子", unitType: "mage", cost: 5, hp: 1060, attack: 108, attackSpeed: 0.95, range: 3, factionId: "shinreibyou" },
 
   { unitId: "wakasagihime", displayName: "わかさぎ姫", unitType: "ranger", cost: 1, hp: 390, attack: 45, attackSpeed: 1.0, range: 4, factionId: "grassroot_network" },
@@ -45,7 +45,7 @@ export const TOUHOU_UNITS: readonly TouhouUnit[] = [
 
   { unitId: "tsukasa", displayName: "菅牧典", unitType: "mage", cost: 2, hp: 580, attack: 55, attackSpeed: 0.95, range: 4, factionId: "niji_ryuudou" },
   { unitId: "megumu", displayName: "飯綱丸龍", unitType: "ranger", cost: 3, hp: 680, attack: 76, attackSpeed: 1.05, range: 4, factionId: "niji_ryuudou" },
-  { unitId: "chimata", displayName: "天弓千亦", unitType: "mage", cost: 4, hp: 870, attack: 84, attackSpeed: 0.95, range: 3, factionId: "niji_ryuudou" },
+  { unitId: "chimata", displayName: "天弓千亦", unitType: "mage", cost: 4, hp: 900, attack: 84, attackSpeed: 0.95, range: 3, factionId: "niji_ryuudou" },
   { unitId: "momoyo", displayName: "姫虫百々世", unitType: "vanguard", cost: 2, hp: 740, attack: 54, attackSpeed: 0.9, range: 1, factionId: "niji_ryuudou" },
 
   { unitId: "clownpiece", displayName: "クラウンピース", unitType: "ranger", cost: 2, hp: 580, attack: 53, attackSpeed: 1.1, range: 4, factionId: "kanjuden" },

@@ -97,7 +97,7 @@ describe("synergy-definitions", () => {
       expect(getTouhouFactionTierEffect("chireiden", 1)).toEqual({
         effectId: "faction.chireiden",
         statModifiers: {
-          defense: 1,
+          defense: 0,
         },
         special: {
           reflectRatio: 0.1,
@@ -106,7 +106,7 @@ describe("synergy-definitions", () => {
       expect(getTouhouFactionTierEffect("chireiden", 2)).toEqual({
         effectId: "faction.chireiden",
         statModifiers: {
-          defense: 2,
+          defense: 1,
         },
         special: {
           reflectRatio: 0.2,
@@ -140,6 +140,21 @@ describe("synergy-definitions", () => {
         },
         special: {
           shopCostReduction: 1,
+        },
+      });
+    });
+
+    test("grassroot_network tier effect から tuned attack metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("grassroot_network", 1)).toEqual({
+        effectId: "faction.grassroot_network",
+        statModifiers: {
+          attackPower: 1,
+        },
+      });
+      expect(getTouhouFactionTierEffect("grassroot_network", 2)).toEqual({
+        effectId: "faction.grassroot_network",
+        statModifiers: {
+          attackPower: 1,
         },
       });
     });

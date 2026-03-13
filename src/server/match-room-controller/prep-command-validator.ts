@@ -19,6 +19,7 @@ const MAX_BENCH_SIZE = 9;
 const MAX_INVENTORY_SIZE = 9;
 const MAX_ITEMS_PER_UNIT = 3;
 const ITEM_SHOP_SIZE = 5;
+const TOUHOU_COST_TIERS: readonly [1, 2, 3, 4, 5] = [1, 2, 3, 4, 5];
 
 export interface ShopOffer {
   unitType: string;
@@ -102,6 +103,12 @@ export interface ValidationContext {
   requiredGold?: number;
 }
 
+export type ValidationInternalRejectReason = "SERVER_INVARIANT_BREACH";
+
+export interface ValidationInternalResult {
+  rejectReason?: ValidationInternalRejectReason;
+}
+
 /**
  * Validates a prep command and returns a CommandResult if invalid, null if valid.
  * This function performs all validation checks without mutating any state.
@@ -112,6 +119,7 @@ export function validatePrepCommand(
   receivedAtMs: number,
   payload: CommandPayload,
   deps: ValidationDependencies,
+  internalResult?: ValidationInternalResult,
 ): import("../../shared/room-messages").CommandResult | null {
   // Basic state validation
   const basicValidation = validateBasicState(playerId, cmdSeq, receivedAtMs, deps);
@@ -132,7 +140,7 @@ export function validatePrepCommand(
   }
 
   // Precondition validation
-  const preconditionValidation = validatePreconditions(playerId, payload, deps);
+  const preconditionValidation = validatePreconditions(playerId, payload, deps, internalResult);
   if (preconditionValidation) {
     return preconditionValidation;
   }
@@ -394,6 +402,7 @@ function validatePreconditions(
   playerId: string,
   payload: CommandPayload,
   deps: ValidationDependencies,
+  internalResult?: ValidationInternalResult,
 ): import("../../shared/room-messages").CommandResult | null {
   // benchToBoardCell preconditions
   if (payload.benchToBoardCell !== undefined) {
@@ -455,8 +464,23 @@ function validatePreconditions(
     // Shared pool check
     if (deps.isSharedPoolEnabled()) {
       const targetOffer = offers[payload.shopBuySlotIndex];
-      if (targetOffer && deps.isPoolDepleted(targetOffer.cost, targetOffer.unitId)) {
-        return { accepted: false, code: "POOL_DEPLETED" };
+      if (targetOffer) {
+        const rosterFlags = deps.getRosterFlags();
+        if (rosterFlags.enablePerUnitSharedPool && !targetOffer.unitId) {
+          const hasPurchasableSupply = TOUHOU_COST_TIERS.some((cost) => !deps.isPoolDepleted(cost));
+          if (hasPurchasableSupply) {
+            if (internalResult) {
+              internalResult.rejectReason = "SERVER_INVARIANT_BREACH";
+            }
+            return { accepted: false, code: "INVALID_PAYLOAD" };
+          }
+
+          return { accepted: false, code: "POOL_DEPLETED" };
+        }
+
+        if (deps.isPoolDepleted(targetOffer.cost, targetOffer.unitId)) {
+          return { accepted: false, code: "POOL_DEPLETED" };
+        }
       }
     }
   }

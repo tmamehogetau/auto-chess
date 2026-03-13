@@ -307,45 +307,10 @@ export class ShopOfferBuilder {
     const isPerUnitPoolEnabled = this.deps.isPerUnitPoolEnabled();
 
     const selectedCost = this.pickTouhouCost(odds, costRoll);
-
-    if (isSharedPoolEnabled && isPerUnitPoolEnabled) {
-      const selectedCostPool = this.getTouhouCostPool(rosterUnits, selectedCost);
-      const nonDepletedSelectedCostPool = selectedCostPool.filter(
-        (unit) => !this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost),
-      );
-
-      if (nonDepletedSelectedCostPool.length > 0) {
-        const selectedUnit =
-          nonDepletedSelectedCostPool[
-            Math.floor(unitRoll * nonDepletedSelectedCostPool.length) % nonDepletedSelectedCostPool.length
-          ] ?? nonDepletedSelectedCostPool[0]!;
-
-        return {
-          unitType: selectedUnit.type,
-          unitId: selectedUnit.unitId,
-          displayName: selectedUnit.name,
-          factionId: selectedUnit.factionId ?? "",
-          rarity: selectedUnit.cost as UnitRarity,
-          cost: selectedUnit.cost,
-        };
-      }
-    }
-
-    let resolvedCost = selectedCost;
-    let costPool = this.getTouhouCostPool(rosterUnits, resolvedCost);
+    let costPool = this.getTouhouCostPool(rosterUnits, selectedCost);
 
     if (isSharedPoolEnabled) {
-      while (
-        resolvedCost > 1
-        && (costPool.length === 0 || this.isTouhouCostPoolDepleted(costPool, resolvedCost))
-      ) {
-        resolvedCost = (resolvedCost - 1) as TouhouCost;
-        costPool = this.getTouhouCostPool(rosterUnits, resolvedCost);
-      }
-
-      if (isPerUnitPoolEnabled) {
-        costPool = costPool.filter((unit) => !this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost));
-      }
+      costPool = this.resolveTouhouSharedCostPool(rosterUnits, selectedCost, isPerUnitPoolEnabled);
     }
 
     if (costPool.length === 0) {
@@ -402,11 +367,78 @@ export class ShopOfferBuilder {
     return rosterUnits.filter((unit) => unit.cost === cost);
   }
 
-  private isTouhouCostPoolDepleted(costPool: RosterUnit[], cost: TouhouCost): boolean {
-    if (this.deps.isPerUnitPoolEnabled()) {
-      return costPool.every((unit) => this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost));
+  private resolveTouhouSharedCostPool(
+    rosterUnits: RosterUnit[],
+    selectedCost: TouhouCost,
+    isPerUnitPoolEnabled: boolean,
+  ): RosterUnit[] {
+    if (!isPerUnitPoolEnabled) {
+      return this.resolveTouhouSharedOnlyLowerCostPool(rosterUnits, selectedCost);
     }
 
-    return this.deps.isPoolDepleted(cost);
+    const costSearchOrder = this.getTouhouCostSearchOrder(selectedCost);
+
+    for (const cost of costSearchOrder) {
+      const availablePool = this.getTouhouAvailableCostPool(rosterUnits, cost, isPerUnitPoolEnabled);
+      if (availablePool.length > 0) {
+        return availablePool;
+      }
+    }
+
+    return [];
+  }
+
+  private resolveTouhouSharedOnlyLowerCostPool(
+    rosterUnits: RosterUnit[],
+    selectedCost: TouhouCost,
+  ): RosterUnit[] {
+    let resolvedCost = selectedCost;
+    let costPool = this.getTouhouCostPool(rosterUnits, resolvedCost);
+
+    while (
+      resolvedCost > 1
+      && (costPool.length === 0 || this.deps.isPoolDepleted(resolvedCost))
+    ) {
+      resolvedCost = (resolvedCost - 1) as TouhouCost;
+      costPool = this.getTouhouCostPool(rosterUnits, resolvedCost);
+    }
+
+    return costPool;
+  }
+
+  private getTouhouAvailableCostPool(
+    rosterUnits: RosterUnit[],
+    cost: TouhouCost,
+    isPerUnitPoolEnabled: boolean,
+  ): RosterUnit[] {
+    const costPool = this.getTouhouCostPool(rosterUnits, cost);
+
+    if (isPerUnitPoolEnabled) {
+      return costPool.filter((unit) => !this.deps.isUnitIdPoolDepleted(unit.unitId, unit.cost));
+    }
+
+    if (this.deps.isPoolDepleted(cost)) {
+      return [];
+    }
+
+    return costPool;
+  }
+
+  private getTouhouCostSearchOrder(selectedCost: TouhouCost): TouhouCost[] {
+    const order: TouhouCost[] = [selectedCost];
+
+    for (let distance = 1; distance <= 4; distance += 1) {
+      const lowerCost = selectedCost - distance;
+      if (lowerCost >= 1) {
+        order.push(lowerCost as TouhouCost);
+      }
+
+      const higherCost = selectedCost + distance;
+      if (higherCost <= 5) {
+        order.push(higherCost as TouhouCost);
+      }
+    }
+
+    return order;
   }
 }

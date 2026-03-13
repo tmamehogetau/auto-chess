@@ -22,6 +22,7 @@ import {
   validatePrepCommand,
   type ValidationDependencies,
   type CommandPayload,
+  type ValidationInternalResult,
 } from "./match-room-controller/prep-command-validator";
 import {
   executePrepCommand,
@@ -1117,6 +1118,8 @@ export class MatchRoomController {
     receivedAtMs: number,
     commandPayload?: CommandPayload,
   ): CommandResult {
+    const payload = commandPayload ?? {};
+
     // Step 1: Build validation dependencies
     const validationDeps: ValidationDependencies = {
       isKnownPlayer: (id) => this.lastCmdSeqByPlayer.has(id),
@@ -1145,20 +1148,25 @@ export class MatchRoomController {
     };
 
     // Step 2: Validate the command
+    const validationInternalResult: ValidationInternalResult = {};
     const validationError = validatePrepCommand(
       playerId,
       cmdSeq,
       receivedAtMs,
-      commandPayload ?? {},
+      payload,
       validationDeps,
+      validationInternalResult,
     );
 
     // W6-2 KPI: バリデーション境界で拒否された場合は失敗を記録
     if (validationError) {
-      // validationErrorはバリデーション失敗時のみ返されるため、必ずaccepted: false
-      this.matchLogger?.recordPrepValidationFailure({
-        errorCode: (validationError as { accepted: false; code: string }).code,
-      });
+      if (validationInternalResult.rejectReason !== "SERVER_INVARIANT_BREACH") {
+        // validationErrorはバリデーション失敗時のみ返されるため、必ずaccepted: false
+        this.matchLogger?.recordPrepValidationFailure({
+          errorCode: (validationError as { accepted: false; code: string }).code,
+        });
+      }
+
       return validationError;
     }
 
@@ -1268,7 +1276,7 @@ export class MatchRoomController {
     };
 
     // Step 4: Execute the command
-    const result = executePrepCommand(playerId, cmdSeq, commandPayload ?? {}, executionDeps);
+    const result = executePrepCommand(playerId, cmdSeq, payload, executionDeps);
 
     // W6-2 KPI: バリデーション通過後、実行が完了したら成功を記録
     // Note: executePrepCommandが返る = 実行成功（実行内で例外が発生した場合は別のエラーハンドリング）

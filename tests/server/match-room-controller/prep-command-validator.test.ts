@@ -3,6 +3,7 @@ import {
   validatePrepCommand,
   type ValidationDependencies,
   type ValidationContext,
+  type ValidationInternalResult,
 } from "../../../src/server/match-room-controller/prep-command-validator";
 import type { BoardUnitPlacement, CommandResult } from "../../../src/shared/room-messages";
 
@@ -432,6 +433,112 @@ describe("PrepCommandValidator", () => {
       const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
 
       expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
+    });
+
+    test("enablePerUnitSharedPool=true かつ unitId 未指定オファーは W10 policy 上の買える在庫有無でエラーコードを分岐する", () => {
+      const baseFlags = {
+        enableHeroSystem: false,
+        enableSharedPool: true,
+        enablePhaseExpansion: false,
+        enableSubUnitSystem: false,
+        enableEmblemCells: false,
+        enableSpellCard: false,
+        enableRumorInfluence: false,
+        enableBossExclusiveShop: false,
+        enableSharedBoardShadow: false,
+        enableTouhouRoster: true,
+        enableTouhouFactions: true,
+        enablePerUnitSharedPool: true,
+      };
+
+      const supplyRemainsDeps = createDependencies({
+        isSharedPoolEnabled: vi.fn().mockReturnValue(true),
+        isPoolDepleted: vi.fn().mockImplementation((cost: number, unitId?: string) => unitId === undefined && cost === 1),
+        getShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", rarity: 1, cost: 1 },
+        ]),
+        getRosterFlags: vi.fn().mockReturnValue(baseFlags),
+      });
+
+      const supplyRemainsResult = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, supplyRemainsDeps);
+
+      expect(supplyRemainsResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+
+      const allDepletedDeps = createDependencies({
+        isSharedPoolEnabled: vi.fn().mockReturnValue(true),
+        isPoolDepleted: vi.fn().mockImplementation((_cost: number, unitId?: string) => unitId === undefined),
+        getShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", rarity: 1, cost: 1 },
+        ]),
+        getRosterFlags: vi.fn().mockReturnValue(baseFlags),
+      });
+
+      const allDepletedResult = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, allDepletedDeps);
+
+      expect(allDepletedResult).toEqual({ accepted: false, code: "POOL_DEPLETED" });
+    });
+
+    test("enablePerUnitSharedPool=true の invariant breach では internal reason を返す", () => {
+      const internal: ValidationInternalResult = {};
+      const deps = createDependencies({
+        isSharedPoolEnabled: vi.fn().mockReturnValue(true),
+        isPoolDepleted: vi.fn().mockImplementation((cost: number, unitId?: string) => unitId === undefined && cost === 1),
+        getShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", rarity: 1, cost: 1 },
+        ]),
+        getRosterFlags: vi.fn().mockReturnValue({
+          enableHeroSystem: false,
+          enableSharedPool: true,
+          enablePhaseExpansion: false,
+          enableSubUnitSystem: false,
+          enableEmblemCells: false,
+          enableSpellCard: false,
+          enableRumorInfluence: false,
+          enableBossExclusiveShop: false,
+          enableSharedBoardShadow: false,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+          enablePerUnitSharedPool: true,
+        }),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps, internal);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect(internal.rejectReason).toBe("SERVER_INVARIANT_BREACH");
+    });
+
+    test("mixed invalid payload では internal reason を付与しない", () => {
+      const internal: ValidationInternalResult = {};
+      const deps = createDependencies({
+        isSharedPoolEnabled: vi.fn().mockReturnValue(true),
+        getRosterFlags: vi.fn().mockReturnValue({
+          enableHeroSystem: false,
+          enableSharedPool: true,
+          enablePhaseExpansion: false,
+          enableSubUnitSystem: false,
+          enableEmblemCells: false,
+          enableSpellCard: false,
+          enableRumorInfluence: false,
+          enableBossExclusiveShop: false,
+          enableSharedBoardShadow: false,
+          enableTouhouRoster: true,
+          enableTouhouFactions: true,
+          enablePerUnitSharedPool: true,
+        }),
+      });
+
+      const result = validatePrepCommand(
+        "p1",
+        1,
+        1000,
+        { shopBuySlotIndex: 0, benchSellIndex: 0 },
+        deps,
+        internal,
+      );
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect(internal.rejectReason).toBeUndefined();
     });
 
     test("itemBuySlotIndex with full inventory returns INVALID_PAYLOAD", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
+import { MatchLogger } from "../../src/server/match-logger";
 import type { BoardUnitPlacement } from "../../src/shared/room-messages";
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
@@ -997,6 +998,101 @@ describe("MatchRoomController", () => {
       expect(result).toEqual({ accepted: false, code: "POOL_DEPLETED" });
 
       isDepletedSpy.mockRestore();
+    });
+  });
+
+  test("enablePerUnitSharedPool=true では all-depleted policy で買える在庫が残る限り unitId なしオファー購入を拒否する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          decrease: (cost: number) => boolean;
+        };
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      for (let i = 0; i < 18; i += 1) {
+        internals.sharedPool.decrease(1);
+      }
+
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "vanguard", cost: 1, rarity: 1 },
+      ]);
+
+      const beforeStatus = controller.getPlayerStatus("p1");
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 0 });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect(afterStatus.benchUnits).toEqual(beforeStatus.benchUnits);
+      expect(afterStatus.gold).toBe(beforeStatus.gold);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true の server-side invariant reject は prep failure KPI に計上しない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+      const logger = new MatchLogger("match-w10-invariant", "room-w10-invariant");
+      controller.setMatchLogger(logger);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        sharedPool: {
+          decrease: (cost: number) => boolean;
+        };
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; rarity: number }>>;
+      };
+
+      for (let i = 0; i < 18; i += 1) {
+        internals.sharedPool.decrease(1);
+      }
+
+      internals.shopOffersByPlayer.set("p1", [{ unitType: "vanguard", cost: 1, rarity: 1 }]);
+
+      const result = controller.submitPrepCommand("p1", 1, 3_000, { shopBuySlotIndex: 0 });
+      const metrics = logger.getPrepCommandMetrics();
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect(metrics.totalPrepCommands).toBe(0);
+      expect(metrics.failedPrepCommands).toBe(0);
+      expect(metrics.prepInputFailureRate).toBe(0);
+    });
+  });
+
+  test("enablePerUnitSharedPool=true でも mixed invalid payload は prep failure KPI に計上される", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
+      const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);
+      const logger = new MatchLogger("match-w10-mixed-invalid", "room-w10-mixed-invalid");
+      controller.setMatchLogger(logger);
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+        benchSellIndex: 0,
+      });
+      const metrics = logger.getPrepCommandMetrics();
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect(metrics.totalPrepCommands).toBe(1);
+      expect(metrics.failedPrepCommands).toBe(1);
+      expect(metrics.failuresByErrorCode["INVALID_PAYLOAD"]).toBe(1);
     });
   });
 

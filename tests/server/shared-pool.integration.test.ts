@@ -281,6 +281,31 @@ describe('SharedPool Integration Tests', () => {
       expect(perUnitTotalAfterWrongCostDecrease).toBe(perUnitTotalBefore);
       expect(pool.getAvailable(targetCost)).toBe(perUnitTotalAfterWrongCostDecrease);
     });
+
+    it('cost-only operations は per-unit inventory を変更しないこと', () => {
+      const targetCost = 2;
+      const targetCostUnits = TOUHOU_UNITS.filter((unit) => unit.cost === targetCost);
+      const sumPerUnit = () => targetCostUnits.reduce(
+        (sum, unit) => sum + pool.getAvailableByUnitId(unit.unitId, targetCost),
+        0,
+      );
+      const unitInventoriesBefore = new Map(
+        targetCostUnits.map((unit) => [unit.unitId, pool.getAvailableByUnitId(unit.unitId, targetCost)]),
+      );
+      const perUnitTotalBefore = sumPerUnit();
+      const costBucketBefore = pool.getAvailable(targetCost);
+
+      expect(pool.decrease(targetCost)).toBe(true);
+      expect(pool.decrease(targetCost)).toBe(true);
+      pool.increase(targetCost);
+
+      const unitInventoriesAfter = new Map(
+        targetCostUnits.map((unit) => [unit.unitId, pool.getAvailableByUnitId(unit.unitId, targetCost)]),
+      );
+      expect(unitInventoriesAfter).toEqual(unitInventoriesBefore);
+      expect(sumPerUnit()).toBe(perUnitTotalBefore);
+      expect(pool.getAvailable(targetCost)).toBe(costBucketBefore - 1);
+    });
   });
 
   describe('コスト別の枯渇テスト', () => {

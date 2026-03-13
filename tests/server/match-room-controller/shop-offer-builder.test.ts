@@ -382,6 +382,151 @@ describe("ShopOfferBuilder", () => {
       expect(isUnitIdPoolDepletedMock).toHaveBeenCalledTimes(cost2Units.length * offers.length);
     });
 
+    test("shared+per-unit applies one deterministic nearest-tier policy for all-depleted selected cost", () => {
+      const touhouRoster = getTouhouDraftRosterUnits();
+      const cases: Array<{
+        level: number;
+        selectedCostRoll: number;
+        depletedCosts: number[];
+        expectedCost: number;
+      }> = [
+        {
+          level: 1,
+          selectedCostRoll: 0,
+          depletedCosts: [1],
+          expectedCost: 2,
+        },
+        {
+          level: 2,
+          selectedCostRoll: 0.75,
+          depletedCosts: [2],
+          expectedCost: 1,
+        },
+        {
+          level: 5,
+          selectedCostRoll: 0.5,
+          depletedCosts: [3, 2],
+          expectedCost: 4,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const depletedCosts = new Set(testCase.depletedCosts);
+
+        mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+        mockDeps.getPlayerLevel = vi.fn(() => testCase.level);
+        mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
+        mockDeps.isSharedPoolEnabled = vi.fn(() => true);
+        mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
+        mockDeps.hashToUint32 = vi.fn(() => 0);
+        mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? testCase.selectedCostRoll : 0));
+        mockDeps.isUnitIdPoolDepleted = vi.fn((_: string, cost: number) => depletedCosts.has(cost));
+
+        builder = new ShopOfferBuilder(mockDeps);
+
+        const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+        const expectedUnitIds = new Set(
+          touhouRoster
+            .filter((unit) => unit.cost === testCase.expectedCost)
+            .map((unit) => unit.unitId),
+        );
+
+        expect(offers).toHaveLength(5);
+        expect(offers.every((offer) => offer.cost === testCase.expectedCost)).toBe(true);
+        expect(offers.every((offer) => offer.unitId !== undefined && expectedUnitIds.has(offer.unitId))).toBe(true);
+        expect(new Set(offers.map((offer) => offer.unitId)).size).toBe(1);
+      }
+    });
+
+    test("shared-only Touhou path keeps legacy lower-tier-only fallback", () => {
+      const touhouRoster = getTouhouDraftRosterUnits();
+      const expectedFallbackUnitIds = new Set(
+        touhouRoster
+          .filter((unit) => unit.cost === 1)
+          .map((unit) => unit.unitId),
+      );
+
+      mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getPlayerLevel = vi.fn(() => 5);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
+      mockDeps.isSharedPoolEnabled = vi.fn(() => true);
+      mockDeps.isPerUnitPoolEnabled = vi.fn(() => false);
+      mockDeps.hashToUint32 = vi.fn(() => 0);
+      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.5 : 0));
+      mockDeps.isPoolDepleted = vi.fn((cost: number) => cost === 3 || cost === 2);
+
+      builder = new ShopOfferBuilder(mockDeps);
+
+      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+      expect(offers).toHaveLength(5);
+      expect(offers.every((offer) => offer.cost === 1)).toBe(true);
+      expect(offers.every((offer) => offer.unitId !== undefined && expectedFallbackUnitIds.has(offer.unitId))).toBe(true);
+      expect(new Set(offers.map((offer) => offer.unitId)).size).toBe(1);
+    });
+
+    test("shared+per-unit applies fallback only when weighted selected tier is unavailable", () => {
+      const touhouRoster = getTouhouDraftRosterUnits();
+      const cases: Array<{
+        name: string;
+        depletedCosts: number[];
+        expectedCost: number;
+        expectedCheckedCostsInOrder: number[];
+      }> = [
+        {
+          name: "selected tier available",
+          depletedCosts: [1, 3, 4, 5],
+          expectedCost: 2,
+          expectedCheckedCostsInOrder: [2],
+        },
+        {
+          name: "selected tier unavailable",
+          depletedCosts: [2, 3, 4, 5],
+          expectedCost: 1,
+          expectedCheckedCostsInOrder: [2, 1],
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+        mockDeps.getPlayerLevel = vi.fn(() => 2);
+        mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
+        mockDeps.isSharedPoolEnabled = vi.fn(() => true);
+        mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
+        mockDeps.hashToUint32 = vi.fn(() => 0);
+        mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.75 : 0));
+        const depletedCosts = new Set(testCase.depletedCosts);
+        const isUnitIdPoolDepletedMock = vi.fn((_: string, cost: number) => depletedCosts.has(cost));
+        const isPoolDepletedMock = vi.fn(() => true);
+        mockDeps.isUnitIdPoolDepleted = isUnitIdPoolDepletedMock;
+        mockDeps.isPoolDepleted = isPoolDepletedMock;
+
+        builder = new ShopOfferBuilder(mockDeps);
+
+        const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+
+        expect(offers, testCase.name).toHaveLength(5);
+        expect(offers.every((offer) => offer.cost === testCase.expectedCost), testCase.name).toBe(true);
+
+        const checkedCostsInOrder = isUnitIdPoolDepletedMock.mock.calls.reduce<number[]>((acc, [, cost]) => {
+          if (acc[acc.length - 1] !== cost) {
+            acc.push(cost);
+          }
+          return acc;
+        }, []);
+        expect(
+          checkedCostsInOrder.length % testCase.expectedCheckedCostsInOrder.length,
+          testCase.name,
+        ).toBe(0);
+        checkedCostsInOrder.forEach((cost, index) => {
+          expect(cost, `${testCase.name} #${index}`).toBe(
+            testCase.expectedCheckedCostsInOrder[index % testCase.expectedCheckedCostsInOrder.length],
+          );
+        });
+        expect(isPoolDepletedMock, testCase.name).not.toHaveBeenCalled();
+      }
+    });
+
     test("uses Touhou level 2 weighting boundaries deterministically", () => {
       const touhouRoster = getTouhouDraftRosterUnits();
       const cases: Array<{ roll: number; expectedCost: number }> = [

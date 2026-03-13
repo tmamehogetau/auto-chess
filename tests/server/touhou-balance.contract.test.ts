@@ -45,6 +45,8 @@ describe("touhou balance contract", () => {
   });
 
   test("named Touhou outliers は意図した stat profile を維持する", () => {
+    const futo = TOUHOU_UNITS.find((unit) => unit.unitId === "futo");
+    const chimata = TOUHOU_UNITS.find((unit) => unit.unitId === "chimata");
     const koishi = TOUHOU_UNITS.find((unit) => unit.unitId === "koishi");
     const ichirin = TOUHOU_UNITS.find((unit) => unit.unitId === "ichirin");
     const seiga = TOUHOU_UNITS.find((unit) => unit.unitId === "seiga");
@@ -52,6 +54,8 @@ describe("touhou balance contract", () => {
     const utsuho = TOUHOU_UNITS.find((unit) => unit.unitId === "utsuho");
     const shou = TOUHOU_UNITS.find((unit) => unit.unitId === "shou");
 
+    expect(futo).toMatchObject({ hp: 900, attack: 90, cost: 4 });
+    expect(chimata).toMatchObject({ hp: 900, attack: 84, cost: 4 });
     expect(koishi).toMatchObject({ hp: 580, attack: 68, cost: 2 });
     expect(ichirin).toMatchObject({ hp: 820, attack: 50, cost: 2 });
     expect(sekibanki).toMatchObject({ hp: 520, attack: 64, cost: 2 });

@@ -231,7 +231,10 @@ async function runMatchToFinalRound(
     }
 
     if (serverRoom.state.roundIndex < finalRound) {
-      await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
+      await waitForCondition(
+        () => serverRoom.state.phase === "Prep" || serverRoom.state.phase === "End",
+        5_000,
+      );
     } else {
       await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
     }

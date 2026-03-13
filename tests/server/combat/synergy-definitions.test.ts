@@ -144,6 +144,21 @@ describe("synergy-definitions", () => {
       });
     });
 
+    test("grassroot_network tier effect から tuned attack metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("grassroot_network", 1)).toEqual({
+        effectId: "faction.grassroot_network",
+        statModifiers: {
+          attackPower: 1,
+        },
+      });
+      expect(getTouhouFactionTierEffect("grassroot_network", 2)).toEqual({
+        effectId: "faction.grassroot_network",
+        statModifiers: {
+          attackPower: 1,
+        },
+      });
+    });
+
     test("shinreibyou tier effect から ultimate metadata を取得できる", () => {
       expect(getTouhouFactionTierEffect("shinreibyou", 1)).toEqual({
         effectId: "faction.shinreibyou",

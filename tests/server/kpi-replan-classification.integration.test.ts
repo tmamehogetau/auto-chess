@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -20,16 +21,48 @@ const execFileAsync = promisify(execFile);
 const vitestCliPath = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
 const previousEnableStructuredMatchLogs = process.env.ENABLE_STRUCTURED_MATCH_LOGS;
 const previousSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
-const kpiEvidenceVitestEnv = {
-  ...process.env,
-  FULL_GAME_SIMULATION_TEST_PORT: "26772",
-  REALISTIC_KPI_SIMULATION_TEST_PORT: "26774",
-  SUPPRESS_VERBOSE_TEST_LOGS: "true",
-  ENABLE_STRUCTURED_MATCH_LOGS: "true",
-  FORWARD_CAPTURED_KPI_LOGS: "true",
-};
 
-function runVitestForKpiEvidence() {
+async function getAvailablePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = createServer();
+
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to allocate test port")));
+        return;
+      }
+
+      const { port } = address;
+      server.close((closeError) => {
+        if (closeError) {
+          reject(closeError);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
+async function createKpiEvidenceVitestEnv(): Promise<NodeJS.ProcessEnv> {
+  const fullGamePort = await getAvailablePort();
+  const realisticPort = await getAvailablePort();
+
+  return {
+    ...process.env,
+    FULL_GAME_SIMULATION_TEST_PORT: String(fullGamePort),
+    REALISTIC_KPI_SIMULATION_TEST_PORT: String(realisticPort),
+    SUPPRESS_VERBOSE_TEST_LOGS: "true",
+    ENABLE_STRUCTURED_MATCH_LOGS: "true",
+    FORWARD_CAPTURED_KPI_LOGS: "true",
+  };
+}
+
+async function runVitestForKpiEvidence() {
+  const env = await createKpiEvidenceVitestEnv();
+
   return execFileAsync(
     process.execPath,
     [
@@ -40,7 +73,7 @@ function runVitestForKpiEvidence() {
     ],
     {
       cwd: process.cwd(),
-      env: kpiEvidenceVitestEnv,
+      env,
       maxBuffer: 16 * 1024 * 1024,
     },
   );
@@ -792,6 +825,16 @@ describe("KPI REPLAN classification", () => {
 
     expect(summaries).toHaveLength(2);
     expect(summaries.every((summary) => summary.failedPrepCommands === 0)).toBe(true);
+  });
+
+  test("KPI evidence subprocess は invocation ごとに衝突しない test ports を使う", async () => {
+    const env = await createKpiEvidenceVitestEnv();
+
+    expect(Number(env.FULL_GAME_SIMULATION_TEST_PORT)).toBeGreaterThan(0);
+    expect(Number(env.REALISTIC_KPI_SIMULATION_TEST_PORT)).toBeGreaterThan(0);
+    expect(env.FULL_GAME_SIMULATION_TEST_PORT).not.toBe(env.REALISTIC_KPI_SIMULATION_TEST_PORT);
+    expect(env.FULL_GAME_SIMULATION_TEST_PORT).not.toBe("26772");
+    expect(env.REALISTIC_KPI_SIMULATION_TEST_PORT).not.toBe("26774");
   });
 
   test("current realistic aggregate keeps clean prep and non-empty composition signal", async () => {

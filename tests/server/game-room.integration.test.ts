@@ -1490,13 +1490,15 @@ describe("GameRoom integration", () => {
         ];
         internalController.shopOffersByPlayer.set(targetClient.sessionId, forcedOffers);
 
+        const resultPromise = targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+
         // Buy the rumor unit at slot 0
         targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
           cmdSeq: 1,
           shopBuySlotIndex: 0,
         });
 
-        const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+        const result = await resultPromise;
         expect(result).toEqual({ accepted: true });
 
         // Verify the action was logged with isRumorUnit flag preserved

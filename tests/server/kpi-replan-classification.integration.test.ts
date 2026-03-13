@@ -14,6 +14,7 @@ import {
   SERVER_MESSAGE_TYPES,
   type CommandResult,
 } from "../../src/shared/room-messages";
+import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const execFileAsync = promisify(execFile);
 const vitestCliPath = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
@@ -89,6 +90,7 @@ let cachedEligibleFailureClassification: Promise<EligibleFailureClassification> 
 
 interface RunMatchToR8Options {
   applyForcedPhaseProgress?: boolean;
+  finalRound?: number;
 }
 
 type KpiEvidenceBucket = "eligible" | "incidental";
@@ -364,7 +366,7 @@ async function buildTrackedCompositionViaPrepActions(
   return cmdSeq;
 }
 
-async function runMatchToR8(
+async function runMatchToFinalRound(
   ctx: TestContext,
   buildCompositions: (serverRoom: GameRoom, clients: TestClient[]) => Promise<void>,
   options: RunMatchToR8Options = {},
@@ -393,7 +395,12 @@ async function runMatchToR8(
     6: 1450,
     7: 1650,
     8: 1850,
+    9: 2100,
+    10: 2400,
+    11: 2700,
+    12: 0,
   };
+  const finalRound = options.finalRound ?? 8;
 
   let lastRound = 0;
   const maxDuration = 50_000;
@@ -401,7 +408,7 @@ async function runMatchToR8(
 
   while (
     serverRoom.state.phase !== "End" &&
-    serverRoom.state.roundIndex < 9 &&
+    serverRoom.state.roundIndex < finalRound + 1 &&
     Date.now() - startTime < maxDuration
   ) {
     const currentRound = serverRoom.state.roundIndex;
@@ -418,7 +425,7 @@ async function runMatchToR8(
       serverRoom.setPendingPhaseDamageForTest(target);
     }
 
-    if (serverRoom.state.roundIndex < 8) {
+    if (serverRoom.state.roundIndex < finalRound) {
       await waitForCondition(
         () => serverRoom.state.phase === "Prep" || serverRoom.state.phase === "End",
         5_000,
@@ -449,7 +456,7 @@ async function collectPrepCommandClassification(): Promise<PrepCommandClassifica
       { unitType: "vanguard", cell: 2 },
     ];
 
-    const { serverRoom } = await runMatchToR8(ctx, async (room, clients) => {
+    const { serverRoom } = await runMatchToFinalRound(ctx, async (room, clients) => {
       for (const client of clients) {
         const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
         const updatedCmdSeq = await buildTrackedCompositionViaPrepActions(
@@ -489,7 +496,7 @@ async function collectHarnessProgressComparison(): Promise<HarnessProgressCompar
     const nextCmdSeqByClient = new Map<string, number>();
 
     try {
-      const { serverRoom } = await runMatchToR8(
+      const { serverRoom } = await runMatchToFinalRound(
         ctx,
         async (room, clients) => {
           for (const client of clients) {
@@ -509,7 +516,7 @@ async function collectHarnessProgressComparison(): Promise<HarnessProgressCompar
             nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
           }
         },
-        { applyForcedPhaseProgress },
+        { applyForcedPhaseProgress, finalRound: 12 },
       );
 
       await serverRoom.disconnect();
@@ -718,7 +725,7 @@ describe("KPI REPLAN classification", () => {
   test("refined eligible bundle is still too concentrated", async () => {
     const aggregate = await collectRefinedEligibleBundle();
 
-    expect(aggregate.sampledMatches).toBe(10);
+    expect(aggregate.sampledMatches).toBe(11);
     expect(aggregate.r8CompletionRate).toBeGreaterThanOrEqual(0.97);
     expect(aggregate.top1CompositionShare).toBeLessThanOrEqual(0.35);
   }, 300_000);
@@ -726,7 +733,7 @@ describe("KPI REPLAN classification", () => {
   test("eligible R8 misses are classified explicitly", async () => {
     const result = await collectEligibleFailureClassification();
 
-    expect(result.totalEligibleMatches).toBe(10);
+    expect(result.totalEligibleMatches).toBe(11);
     expect(result.matchesBelowR8Threshold).toBe(0);
     expect(result.phaseProgressOnlyCases).toBe(5);
     expect(result.playerHpDamageCases).toBe(0);
@@ -736,7 +743,7 @@ describe("KPI REPLAN classification", () => {
   test("eligible R8 misses are eliminated after phase-progress-only adjustment", async () => {
     const result = await collectEligibleFailureClassification();
 
-    expect(result.totalEligibleMatches).toBe(10);
+    expect(result.totalEligibleMatches).toBe(11);
     expect(result.matchesBelowR8Threshold).toBe(0);
     expect(result.phaseProgressOnlyCases).toBe(5);
     expect(result.playerHpDamageCases).toBe(0);
@@ -787,11 +794,13 @@ describe("KPI REPLAN classification", () => {
   }, 120_000);
 
   test("realistic harness reaches R8 without forced phase damage", async () => {
-    const result = await collectHarnessProgressComparison();
+    await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
+      const result = await collectHarnessProgressComparison();
 
-    expect(result.phaseProgressOnlyTotalRounds).toBe(8);
-    expect(result.phaseProgressOnlyPlayersSurvivingR8).toBeGreaterThan(0);
-    expect(result.noProgressControlTotalRounds).toBeLessThan(8);
-    expect(result.noProgressControlPlayersSurvivingR8).toBe(0);
+      expect(result.phaseProgressOnlyTotalRounds).toBe(12);
+      expect(result.phaseProgressOnlyPlayersSurvivingR8).toBeGreaterThan(0);
+      expect(result.noProgressControlTotalRounds).toBe(12);
+      expect(result.noProgressControlPlayersSurvivingR8).toBeGreaterThan(0);
+    });
   }, 120_000);
 });

@@ -191,6 +191,25 @@ function extractKpiRecordsWithContext(
   return records;
 }
 
+function extractEligibleKpiSummaries(stdout: string): GameplayKpiSummary[] {
+  const suiteManifest = getKpiEvidenceSuiteManifest();
+  const caseManifest = getFullGameEvidenceCaseManifest();
+
+  return extractKpiRecordsWithContext(stdout)
+    .filter((record) => {
+      if (!record.suitePath) {
+        return false;
+      }
+
+      if (record.suitePath === "tests/server/full-game-simulation.integration.test.ts") {
+        return record.testName !== null && caseManifest[record.testName] === "eligible";
+      }
+
+      return suiteManifest[record.suitePath] === "eligible";
+    })
+    .map((record) => record.data);
+}
+
 interface ScenarioUnitPlacement {
   unitType: string;
   cell: number;
@@ -563,7 +582,7 @@ async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassi
 async function collectCurrentRealisticAggregate(): Promise<AggregateReport> {
   const { stdout } = await runVitestForKpiEvidence();
 
-  const summaries = extractTypedLogRecords<GameplayKpiSummary>(stdout, "gameplay_kpi_summary");
+  const summaries = extractEligibleKpiSummaries(stdout);
 
   const sampledMatches = summaries.length;
   const totalPlayersSurvivedR8 = summaries.reduce((sum, summary) => sum + summary.playersSurvivedR8, 0);
@@ -757,6 +776,22 @@ describe("KPI REPLAN classification", () => {
     expect(manifest["tests/server/realistic-kpi-simulation.integration.test.ts"]).toBe("eligible");
     expect(manifest["tests/server/game-room.feature-flag.integration.test.ts"]).toBe("incidental");
     expect(manifest["tests/server/kpi-replan-classification.integration.test.ts"]).toBe("incidental");
+  });
+
+  test("current realistic aggregate は incidental KPI suites を除外する", () => {
+    const stdout = [
+      'stdout | tests/server/realistic-kpi-simulation.integration.test.ts > scenario A',
+      '{"type":"gameplay_kpi_summary","data":{"totalRounds":8,"playerCount":4,"playersSurvivedR8":4,"totalPlayers":4,"r8CompletionRate":1,"top1CompositionSignature":"mage:1,ranger:1,ranger:1","failedPrepCommands":0,"totalPrepCommands":24,"prepInputFailureRate":0}}',
+      'stdout | tests/server/realistic-kpi-simulation.integration.test.ts > scenario B',
+      '{"type":"gameplay_kpi_summary","data":{"totalRounds":8,"playerCount":4,"playersSurvivedR8":4,"totalPlayers":4,"r8CompletionRate":1,"top1CompositionSignature":"vanguard:1,vanguard:1,vanguard:1","failedPrepCommands":0,"totalPrepCommands":24,"prepInputFailureRate":0}}',
+      'stdout | tests/server/kpi-replan-classification.integration.test.ts > prep failure rate is dominated by repeated invalid setup commands',
+      '{"type":"gameplay_kpi_summary","data":{"totalRounds":1,"playerCount":4,"playersSurvivedR8":0,"totalPlayers":4,"r8CompletionRate":0,"top1CompositionSignature":"","failedPrepCommands":1,"totalPrepCommands":1,"prepInputFailureRate":1}}',
+    ].join("\n");
+
+    const summaries = extractEligibleKpiSummaries(stdout);
+
+    expect(summaries).toHaveLength(2);
+    expect(summaries.every((summary) => summary.failedPrepCommands === 0)).toBe(true);
   });
 
   test("current realistic aggregate keeps clean prep and non-empty composition signal", async () => {

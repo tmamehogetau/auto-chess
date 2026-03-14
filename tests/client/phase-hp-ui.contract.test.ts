@@ -20,4 +20,12 @@ describe("phase hp ui contract", () => {
       expect(html.includes(attribute)).toBe(true);
     }
   });
+
+  test("phase HP section exposes readability hooks", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes(".phase-hp-fill.success")).toBe(true);
+    expect(html.includes(".phase-hp-fill.failed")).toBe(true);
+    expect(html.includes("data-phase-hp-value")).toBe(true);
+  });
 });

@@ -1209,6 +1209,7 @@ function updateRaidBoardPresentation(state) {
 
   if (raidBoardModeBadge) {
     raidBoardModeBadge.textContent = `Mode: ${readableMode}`;
+    raidBoardModeBadge.className = "phase-hp-result mode-badge";
   }
 
   const playerEntries = mapEntries(state?.players).map(([, player]) => player);
@@ -1228,9 +1229,12 @@ function updateRaidBoardPresentation(state) {
     const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
 
     if (phase === "End" && isRaidRound) {
-      finalJudgmentBanner.textContent = `Final Judgment: ${ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory"}`;
+      const isBossVictory = ranking[0] === bossPlayerId;
+      finalJudgmentBanner.textContent = `Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}`;
+      finalJudgmentBanner.className = `phase-hp-result ${isBossVictory ? "boss-victory" : "raid-victory"}`;
     } else {
       finalJudgmentBanner.textContent = `Round ${Number(state?.roundIndex) || 0}`;
+      finalJudgmentBanner.className = "phase-hp-result pending";
     }
   }
 }
@@ -1379,7 +1383,8 @@ function renderPhaseHpProgress(progress) {
   const visiblePercent = Math.round(Math.min(1, completionRate) * 100);
   const textPercent = Math.round(completionRate * 100);
 
-  phaseHpValue.textContent = `${Math.round(progress.damageDealt)} / ${Math.round(progress.targetHp)} (${textPercent}%)`;
+  const remainingHp = Math.max(0, Math.round(progress.targetHp - progress.damageDealt));
+  phaseHpValue.textContent = `${remainingHp} HP remaining (${textPercent}%)`;
   phaseHpFill.style.width = `${visiblePercent}%`;
   phaseHpFill.classList.remove("pending", "success", "failed");
   phaseHpFill.classList.add(progress.result);

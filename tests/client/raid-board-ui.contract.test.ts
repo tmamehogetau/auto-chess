@@ -34,10 +34,16 @@ describe("raid board ui contract", () => {
   });
 
   test("raid board presentation publishes readable mode and final judgment labels", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
     const js = readFileSync(manualCheckPath, "utf-8");
 
+    expect(html.includes("lives-label")).toBe(true);
+    expect(html.includes("boss-victory")).toBe(true);
+    expect(html.includes("raid-victory")).toBe(true);
+    expect(html.includes("mode-badge")).toBe(true);
     expect(js.includes("const readableMode = sharedBoardMode === \"half-shared\" ? \"Half Shared\"")).toBe(true);
     expect(js.includes("raidBoardModeBadge.textContent = `Mode: ${readableMode}`")).toBe(true);
-    expect(js.includes('Final Judgment: ${ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory"}')).toBe(true);
+    expect(js.includes('Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}')).toBe(true);
+    expect(js.includes("HP remaining")).toBe(true);
   });
 });

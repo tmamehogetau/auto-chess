@@ -58,6 +58,8 @@ export class SharedBoardShadowObserver {
   public attachSharedBoard(room: SharedBoardRoom): void {
     this.sharedBoardRoom = room;
     this.consecutiveErrors = 0;
+    this.lastObservationTime = 0;
+    this.lastDiffResult = null;
   }
 
   /**
@@ -66,6 +68,7 @@ export class SharedBoardShadowObserver {
   public detachSharedBoard(): void {
     this.sharedBoardRoom = null;
     this.lastDiffResult = null;
+    this.lastObservationTime = 0;
   }
 
   /**

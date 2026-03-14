@@ -84,6 +84,7 @@ export interface ValidationDependencies {
   getItemInventory: (playerId: string) => ItemType[];
   getItemShopOffers: (playerId: string) => ItemShopOffer[];
   getBossShopOffers: (playerId: string) => ShopOffer[];
+  getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   isBossPlayer: (playerId: string) => boolean;
   isSharedPoolEnabled: () => boolean;
   isPoolDepleted: (cost: number, unitId?: string) => boolean;
@@ -589,8 +590,8 @@ function validateGold(
   payload: CommandPayload,
   deps: ValidationDependencies,
 ): import("../../shared/room-messages").CommandResult | null {
-  let xpPurchaseCount = payload.xpPurchaseCount ?? 0;
-  let shopRefreshCount = payload.shopRefreshCount ?? 0;
+  const xpPurchaseCount = payload.xpPurchaseCount ?? 0;
+  const shopRefreshCount = payload.shopRefreshCount ?? 0;
   let shopBuyCost = 0;
   let itemBuyCost = 0;
   let bossShopBuyCost = 0;
@@ -632,7 +633,7 @@ function validateGold(
   const currentGold = deps.getGold(playerId);
   const requiredGold =
     XP_PURCHASE_COST * xpPurchaseCount +
-    SHOP_REFRESH_COST * shopRefreshCount +
+    deps.getShopRefreshGoldCost(playerId, shopRefreshCount) +
     shopBuyCost +
     itemBuyCost +
     bossShopBuyCost;

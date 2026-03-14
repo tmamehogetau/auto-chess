@@ -28,6 +28,7 @@ describe("PrepCommandValidator", () => {
     getItemInventory: vi.fn().mockReturnValue([]),
     getItemShopOffers: vi.fn().mockReturnValue([]),
     getBossShopOffers: vi.fn().mockReturnValue([]),
+    getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     isBossPlayer: vi.fn().mockReturnValue(false),
     isSharedPoolEnabled: vi.fn().mockReturnValue(false),
     isPoolDepleted: vi.fn().mockReturnValue(false),

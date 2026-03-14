@@ -88,7 +88,7 @@ describe("synergy-definitions", () => {
         myourenji: "faction.myourenji",
         shinreibyou: "faction.shinreibyou",
         grassroot_network: "faction.grassroot_network",
-        niji_ryuudou: "faction.niji_ryuudou",
+        kou_ryuudou: "faction.kou_ryuudou",
         kanjuden: "faction.kanjuden",
       });
     });
@@ -182,18 +182,18 @@ describe("synergy-definitions", () => {
       });
     });
 
-    test("niji_ryuudou tier effect から shop/item metadata を取得できる", () => {
-      expect(getTouhouFactionTierEffect("niji_ryuudou", 1)).toEqual({
-        effectId: "faction.niji_ryuudou",
+    test("kou_ryuudou tier effect から shop/free-refresh metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("kou_ryuudou", 1)).toEqual({
+        effectId: "faction.kou_ryuudou",
         special: {
           shopCostReduction: 1,
         },
       });
-      expect(getTouhouFactionTierEffect("niji_ryuudou", 2)).toEqual({
-        effectId: "faction.niji_ryuudou",
+      expect(getTouhouFactionTierEffect("kou_ryuudou", 2)).toEqual({
+        effectId: "faction.kou_ryuudou",
         special: {
           shopCostReduction: 1,
-          firstItemUseDraws: 1,
+          firstFreeRefreshes: 1,
         },
       });
     });

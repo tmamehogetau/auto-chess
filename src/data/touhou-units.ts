@@ -5,7 +5,7 @@ export type TouhouFactionId =
   | "myourenji"
   | "shinreibyou"
   | "grassroot_network"
-  | "niji_ryuudou"
+  | "kou_ryuudou"
   | "kanjuden";
 
 export interface TouhouUnit {
@@ -43,10 +43,10 @@ export const TOUHOU_UNITS: readonly TouhouUnit[] = [
   { unitId: "sekibanki", displayName: "赤蛮奇", unitType: "assassin", cost: 2, hp: 520, attack: 64, attackSpeed: 1.1, range: 1, factionId: "grassroot_network" },
   { unitId: "kagerou", displayName: "今泉影狼", unitType: "vanguard", cost: 2, hp: 740, attack: 56, attackSpeed: 0.95, range: 1, factionId: "grassroot_network" },
 
-  { unitId: "tsukasa", displayName: "菅牧典", unitType: "mage", cost: 2, hp: 580, attack: 55, attackSpeed: 0.95, range: 4, factionId: "niji_ryuudou" },
-  { unitId: "megumu", displayName: "飯綱丸龍", unitType: "ranger", cost: 3, hp: 680, attack: 76, attackSpeed: 1.05, range: 4, factionId: "niji_ryuudou" },
-  { unitId: "chimata", displayName: "天弓千亦", unitType: "mage", cost: 4, hp: 900, attack: 84, attackSpeed: 0.95, range: 3, factionId: "niji_ryuudou" },
-  { unitId: "momoyo", displayName: "姫虫百々世", unitType: "vanguard", cost: 2, hp: 740, attack: 54, attackSpeed: 0.9, range: 1, factionId: "niji_ryuudou" },
+  { unitId: "tsukasa", displayName: "菅牧典", unitType: "mage", cost: 2, hp: 580, attack: 55, attackSpeed: 0.95, range: 4, factionId: "kou_ryuudou" },
+  { unitId: "megumu", displayName: "飯綱丸龍", unitType: "ranger", cost: 3, hp: 680, attack: 76, attackSpeed: 1.05, range: 4, factionId: "kou_ryuudou" },
+  { unitId: "chimata", displayName: "天弓千亦", unitType: "mage", cost: 4, hp: 900, attack: 84, attackSpeed: 0.95, range: 3, factionId: "kou_ryuudou" },
+  { unitId: "momoyo", displayName: "姫虫百々世", unitType: "vanguard", cost: 2, hp: 740, attack: 54, attackSpeed: 0.9, range: 1, factionId: "kou_ryuudou" },
 
   { unitId: "clownpiece", displayName: "クラウンピース", unitType: "ranger", cost: 2, hp: 580, attack: 53, attackSpeed: 1.1, range: 4, factionId: "kanjuden" },
   { unitId: "junko", displayName: "純狐", unitType: "vanguard", cost: 4, hp: 1120, attack: 92, attackSpeed: 0.85, range: 3, factionId: "kanjuden" },

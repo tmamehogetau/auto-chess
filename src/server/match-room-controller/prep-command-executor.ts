@@ -28,6 +28,7 @@ export interface ExecutionDependencies {
   addXp: (playerId: string, amount: number) => void;
 
   // Shop operations
+  getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   refreshShop: (playerId: string, count: number) => void;
   buyShopOffer: (playerId: string, slotIndex: number) => void;
 
@@ -105,7 +106,7 @@ export function executePrepCommand(
 
   // Shop refresh cost
   if (payload.shopRefreshCount !== undefined && payload.shopRefreshCount > 0) {
-    totalGoldCost += SHOP_REFRESH_COST * payload.shopRefreshCount;
+    totalGoldCost += deps.getShopRefreshGoldCost(playerId, payload.shopRefreshCount);
   }
 
   // Shop buy cost

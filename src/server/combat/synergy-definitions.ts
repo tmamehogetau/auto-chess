@@ -24,7 +24,7 @@ export type TouhouFactionEffectId =
   | 'faction.myourenji'
   | 'faction.shinreibyou'
   | 'faction.grassroot_network'
-  | 'faction.niji_ryuudou'
+  | 'faction.kou_ryuudou'
   | 'faction.kanjuden';
 
 export interface TouhouFactionTierEffect {
@@ -40,7 +40,7 @@ export interface TouhouFactionTierEffect {
     ultimateDamageMultiplier?: number;
     bonusDamageVsDebuffedTarget?: number;
     shopCostReduction?: number;
-    firstItemUseDraws?: number;
+    firstFreeRefreshes?: number;
     debuffImmunityCategories?: string[];
   };
 }
@@ -99,7 +99,7 @@ export const TOUHOU_FACTION_THRESHOLDS: Record<TouhouFactionId, readonly number[
   myourenji: [2, 3, 5],
   shinreibyou: [2, 3, 5],
   grassroot_network: [2, 3],
-  niji_ryuudou: [2, 4],
+  kou_ryuudou: [2, 4],
   kanjuden: [2, 3],
 };
 
@@ -127,8 +127,8 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
       attackPower: [1, 1],
     },
   },
-  niji_ryuudou: {
-    thresholds: TOUHOU_FACTION_THRESHOLDS.niji_ryuudou,
+  kou_ryuudou: {
+    thresholds: TOUHOU_FACTION_THRESHOLDS.kou_ryuudou,
     effects: {},
   },
   kanjuden: {
@@ -144,7 +144,7 @@ export const TOUHOU_FACTION_EFFECT_IDS: Partial<Record<TouhouFactionId, TouhouFa
   myourenji: 'faction.myourenji',
   shinreibyou: 'faction.shinreibyou',
   grassroot_network: 'faction.grassroot_network',
-  niji_ryuudou: 'faction.niji_ryuudou',
+  kou_ryuudou: 'faction.kou_ryuudou',
   kanjuden: 'faction.kanjuden',
 };
 
@@ -163,9 +163,9 @@ const TOUHOU_FACTION_SPECIAL_EFFECTS: Partial<Record<TouhouFactionId, Array<Touh
     { ultimateDamageMultiplier: 1.2, bonusDamageVsDebuffedTarget: 0.12 },
     { ultimateDamageMultiplier: 1.35, bonusDamageVsDebuffedTarget: 0.18 },
   ],
-  niji_ryuudou: [
+  kou_ryuudou: [
     { shopCostReduction: 1 },
-    { shopCostReduction: 1, firstItemUseDraws: 1 },
+    { shopCostReduction: 1, firstFreeRefreshes: 1 },
   ],
   kanjuden: [
     { debuffImmunityCategories: ['crowd_control'] },

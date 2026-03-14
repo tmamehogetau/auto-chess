@@ -94,7 +94,7 @@ describe("unit id data integrity", () => {
       myourenji: 5,
       shinreibyou: 5,
       grassroot_network: 3,
-      niji_ryuudou: 4,
+      kou_ryuudou: 4,
       kanjuden: 3,
       none: 1,
     });

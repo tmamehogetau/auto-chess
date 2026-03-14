@@ -13,6 +13,7 @@ describe("PrepCommandExecutor", () => {
     setShopLock: vi.fn(),
     addGold: vi.fn(),
     addXp: vi.fn(),
+    getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     refreshShop: vi.fn(),
     buyShopOffer: vi.fn(),
     deployBenchUnitToBoard: vi.fn(),

@@ -338,7 +338,7 @@ export class MatchRoomController {
 
   private readonly itemShopOffersByPlayer: Map<string, ShopItemOffer[]>;
 
-  private readonly nijiRyuudouFirstItemDrawConsumedByPlayer: Map<string, boolean>;
+  private readonly kouRyuudouFreeRefreshConsumedByPlayer: Map<string, boolean>;
 
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
@@ -452,7 +452,7 @@ export class MatchRoomController {
     this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
     this.itemInventoryByPlayer = new Map<string, ItemType[]>();
     this.itemShopOffersByPlayer = new Map<string, ShopItemOffer[]>();
-    this.nijiRyuudouFirstItemDrawConsumedByPlayer = new Map<string, boolean>();
+    this.kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
@@ -537,7 +537,7 @@ export class MatchRoomController {
       });
       this.itemInventoryByPlayer.set(playerId, []);
       this.itemShopOffersByPlayer.set(playerId, []);
-      this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, false);
+      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
     }
 
@@ -1149,6 +1149,7 @@ export class MatchRoomController {
       getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
       getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
+      getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       isBossPlayer: (id) => this.isBossPlayer(id),
       isSharedPoolEnabled: () => this.enableSharedPool,
       isPoolDepleted: (cost, unitId) => {
@@ -1198,6 +1199,7 @@ export class MatchRoomController {
         this.goldByPlayer.set(id, current + amount);
       },
       addXp: (id, amount) => this.addXp(id, amount),
+      getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       refreshShop: (id, count) => this.refreshShopByCount(id, count),
       buyShopOffer: (id, slotIndex) => this.buyShopOfferBySlot(id, slotIndex),
       deployBenchUnitToBoard: (id, benchIndex, cell) =>
@@ -1208,7 +1210,6 @@ export class MatchRoomController {
         const inventory = this.itemInventoryByPlayer.get(id);
         if (inventory) {
           inventory.push(itemType);
-          this.tryGrantNijiRyuudouFirstItemDraw(id);
         }
       },
       equipItemToBenchUnit: (id, inventoryItemIndex, benchIndex) => {
@@ -1222,7 +1223,6 @@ export class MatchRoomController {
               inventory.splice(inventoryItemIndex, 1);
               benchUnit.items = benchUnit.items || [];
               benchUnit.items.push(item);
-              this.tryGrantNijiRyuudouFirstItemDraw(id);
             }
           }
         }
@@ -1335,7 +1335,7 @@ export class MatchRoomController {
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
       this.shopLockedByPlayer.set(playerId, false);
-      this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, false);
+      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
       this.shopOffersByPlayer.set(
         playerId,
@@ -1381,7 +1381,7 @@ export class MatchRoomController {
 
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
-      this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, false);
+      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
       this.shopOffersByPlayer.set(
         playerId,
@@ -1439,6 +1439,9 @@ export class MatchRoomController {
     this.shopRefreshCountByPlayer.set(playerId, nextCount);
     this.shopPurchaseCountByPlayer.set(playerId, 0);
     this.shopOffersByPlayer.set(playerId, nextOffers);
+    if (refreshCount > 0 && this.getAvailableKouRyuudouFreeRefreshes(playerId) > 0) {
+      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, true);
+    }
 
     if (this.enableRumorInfluence && isRumorEligible) {
       this.rumorInfluenceEligibleByPlayer.set(playerId, false);
@@ -1769,7 +1772,7 @@ export class MatchRoomController {
     this.ownedUnitsByPlayer.delete(playerId);
     this.itemInventoryByPlayer.delete(playerId);
     this.itemShopOffersByPlayer.delete(playerId);
-    this.nijiRyuudouFirstItemDrawConsumedByPlayer.delete(playerId);
+    this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
     this.battleResultsByPlayer.delete(playerId);
     this.pendingRoundDamageByPlayer.delete(playerId);
     this.hpAtBattleStartByPlayer.delete(playerId);
@@ -1822,34 +1825,23 @@ export class MatchRoomController {
     }
   }
 
-  private tryGrantNijiRyuudouFirstItemDraw(playerId: string): void {
-    if (this.nijiRyuudouFirstItemDrawConsumedByPlayer.get(playerId)) {
-      return;
+  private getShopRefreshGoldCost(playerId: string, refreshCount: number): number {
+    if (refreshCount <= 0) {
+      return 0;
     }
 
-    if (!this.hasActiveNijiRyuudouFirstItemDraw(playerId)) {
-      return;
-    }
-
-    const inventory = this.itemInventoryByPlayer.get(playerId);
-
-    if (!inventory || inventory.length >= MAX_INVENTORY_SIZE) {
-      return;
-    }
-
-    const bonusOffer = this.shopOfferBuilder.buildItemShopOffers(ITEM_TYPES, ITEM_DEFINITIONS)[0];
-
-    if (!bonusOffer) {
-      return;
-    }
-
-    inventory.push(bonusOffer.itemType);
-    this.nijiRyuudouFirstItemDrawConsumedByPlayer.set(playerId, true);
+    const freeRefreshes = this.getAvailableKouRyuudouFreeRefreshes(playerId);
+    const paidRefreshCount = Math.max(0, refreshCount - freeRefreshes);
+    return paidRefreshCount * SHOP_REFRESH_COST;
   }
 
-  private hasActiveNijiRyuudouFirstItemDraw(playerId: string): boolean {
+  private getAvailableKouRyuudouFreeRefreshes(playerId: string): number {
     if (!this.rosterFlags.enableTouhouFactions) {
-      return false;
+      return 0;
+    }
+
+    if (this.kouRyuudouFreeRefreshConsumedByPlayer.get(playerId)) {
+      return 0;
     }
 
     const placements = this.boardPlacementsByPlayer.get(playerId) ?? [];
@@ -1859,10 +1851,10 @@ export class MatchRoomController {
       null,
       { enableTouhouFactions: true },
     );
-    const tier = synergyDetails.factionActiveTiers.niji_ryuudou ?? 0;
-    const factionEffect = getTouhouFactionTierEffect("niji_ryuudou", tier);
+    const tier = synergyDetails.factionActiveTiers.kou_ryuudou ?? 0;
+    const factionEffect = getTouhouFactionTierEffect("kou_ryuudou", tier);
 
-    return (factionEffect?.special?.firstItemUseDraws ?? 0) > 0;
+    return factionEffect?.special?.firstFreeRefreshes ?? 0;
   }
 
   private calculateActiveSynergies(

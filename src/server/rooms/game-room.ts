@@ -293,6 +293,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     const commandPayload = this.buildPrepCommandPayload(message);
 
+    if (this.isSharedBoardAuthoritativePrep() && commandPayload?.boardPlacements !== undefined) {
+      delete commandPayload.boardPlacements;
+    }
+
     // Capture shop offers snapshot before submit to preserve isRumorUnit info
     const shopOffersSnapshot = commandPayload?.shopBuySlotIndex !== undefined
       ? this.controller.getShopOffersForPlayer(client.sessionId)
@@ -542,6 +546,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     for (const playerId of this.controller.getRaidPlayerIds()) {
       this.state.raidPlayerIds.push(playerId);
     }
+    this.state.sharedBoardAuthorityEnabled = this.isSharedBoardAuthoritativePrep();
+    this.state.sharedBoardMode = this.resolveSharedBoardMode();
     this.state.dominationCount = this.controller.getDominationCount() ?? 0;
 
     syncRanking(this.state.ranking, this.controller.rankingTopToBottom);
@@ -606,12 +612,34 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       ranking: Array.from(this.state.ranking),
       bossPlayerId: this.state.bossPlayerId,
       raidPlayerIds: Array.from(this.state.raidPlayerIds),
+      sharedBoardAuthorityEnabled: this.state.sharedBoardAuthorityEnabled,
+      sharedBoardMode: this.state.sharedBoardMode,
       dominationCount: this.state.dominationCount,
       phaseHpTarget: phaseProgress?.targetHp ?? 0,
       phaseDamageDealt: phaseProgress?.damageDealt ?? 0,
       phaseResult: phaseProgress?.result ?? "pending",
       phaseCompletionRate: phaseProgress?.completionRate ?? 0,
     };
+  }
+
+  private isSharedBoardAuthoritativePrep(): boolean {
+    return this.resolveSharedBoardMode() === "half-shared";
+  }
+
+  private resolveSharedBoardMode(): string {
+    if (
+      this.state.featureFlagsEnableSharedBoardShadow
+      && this.state.featureFlagsEnableBossExclusiveShop
+      && this.state.bossPlayerId !== ""
+    ) {
+      return "half-shared";
+    }
+
+    if (this.state.featureFlagsEnableSharedBoardShadow) {
+      return "shadow";
+    }
+
+    return "local";
   }
 
   public onDispose(): void {

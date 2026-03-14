@@ -460,6 +460,9 @@ export class SharedBoardBridge {
 
       // shared_board index (0-23 for 6x4) → combat cell (0-7)
       const combatCell = raidBoardIndexToCombatCell(cell.index);
+      if (combatCell === null) {
+        continue;
+      }
 
       // unitIdからunitTypeを抽出（例: "vanguard-1" → "vanguard"）
       const unitType = this.extractUnitTypeFromId(cell.unitId);
@@ -468,7 +471,7 @@ export class SharedBoardBridge {
       }
 
       placements.push({
-        cell: combatCell ?? 0,
+        cell: combatCell,
         unitType,
         starLevel: 1,
       });
@@ -676,6 +679,16 @@ export class SharedBoardBridge {
         };
       }
 
+      const roleValidationError = this.validateRolePlacements(request.playerId, request.placements);
+      if (roleValidationError !== null) {
+        return {
+          success: false,
+          code: "forbidden",
+          currentVersion: this.currentVersion,
+          error: roleValidationError,
+        };
+      }
+
       // 配置を実際に適用（MatchRoomController経由）
       const result = this.controller.applyPrepPlacementForPlayer(
         request.playerId,
@@ -716,6 +729,34 @@ export class SharedBoardBridge {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  private validateRolePlacements(
+    playerId: string,
+    placements: BoardUnitPlacement[],
+  ): string | null {
+    const bossPlayerId = this.controller.getBossPlayerId?.();
+    if (!bossPlayerId || placements.length === 0) {
+      return null;
+    }
+
+    const invalidPlacement = placements.find((placement) => {
+      if (bossPlayerId === playerId) {
+        return placement.cell >= 4;
+      }
+
+      return placement.cell < 4;
+    });
+
+    if (!invalidPlacement) {
+      return null;
+    }
+
+    if (bossPlayerId === playerId) {
+      return `Boss placement must stay in top half: cell ${invalidPlacement.cell}`;
+    }
+
+    return `Raid placement must stay in bottom half: cell ${invalidPlacement.cell}`;
   }
 
   /**

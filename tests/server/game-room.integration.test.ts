@@ -10,6 +10,7 @@ import {
   type BrowserRoom,
 } from "../../src/client/main";
 import { GameRoom } from "../../src/server/rooms/game-room";
+import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -92,6 +93,9 @@ describe("GameRoom integration", () => {
           battleDurationMs: 120,
           settleDurationMs: 80,
           eliminationDurationMs: 80,
+        }),
+        shared_board: defineRoom(SharedBoardRoom, {
+          lockDurationMs: 1_000,
         }),
       },
     });
@@ -263,6 +267,90 @@ describe("GameRoom integration", () => {
       expect(roundState.raidPlayerIds).toEqual(expectedRaidPlayerIds);
       expect(serverRoom.state.bossPlayerId).toBe(expectedBossPlayerId);
       expect(Array.from(serverRoom.state.raidPlayerIds)).toEqual(expectedRaidPlayerIds);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test("raid prep uses shared board as the authoritative placement source", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      await testServer.createRoom<SharedBoardRoom>("shared_board");
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableBossExclusiveShop: true,
+        enableSharedBoardShadow: true,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const roomInternals = serverRoom as unknown as {
+        controller?: {
+          getBoardPlacementsForPlayer: (playerId: string) => Array<{ cell: number; unitType: string }>;
+        };
+        sharedBoardBridge?: {
+          getState: () => string;
+          applySharedBoardPlacement: (request: {
+            opId: string;
+            correlationId: string;
+            baseVersion: number;
+            timestamp: number;
+            actorId: string;
+            playerId: string;
+            placements: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin" }>;
+          }) => Promise<{ success: boolean; code: string }>;
+        };
+      };
+
+      for (const client of clients.slice(1)) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      }
+
+      const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      const roundState = (await roundStatePromise) as RoundStateMessage & {
+        sharedBoardAuthorityEnabled?: boolean;
+        sharedBoardMode?: string;
+      };
+
+      await waitForCondition(
+        () => roomInternals.sharedBoardBridge?.getState() === "READY",
+        3_000,
+      );
+
+      const raidPlayerId = clients[0].sessionId;
+      clients[0].send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 1,
+        boardPlacements: [{ cell: 4, unitType: "ranger" }],
+      });
+      await clients[0].waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+
+      expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([]);
+
+      const bridgeResult = await roomInternals.sharedBoardBridge?.applySharedBoardPlacement({
+        opId: "raid-shared-board-source",
+        correlationId: "corr-raid-shared-board-source",
+        baseVersion: 0,
+        timestamp: Date.now(),
+        actorId: raidPlayerId,
+        playerId: raidPlayerId,
+        placements: [{ cell: 4, unitType: "ranger" }],
+      });
+
+      expect(bridgeResult).toMatchObject({ success: true, code: "success" });
+      expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([
+        expect.objectContaining({ cell: 4, unitType: "ranger" }),
+      ]);
+      expect(roundState.sharedBoardAuthorityEnabled).toBe(true);
+      expect(roundState.sharedBoardMode).toBe("half-shared");
     } finally {
       randomSpy.mockRestore();
     }

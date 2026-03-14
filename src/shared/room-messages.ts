@@ -110,6 +110,8 @@ export interface RoundStateMessage {
   ranking: string[];
   bossPlayerId?: string;
   raidPlayerIds?: string[];
+  sharedBoardAuthorityEnabled?: boolean;
+  sharedBoardMode?: string;
   dominationCount?: number;
 
   phaseHpTarget?: number;

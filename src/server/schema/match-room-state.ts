@@ -198,6 +198,10 @@ export class MatchRoomState extends Schema {
 
   declare public raidPlayerIds: ArraySchema<string>;
 
+  declare public sharedBoardAuthorityEnabled: boolean;
+
+  declare public sharedBoardMode: string;
+
   declare public dominationCount: number;
 
   public constructor() {
@@ -224,6 +228,8 @@ export class MatchRoomState extends Schema {
     this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
     this.raidPlayerIds = new ArraySchema<string>();
+    this.sharedBoardAuthorityEnabled = false;
+    this.sharedBoardMode = "local";
     this.dominationCount = 0;
   }
 }
@@ -311,5 +317,7 @@ defineTypes(MatchRoomState, {
   usedSpellIds: ["string"],
   bossPlayerId: "string",
   raidPlayerIds: ["string"],
+  sharedBoardAuthorityEnabled: "boolean",
+  sharedBoardMode: "string",
   dominationCount: "number",
 });

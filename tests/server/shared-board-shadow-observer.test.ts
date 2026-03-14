@@ -32,6 +32,18 @@ function createSharedBoardRoomWithExtraUnitMock() {
   };
 }
 
+function createBrokenSharedBoardRoomMock() {
+  return {
+    state: {
+      cells: {
+        get: () => {
+          throw new Error("shadow read failed");
+        },
+      },
+    },
+  };
+}
+
 describe("SharedBoardShadowObserver", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -93,5 +105,22 @@ describe("SharedBoardShadowObserver", () => {
       },
     ]);
     expect(observer.getLastDiffResult()).toEqual(result);
+  });
+
+  it("observePlayer escalates repeated read failures to degraded", () => {
+    const controller = createControllerMock();
+    const observer = new SharedBoardShadowObserver(controller as never);
+
+    observer.attachSharedBoard(createBrokenSharedBoardRoomMock() as never);
+
+    const firstResult = observer.observePlayer("player-a");
+    const secondResult = observer.observePlayer("player-a");
+    const thirdResult = observer.observePlayer("player-a");
+
+    expect(firstResult.status).toBe("unavailable");
+    expect(secondResult.status).toBe("unavailable");
+    expect(thirdResult.status).toBe("degraded");
+    expect(thirdResult.lastError).toBe("shadow read failed");
+    expect(observer.getLastDiffResult()).toEqual(thirdResult);
   });
 });

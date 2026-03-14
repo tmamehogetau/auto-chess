@@ -263,12 +263,15 @@ export class SharedBoardShadowObserver {
         mismatchedCells: mismatches.slice(0, 10),
       };
 
+      this.consecutiveErrors = 0;
       this.lastDiffResult = result;
       return result;
     } catch (error) {
+      this.consecutiveErrors++;
+
       const result: ShadowDiffResult = {
         timestamp: now,
-        status: "unavailable",
+        status: this.consecutiveErrors >= this.maxConsecutiveErrors ? "degraded" : "unavailable",
         mismatchCount: 0,
         mismatchedCells: [],
         lastError: error instanceof Error ? error.message : String(error),

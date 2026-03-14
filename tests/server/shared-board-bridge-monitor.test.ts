@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { BridgeMonitor } from "../../src/server/shared-board-bridge-monitor";
+import {
+  BridgeMonitor,
+  DEFAULT_DASHBOARD_WINDOW_MS,
+} from "../../src/server/shared-board-bridge-monitor";
 
 describe("BridgeMonitor structured logging opt-in", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -295,5 +298,52 @@ describe("BridgeMonitor monitoring extensions", () => {
     expect(alertStatus.triggeredRules).toEqual(
       expect.arrayContaining(["failure_rate", "conflict_rate", "p95_latency"]),
     );
+  });
+
+  it("invalid windowMs uses the default dashboard window in output", () => {
+    const monitor = new BridgeMonitor("room-1");
+    const nowMs = 20_000;
+
+    monitor.logEvent({
+      eventId: "event-1",
+      eventType: "apply_result",
+      playerId: "player-1",
+      revision: 1,
+      source: "shared_board",
+      latencyMs: 10,
+      success: true,
+      timestamp: nowMs - 100,
+    });
+
+    const dashboard = monitor.getDashboardMetrics(0, nowMs);
+
+    expect(dashboard.windowMs).toBe(DEFAULT_DASHBOARD_WINDOW_MS);
+  });
+
+  it("resetMetrics clears lastEventAt as well as counters and logs", () => {
+    const monitor = new BridgeMonitor("room-1");
+
+    monitor.logEvent({
+      eventId: "event-1",
+      eventType: "apply_result",
+      playerId: "player-1",
+      revision: 1,
+      source: "shared_board",
+      latencyMs: 10,
+      success: true,
+      timestamp: 5_000,
+    });
+
+    monitor.resetMetrics();
+
+    expect(monitor.getMetrics()).toEqual({
+      totalEvents: 0,
+      successEvents: 0,
+      failedEvents: 0,
+      conflictEvents: 0,
+      avgLatencyMs: 0,
+      lastEventAt: 0,
+    });
+    expect(monitor.getRecentLogs(10)).toEqual([]);
   });
 });

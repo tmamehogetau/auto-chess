@@ -213,7 +213,10 @@ export class BridgeMonitor {
     windowMs = DEFAULT_DASHBOARD_WINDOW_MS,
     nowMs = Date.now(),
   ): DashboardMetrics {
-    const logs = this.getWindowLogs(windowMs, nowMs);
+    const safeWindowMs = Number.isFinite(windowMs) && windowMs > 0
+      ? windowMs
+      : DEFAULT_DASHBOARD_WINDOW_MS;
+    const logs = this.getWindowLogs(safeWindowMs, nowMs);
     const eventCount = logs.length;
     const successEvents = logs.filter((log) => log.success).length;
     const failedEvents = eventCount - successEvents;
@@ -221,7 +224,7 @@ export class BridgeMonitor {
     const totalLatency = logs.reduce((sum, log) => sum + log.latencyMs, 0);
 
     return {
-      windowMs,
+      windowMs: safeWindowMs,
       generatedAt: nowMs,
       windowEventCount: eventCount,
       successRate: this.calculateRate(successEvents, eventCount),
@@ -229,7 +232,7 @@ export class BridgeMonitor {
       conflictRate: this.calculateRate(conflictEvents, eventCount),
       avgLatencyMs: eventCount > 0 ? totalLatency / eventCount : 0,
       p95LatencyMs: this.calculateP95Latency(logs),
-      topErrors: this.getTopErrors(5, windowMs, nowMs),
+      topErrors: this.getTopErrors(5, safeWindowMs, nowMs),
     };
   }
 
@@ -347,6 +350,7 @@ export class BridgeMonitor {
     this.failedEvents = 0;
     this.conflictEvents = 0;
     this.totalLatencyMs = 0;
+    this.lastEventAt = 0;
     this.eventLogs = [];
   }
 

@@ -25,4 +25,11 @@ describe("manual-check script contract", () => {
       rmSync(tempDir, { force: true, recursive: true });
     }
   });
+
+  test("raid presentation uses MapSchema-safe player iteration and raid-only final judgment gating", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("mapEntries(state?.players).map(([, player]) => player)")).toBe(true);
+    expect(source.includes("const isRaidRound = bossPlayerId !== \"\" && Array.isArray(state?.raidPlayerIds)")).toBe(true);
+  });
 });

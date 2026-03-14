@@ -2311,7 +2311,11 @@ export class MatchRoomController {
 
     for (const playerId of state.raidPlayerIds) {
       const battleResult = this.battleResultsByPlayer.get(playerId);
-      if (!battleResult || battleResult.survivors > 0) {
+      if (battleResult === undefined) {
+        continue;
+      }
+
+      if (battleResult.survivors > 0) {
         continue;
       }
 

@@ -102,7 +102,7 @@ export class GameLoopState {
 
     for (const player of this.players.values()) {
       const isAliveInRaid = this.bossPlayerId !== null
-        ? (player.id === this.bossPlayerId || player.remainingLives > 0)
+        ? (player.id === this.bossPlayerId || player.hp > 0)
         : player.hp > 0;
 
       if (!player.eliminated && isAliveInRaid) {
@@ -159,9 +159,6 @@ export class GameLoopState {
     }
 
     player.remainingLives = Math.max(0, player.remainingLives - amount);
-    if (player.remainingLives <= 0) {
-      player.eliminated = true;
-    }
 
     return player.remainingLives;
   }

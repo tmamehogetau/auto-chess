@@ -1201,9 +1201,7 @@ function updateRaidBoardPresentation(state) {
     sharedBoardGrid.dataset.currentPhase = readPhase(state?.phase) || "Waiting";
   }
 
-  const playerEntries = state?.players && typeof state.players === "object"
-    ? Object.values(state.players)
-    : [];
+  const playerEntries = mapEntries(state?.players).map(([, player]) => player);
   const remainingLives = playerEntries
     .map((player) => Number(player?.remainingLives))
     .filter((value) => Number.isFinite(value) && value > 0);
@@ -1215,9 +1213,11 @@ function updateRaidBoardPresentation(state) {
 
   if (finalJudgmentBanner) {
     const phase = readPhase(state?.phase);
-    if (phase === "End") {
-      const ranking = Array.isArray(state?.ranking) ? state.ranking : [];
-      const bossPlayerId = typeof state?.bossPlayerId === "string" ? state.bossPlayerId : "";
+    const ranking = Array.isArray(state?.ranking) ? state.ranking : [];
+    const bossPlayerId = typeof state?.bossPlayerId === "string" ? state.bossPlayerId : "";
+    const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
+
+    if (phase === "End" && isRaidRound) {
       finalJudgmentBanner.textContent = ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory";
     } else {
       finalJudgmentBanner.textContent = `Round ${Number(state?.roundIndex) || 0}`;

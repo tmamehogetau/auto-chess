@@ -300,6 +300,10 @@ describe("MatchRoomController", () => {
           );
           const battleResolutionService = Reflect.get(controller, "battleResolutionService") as {
             resolveMatchup: (input: {
+              leftBattleUnits: Array<{
+                id: string;
+                buffModifiers: { attackMultiplier: number };
+              }>;
               rightBattleUnits: Array<{
                 id: string;
                 buffModifiers: { attackMultiplier: number };
@@ -354,8 +358,11 @@ describe("MatchRoomController", () => {
           const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
           expect(firstCall).toBeDefined();
 
-          const raidHeroUnits = firstCall?.rightBattleUnits.filter((unit) => unit.id.startsWith("hero-")) ?? [];
-          const raidNonHeroUnits = firstCall?.rightBattleUnits.filter((unit) => !unit.id.startsWith("hero-")) ?? [];
+          const raidBattleUnits = [firstCall?.leftBattleUnits ?? [], firstCall?.rightBattleUnits ?? []].find((units) =>
+            units.some((unit: { id: string }) => unit.id === "hero-p1" || unit.id === "hero-p3" || unit.id === "hero-p4"),
+          ) ?? [];
+          const raidHeroUnits = raidBattleUnits.filter((unit: { id: string }) => unit.id.startsWith("hero-"));
+          const raidNonHeroUnits = raidBattleUnits.filter((unit: { id: string }) => !unit.id.startsWith("hero-"));
 
           expect(raidHeroUnits.map((unit) => unit.id).sort()).toEqual([
             "hero-p1",

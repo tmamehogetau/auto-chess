@@ -72,6 +72,7 @@ describe("player-state-sync", () => {
 
       // Basic fields
       expect(playerState.hp).toBe(75);
+      expect(playerState.remainingLives).toBe(0);
       expect(playerState.eliminated).toBe(false);
       expect(playerState.boardUnitCount).toBe(3);
       expect(playerState.gold).toBe(25);

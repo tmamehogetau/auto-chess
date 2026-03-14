@@ -6,6 +6,7 @@ import { MatchRoomController } from "../../src/server/match-room-controller";
 import { SharedBoardBridge } from "../../src/server/shared-board-bridge";
 import { BridgeMonitor } from "../../src/server/shared-board-bridge-monitor";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
+import { waitForCondition } from "../e2e/shared-board-bridge/helpers/wait";
 import { withFlags } from "./feature-flag-test-helper";
 
 interface BatchSyncGameRoom extends Room {
@@ -95,7 +96,10 @@ describe("SharedBoardBridge integration", () => {
           } as SharedBoardCellState,
         ]);
 
-        await new Promise((resolve) => setTimeout(resolve, 80));
+        await waitForCondition(
+          () => controller.getBoardPlacementsForPlayer("p1").length === 0,
+          1_000,
+        );
 
         expect(controller.getBoardPlacementsForPlayer("p1")).toEqual([]);
       },

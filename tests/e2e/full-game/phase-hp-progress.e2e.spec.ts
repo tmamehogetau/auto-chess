@@ -235,6 +235,9 @@ describe("E2E: Phase HP Progress", () => {
 
           await waitForPhase(gameRoom, "Battle", 5_000);
 
+          // This targeted E2E pins deterministic phase damage and battle survivors through
+          // controller internals so round-state exposure can be verified without depending on
+          // battle RNG. If controller internals move, this fixture must move with them.
           const roomInternals = gameRoom as unknown as {
             controller?: {
               setPendingPhaseDamageForTest: (damageValue: number) => void;

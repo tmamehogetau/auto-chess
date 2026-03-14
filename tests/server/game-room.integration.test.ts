@@ -316,14 +316,11 @@ describe("GameRoom integration", () => {
         client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
       }
 
-      const roundState = (await roundStatePromise) as RoundStateMessage & {
-        sharedBoardAuthorityEnabled?: boolean;
-        sharedBoardMode?: string;
-      };
+      await roundStatePromise;
 
       await waitForCondition(
-        () => roomInternals.sharedBoardBridge?.getState() === "READY",
-        3_000,
+        () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
+        500,
       );
 
       const raidPlayerId = clients[0].sessionId;
@@ -349,8 +346,8 @@ describe("GameRoom integration", () => {
       expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([
         expect.objectContaining({ cell: 4, unitType: "ranger" }),
       ]);
-      expect(roundState.sharedBoardAuthorityEnabled).toBe(true);
-      expect(roundState.sharedBoardMode).toBe("half-shared");
+      expect(serverRoom.state.sharedBoardAuthorityEnabled).toBe(true);
+      expect(serverRoom.state.sharedBoardMode).toBe("half-shared");
     } finally {
       randomSpy.mockRestore();
     }

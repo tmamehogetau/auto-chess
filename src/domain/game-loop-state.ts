@@ -102,7 +102,10 @@ export class GameLoopState {
 
     for (const player of this.players.values()) {
       const isAliveInRaid = this.bossPlayerId !== null
-        ? (player.id === this.bossPlayerId || player.hp > 0)
+        ? (
+          player.id === this.bossPlayerId
+          || (!player.eliminated && (player.remainingLives > 0 || this.phase !== "Elimination"))
+        )
         : player.hp > 0;
 
       if (!player.eliminated && isAliveInRaid) {

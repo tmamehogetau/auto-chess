@@ -137,8 +137,25 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   public onJoin(client: Client): void {
     this.state.players.set(client.sessionId, new PlayerPresenceState());
 
-    if (this.clients.length !== GameRoom.MAX_PLAYERS || this.controller !== null) {
+    if (this.clients.length !== GameRoom.MAX_PLAYERS) {
       return;
+    }
+
+    if (this.controller !== null && this.controller.phase !== "Waiting") {
+      return;
+    }
+
+    this.initializeController();
+
+    this.clock.setTimeout(() => {
+      void this.tryStartMatch(Date.now());
+    }, this.readyAutoStartMs);
+  }
+
+  private initializeController(): void {
+    if (this.sharedBoardBridge) {
+      this.sharedBoardBridge.dispose();
+      this.sharedBoardBridge = null;
     }
 
     this.controller = new MatchRoomController(
@@ -165,10 +182,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         true,
       );
     }
-
-    this.clock.setTimeout(() => {
-      void this.tryStartMatch(Date.now());
-    }, this.readyAutoStartMs);
   }
 
   private cleanupLobbyPlayer(sessionId: string): void {

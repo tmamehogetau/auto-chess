@@ -96,7 +96,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
 
       enqueuePlacementChange(bridge, "player-a", [
         {
-          index: 0,
+          index: 7,
           unitId: "vanguard-1",
           ownerId: "player-a",
         } as SharedBoardCellState,

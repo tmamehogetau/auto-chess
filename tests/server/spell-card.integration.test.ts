@@ -350,9 +350,7 @@ describe("SpellCard Integration", () => {
         return;
       }
 
-      bossHealController.setPendingRoundDamage({
-        [bossId]: 40,
-      });
+      bossHealController.setPlayerHp(bossId, 60);
 
       // spellCardHandlerを通してスペルを設定
       (bossHealController as any).spellCardHandler.setDeclaredSpell({

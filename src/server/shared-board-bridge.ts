@@ -983,5 +983,6 @@ export class SharedBoardBridge {
     }
 
     this.sharedBoardRoom = null;
+    this.monitor = null;
   }
 }

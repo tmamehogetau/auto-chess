@@ -160,6 +160,21 @@ const PHASE_EXPANSION_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   12: 0,
 };
 
+const RAID_PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
+  1: 600,
+  2: 750,
+  3: 900,
+  4: 1050,
+  5: 1250,
+  6: 1450,
+  7: 1650,
+  8: 1850,
+  9: 2100,
+  10: 2400,
+  11: 2700,
+  12: 3000,
+};
+
 const ITEM_SHOP_SIZE = 5;
 const MAX_INVENTORY_SIZE = 9;
 const MAX_ITEMS_PER_UNIT = 3;
@@ -414,6 +429,8 @@ export class MatchRoomController {
 
   private readonly rosterFlags: FeatureFlags;
 
+  private finalRankingOverride: string[] | null;
+
   private matchLogger: MatchLogger | null;
 
   private readonly shopOfferBuilder: ShopOfferBuilder;
@@ -515,6 +532,7 @@ export class MatchRoomController {
     this.phaseDamageDealt = 0;
     this.phaseResult = "pending";
     this.phaseCompletionRate = 0;
+    this.finalRankingOverride = null;
     this.matchLogger = matchLogger;
 
     for (const playerId of playerIds) {
@@ -687,6 +705,10 @@ export class MatchRoomController {
   }
 
   public get rankingTopToBottom(): string[] {
+    if (this.finalRankingOverride) {
+      return [...this.finalRankingOverride];
+    }
+
     const state = this.gameLoopState;
 
     if (!state) {
@@ -856,6 +878,11 @@ export class MatchRoomController {
     return state.bossPlayerId;
   }
 
+  public getRaidPlayerIds(): string[] {
+    const state = this.ensureStarted();
+    return [...state.raidPlayerIds];
+  }
+
   /**
    * 支配カウントを取得
    * @returns 支配カウント
@@ -930,6 +957,7 @@ export class MatchRoomController {
 
     const baseStatus: ControllerPlayerStatus = {
       hp: state.getPlayerHp(playerId),
+      remainingLives: state.getRemainingLives(playerId),
       eliminated: state.isPlayerEliminated(playerId),
       boardUnitCount: this.boardUnitCountByPlayer.get(playerId) ?? 4,
       gold: this.goldByPlayer.get(playerId) ?? INITIAL_GOLD,
@@ -1041,6 +1069,10 @@ export class MatchRoomController {
     this.pendingPhaseDamageForTest = Math.floor(damageValue);
   }
 
+  private isRaidMode(): boolean {
+    return this.enableBossExclusiveShop && this.gameLoopState?.bossPlayerId !== null;
+  }
+
   public advanceByTime(nowMs: number): boolean {
     if (!this.gameLoopState) {
       return false;
@@ -1078,6 +1110,7 @@ export class MatchRoomController {
         return false;
       case "Settle":
         if (this.settleDeadlineAtMs !== null && nowMs >= this.settleDeadlineAtMs) {
+          this.applyRaidRoundConsequences();
           const aliveBeforeElimination = new Set(this.gameLoopState.alivePlayerIds);
           this.gameLoopState.transitionTo("Elimination");
           this.captureEliminationResult(aliveBeforeElimination);
@@ -1095,8 +1128,8 @@ export class MatchRoomController {
         ) {
           this.eliminationDeadlineAtMs = null;
 
-          const maxRounds = this.featureFlags.enablePhaseExpansion ? 12 : 8;
-          if (this.gameLoopState.alivePlayerIds.length <= 1 || this.gameLoopState.roundIndex === maxRounds || this.gameLoopState.dominationCount >= 5) {
+          const maxRounds = this.isRaidMode() || this.featureFlags.enablePhaseExpansion ? 12 : 8;
+          if (this.shouldEndAfterElimination(maxRounds)) {
             this.gameLoopState.transitionTo("End");
             return true;
           }
@@ -1953,6 +1986,85 @@ export class MatchRoomController {
     this.hpAtBattleStartByPlayer = snapshot;
   }
 
+  private buildRaidBattleInput(
+    leftPlayerId: string,
+    rightPlayerId: string,
+  ): {
+    bossPlayerId: string;
+    raidPlayerIds: string[];
+    bossIsLeft: boolean;
+    leftPlayerIds: string[];
+    rightPlayerIds: string[];
+    leftPlacements: BoardUnitPlacement[];
+    rightPlacements: BoardUnitPlacement[];
+  } | null {
+    const state = this.ensureStarted();
+    const bossPlayerId = state.bossPlayerId;
+
+    if (!bossPlayerId || (leftPlayerId !== bossPlayerId && rightPlayerId !== bossPlayerId)) {
+      return null;
+    }
+
+    const raidPlayerIds = state.raidPlayerIds.filter((playerId) =>
+      this.battleInputSnapshotByPlayer.has(playerId),
+    );
+    if (raidPlayerIds.length === 0) {
+      return null;
+    }
+
+    const bossPlacements = (this.battleInputSnapshotByPlayer.get(bossPlayerId) ?? []).map(
+      (placement) => ({ ...placement }),
+    );
+    const raidPlacements = raidPlayerIds.flatMap((playerId) =>
+      (this.battleInputSnapshotByPlayer.get(playerId) ?? []).map((placement) => ({ ...placement })),
+    );
+    const bossIsLeft = leftPlayerId === bossPlayerId;
+
+    return {
+      bossPlayerId,
+      raidPlayerIds,
+      bossIsLeft,
+      leftPlayerIds: bossIsLeft ? [bossPlayerId] : raidPlayerIds,
+      rightPlayerIds: bossIsLeft ? raidPlayerIds : [bossPlayerId],
+      leftPlacements: bossIsLeft ? bossPlacements : raidPlacements,
+      rightPlacements: bossIsLeft ? raidPlacements : bossPlacements,
+    };
+  }
+
+  private buildSideSpellModifiers(playerIds: string[]): SpellCombatModifiers | null {
+    let aggregatedModifiers: SpellCombatModifiers | null = null;
+
+    for (const playerId of playerIds) {
+      const modifiers = this.spellCardHandler.getCombatModifiersForPlayer(playerId);
+      if (!modifiers) {
+        continue;
+      }
+
+      aggregatedModifiers ??= {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      };
+      aggregatedModifiers.attackMultiplier *= modifiers.attackMultiplier;
+      aggregatedModifiers.defenseMultiplier *= modifiers.defenseMultiplier;
+      aggregatedModifiers.attackSpeedMultiplier *= modifiers.attackSpeedMultiplier;
+    }
+
+    return aggregatedModifiers;
+  }
+
+  private buildSideHeroIds(playerIds: string[]): string[] {
+    return playerIds
+      .map((playerId) => this.selectedHeroByPlayer.get(playerId) ?? "")
+      .filter((heroId): heroId is string => heroId !== "");
+  }
+
+  private buildSideHeroSynergyBonusTypes(playerIds: string[]): BoardUnitType[] {
+    return this.buildSideHeroIds(playerIds)
+      .map((heroId) => this.battleResolutionService.getHeroSynergyBonusType(heroId))
+      .filter((bonusType): bonusType is BoardUnitType => bonusType !== null);
+  }
+
   private capturePostBattleHp(): void {
     const state = this.ensureStarted();
     const snapshot = new Map<string, number>();
@@ -1982,6 +2094,11 @@ export class MatchRoomController {
     const state = this.ensureStarted();
     const roundIndex = state.roundIndex;
 
+    if (this.isRaidMode()) {
+      this.pendingRoundDamageByPlayer.clear();
+      return;
+    }
+
     for (const [playerId, damageValue] of this.pendingRoundDamageByPlayer.entries()) {
       const currentHp = state.getPlayerHp(playerId);
       const hpBefore = currentHp;
@@ -1997,10 +2114,13 @@ export class MatchRoomController {
   private capturePhaseProgressFromPendingDamage(): void {
     const state = this.ensureStarted();
     const targetHp = this.resolvePhaseHpTarget(state.roundIndex);
-    const totalDamage = this.pendingPhaseDamageForTest ?? Array.from(this.pendingRoundDamageByPlayer.values()).reduce(
-      (sum, damageValue) => sum + damageValue,
-      0,
-    );
+    const totalDamage = this.pendingPhaseDamageForTest
+      ?? (this.isRaidMode()
+        ? this.pendingRoundDamageByPlayer.get(state.bossPlayerId ?? "") ?? 0
+        : Array.from(this.pendingRoundDamageByPlayer.values()).reduce(
+          (sum, damageValue) => sum + damageValue,
+          0,
+        ));
     this.pendingPhaseDamageForTest = null;
 
     this.phaseHpTarget = targetHp;
@@ -2089,6 +2209,10 @@ export class MatchRoomController {
   }
 
   private resolvePhaseHpTarget(roundIndex: number): number {
+    if (this.isRaidMode()) {
+      return RAID_PHASE_HP_TARGET_BY_ROUND[roundIndex] ?? RAID_PHASE_HP_TARGET_BY_ROUND[12] ?? 3000;
+    }
+
     const phaseTargets = this.featureFlags.enablePhaseExpansion
       ? PHASE_EXPANSION_HP_TARGET_BY_ROUND
       : PHASE_HP_TARGET_BY_ROUND;
@@ -2178,42 +2302,118 @@ export class MatchRoomController {
     this.pendingRoundDamageByPlayer.set(challengerPlayerId, challengerDamage);
   }
 
+  private applyRaidRoundConsequences(): void {
+    if (!this.isRaidMode()) {
+      return;
+    }
+
+    const state = this.ensureStarted();
+
+    for (const playerId of state.raidPlayerIds) {
+      const battleResult = this.battleResultsByPlayer.get(playerId);
+      if (battleResult === undefined) {
+        continue;
+      }
+
+      if (battleResult.survivors > 0) {
+        continue;
+      }
+
+      state.consumeLife(playerId);
+    }
+  }
+
+  private buildRaidFinalRanking(winner: "raid" | "boss"): string[] {
+    const state = this.ensureStarted();
+    const bossPlayerId = state.bossPlayerId;
+    const survivingRaidPlayerIds = state.raidPlayerIds.filter((playerId) => !state.isPlayerEliminated(playerId));
+    const eliminatedRaidPlayerIds = state.raidPlayerIds.filter((playerId) => state.isPlayerEliminated(playerId));
+
+    if (!bossPlayerId) {
+      return [];
+    }
+
+    if (winner === "raid") {
+      return [...survivingRaidPlayerIds, ...eliminatedRaidPlayerIds, bossPlayerId];
+    }
+
+    return [bossPlayerId, ...survivingRaidPlayerIds, ...eliminatedRaidPlayerIds];
+  }
+
+  private shouldEndAfterElimination(maxRounds: number): boolean {
+    const state = this.ensureStarted();
+
+    if (!this.isRaidMode()) {
+      return state.alivePlayerIds.length <= 1 || state.roundIndex === maxRounds || state.dominationCount >= 5;
+    }
+
+    const survivingRaidPlayerIds = state.raidPlayerIds.filter((playerId) => !state.isPlayerEliminated(playerId));
+    if (survivingRaidPlayerIds.length === 0 || state.dominationCount >= 5) {
+      this.finalRankingOverride = this.buildRaidFinalRanking("boss");
+      return true;
+    }
+
+    if (state.roundIndex < maxRounds) {
+      return false;
+    }
+
+    this.finalRankingOverride = this.buildRaidFinalRanking(
+      this.phaseResult === "success" && survivingRaidPlayerIds.length > 0 ? "raid" : "boss",
+    );
+    return true;
+  }
+
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
-    const leftPlacements = this.battleInputSnapshotByPlayer.get(leftPlayerId) ?? [];
-    const rightPlacements = this.battleInputSnapshotByPlayer.get(rightPlayerId) ?? [];
+    const raidBattleInput = this.buildRaidBattleInput(leftPlayerId, rightPlayerId);
+    const leftPlayerIds = raidBattleInput?.leftPlayerIds ?? [leftPlayerId];
+    const rightPlayerIds = raidBattleInput?.rightPlayerIds ?? [rightPlayerId];
+    const leftPlacements = raidBattleInput?.leftPlacements
+      ?? this.battleInputSnapshotByPlayer.get(leftPlayerId)
+      ?? [];
+    const rightPlacements = raidBattleInput?.rightPlacements
+      ?? this.battleInputSnapshotByPlayer.get(rightPlayerId)
+      ?? [];
     const leftResolvedPlacements = resolveBattlePlacements(leftPlacements, this.rosterFlags);
     const rightResolvedPlacements = resolveBattlePlacements(rightPlacements, this.rosterFlags);
+    const leftIsBossSide = raidBattleInput?.bossIsLeft ?? false;
+    const rightIsBossSide = raidBattleInput ? !raidBattleInput.bossIsLeft : false;
 
     // ボード配置をBattleUnitに変換
     const leftBattleUnits: BattleUnit[] = leftResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "left", index, false, this.rosterFlags),
+      createBattleUnit(placement, "left", index, leftIsBossSide, this.rosterFlags),
     );
 
     const rightBattleUnits: BattleUnit[] = rightResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "right", index, false, this.rosterFlags),
+      createBattleUnit(placement, "right", index, rightIsBossSide, this.rosterFlags),
     );
 
     // スペル効果を適用
-    const leftModifiers = this.spellCardHandler.getCombatModifiersForPlayer(leftPlayerId);
+    const leftModifiers = this.buildSideSpellModifiers(leftPlayerIds);
     this.battleResolutionService.applySpellModifiers(leftBattleUnits, leftModifiers);
-    const rightModifiers = this.spellCardHandler.getCombatModifiersForPlayer(rightPlayerId);
+    const rightModifiers = this.buildSideSpellModifiers(rightPlayerIds);
     this.battleResolutionService.applySpellModifiers(rightBattleUnits, rightModifiers);
 
     // 主人公を追加（選択されている場合）
-    const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
-    const leftHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(leftHeroId, leftPlayerId);
-    if (leftHeroBattleUnit) {
-      leftBattleUnits.push(leftHeroBattleUnit);
+    const leftHeroIds = this.buildSideHeroIds(leftPlayerIds);
+    for (const heroPlayerId of leftPlayerIds) {
+      const leftHeroId = this.selectedHeroByPlayer.get(heroPlayerId);
+      const leftHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(leftHeroId, heroPlayerId);
+      if (leftHeroBattleUnit) {
+        leftBattleUnits.push(leftHeroBattleUnit);
+      }
     }
 
-    const rightHeroId = this.selectedHeroByPlayer.get(rightPlayerId);
-    const rightHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(rightHeroId, rightPlayerId);
-    if (rightHeroBattleUnit) {
-      rightBattleUnits.push(rightHeroBattleUnit);
+    const rightHeroIds = this.buildSideHeroIds(rightPlayerIds);
+    for (const heroPlayerId of rightPlayerIds) {
+      const rightHeroId = this.selectedHeroByPlayer.get(heroPlayerId);
+      const rightHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(rightHeroId, heroPlayerId);
+      if (rightHeroBattleUnit) {
+        rightBattleUnits.push(rightHeroBattleUnit);
+      }
     }
 
-    const leftHeroSynergyBonusType = this.battleResolutionService.getHeroSynergyBonusType(leftHeroId);
-    const rightHeroSynergyBonusType = this.battleResolutionService.getHeroSynergyBonusType(rightHeroId);
+    const leftHeroSynergyBonusType = this.buildSideHeroSynergyBonusTypes(leftPlayerIds);
+    const rightHeroSynergyBonusType = this.buildSideHeroSynergyBonusTypes(rightPlayerIds);
 
     // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
     const battleId = `r${this.roundIndex}-${leftPlayerId}-${rightPlayerId}`;
@@ -2224,8 +2424,8 @@ export class MatchRoomController {
         rightPlayerId,
         leftPlacements: leftResolvedPlacements,
         rightPlacements: rightResolvedPlacements,
-        leftHeroId: leftHeroId ?? null,
-        rightHeroId: rightHeroId ?? null,
+        leftHeroId: leftHeroIds[0] ?? null,
+        rightHeroId: rightHeroIds[0] ?? null,
       });
     if (shouldEmitVerboseBattleLogs()) {
       // eslint-disable-next-line no-console
@@ -2252,8 +2452,25 @@ export class MatchRoomController {
     });
 
     // Store battle results in controller state
-    this.battleResultsByPlayer.set(leftPlayerId, resolutionResult.leftBattleResult);
-    this.battleResultsByPlayer.set(rightPlayerId, resolutionResult.rightBattleResult);
+    if (raidBattleInput) {
+      const bossBattleResult = raidBattleInput.bossIsLeft
+        ? resolutionResult.leftBattleResult
+        : resolutionResult.rightBattleResult;
+      const raidBattleResult = raidBattleInput.bossIsLeft
+        ? resolutionResult.rightBattleResult
+        : resolutionResult.leftBattleResult;
+
+      this.battleResultsByPlayer.set(raidBattleInput.bossPlayerId, bossBattleResult);
+      for (const raidPlayerId of raidBattleInput.raidPlayerIds) {
+        this.battleResultsByPlayer.set(raidPlayerId, {
+          ...raidBattleResult,
+          opponentId: raidBattleInput.bossPlayerId,
+        });
+      }
+    } else {
+      this.battleResultsByPlayer.set(leftPlayerId, resolutionResult.leftBattleResult);
+      this.battleResultsByPlayer.set(rightPlayerId, resolutionResult.rightBattleResult);
+    }
 
     // Log battle result trace
     const { outcome } = resolutionResult;
@@ -2407,6 +2624,25 @@ export class MatchRoomController {
   ): BattlePairing[] {
     if (battleParticipants.length < 2) {
       return [];
+    }
+
+    const state = this.ensureStarted();
+    if (state.bossPlayerId) {
+      const bossPlayerId = state.bossPlayerId;
+      const raidPlayerIds = state.raidPlayerIds.filter((playerId) =>
+        battleParticipants.includes(playerId),
+      );
+      const firstRaidPlayerId = raidPlayerIds[0];
+
+      if (battleParticipants.includes(bossPlayerId) && firstRaidPlayerId) {
+        return [
+          {
+            leftPlayerId: bossPlayerId,
+            rightPlayerId: firstRaidPlayerId,
+            ghostSourcePlayerId: null,
+          },
+        ];
+      }
     }
 
     const orderedParticipants = [...battleParticipants].sort((left, right) =>

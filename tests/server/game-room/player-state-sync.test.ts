@@ -25,6 +25,7 @@ describe("player-state-sync", () => {
     it("should map controller player data to room player schema fields", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 75,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 3,
         gold: 25,
@@ -71,6 +72,7 @@ describe("player-state-sync", () => {
 
       // Basic fields
       expect(playerState.hp).toBe(75);
+      expect(playerState.remainingLives).toBe(0);
       expect(playerState.eliminated).toBe(false);
       expect(playerState.boardUnitCount).toBe(3);
       expect(playerState.gold).toBe(25);
@@ -102,6 +104,7 @@ describe("player-state-sync", () => {
     it("should preserve optional unitId fields in shop payloads", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 75,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 3,
         gold: 25,
@@ -153,6 +156,7 @@ describe("player-state-sync", () => {
     it("should keep board / bench / shop fields consistent", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 0,
         gold: 15,
@@ -186,6 +190,7 @@ describe("player-state-sync", () => {
     it("should sync battle result fields when present", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
@@ -230,6 +235,7 @@ describe("player-state-sync", () => {
 
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
@@ -262,6 +268,7 @@ describe("player-state-sync", () => {
     it("should sync active synergies correctly", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
@@ -303,6 +310,7 @@ describe("player-state-sync", () => {
 
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
@@ -330,6 +338,7 @@ describe("player-state-sync", () => {
     it("should sync feature-flag fields (hero, rumor, boss shop)", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
@@ -363,6 +372,7 @@ describe("player-state-sync", () => {
     it("should expose consumed rumor eligibility separately from rumor shop result", () => {
       const controllerStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
@@ -403,6 +413,7 @@ describe("player-state-sync", () => {
 
       const controllerStatus: ControllerPlayerStatus = {
         hp: 50,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 2,
         gold: 10,
@@ -681,6 +692,7 @@ describe("player-state-sync", () => {
       // Simulate controller data without feature-flagged fields
       const minimalStatus: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 15,
@@ -711,6 +723,7 @@ describe("player-state-sync", () => {
     it("should handle undefined optional arrays gracefully", () => {
       const statusWithUndefinedArrays: ControllerPlayerStatus = {
         hp: 100,
+        remainingLives: 0,
         eliminated: false,
         boardUnitCount: 4,
         gold: 15,

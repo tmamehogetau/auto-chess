@@ -64,8 +64,8 @@ export interface IBattleSimulator {
     leftPlacements: BoardUnitPlacement[],
     rightPlacements: BoardUnitPlacement[],
     maxDurationMs: number,
-    leftHeroSynergyBonusType: BoardUnitType | null,
-    rightHeroSynergyBonusType: BoardUnitType | null,
+    leftHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null,
+    rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null,
     flags?: FeatureFlags,
   ): SimulatorBattleResult;
@@ -161,8 +161,8 @@ export interface ResolveMatchupInput {
   rightPlacements: BoardUnitPlacement[];
   leftBattleUnits: BattleUnit[];
   rightBattleUnits: BattleUnit[];
-  leftHeroSynergyBonusType: BoardUnitType | null;
-  rightHeroSynergyBonusType: BoardUnitType | null;
+  leftHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null;
+  rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null;
   battleIndex: number;
 }
 

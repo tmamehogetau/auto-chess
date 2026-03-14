@@ -82,6 +82,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public hp: number;
 
+  declare public remainingLives: number;
+
   declare public eliminated: boolean;
 
   declare public boardUnitCount: number;
@@ -129,6 +131,7 @@ export class PlayerPresenceState extends Schema {
     this.ready = false;
     this.connected = true;
     this.hp = 100;
+    this.remainingLives = 0;
     this.eliminated = false;
     this.boardUnitCount = 4;
     this.shopOffers = new ArraySchema<ShopOfferState>();
@@ -196,6 +199,12 @@ export class MatchRoomState extends Schema {
 
   declare public bossPlayerId: string;
 
+  declare public raidPlayerIds: ArraySchema<string>;
+
+  declare public sharedBoardAuthorityEnabled: boolean;
+
+  declare public sharedBoardMode: string;
+
   declare public dominationCount: number;
 
   public constructor() {
@@ -221,6 +230,9 @@ export class MatchRoomState extends Schema {
     this.declaredSpellId = "";
     this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
+    this.raidPlayerIds = new ArraySchema<string>();
+    this.sharedBoardAuthorityEnabled = false;
+    this.sharedBoardMode = "local";
     this.dominationCount = 0;
   }
 }
@@ -259,6 +271,7 @@ defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
   hp: "number",
+  remainingLives: "number",
   eliminated: "boolean",
   boardUnitCount: "number",
   shopOffers: [ShopOfferState],
@@ -307,5 +320,8 @@ defineTypes(MatchRoomState, {
   declaredSpellId: "string",
   usedSpellIds: ["string"],
   bossPlayerId: "string",
+  raidPlayerIds: ["string"],
+  sharedBoardAuthorityEnabled: "boolean",
+  sharedBoardMode: "string",
   dominationCount: "number",
 });

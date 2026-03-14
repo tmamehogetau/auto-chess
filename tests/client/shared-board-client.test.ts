@@ -140,4 +140,53 @@ describe("shared-board client", () => {
     expect(cursorListElement.children).toHaveLength(1);
     expect(cursorListElement.children[0]?.textContent).toContain("player");
   });
+
+  test("shared board marks boss top half and raid bottom half zones", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "boss-player",
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "boss-player",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+
+    const handler = stateChangeHandler as ((state: unknown) => void) | null;
+    expect(handler).not.toBeNull();
+    handler?.({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {},
+      cursors: {},
+      players: {},
+    });
+
+    expect(gridElement.children).toHaveLength(24);
+    expect(gridElement.children[0]?.dataset.raidRegion).toBe("boss-top");
+    expect(gridElement.children[5]?.dataset.raidRegion).toBe("boss-top");
+    expect(gridElement.children[18]?.dataset.raidRegion).toBe("raid-bottom");
+    expect(gridElement.children[23]?.dataset.raidRegion).toBe("raid-bottom");
+  });
 });

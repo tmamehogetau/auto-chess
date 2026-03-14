@@ -253,6 +253,54 @@ export function findTarget(attacker: BattleUnit, enemies: BattleUnit[]): BattleU
   return closestTarget;
 }
 
+function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): BattleUnit | null {
+  const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+  if (livingEnemies.length === 0) {
+    return null;
+  }
+
+  let closestTarget: BattleUnit | null = null;
+  let minDistance = Infinity;
+
+  for (const enemy of livingEnemies) {
+    const distance = calculateCellDistance(attacker.cell, enemy.cell);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestTarget = enemy;
+    }
+  }
+
+  return closestTarget;
+}
+
+function moveUnitBySimpleApproach(
+  unit: BattleUnit,
+  enemies: BattleUnit[],
+  combatLog: string[],
+): boolean {
+  const nearestEnemy = findClosestLivingEnemy(unit, enemies);
+  if (!nearestEnemy) {
+    return false;
+  }
+
+  const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell);
+  if (currentDistance <= unit.attackRange) {
+    return false;
+  }
+
+  const previousCell = unit.cell;
+  const step = unit.cell < nearestEnemy.cell ? 1 : -1;
+  unit.cell += step;
+
+  const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
+  const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
+  combatLog.push(
+    `${sideLabel} ${typeLabel} moves from cell ${previousCell} to cell ${unit.cell}`,
+  );
+
+  return true;
+}
+
 /**
  * チームの戦力を計算（HPと攻撃力の合計）
  */
@@ -273,7 +321,7 @@ function calculateTeamPower(units: BattleUnit[]): number {
 function applySynergyBuffs(
   units: BattleUnit[],
   boardPlacements: BoardUnitPlacement[],
-  heroSynergyBonusType: BoardUnitType | null = null,
+  heroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
   flags: FeatureFlags = DEFAULT_FLAGS,
 ): void {
   const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType, {
@@ -492,8 +540,8 @@ export class BattleSimulator {
     leftPlacements: BoardUnitPlacement[] = [],
     rightPlacements: BoardUnitPlacement[] = [],
     maxDurationMs: number = 30000,
-    leftHeroSynergyBonusType: BoardUnitType | null = null,
-    rightHeroSynergyBonusType: BoardUnitType | null = null,
+    leftHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
+    rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null = null,
     flags: FeatureFlags = DEFAULT_FLAGS,
   ): BattleResult {
@@ -739,6 +787,11 @@ export class BattleSimulator {
             });
           }
         } else {
+          const isRaidBattle = leftUnits.some((unit) => unit.isBoss) || rightUnits.some((unit) => unit.isBoss);
+          if (flags.enableBossExclusiveShop && isRaidBattle) {
+            moveUnitBySimpleApproach(action.unit, enemies, combatLog);
+          }
+
           // 攻撃カウントを増加（ターゲットが見つからない場合も）
           action.unit.attackCount++;
 

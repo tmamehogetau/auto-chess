@@ -20,4 +20,18 @@ describe("round summary ui contract", () => {
       expect(html.includes(attribute)).toBe(true);
     }
   });
+
+  test("raid summary keeps lives and final judgment fields", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    const requiredAttributes = [
+      "data-raid-lives-display",
+      "data-final-judgment-banner",
+      "data-boss-phase-hp-display",
+    ];
+
+    for (const attribute of requiredAttributes) {
+      expect(html.includes(attribute)).toBe(true);
+    }
+  });
 });

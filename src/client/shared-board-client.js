@@ -244,6 +244,7 @@ function renderSharedBoard(state) {
     const cellElement = document.createElement("div");
     cellElement.className = "shared-board-cell";
     cellElement.dataset.cellIndex = String(i);
+    cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
 
     if (unitId && unitId !== "dummy-boss") {
       if (sharedBoardRoom && ownerId === sharedBoardRoom.sessionId) {

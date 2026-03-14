@@ -211,8 +211,10 @@ const goldDisplay = document.querySelector("[data-gold-display]");
 const hpDisplay = document.querySelector("[data-hp-display]");
   const levelDisplay = document.querySelector("[data-level-display]");
   const xpDisplay = document.querySelector("[data-xp-display]");
-  const dominationCountDisplay = document.querySelector("[data-domination-count-display]");
-  const phaseDisplay = document.querySelector("[data-phase-display]");
+const dominationCountDisplay = document.querySelector("[data-domination-count-display]");
+const phaseDisplay = document.querySelector("[data-phase-display]");
+const raidLivesDisplay = document.querySelector("[data-raid-lives-display]");
+const finalJudgmentBanner = document.querySelector("[data-final-judgment-banner]");
 const readyCountDisplay = document.querySelector("[data-ready-count]");
 const phaseHpSection = document.querySelector("[data-phase-hp-section]");
 const phaseHpValue = document.querySelector("[data-phase-hp-value]");
@@ -1187,7 +1189,39 @@ function updateGameUI(state) {
     spellSelectSection.style.display = "none";
   }
 
+  updateRaidBoardPresentation(state);
+
     nextCmdSeq = player.lastCmdSeq + 1;
+  }
+}
+
+function updateRaidBoardPresentation(state) {
+  if (sharedBoardGrid) {
+    sharedBoardGrid.dataset.sharedBoardMode = "canonical";
+    sharedBoardGrid.dataset.currentPhase = readPhase(state?.phase) || "Waiting";
+  }
+
+  const playerEntries = mapEntries(state?.players).map(([, player]) => player);
+  const remainingLives = playerEntries
+    .map((player) => Number(player?.remainingLives))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const maxRemainingLives = remainingLives.length > 0 ? Math.max(...remainingLives) : 0;
+
+  if (raidLivesDisplay) {
+    raidLivesDisplay.textContent = String(maxRemainingLives);
+  }
+
+  if (finalJudgmentBanner) {
+    const phase = readPhase(state?.phase);
+    const ranking = Array.isArray(state?.ranking) ? state.ranking : [];
+    const bossPlayerId = typeof state?.bossPlayerId === "string" ? state.bossPlayerId : "";
+    const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
+
+    if (phase === "End" && isRaidRound) {
+      finalJudgmentBanner.textContent = ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory";
+    } else {
+      finalJudgmentBanner.textContent = `Round ${Number(state?.roundIndex) || 0}`;
+    }
   }
 }
 

@@ -2037,15 +2037,20 @@
              <span class="status-label">Dom</span>
              <span class="status-value domination" data-domination-count-display>0/5</span>
            </div>
-         </div>
-         <div class="status-right">
-          <div class="phase-indicator waiting" data-phase-display>Waiting</div>
-          <div class="ready-count" data-ready-count>0/0 Ready</div>
-          <div class="phase-hp-section" data-phase-hp-section>
-            <div class="phase-hp-header">
-              <span class="phase-hp-label">Phase HP</span>
-              <span class="phase-hp-value" data-phase-hp-value>0 / 0</span>
-            </div>
+           <div class="status-item">
+             <span class="status-label">Lives</span>
+             <span class="status-value" data-raid-lives-display>3</span>
+           </div>
+          </div>
+          <div class="status-right">
+           <div class="phase-indicator waiting" data-phase-display>Waiting</div>
+           <div class="ready-count" data-ready-count>0/0 Ready</div>
+           <div class="phase-hp-result pending" data-final-judgment-banner>Awaiting Judgment</div>
+           <div class="phase-hp-section" data-phase-hp-section>
+             <div class="phase-hp-header">
+               <span class="phase-hp-label">Phase HP</span>
+               <span class="phase-hp-value" data-phase-hp-value data-boss-phase-hp-display>0 / 0</span>
+             </div>
             <div class="phase-hp-track">
               <div class="phase-hp-fill pending" data-phase-hp-fill></div>
             </div>
@@ -2062,6 +2067,11 @@
       </div>
 
       <div class="shared-board-section" data-shared-board-section>
+        <div class="shop-title" data-raid-board-header>Raid Board</div>
+        <div class="shared-board-legend" data-raid-board-zone-legend>
+          <span data-raid-board-boss-label>Boss Top Half</span>
+          <span data-raid-board-raid-label>Raid Bottom Half</span>
+        </div>
         <div class="shop-title">Shared Board (6 x 4)</div>
         <div class="shared-board-grid" data-shared-board-grid></div>
         <div class="shared-cursor-list" data-shared-cursor-list></div>

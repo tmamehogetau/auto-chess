@@ -101,14 +101,14 @@ describe("SharedBoardBridge batch sync", () => {
 
     enqueuePlacementChange(bridge, "player-a", [
       {
-        index: 0,
+        index: 7,
         unitId: "vanguard-1",
         ownerId: "player-a",
       } as SharedBoardCellState,
     ]);
     enqueuePlacementChange(bridge, "player-a", [
       {
-        index: 3,
+        index: 9,
         unitId: "ranger-1",
         ownerId: "player-a",
       } as SharedBoardCellState,

@@ -538,6 +538,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.state.usedSpellIds.push(spellId);
     }
     this.state.bossPlayerId = this.controller.getBossPlayerId() ?? "";
+    this.state.raidPlayerIds.splice(0, this.state.raidPlayerIds.length);
+    for (const playerId of this.controller.getRaidPlayerIds()) {
+      this.state.raidPlayerIds.push(playerId);
+    }
     this.state.dominationCount = this.controller.getDominationCount() ?? 0;
 
     syncRanking(this.state.ranking, this.controller.rankingTopToBottom);
@@ -600,6 +604,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
       ranking: Array.from(this.state.ranking),
+      bossPlayerId: this.state.bossPlayerId,
+      raidPlayerIds: Array.from(this.state.raidPlayerIds),
       dominationCount: this.state.dominationCount,
       phaseHpTarget: phaseProgress?.targetHp ?? 0,
       phaseDamageDealt: phaseProgress?.damageDealt ?? 0,

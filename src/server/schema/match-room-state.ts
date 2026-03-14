@@ -196,6 +196,8 @@ export class MatchRoomState extends Schema {
 
   declare public bossPlayerId: string;
 
+  declare public raidPlayerIds: ArraySchema<string>;
+
   declare public dominationCount: number;
 
   public constructor() {
@@ -221,6 +223,7 @@ export class MatchRoomState extends Schema {
     this.declaredSpellId = "";
     this.usedSpellIds = new ArraySchema<string>();
     this.bossPlayerId = "";
+    this.raidPlayerIds = new ArraySchema<string>();
     this.dominationCount = 0;
   }
 }
@@ -307,5 +310,6 @@ defineTypes(MatchRoomState, {
   declaredSpellId: "string",
   usedSpellIds: ["string"],
   bossPlayerId: "string",
+  raidPlayerIds: ["string"],
   dominationCount: "number",
 });

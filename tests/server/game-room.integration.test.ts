@@ -17,6 +17,10 @@ import {
   type RoundStateMessage,
 } from "../../src/shared/room-messages";
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
+import {
+  createRoomWithForcedFlags,
+  restoreForcedFlagFixtures,
+} from "./feature-flag-test-helper";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -97,6 +101,8 @@ describe("GameRoom integration", () => {
   });
 
   afterEach(async () => {
+    restoreForcedFlagFixtures();
+
     if (!testServer) {
       return;
     }
@@ -222,6 +228,44 @@ describe("GameRoom integration", () => {
     expect(roundState.phaseCompletionRate).toBe(0);
     expect(roundState).not.toHaveProperty("setId");
     expect(serverRoom.state.setId).toBe("set1");
+  });
+
+  test("boss1 raid3 roles are exposed after assignment", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableBossExclusiveShop: true,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+      for (const client of clients.slice(1)) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      }
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      const roundState = (await roundStatePromise) as RoundStateMessage;
+      const playerIds = clients.map((client) => client.sessionId);
+      const expectedBossPlayerId = playerIds[1];
+      const expectedRaidPlayerIds = [playerIds[0], playerIds[2], playerIds[3]];
+
+      expect(roundState.bossPlayerId).toBe(expectedBossPlayerId);
+      expect(roundState.raidPlayerIds).toEqual(expectedRaidPlayerIds);
+      expect(serverRoom.state.bossPlayerId).toBe(expectedBossPlayerId);
+      expect(Array.from(serverRoom.state.raidPlayerIds)).toEqual(expectedRaidPlayerIds);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   test("joinOrCreateのsetId指定がroom.stateへ反映される", async () => {

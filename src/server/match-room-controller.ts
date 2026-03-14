@@ -856,6 +856,11 @@ export class MatchRoomController {
     return state.bossPlayerId;
   }
 
+  public getRaidPlayerIds(): string[] {
+    const state = this.ensureStarted();
+    return [...state.raidPlayerIds];
+  }
+
   /**
    * 支配カウントを取得
    * @returns 支配カウント

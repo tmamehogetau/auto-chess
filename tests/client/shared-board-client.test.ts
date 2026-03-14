@@ -39,6 +39,9 @@ class FakeElement {
   public onpointerdown: (() => void) | null = null;
   public ondragstart: ((event: unknown) => void) | null = null;
   public ondragend: (() => void) | null = null;
+  public ondragover: ((event: unknown) => void) | null = null;
+  public ondragleave: (() => void) | null = null;
+  public ondrop: ((event: unknown) => void) | null = null;
   public classList: FakeClassList;
   public children: FakeElement[] = [];
 
@@ -221,6 +224,7 @@ describe("shared-board client", () => {
 
     const room = {
       sessionId: "player-1",
+      send: () => {},
       onLeave: (_handler: () => void) => {},
       onMessage: (_type: string, _handler: (message: unknown) => void) => {},
       onStateChange: (handler: (state: unknown) => void) => {
@@ -258,5 +262,81 @@ describe("shared-board client", () => {
 
     expect(gridElement.children[0]?.className).toContain("zone-boss");
     expect(gridElement.children[23]?.className).toContain("zone-raid");
+  });
+
+  test("shared board dragover marks valid and invalid drop zones", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+        8: { unitId: "", ownerId: "" },
+        9: { unitId: "ranger-1", ownerId: "player-2" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    const sourceCell = gridElement.children[7];
+    const validTargetCell = gridElement.children[8];
+    const invalidTargetCell = gridElement.children[9];
+
+    sourceCell?.ondragstart?.({
+      dataTransfer: {
+        effectAllowed: "",
+        setData: () => {},
+      },
+      preventDefault: () => {},
+    });
+
+    validTargetCell?.ondragover?.({
+      preventDefault: () => {},
+    });
+    invalidTargetCell?.ondragover?.({
+      preventDefault: () => {},
+    });
+
+    expect(validTargetCell?.dataset.dropValid).toBe("true");
+    expect(validTargetCell?.dataset.dropInvalid).toBeUndefined();
+    expect(validTargetCell?.className).toContain("drag-over");
+
+    expect(invalidTargetCell?.dataset.dropInvalid).toBe("true");
+    expect(invalidTargetCell?.dataset.dropValid).toBeUndefined();
+    expect(invalidTargetCell?.className).toContain("drag-over");
   });
 });

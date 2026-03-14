@@ -246,6 +246,16 @@ function renderSharedBoard(state) {
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
+    cellElement.ondragover = (event) => {
+      handleSharedDragOver(event, state, cellElement, i);
+    };
+    cellElement.ondragleave = () => {
+      clearSharedDropIndicators(cellElement);
+    };
+    cellElement.ondrop = (event) => {
+      handleSharedDrop(event, i);
+      clearSharedDropIndicators(cellElement);
+    };
 
     if (unitId && unitId !== "dummy-boss") {
       if (sharedBoardRoom && ownerId === sharedBoardRoom.sessionId) {
@@ -467,6 +477,52 @@ function handleSharedDragStart(event, state, cellIndex) {
 function handleSharedDragEnd() {
   sharedDraggedUnitId = null;
   sendSharedDragState(false, null);
+}
+
+function isValidSharedDropTarget(state, cellIndex) {
+  if (!sharedBoardRoom || !sharedDraggedUnitId) {
+    return false;
+  }
+
+  const cell = mapGet(state?.cells, String(cellIndex));
+  if (!cell) {
+    return false;
+  }
+
+  if (!cell.unitId) {
+    return true;
+  }
+
+  if (cell.unitId === "dummy-boss") {
+    return false;
+  }
+
+  return cell.ownerId === sharedBoardRoom.sessionId;
+}
+
+function clearSharedDropIndicators(cellElement) {
+  cellElement.classList.remove("drag-over");
+  delete cellElement.dataset.dropValid;
+  delete cellElement.dataset.dropInvalid;
+}
+
+function handleSharedDragOver(event, state, cellElement, cellIndex) {
+  if (!sharedDraggedUnitId) {
+    return;
+  }
+
+  event.preventDefault();
+  const isValid = isValidSharedDropTarget(state, cellIndex);
+  cellElement.classList.add("drag-over");
+
+  if (isValid) {
+    cellElement.dataset.dropValid = "true";
+    delete cellElement.dataset.dropInvalid;
+    return;
+  }
+
+  cellElement.dataset.dropInvalid = "true";
+  delete cellElement.dataset.dropValid;
 }
 
 /**

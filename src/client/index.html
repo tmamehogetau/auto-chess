@@ -767,6 +767,16 @@
         transform: scale(1.05);
       }
 
+      .shared-board-cell.drag-over[data-drop-valid="true"] {
+        background: rgba(39, 174, 96, 0.28);
+        border-color: #27ae60;
+      }
+
+      .shared-board-cell.drag-over[data-drop-invalid="true"] {
+        background: rgba(231, 76, 60, 0.22);
+        border-color: #e74c3c;
+      }
+
       .shared-board-cell.selected {
         border-color: #f1c40f;
         box-shadow: 0 0 0 2px rgba(241, 196, 15, 0.35);

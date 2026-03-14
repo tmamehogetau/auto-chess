@@ -188,6 +188,66 @@ describe("MatchRoomController", () => {
     ]);
   });
 
+  test("raid round resolves as one boss-vs-raid battle", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const battleResolutionService = Reflect.get(controller, "battleResolutionService") as {
+            resolveMatchup: (input: {
+              leftPlacements: Array<{ cell: number; unitType: string }>;
+              rightPlacements: Array<{ cell: number; unitType: string }>;
+            }) => unknown;
+          };
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [{ cell: 4, unitType: "ranger" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 5, unitType: "mage" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 6, unitType: "assassin" }])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+
+          expect(controller.phase).toBe("Battle");
+          expect(controller.roundPairings).toHaveLength(1);
+
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          expect(firstCall).toBeDefined();
+          expect([firstCall?.leftPlacements.length, firstCall?.rightPlacements.length].sort()).toEqual([1, 3]);
+          expect(firstCall?.leftPlacements.concat(firstCall.rightPlacements)).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ cell: 0, unitType: "vanguard" }),
+              expect.objectContaining({ cell: 4, unitType: "ranger" }),
+              expect.objectContaining({ cell: 5, unitType: "mage" }),
+              expect.objectContaining({ cell: 6, unitType: "assassin" }),
+            ]),
+          );
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("ラウンドが進むと対戦ペアがローテーションする", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

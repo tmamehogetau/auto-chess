@@ -1958,6 +1958,47 @@ export class MatchRoomController {
     this.hpAtBattleStartByPlayer = snapshot;
   }
 
+  private buildRaidBattleInput(
+    leftPlayerId: string,
+    rightPlayerId: string,
+  ): {
+    bossPlayerId: string;
+    raidPlayerIds: string[];
+    bossIsLeft: boolean;
+    leftPlacements: BoardUnitPlacement[];
+    rightPlacements: BoardUnitPlacement[];
+  } | null {
+    const state = this.ensureStarted();
+    const bossPlayerId = state.bossPlayerId;
+
+    if (!bossPlayerId || (leftPlayerId !== bossPlayerId && rightPlayerId !== bossPlayerId)) {
+      return null;
+    }
+
+    const raidPlayerIds = state.raidPlayerIds.filter((playerId) =>
+      this.battleInputSnapshotByPlayer.has(playerId),
+    );
+    if (raidPlayerIds.length === 0) {
+      return null;
+    }
+
+    const bossPlacements = (this.battleInputSnapshotByPlayer.get(bossPlayerId) ?? []).map(
+      (placement) => ({ ...placement }),
+    );
+    const raidPlacements = raidPlayerIds.flatMap((playerId) =>
+      (this.battleInputSnapshotByPlayer.get(playerId) ?? []).map((placement) => ({ ...placement })),
+    );
+    const bossIsLeft = leftPlayerId === bossPlayerId;
+
+    return {
+      bossPlayerId,
+      raidPlayerIds,
+      bossIsLeft,
+      leftPlacements: bossIsLeft ? bossPlacements : raidPlacements,
+      rightPlacements: bossIsLeft ? raidPlacements : bossPlacements,
+    };
+  }
+
   private capturePostBattleHp(): void {
     const state = this.ensureStarted();
     const snapshot = new Map<string, number>();
@@ -2184,18 +2225,25 @@ export class MatchRoomController {
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
-    const leftPlacements = this.battleInputSnapshotByPlayer.get(leftPlayerId) ?? [];
-    const rightPlacements = this.battleInputSnapshotByPlayer.get(rightPlayerId) ?? [];
+    const raidBattleInput = this.buildRaidBattleInput(leftPlayerId, rightPlayerId);
+    const leftPlacements = raidBattleInput?.leftPlacements
+      ?? this.battleInputSnapshotByPlayer.get(leftPlayerId)
+      ?? [];
+    const rightPlacements = raidBattleInput?.rightPlacements
+      ?? this.battleInputSnapshotByPlayer.get(rightPlayerId)
+      ?? [];
     const leftResolvedPlacements = resolveBattlePlacements(leftPlacements, this.rosterFlags);
     const rightResolvedPlacements = resolveBattlePlacements(rightPlacements, this.rosterFlags);
+    const leftIsBossSide = raidBattleInput?.bossIsLeft ?? false;
+    const rightIsBossSide = raidBattleInput ? !raidBattleInput.bossIsLeft : false;
 
     // ボード配置をBattleUnitに変換
     const leftBattleUnits: BattleUnit[] = leftResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "left", index, false, this.rosterFlags),
+      createBattleUnit(placement, "left", index, leftIsBossSide, this.rosterFlags),
     );
 
     const rightBattleUnits: BattleUnit[] = rightResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "right", index, false, this.rosterFlags),
+      createBattleUnit(placement, "right", index, rightIsBossSide, this.rosterFlags),
     );
 
     // スペル効果を適用
@@ -2257,8 +2305,25 @@ export class MatchRoomController {
     });
 
     // Store battle results in controller state
-    this.battleResultsByPlayer.set(leftPlayerId, resolutionResult.leftBattleResult);
-    this.battleResultsByPlayer.set(rightPlayerId, resolutionResult.rightBattleResult);
+    if (raidBattleInput) {
+      const bossBattleResult = raidBattleInput.bossIsLeft
+        ? resolutionResult.leftBattleResult
+        : resolutionResult.rightBattleResult;
+      const raidBattleResult = raidBattleInput.bossIsLeft
+        ? resolutionResult.rightBattleResult
+        : resolutionResult.leftBattleResult;
+
+      this.battleResultsByPlayer.set(raidBattleInput.bossPlayerId, bossBattleResult);
+      for (const raidPlayerId of raidBattleInput.raidPlayerIds) {
+        this.battleResultsByPlayer.set(raidPlayerId, {
+          ...raidBattleResult,
+          opponentId: raidBattleInput.bossPlayerId,
+        });
+      }
+    } else {
+      this.battleResultsByPlayer.set(leftPlayerId, resolutionResult.leftBattleResult);
+      this.battleResultsByPlayer.set(rightPlayerId, resolutionResult.rightBattleResult);
+    }
 
     // Log battle result trace
     const { outcome } = resolutionResult;
@@ -2412,6 +2477,25 @@ export class MatchRoomController {
   ): BattlePairing[] {
     if (battleParticipants.length < 2) {
       return [];
+    }
+
+    const state = this.ensureStarted();
+    if (state.bossPlayerId) {
+      const bossPlayerId = state.bossPlayerId;
+      const raidPlayerIds = state.raidPlayerIds.filter((playerId) =>
+        battleParticipants.includes(playerId),
+      );
+      const firstRaidPlayerId = raidPlayerIds[0];
+
+      if (battleParticipants.includes(bossPlayerId) && firstRaidPlayerId) {
+        return [
+          {
+            leftPlayerId: bossPlayerId,
+            rightPlayerId: firstRaidPlayerId,
+            ghostSourcePlayerId: null,
+          },
+        ];
+      }
     }
 
     const orderedParticipants = [...battleParticipants].sort((left, right) =>

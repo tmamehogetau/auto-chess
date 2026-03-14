@@ -253,6 +253,54 @@ export function findTarget(attacker: BattleUnit, enemies: BattleUnit[]): BattleU
   return closestTarget;
 }
 
+function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): BattleUnit | null {
+  const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+  if (livingEnemies.length === 0) {
+    return null;
+  }
+
+  let closestTarget: BattleUnit | null = null;
+  let minDistance = Infinity;
+
+  for (const enemy of livingEnemies) {
+    const distance = calculateCellDistance(attacker.cell, enemy.cell);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestTarget = enemy;
+    }
+  }
+
+  return closestTarget;
+}
+
+function moveUnitBySimpleApproach(
+  unit: BattleUnit,
+  enemies: BattleUnit[],
+  combatLog: string[],
+): boolean {
+  const nearestEnemy = findClosestLivingEnemy(unit, enemies);
+  if (!nearestEnemy) {
+    return false;
+  }
+
+  const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell);
+  if (currentDistance <= unit.attackRange) {
+    return false;
+  }
+
+  const previousCell = unit.cell;
+  const step = unit.cell < nearestEnemy.cell ? 1 : -1;
+  unit.cell += step;
+
+  const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
+  const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
+  combatLog.push(
+    `${sideLabel} ${typeLabel} moves from cell ${previousCell} to cell ${unit.cell}`,
+  );
+
+  return true;
+}
+
 /**
  * チームの戦力を計算（HPと攻撃力の合計）
  */
@@ -739,6 +787,10 @@ export class BattleSimulator {
             });
           }
         } else {
+          if (flags.enableBossExclusiveShop) {
+            moveUnitBySimpleApproach(action.unit, enemies, combatLog);
+          }
+
           // 攻撃カウントを増加（ターゲットが見つからない場合も）
           action.unit.attackCount++;
 

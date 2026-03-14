@@ -21,6 +21,17 @@ function createSharedBoardRoomMock(ownerId = "player-a") {
   };
 }
 
+function createSharedBoardRoomWithExtraUnitMock() {
+  return {
+    state: {
+      cells: new Map([
+        ["7", { unitId: "vanguard-1", ownerId: "player-a" }],
+        ["8", { unitId: "ranger-1", ownerId: "player-a" }],
+      ]),
+    },
+  };
+}
+
 describe("SharedBoardShadowObserver", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -62,5 +73,24 @@ describe("SharedBoardShadowObserver", () => {
 
     expect(secondResult.status).toBe("unavailable");
     expect(secondResult.lastError).toBe("SharedBoard room not attached");
+  });
+
+  it("observePlayer detects units that exist only on shared board for that player", () => {
+    const controller = createControllerMock();
+    const observer = new SharedBoardShadowObserver(controller as never);
+
+    observer.attachSharedBoard(createSharedBoardRoomWithExtraUnitMock() as never);
+
+    const result = observer.observePlayer("player-a");
+
+    expect(result.status).toBe("mismatch");
+    expect(result.mismatchCount).toBe(1);
+    expect(result.mismatchedCells).toEqual([
+      {
+        combatCell: 1,
+        gameUnitType: null,
+        sharedUnitType: "exists_in_shared_only",
+      },
+    ]);
   });
 });

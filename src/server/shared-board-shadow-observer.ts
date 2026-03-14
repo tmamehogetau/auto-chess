@@ -235,6 +235,27 @@ export class SharedBoardShadowObserver {
         }
       }
 
+      for (let sharedIndex = 0; sharedIndex < 24; sharedIndex++) {
+        const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
+        if (combatCellOpt === null) continue;
+
+        const combatCell = combatCellOpt;
+        const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
+
+        if (!sharedCell?.unitId) continue;
+        if (sharedCell.ownerId !== playerId) continue;
+
+        const hasGamePlacement = gamePlacements.some((placement) => placement.cell === combatCell);
+
+        if (!hasGamePlacement) {
+          mismatches.push({
+            combatCell,
+            gameUnitType: null,
+            sharedUnitType: sharedCell.unitId ? "exists_in_shared_only" : null,
+          });
+        }
+      }
+
       return {
         timestamp: now,
         status: mismatches.length > 0 ? "mismatch" : "ok",

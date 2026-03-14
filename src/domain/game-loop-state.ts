@@ -3,6 +3,7 @@ export type Phase = "Prep" | "Battle" | "Settle" | "Elimination" | "End";
 interface PlayerState {
   id: string;
   hp: number;
+  remainingLives: number;
   eliminated: boolean;
 }
 
@@ -38,6 +39,7 @@ export class GameLoopState {
         {
           id,
           hp: 100,
+          remainingLives: 0,
           eliminated: false,
         },
       ]),
@@ -57,6 +59,10 @@ export class GameLoopState {
       throw new Error(`Unknown player: ${playerId}`);
     }
     this.bossPlayerId = playerId;
+
+    for (const player of this.players.values()) {
+      player.remainingLives = player.id === playerId ? 0 : 3;
+    }
   }
 
   /**
@@ -65,7 +71,13 @@ export class GameLoopState {
   public setRandomBoss(): void {
     const playerIds = this.playerIds;
     const randomIndex = Math.floor(Math.random() * playerIds.length);
-    this.bossPlayerId = playerIds[randomIndex] ?? null;
+    const bossPlayerId = playerIds[randomIndex];
+    if (!bossPlayerId) {
+      this.bossPlayerId = null;
+      return;
+    }
+
+    this.setBossPlayer(bossPlayerId);
   }
 
   /**
@@ -82,14 +94,18 @@ export class GameLoopState {
    * @returns レイドプレイヤーID配列
    */
   public get raidPlayerIds(): string[] {
-    return this.alivePlayerIds.filter((id) => id !== this.bossPlayerId);
+    return this.playerIds.filter((id) => id !== this.bossPlayerId);
   }
 
   public get alivePlayerIds(): string[] {
     const alivePlayers: string[] = [];
 
     for (const player of this.players.values()) {
-      if (!player.eliminated && player.hp > 0) {
+      const isAliveInRaid = this.bossPlayerId !== null
+        ? (player.id === this.bossPlayerId || player.remainingLives > 0)
+        : player.hp > 0;
+
+      if (!player.eliminated && isAliveInRaid) {
         alivePlayers.push(player.id);
       }
     }
@@ -119,6 +135,35 @@ export class GameLoopState {
     }
 
     return player.eliminated;
+  }
+
+  public getRemainingLives(playerId: string): number {
+    const player = this.players.get(playerId);
+
+    if (!player) {
+      throw new Error(`Unknown player: ${playerId}`);
+    }
+
+    return player.remainingLives;
+  }
+
+  public consumeLife(playerId: string, amount: number = 1): number {
+    const player = this.players.get(playerId);
+
+    if (!player) {
+      throw new Error(`Unknown player: ${playerId}`);
+    }
+
+    if (player.id === this.bossPlayerId) {
+      return player.remainingLives;
+    }
+
+    player.remainingLives = Math.max(0, player.remainingLives - amount);
+    if (player.remainingLives <= 0) {
+      player.eliminated = true;
+    }
+
+    return player.remainingLives;
   }
 
   public setPlayerHp(playerId: string, nextHp: number): void {
@@ -159,6 +204,13 @@ export class GameLoopState {
 
   private applyElimination(): void {
     for (const player of this.players.values()) {
+      if (this.bossPlayerId !== null) {
+        if (player.id !== this.bossPlayerId && player.remainingLives <= 0) {
+          player.eliminated = true;
+        }
+        continue;
+      }
+
       if (player.hp <= 0) {
         player.eliminated = true;
       }

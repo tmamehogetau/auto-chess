@@ -29,6 +29,39 @@ const advanceRoundWithMinimalDurations = (
   return startTimeMs + 4;
 };
 
+const advanceRaidRoundWithMinimalDurations = (
+  controller: MatchRoomController,
+  startTimeMs: number,
+): number => {
+  controller.advanceByTime(startTimeMs + 1);
+  const roundIndex = controller.roundIndex;
+  const targetHp = getPhaseHpTarget(roundIndex);
+  controller.setPendingPhaseDamageForTest(targetHp);
+  controller.advanceByTime(startTimeMs + 2);
+  const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
+    opponentId: string;
+    won: boolean;
+    damageDealt: number;
+    damageTaken: number;
+    survivors: number;
+    opponentSurvivors: number;
+  }>;
+  for (const raidPlayerId of ["p1", "p3", "p4"]) {
+    battleResultsByPlayer.set(raidPlayerId, {
+      opponentId: "p2",
+      won: true,
+      damageDealt: 10,
+      damageTaken: 0,
+      survivors: 1,
+      opponentSurvivors: 0,
+    });
+  }
+  controller.advanceByTime(startTimeMs + 3);
+  controller.advanceByTime(startTimeMs + 4);
+
+  return startTimeMs + 4;
+};
+
 // 各ラウンドのフェーズHP目標値を取得
 function getPhaseHpTarget(roundIndex: number): number {
   const targets: Record<number, number> = {
@@ -1659,6 +1692,247 @@ describe("MatchRoomController", () => {
     expect(phaseProgress.damageDealt).toBe(0);
     expect(phaseProgress.result).toBe("pending");
     expect(phaseProgress.completionRate).toBe(0);
+  });
+
+  test("raid round wipe only consumes lives for wiped protagonists", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+          controller.advanceByTime(32_000);
+
+          controller.setPendingPhaseDamageForTest(100);
+
+          controller.advanceByTime(42_000);
+          const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>;
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          controller.advanceByTime(47_000);
+
+          expect(controller.getPhaseProgress()).toMatchObject({
+            targetHp: 600,
+            damageDealt: 100,
+            result: "failed",
+          });
+          expect(controller.getPlayerStatus("p1")).toMatchObject({ remainingLives: 2, eliminated: false });
+          expect(controller.getPlayerStatus("p3")).toMatchObject({ remainingLives: 3, eliminated: false });
+          expect(controller.getPlayerStatus("p4")).toMatchObject({ remainingLives: 2, eliminated: false });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid R12 final judgment gives raid victory only when phase hp reaches zero and someone survives", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>;
+
+          expect(controller.roundIndex).toBe(12);
+          expect(controller.phase).toBe("Prep");
+
+          controller.advanceByTime(nowMs + 1);
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          });
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          controller.setPendingPhaseDamageForTest(3_000);
+
+          controller.advanceByTime(nowMs + 2);
+          controller.advanceByTime(nowMs + 3);
+          controller.advanceByTime(nowMs + 4);
+
+          expect(controller.phase).toBe("End");
+          expect(controller.rankingTopToBottom[0]).toBe("p1");
+          expect(controller.rankingTopToBottom.at(-1)).toBe("p2");
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid R12 simultaneous wipe and phase break is a boss victory", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          const gameLoopState = Reflect.get(controller, "gameLoopState") as {
+            consumeLife: (playerId: string, amount?: number) => void;
+          };
+          gameLoopState.consumeLife("p1", 2);
+          gameLoopState.consumeLife("p3", 2);
+          gameLoopState.consumeLife("p4", 2);
+
+          const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>;
+
+          controller.advanceByTime(nowMs + 1);
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          controller.setPendingPhaseDamageForTest(3_000);
+
+          controller.advanceByTime(nowMs + 2);
+          controller.advanceByTime(nowMs + 3);
+          controller.advanceByTime(nowMs + 4);
+
+          expect(controller.phase).toBe("End");
+          expect(controller.rankingTopToBottom[0]).toBe("p2");
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
   });
 
   test("Battle終了時にpendingダメージがHPへ反映される", () => {

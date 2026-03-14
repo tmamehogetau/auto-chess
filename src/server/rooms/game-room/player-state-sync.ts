@@ -48,6 +48,7 @@ export function syncPlayerStateFromController(
 ): void {
   // Basic stats
   playerState.hp = controllerStatus.hp;
+  playerState.remainingLives = controllerStatus.remainingLives;
   playerState.eliminated = controllerStatus.eliminated;
   playerState.boardUnitCount = controllerStatus.boardUnitCount;
   playerState.gold = controllerStatus.gold;

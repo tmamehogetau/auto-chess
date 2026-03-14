@@ -71,6 +71,7 @@ export interface ActiveSynergyView {
  */
 export interface ControllerPlayerStatus {
   hp: number;
+  remainingLives: number;
   eliminated: boolean;
   boardUnitCount: number;
   gold: number;

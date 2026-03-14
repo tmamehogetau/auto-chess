@@ -82,6 +82,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public hp: number;
 
+  declare public remainingLives: number;
+
   declare public eliminated: boolean;
 
   declare public boardUnitCount: number;
@@ -129,6 +131,7 @@ export class PlayerPresenceState extends Schema {
     this.ready = false;
     this.connected = true;
     this.hp = 100;
+    this.remainingLives = 0;
     this.eliminated = false;
     this.boardUnitCount = 4;
     this.shopOffers = new ArraySchema<ShopOfferState>();
@@ -268,6 +271,7 @@ defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
   hp: "number",
+  remainingLives: "number",
   eliminated: "boolean",
   boardUnitCount: "number",
   shopOffers: [ShopOfferState],

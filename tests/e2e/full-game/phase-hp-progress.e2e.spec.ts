@@ -200,4 +200,113 @@ describe("E2E: Phase HP Progress", () => {
       );
     },
   );
+
+  it(
+    "R1 raid result updates phase hp and only wiped players lose a life",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(
+        { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+        async () => {
+          const gameRoom = await testServer.createRoom<GameRoom>("game");
+          const roundStates: Array<Record<string, unknown>> = [];
+          const client1 = await testServer.connectTo(gameRoom);
+          client1.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (msg) => {
+            roundStates.push(msg as Record<string, unknown>);
+          });
+
+          const clients = [
+            client1,
+            await testServer.connectTo(gameRoom),
+            await testServer.connectTo(gameRoom),
+            await testServer.connectTo(gameRoom),
+          ];
+
+          for (const client of clients) {
+            client.onMessage("command_result", () => {});
+          }
+          for (const client of clients.slice(1)) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
+            client.send("ready", { ready: true });
+          }
+
+          await waitForPhase(gameRoom, "Battle", 5_000);
+
+          const roomInternals = gameRoom as unknown as {
+            controller?: {
+              setPendingPhaseDamageForTest: (damageValue: number) => void;
+            };
+          };
+          const controller = roomInternals.controller;
+          expect(controller).toBeDefined();
+          const bossPlayerId = gameRoom.state.bossPlayerId;
+          const raidClients = clients.filter((client) => client.sessionId !== bossPlayerId);
+          const bossClient = clients.find((client) => client.sessionId === bossPlayerId);
+          expect(bossClient).toBeDefined();
+          expect(raidClients).toHaveLength(3);
+          const resolvedBossClient = bossClient!;
+          const raidClientA = raidClients[0]!;
+          const raidClientB = raidClients[1]!;
+          const raidClientC = raidClients[2]!;
+          controller?.setPendingPhaseDamageForTest(100);
+
+          await waitForPhase(gameRoom, "Settle", 5_000);
+
+          const battleResultsByPlayer = Reflect.get(controller as object, "battleResultsByPlayer") as Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>;
+
+          battleResultsByPlayer.set(raidClientA.sessionId, {
+            opponentId: resolvedBossClient.sessionId,
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set(raidClientB.sessionId, {
+            opponentId: resolvedBossClient.sessionId,
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set(raidClientC.sessionId, {
+            opponentId: resolvedBossClient.sessionId,
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+
+          await waitForCondition(
+            () => gameRoom.state.phase === "Prep" || gameRoom.state.phase === "End",
+            5_000,
+          );
+
+          const resolvedState = roundStates.find((state) => state.roundIndex === 1 && state.phaseResult === "failed");
+          expect(resolvedState).toBeDefined();
+          expect(resolvedState?.phaseHpTarget).toBe(600);
+          expect(resolvedState?.phaseDamageDealt).toBe(100);
+          expect((gameRoom.state.players.get(raidClientA.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(2);
+          expect((gameRoom.state.players.get(raidClientB.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(3);
+          expect((gameRoom.state.players.get(raidClientC.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(2);
+
+          for (const client of clients) {
+            client.connection.close();
+          }
+        },
+      );
+    },
+  );
 });

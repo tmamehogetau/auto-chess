@@ -213,6 +213,7 @@ const hpDisplay = document.querySelector("[data-hp-display]");
   const xpDisplay = document.querySelector("[data-xp-display]");
 const dominationCountDisplay = document.querySelector("[data-domination-count-display]");
 const phaseDisplay = document.querySelector("[data-phase-display]");
+const raidBoardModeBadge = document.querySelector("[data-raid-board-mode-badge]");
 const raidLivesDisplay = document.querySelector("[data-raid-lives-display]");
 const finalJudgmentBanner = document.querySelector("[data-final-judgment-banner]");
 const readyCountDisplay = document.querySelector("[data-ready-count]");
@@ -1201,6 +1202,16 @@ function updateRaidBoardPresentation(state) {
     sharedBoardGrid.dataset.currentPhase = readPhase(state?.phase) || "Waiting";
   }
 
+  const sharedBoardMode = typeof state?.sharedBoardMode === "string" ? state.sharedBoardMode : "local";
+  const readableMode = sharedBoardMode === "half-shared" ? "Half Shared"
+    : sharedBoardMode === "shadow" ? "Shadow"
+      : "Local";
+
+  if (raidBoardModeBadge) {
+    raidBoardModeBadge.textContent = `Mode: ${readableMode}`;
+    raidBoardModeBadge.className = "phase-hp-result mode-badge";
+  }
+
   const playerEntries = mapEntries(state?.players).map(([, player]) => player);
   const remainingLives = playerEntries
     .map((player) => Number(player?.remainingLives))
@@ -1218,9 +1229,20 @@ function updateRaidBoardPresentation(state) {
     const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
 
     if (phase === "End" && isRaidRound) {
-      finalJudgmentBanner.textContent = ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory";
+      const winnerPlayerId = typeof ranking[0] === "string" ? ranking[0] : null;
+      if (!winnerPlayerId) {
+        finalJudgmentBanner.textContent = "Final Judgment: Pending";
+        finalJudgmentBanner.className = "phase-hp-result pending";
+        return;
+      }
+
+      const isBossVictory = winnerPlayerId === bossPlayerId;
+      finalJudgmentBanner.textContent = `Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}`;
+      finalJudgmentBanner.className = `phase-hp-result ${isBossVictory ? "boss-victory" : "raid-victory"}`;
     } else {
-      finalJudgmentBanner.textContent = `Round ${Number(state?.roundIndex) || 0}`;
+      const roundIndex = Number(state?.roundIndex);
+      finalJudgmentBanner.textContent = `Round ${Number.isFinite(roundIndex) ? roundIndex + 1 : 1}`;
+      finalJudgmentBanner.className = "phase-hp-result pending";
     }
   }
 }
@@ -1369,7 +1391,8 @@ function renderPhaseHpProgress(progress) {
   const visiblePercent = Math.round(Math.min(1, completionRate) * 100);
   const textPercent = Math.round(completionRate * 100);
 
-  phaseHpValue.textContent = `${Math.round(progress.damageDealt)} / ${Math.round(progress.targetHp)} (${textPercent}%)`;
+  const remainingHp = Math.max(0, Math.round(progress.targetHp - progress.damageDealt));
+  phaseHpValue.textContent = `${remainingHp} HP remaining (${textPercent}% completed)`;
   phaseHpFill.style.width = `${visiblePercent}%`;
   phaseHpFill.classList.remove("pending", "success", "failed");
   phaseHpFill.classList.add(progress.result);

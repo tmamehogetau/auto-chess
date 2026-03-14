@@ -6,6 +6,8 @@ import {
   raidBoardIndexToCombatCell,
   COMBAT_CELL_MIN_INDEX,
   COMBAT_CELL_MAX_INDEX,
+  RAID_BOARD_WIDTH,
+  RAID_BOARD_HEIGHT,
 } from "../shared/board-geometry";
 
 /**
@@ -47,6 +49,8 @@ export class SharedBoardShadowObserver {
 
   private readonly minObservationIntervalMs = 100;
 
+  private readonly sharedCellCount = RAID_BOARD_WIDTH * RAID_BOARD_HEIGHT;
+
   constructor(controller: MatchRoomController) {
     this.controller = controller;
   }
@@ -58,6 +62,8 @@ export class SharedBoardShadowObserver {
   public attachSharedBoard(room: SharedBoardRoom): void {
     this.sharedBoardRoom = room;
     this.consecutiveErrors = 0;
+    this.lastObservationTime = 0;
+    this.lastDiffResult = null;
   }
 
   /**
@@ -66,6 +72,7 @@ export class SharedBoardShadowObserver {
   public detachSharedBoard(): void {
     this.sharedBoardRoom = null;
     this.lastDiffResult = null;
+    this.lastObservationTime = 0;
   }
 
   /**
@@ -146,7 +153,7 @@ export class SharedBoardShadowObserver {
         }
 
         // shared_board側に余分なユニットがないか確認（逆方向チェック）
-        for (let sharedIndex = 0; sharedIndex < 24; sharedIndex++) {
+        for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
           const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
           if (combatCellOpt === null) continue;
 
@@ -163,7 +170,7 @@ export class SharedBoardShadowObserver {
             mismatches.push({
               combatCell,
               gameUnitType: null,
-              sharedUnitType: sharedCell.unitId ? "exists_in_shared_only" : null,
+              sharedUnitType: "exists_in_shared_only",
             });
           }
         }
@@ -232,20 +239,50 @@ export class SharedBoardShadowObserver {
         }
       }
 
-      return {
+      for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
+        const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
+        if (combatCellOpt === null) continue;
+
+        const combatCell = combatCellOpt;
+        const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
+
+        if (!sharedCell?.unitId) continue;
+        if (sharedCell.ownerId !== playerId) continue;
+
+        const hasGamePlacement = gamePlacements.some((placement) => placement.cell === combatCell);
+
+        if (!hasGamePlacement) {
+          mismatches.push({
+            combatCell,
+            gameUnitType: null,
+            sharedUnitType: "exists_in_shared_only",
+          });
+        }
+      }
+
+      const result: ShadowDiffResult = {
         timestamp: now,
         status: mismatches.length > 0 ? "mismatch" : "ok",
         mismatchCount: mismatches.length,
         mismatchedCells: mismatches.slice(0, 10),
       };
+
+      this.consecutiveErrors = 0;
+      this.lastDiffResult = result;
+      return result;
     } catch (error) {
-      return {
+      this.consecutiveErrors++;
+
+      const result: ShadowDiffResult = {
         timestamp: now,
-        status: "unavailable",
+        status: this.consecutiveErrors >= this.maxConsecutiveErrors ? "degraded" : "unavailable",
         mismatchCount: 0,
         mismatchedCells: [],
         lastError: error instanceof Error ? error.message : String(error),
       };
+
+      this.lastDiffResult = result;
+      return result;
     }
   }
 }

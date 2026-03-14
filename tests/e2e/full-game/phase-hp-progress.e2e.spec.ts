@@ -184,6 +184,10 @@ describe("E2E: Phase HP Progress", () => {
 
           await waitForCondition(() => gameRoom.state.roundIndex >= 2, 5_000);
           await waitForPhase(gameRoom, "Prep", 5_000);
+          await waitForCondition(
+            () => roundStates.some((state) => state.roundIndex === 2 && state.phase === "Prep"),
+            5_000,
+          );
 
           const r2State = roundStates.find(
             (state) => state.roundIndex === 2 && state.phase === "Prep",

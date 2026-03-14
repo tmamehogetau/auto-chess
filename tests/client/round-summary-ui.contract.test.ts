@@ -28,6 +28,7 @@ describe("round summary ui contract", () => {
       "data-raid-lives-display",
       "data-final-judgment-banner",
       "data-boss-phase-hp-display",
+      "data-raid-board-mode-badge",
     ];
 
     for (const attribute of requiredAttributes) {

@@ -174,4 +174,56 @@ describe("SharedBoardBridge integration", () => {
       },
     );
   });
+
+  test("getMetrics proxies monitor while active and resets after dispose", async () => {
+    const { bridge } = await createReadyBridge();
+
+    bridge.logGameCommandEvent({
+      playerId: "p1",
+      eventType: "apply_result",
+      success: true,
+      latencyMs: 17,
+      correlationId: "corr-metrics",
+    });
+
+    expect(bridge.getMetrics()).toMatchObject({
+      totalEvents: 1,
+      successEvents: 1,
+      failedEvents: 0,
+    });
+
+    bridge.dispose();
+
+    expect(bridge.getMetrics()).toEqual({
+      totalEvents: 0,
+      successEvents: 0,
+      failedEvents: 0,
+      conflictEvents: 0,
+      avgLatencyMs: 0,
+      lastEventAt: 0,
+    });
+  });
+
+  test("dispose clears bridge listeners and owned resources", async () => {
+    const { bridge } = await createReadyBridge();
+    const offPlacementChange = vi.fn();
+    const unsubscribeHandle = vi.fn();
+    const detachSharedBoard = vi.fn();
+
+    Reflect.set(bridge, "sharedBoardRoom", { offPlacementChange } as unknown);
+    Reflect.set(bridge, "unsubscribeHandle", unsubscribeHandle);
+    Reflect.set(bridge, "shadowObserver", { detachSharedBoard } as unknown);
+    Reflect.set(bridge, "monitor", new BridgeMonitor("test-game-room"));
+
+    bridge.dispose();
+
+    expect(bridge.getState()).toBe("CLOSED");
+    expect(offPlacementChange).toHaveBeenCalledTimes(1);
+    expect(unsubscribeHandle).toHaveBeenCalledTimes(1);
+    expect(detachSharedBoard).toHaveBeenCalledTimes(1);
+    expect(Reflect.get(bridge, "sharedBoardRoom")).toBeNull();
+    expect(Reflect.get(bridge, "shadowObserver")).toBeNull();
+    expect(Reflect.get(bridge, "unsubscribeHandle")).toBeNull();
+    expect(Reflect.get(bridge, "monitor")).toBeNull();
+  });
 });

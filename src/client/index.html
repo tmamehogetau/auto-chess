@@ -519,8 +519,9 @@
 
       .phase-hp-track {
         width: 100%;
-        height: 8px;
-        background: rgba(255, 255, 255, 0.12);
+        height: 12px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 999px;
         overflow: hidden;
       }
@@ -534,11 +535,13 @@
       }
 
       .phase-hp-fill.success {
-        background: #2ecc71;
+        background: linear-gradient(90deg, #27ae60, #2ecc71);
+        box-shadow: 0 0 8px rgba(46, 204, 113, 0.4);
       }
 
       .phase-hp-fill.failed {
-        background: #e74c3c;
+        background: linear-gradient(90deg, #c0392b, #e74c3c);
+        box-shadow: 0 0 8px rgba(231, 76, 60, 0.4);
       }
 
       .phase-hp-fill.pending {
@@ -654,6 +657,39 @@
         color: #f39c12;
       }
 
+      .phase-hp-result.mode-badge {
+        background: rgba(52, 152, 219, 0.15);
+        border: 1px solid rgba(52, 152, 219, 0.3);
+        color: #74b9ff;
+        font-size: 10px;
+        letter-spacing: 0.5px;
+      }
+
+      .phase-hp-result.boss-victory {
+        background: linear-gradient(90deg, rgba(231, 76, 60, 0.3), rgba(192, 57, 43, 0.2));
+        border: 1px solid #e74c3c;
+        color: #ff6b6b;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 6px;
+      }
+
+      .phase-hp-result.raid-victory {
+        background: linear-gradient(90deg, rgba(46, 204, 113, 0.3), rgba(39, 174, 96, 0.2));
+        border: 1px solid #2ecc71;
+        color: #55efc4;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 6px;
+      }
+
+      .lives-label {
+        font-size: 9px;
+        color: #636e72;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
       /* Ready Button */
       .ready-section {
         display: flex;
@@ -725,6 +761,16 @@
         opacity: 0.75;
       }
 
+      .shared-board-cell.zone-boss {
+        background: rgba(231, 76, 60, 0.08);
+        border-color: rgba(231, 76, 60, 0.28);
+      }
+
+      .shared-board-cell.zone-raid {
+        background: rgba(39, 174, 96, 0.08);
+        border-color: rgba(39, 174, 96, 0.28);
+      }
+
       .shared-board-cell.has-unit {
         border-color: #27ae60;
         background: rgba(39, 174, 96, 0.15);
@@ -755,6 +801,16 @@
         background: rgba(233, 69, 96, 0.4);
         border-color: #e94560;
         transform: scale(1.05);
+      }
+
+      .shared-board-cell.drag-over[data-drop-valid="true"] {
+        background: rgba(39, 174, 96, 0.28);
+        border-color: #27ae60;
+      }
+
+      .shared-board-cell.drag-over[data-drop-invalid="true"] {
+        background: rgba(231, 76, 60, 0.22);
+        border-color: #e74c3c;
       }
 
       .shared-board-cell.selected {
@@ -2037,16 +2093,18 @@
              <span class="status-label">Dom</span>
              <span class="status-value domination" data-domination-count-display>0/5</span>
            </div>
-           <div class="status-item">
-             <span class="status-label">Lives</span>
-             <span class="status-value" data-raid-lives-display>3</span>
+            <div class="status-item">
+              <span class="status-label">Lives</span>
+              <span class="status-value" data-raid-lives-display>3</span>
+              <span class="lives-label">shared</span>
+            </div>
            </div>
-          </div>
-          <div class="status-right">
-           <div class="phase-indicator waiting" data-phase-display>Waiting</div>
-           <div class="ready-count" data-ready-count>0/0 Ready</div>
-           <div class="phase-hp-result pending" data-final-judgment-banner>Awaiting Judgment</div>
-           <div class="phase-hp-section" data-phase-hp-section>
+           <div class="status-right">
+             <div class="phase-indicator waiting" data-phase-display>Waiting</div>
+             <div class="ready-count" data-ready-count>0/0 Ready</div>
+            <div class="phase-hp-result mode-badge" data-raid-board-mode-badge>Mode: Local</div>
+            <div class="phase-hp-result pending" data-final-judgment-banner>Awaiting Judgment</div>
+            <div class="phase-hp-section" data-phase-hp-section>
              <div class="phase-hp-header">
                <span class="phase-hp-label">Phase HP</span>
                <span class="phase-hp-value" data-phase-hp-value data-boss-phase-hp-display>0 / 0</span>

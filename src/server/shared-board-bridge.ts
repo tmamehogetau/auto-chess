@@ -7,6 +7,7 @@ import type { ShadowDiffMessage, BoardUnitPlacement } from "../shared/room-messa
 import { raidBoardIndexToCombatCell } from "../shared/board-geometry";
 import {
   BridgeMonitor,
+  clampWindowMs,
   DEFAULT_ALERT_THRESHOLDS,
   DEFAULT_DASHBOARD_WINDOW_MS,
   type AlertStatus,
@@ -856,8 +857,9 @@ export class SharedBoardBridge {
     windowMs = DEFAULT_DASHBOARD_WINDOW_MS,
     nowMs = Date.now(),
   ): DashboardMetrics {
-    return this.monitor?.getDashboardMetrics(windowMs, nowMs) ?? {
-      windowMs,
+    const safeWindowMs = clampWindowMs(windowMs);
+    return this.monitor?.getDashboardMetrics(safeWindowMs, nowMs) ?? {
+      windowMs: safeWindowMs,
       generatedAt: nowMs,
       windowEventCount: 0,
       successRate: 0,
@@ -983,5 +985,6 @@ export class SharedBoardBridge {
     }
 
     this.sharedBoardRoom = null;
+    this.monitor = null;
   }
 }

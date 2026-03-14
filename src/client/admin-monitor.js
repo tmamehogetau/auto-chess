@@ -280,11 +280,11 @@ function renderMonitorAlert(data) {
     : "";
 
   if (hasAlert) {
-    setMonitorText(domRefs.monitorAlertValue, `ALERT (${rules || "triggered"})`);
+    setMonitorText(domRefs.monitorAlertValue, `ALERT: ${rules || "triggered"}`);
     return;
   }
 
-  setMonitorText(domRefs.monitorAlertValue, "OK");
+  setMonitorText(domRefs.monitorAlertValue, "OK: healthy");
 }
 
 /**

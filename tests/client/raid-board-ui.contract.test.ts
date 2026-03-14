@@ -12,6 +12,7 @@ describe("raid board ui contract", () => {
 
     const requiredAttributes = [
       "data-raid-board-header",
+      "data-raid-board-mode-badge",
       "data-raid-board-boss-label",
       "data-raid-board-raid-label",
       "data-raid-board-zone-legend",
@@ -30,5 +31,13 @@ describe("raid board ui contract", () => {
     expect(html.includes("data-local-board-section")).toBe(false);
     expect(js.includes("updateRaidBoardPresentation(")).toBe(true);
     expect(js.includes("hideSharedBoardDuringBattle")).toBe(false);
+  });
+
+  test("raid board presentation publishes readable mode and final judgment labels", () => {
+    const js = readFileSync(manualCheckPath, "utf-8");
+
+    expect(js.includes("const readableMode = sharedBoardMode === \"half-shared\" ? \"Half Shared\"")).toBe(true);
+    expect(js.includes("raidBoardModeBadge.textContent = `Mode: ${readableMode}`")).toBe(true);
+    expect(js.includes('Final Judgment: ${ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory"}')).toBe(true);
   });
 });

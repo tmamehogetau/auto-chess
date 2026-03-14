@@ -213,6 +213,7 @@ const hpDisplay = document.querySelector("[data-hp-display]");
   const xpDisplay = document.querySelector("[data-xp-display]");
 const dominationCountDisplay = document.querySelector("[data-domination-count-display]");
 const phaseDisplay = document.querySelector("[data-phase-display]");
+const raidBoardModeBadge = document.querySelector("[data-raid-board-mode-badge]");
 const raidLivesDisplay = document.querySelector("[data-raid-lives-display]");
 const finalJudgmentBanner = document.querySelector("[data-final-judgment-banner]");
 const readyCountDisplay = document.querySelector("[data-ready-count]");
@@ -1201,6 +1202,15 @@ function updateRaidBoardPresentation(state) {
     sharedBoardGrid.dataset.currentPhase = readPhase(state?.phase) || "Waiting";
   }
 
+  const sharedBoardMode = typeof state?.sharedBoardMode === "string" ? state.sharedBoardMode : "local";
+  const readableMode = sharedBoardMode === "half-shared" ? "Half Shared"
+    : sharedBoardMode === "shadow" ? "Shadow"
+      : "Local";
+
+  if (raidBoardModeBadge) {
+    raidBoardModeBadge.textContent = `Mode: ${readableMode}`;
+  }
+
   const playerEntries = mapEntries(state?.players).map(([, player]) => player);
   const remainingLives = playerEntries
     .map((player) => Number(player?.remainingLives))
@@ -1218,7 +1228,7 @@ function updateRaidBoardPresentation(state) {
     const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
 
     if (phase === "End" && isRaidRound) {
-      finalJudgmentBanner.textContent = ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory";
+      finalJudgmentBanner.textContent = `Final Judgment: ${ranking[0] === bossPlayerId ? "Boss Victory" : "Raid Victory"}`;
     } else {
       finalJudgmentBanner.textContent = `Round ${Number(state?.roundIndex) || 0}`;
     }

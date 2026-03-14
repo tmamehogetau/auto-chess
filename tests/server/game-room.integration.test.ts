@@ -356,6 +356,63 @@ describe("GameRoom integration", () => {
     }
   });
 
+  test("raid prep falls back to local placements until shared board bridge is ready", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableBossExclusiveShop: true,
+        enableSharedBoardShadow: true,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const roomInternals = serverRoom as unknown as {
+        controller?: {
+          getBoardPlacementsForPlayer: (playerId: string) => Array<{ cell: number; unitType: string }>;
+        };
+        sharedBoardBridge?: {
+          getState: () => string;
+        };
+      };
+
+      for (const client of clients.slice(1)) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      }
+
+      const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      const roundState = (await roundStatePromise) as RoundStateMessage & {
+        sharedBoardAuthorityEnabled?: boolean;
+        sharedBoardMode?: string;
+      };
+
+      const raidPlayerId = clients[0].sessionId;
+      clients[0].send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 1,
+        boardPlacements: [{ cell: 4, unitType: "ranger" }],
+      });
+      await clients[0].waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+
+      expect(roomInternals.sharedBoardBridge?.getState()).not.toBe("READY");
+      expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([
+        expect.objectContaining({ cell: 4, unitType: "ranger" }),
+      ]);
+      expect(roundState.sharedBoardAuthorityEnabled).toBe(false);
+      expect(roundState.sharedBoardMode).toBe("shadow");
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
   test("joinOrCreateのsetId指定がroom.stateへ反映される", async () => {
     const firstClient = await testServer.sdk.joinOrCreate("game", {
       setId: "set2",

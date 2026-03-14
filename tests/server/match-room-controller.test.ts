@@ -248,6 +248,99 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("raid round aggregates hero and spell effects from all raid players", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+        enableSpellCard: true,
+      },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const battleResolutionService = Reflect.get(controller, "battleResolutionService") as {
+            resolveMatchup: (input: {
+              rightBattleUnits: Array<{
+                id: string;
+                buffModifiers: { attackMultiplier: number };
+              }>;
+            }) => unknown;
+          };
+          const spellCardHandler = Reflect.get(controller, "spellCardHandler") as {
+            getCombatModifiersForPlayer: (playerId: string) => {
+              attackMultiplier: number;
+              defenseMultiplier: number;
+              attackSpeedMultiplier: number;
+            } | null;
+          };
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+          vi.spyOn(spellCardHandler, "getCombatModifiersForPlayer").mockImplementation((playerId) => {
+            const attackMultipliers: Record<string, number> = {
+              p1: 2,
+              p3: 3,
+              p4: 5,
+            };
+            const attackMultiplier = attackMultipliers[playerId];
+
+            if (!attackMultiplier) {
+              return null;
+            }
+
+            return {
+              attackMultiplier,
+              defenseMultiplier: 1,
+              attackSpeedMultiplier: 1,
+            };
+          });
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          controller.selectHero("p1", "reimu");
+          controller.selectHero("p3", "marisa");
+          controller.selectHero("p4", "okina");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [{ cell: 4, unitType: "ranger" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 5, unitType: "mage" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 6, unitType: "assassin" }])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          expect(firstCall).toBeDefined();
+
+          const raidHeroUnits = firstCall?.rightBattleUnits.filter((unit) => unit.id.startsWith("hero-")) ?? [];
+          const raidNonHeroUnits = firstCall?.rightBattleUnits.filter((unit) => !unit.id.startsWith("hero-")) ?? [];
+
+          expect(raidHeroUnits.map((unit) => unit.id).sort()).toEqual([
+            "hero-p1",
+            "hero-p3",
+            "hero-p4",
+          ]);
+          expect(raidNonHeroUnits).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ buffModifiers: expect.objectContaining({ attackMultiplier: 30 }) }),
+            ]),
+          );
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("ラウンドが進むと対戦ペアがローテーションする", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

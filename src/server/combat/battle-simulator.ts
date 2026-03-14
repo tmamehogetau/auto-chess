@@ -321,7 +321,7 @@ function calculateTeamPower(units: BattleUnit[]): number {
 function applySynergyBuffs(
   units: BattleUnit[],
   boardPlacements: BoardUnitPlacement[],
-  heroSynergyBonusType: BoardUnitType | null = null,
+  heroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
   flags: FeatureFlags = DEFAULT_FLAGS,
 ): void {
   const synergyDetails = calculateSynergyDetails(boardPlacements, heroSynergyBonusType, {
@@ -540,8 +540,8 @@ export class BattleSimulator {
     leftPlacements: BoardUnitPlacement[] = [],
     rightPlacements: BoardUnitPlacement[] = [],
     maxDurationMs: number = 30000,
-    leftHeroSynergyBonusType: BoardUnitType | null = null,
-    rightHeroSynergyBonusType: BoardUnitType | null = null,
+    leftHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
+    rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null = null,
     flags: FeatureFlags = DEFAULT_FLAGS,
   ): BattleResult {
@@ -787,7 +787,8 @@ export class BattleSimulator {
             });
           }
         } else {
-          if (flags.enableBossExclusiveShop) {
+          const isRaidBattle = leftUnits.some((unit) => unit.isBoss) || rightUnits.some((unit) => unit.isBoss);
+          if (flags.enableBossExclusiveShop && isRaidBattle) {
             moveUnitBySimpleApproach(action.unit, enemies, combatLog);
           }
 

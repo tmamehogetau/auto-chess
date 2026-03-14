@@ -277,7 +277,7 @@ export interface SynergyCalculationOptions {
 
 export function calculateSynergyDetails(
   boardPlacements: Array<{ unitType: BoardUnitType; factionId?: TouhouFactionId | null }>,
-  heroSynergyBonusType: BoardUnitType | null = null,
+  heroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
   options: SynergyCalculationOptions = {},
 ): SynergyDetails {
   const countsByType: Record<BoardUnitType, number> = {
@@ -312,8 +312,14 @@ export function calculateSynergyDetails(
     }
   }
 
-  if (heroSynergyBonusType) {
-    countsByType[heroSynergyBonusType] += 1;
+  const heroSynergyBonusTypes = Array.isArray(heroSynergyBonusType)
+    ? heroSynergyBonusType
+    : heroSynergyBonusType
+      ? [heroSynergyBonusType]
+      : [];
+
+  for (const bonusType of heroSynergyBonusTypes) {
+    countsByType[bonusType] += 1;
   }
 
   const activeTiers: Record<BoardUnitType, SynergyTier> = {

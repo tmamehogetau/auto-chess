@@ -627,10 +627,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private resolveSharedBoardMode(): string {
+    const bridgeReady = this.sharedBoardBridge?.getState() === "READY";
+
     if (
       this.state.featureFlagsEnableSharedBoardShadow
       && this.state.featureFlagsEnableBossExclusiveShop
       && this.state.bossPlayerId !== ""
+      && bridgeReady
     ) {
       return "half-shared";
     }

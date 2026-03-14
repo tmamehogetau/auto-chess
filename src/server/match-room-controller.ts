@@ -1965,6 +1965,8 @@ export class MatchRoomController {
     bossPlayerId: string;
     raidPlayerIds: string[];
     bossIsLeft: boolean;
+    leftPlayerIds: string[];
+    rightPlayerIds: string[];
     leftPlacements: BoardUnitPlacement[];
     rightPlacements: BoardUnitPlacement[];
   } | null {
@@ -1994,9 +1996,45 @@ export class MatchRoomController {
       bossPlayerId,
       raidPlayerIds,
       bossIsLeft,
+      leftPlayerIds: bossIsLeft ? [bossPlayerId] : raidPlayerIds,
+      rightPlayerIds: bossIsLeft ? raidPlayerIds : [bossPlayerId],
       leftPlacements: bossIsLeft ? bossPlacements : raidPlacements,
       rightPlacements: bossIsLeft ? raidPlacements : bossPlacements,
     };
+  }
+
+  private buildSideSpellModifiers(playerIds: string[]): SpellCombatModifiers | null {
+    let aggregatedModifiers: SpellCombatModifiers | null = null;
+
+    for (const playerId of playerIds) {
+      const modifiers = this.spellCardHandler.getCombatModifiersForPlayer(playerId);
+      if (!modifiers) {
+        continue;
+      }
+
+      aggregatedModifiers ??= {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      };
+      aggregatedModifiers.attackMultiplier *= modifiers.attackMultiplier;
+      aggregatedModifiers.defenseMultiplier *= modifiers.defenseMultiplier;
+      aggregatedModifiers.attackSpeedMultiplier *= modifiers.attackSpeedMultiplier;
+    }
+
+    return aggregatedModifiers;
+  }
+
+  private buildSideHeroIds(playerIds: string[]): string[] {
+    return playerIds
+      .map((playerId) => this.selectedHeroByPlayer.get(playerId) ?? "")
+      .filter((heroId): heroId is string => heroId !== "");
+  }
+
+  private buildSideHeroSynergyBonusTypes(playerIds: string[]): BoardUnitType[] {
+    return this.buildSideHeroIds(playerIds)
+      .map((heroId) => this.battleResolutionService.getHeroSynergyBonusType(heroId))
+      .filter((bonusType): bonusType is BoardUnitType => bonusType !== null);
   }
 
   private capturePostBattleHp(): void {
@@ -2226,6 +2264,8 @@ export class MatchRoomController {
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
     const raidBattleInput = this.buildRaidBattleInput(leftPlayerId, rightPlayerId);
+    const leftPlayerIds = raidBattleInput?.leftPlayerIds ?? [leftPlayerId];
+    const rightPlayerIds = raidBattleInput?.rightPlayerIds ?? [rightPlayerId];
     const leftPlacements = raidBattleInput?.leftPlacements
       ?? this.battleInputSnapshotByPlayer.get(leftPlayerId)
       ?? [];
@@ -2247,26 +2287,32 @@ export class MatchRoomController {
     );
 
     // スペル効果を適用
-    const leftModifiers = this.spellCardHandler.getCombatModifiersForPlayer(leftPlayerId);
+    const leftModifiers = this.buildSideSpellModifiers(leftPlayerIds);
     this.battleResolutionService.applySpellModifiers(leftBattleUnits, leftModifiers);
-    const rightModifiers = this.spellCardHandler.getCombatModifiersForPlayer(rightPlayerId);
+    const rightModifiers = this.buildSideSpellModifiers(rightPlayerIds);
     this.battleResolutionService.applySpellModifiers(rightBattleUnits, rightModifiers);
 
     // 主人公を追加（選択されている場合）
-    const leftHeroId = this.selectedHeroByPlayer.get(leftPlayerId);
-    const leftHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(leftHeroId, leftPlayerId);
-    if (leftHeroBattleUnit) {
-      leftBattleUnits.push(leftHeroBattleUnit);
+    const leftHeroIds = this.buildSideHeroIds(leftPlayerIds);
+    for (const heroPlayerId of leftPlayerIds) {
+      const leftHeroId = this.selectedHeroByPlayer.get(heroPlayerId);
+      const leftHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(leftHeroId, heroPlayerId);
+      if (leftHeroBattleUnit) {
+        leftBattleUnits.push(leftHeroBattleUnit);
+      }
     }
 
-    const rightHeroId = this.selectedHeroByPlayer.get(rightPlayerId);
-    const rightHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(rightHeroId, rightPlayerId);
-    if (rightHeroBattleUnit) {
-      rightBattleUnits.push(rightHeroBattleUnit);
+    const rightHeroIds = this.buildSideHeroIds(rightPlayerIds);
+    for (const heroPlayerId of rightPlayerIds) {
+      const rightHeroId = this.selectedHeroByPlayer.get(heroPlayerId);
+      const rightHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(rightHeroId, heroPlayerId);
+      if (rightHeroBattleUnit) {
+        rightBattleUnits.push(rightHeroBattleUnit);
+      }
     }
 
-    const leftHeroSynergyBonusType = this.battleResolutionService.getHeroSynergyBonusType(leftHeroId);
-    const rightHeroSynergyBonusType = this.battleResolutionService.getHeroSynergyBonusType(rightHeroId);
+    const leftHeroSynergyBonusType = this.buildSideHeroSynergyBonusTypes(leftPlayerIds);
+    const rightHeroSynergyBonusType = this.buildSideHeroSynergyBonusTypes(rightPlayerIds);
 
     // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
     const battleId = `r${this.roundIndex}-${leftPlayerId}-${rightPlayerId}`;
@@ -2277,8 +2323,8 @@ export class MatchRoomController {
         rightPlayerId,
         leftPlacements: leftResolvedPlacements,
         rightPlacements: rightResolvedPlacements,
-        leftHeroId: leftHeroId ?? null,
-        rightHeroId: rightHeroId ?? null,
+        leftHeroId: leftHeroIds[0] ?? null,
+        rightHeroId: rightHeroIds[0] ?? null,
       });
     if (shouldEmitVerboseBattleLogs()) {
       // eslint-disable-next-line no-console

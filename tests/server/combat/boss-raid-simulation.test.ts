@@ -146,10 +146,10 @@ describe("Boss Raid Simulation", () => {
       ];
       const rightUnits = [
         createBattleUnit(
-          { cell: 7, unitType: "ranger", starLevel: 1 },
+          { cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
           "right",
           0,
-          false,
+          true,
           DEFAULT_FLAGS,
         ),
       ];
@@ -161,7 +161,7 @@ describe("Boss Raid Simulation", () => {
           { cell: 0, unitType: "vanguard", starLevel: 1 },
           { cell: 1, unitType: "assassin", starLevel: 1 },
         ],
-        [{ cell: 7, unitType: "ranger", starLevel: 1 }],
+        [{ cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
         5_000,
         null,
         null,
@@ -175,6 +175,43 @@ describe("Boss Raid Simulation", () => {
       expect(
         battleResult.combatLog.some((entry) => entry.includes("Left Assassin") && entry.includes("moves")),
       ).toBe(true);
+    });
+
+    test("simple approach movement does not run in non-raid battles even when boss shop flag is on", () => {
+      const leftUnits = [
+        createBattleUnit(
+          { cell: 0, unitType: "vanguard", starLevel: 1 },
+          "left",
+          0,
+          false,
+          DEFAULT_FLAGS,
+        ),
+      ];
+      const rightUnits = [
+        createBattleUnit(
+          { cell: 7, unitType: "ranger", starLevel: 1 },
+          "right",
+          0,
+          false,
+          DEFAULT_FLAGS,
+        ),
+      ];
+
+      const battleResult = simulator.simulateBattle(
+        leftUnits,
+        rightUnits,
+        [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+        [{ cell: 7, unitType: "ranger", starLevel: 1 }],
+        5_000,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      expect(
+        battleResult.combatLog.some((entry) => entry.includes("moves")),
+      ).toBe(false);
     });
   });
 

@@ -493,7 +493,7 @@ function isValidSharedDropTarget(state, cellIndex) {
 
   const cell = mapGet(state?.cells, String(cellIndex));
   if (!cell) {
-    return false;
+    return true;
   }
 
   if (!cell.unitId) {

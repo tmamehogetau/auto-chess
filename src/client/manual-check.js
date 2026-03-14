@@ -1240,7 +1240,8 @@ function updateRaidBoardPresentation(state) {
       finalJudgmentBanner.textContent = `Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}`;
       finalJudgmentBanner.className = `phase-hp-result ${isBossVictory ? "boss-victory" : "raid-victory"}`;
     } else {
-      finalJudgmentBanner.textContent = `Round ${Number(state?.roundIndex) || 0}`;
+      const roundIndex = Number(state?.roundIndex);
+      finalJudgmentBanner.textContent = `Round ${Number.isFinite(roundIndex) ? roundIndex + 1 : 1}`;
       finalJudgmentBanner.className = "phase-hp-result pending";
     }
   }
@@ -1391,7 +1392,7 @@ function renderPhaseHpProgress(progress) {
   const textPercent = Math.round(completionRate * 100);
 
   const remainingHp = Math.max(0, Math.round(progress.targetHp - progress.damageDealt));
-  phaseHpValue.textContent = `${remainingHp} HP remaining (${textPercent}%)`;
+  phaseHpValue.textContent = `${remainingHp} HP remaining (${textPercent}% completed)`;
   phaseHpFill.style.width = `${visiblePercent}%`;
   phaseHpFill.classList.remove("pending", "success", "failed");
   phaseHpFill.classList.add(progress.result);

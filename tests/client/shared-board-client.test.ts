@@ -430,4 +430,67 @@ describe("shared-board client", () => {
     expect(invalidTargetCell?.dataset.dropInvalid).toBeUndefined();
     expect(invalidTargetCell?.className).not.toContain("drag-over");
   });
+
+  test("shared board treats sparse cells as valid empty drop targets", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    const sourceCell = gridElement.children[7];
+    const sparseTargetCell = gridElement.children[8];
+
+    sourceCell?.ondragstart?.({
+      dataTransfer: {
+        effectAllowed: "",
+        setData: () => {},
+      },
+      preventDefault: () => {},
+    });
+
+    sparseTargetCell?.ondragover?.({ preventDefault: () => {} });
+
+    expect(sparseTargetCell?.dataset.dropValid).toBe("true");
+    expect(sparseTargetCell?.dataset.dropInvalid).toBeUndefined();
+  });
 });

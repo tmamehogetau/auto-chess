@@ -44,6 +44,9 @@ describe("raid board ui contract", () => {
     expect(js.includes("const readableMode = sharedBoardMode === \"half-shared\" ? \"Half Shared\"")).toBe(true);
     expect(js.includes("raidBoardModeBadge.textContent = `Mode: ${readableMode}`")).toBe(true);
     expect(js.includes('Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}')).toBe(true);
+    expect(js.includes('Final Judgment: Pending')).toBe(true);
     expect(js.includes("HP remaining")).toBe(true);
+    expect(js.includes("% completed")).toBe(true);
+    expect(js.includes("Round ${Number.isFinite(roundIndex) ? roundIndex + 1 : 1}")).toBe(true);
   });
 });

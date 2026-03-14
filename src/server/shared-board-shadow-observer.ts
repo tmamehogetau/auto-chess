@@ -256,20 +256,26 @@ export class SharedBoardShadowObserver {
         }
       }
 
-      return {
+      const result: ShadowDiffResult = {
         timestamp: now,
         status: mismatches.length > 0 ? "mismatch" : "ok",
         mismatchCount: mismatches.length,
         mismatchedCells: mismatches.slice(0, 10),
       };
+
+      this.lastDiffResult = result;
+      return result;
     } catch (error) {
-      return {
+      const result: ShadowDiffResult = {
         timestamp: now,
         status: "unavailable",
         mismatchCount: 0,
         mismatchedCells: [],
         lastError: error instanceof Error ? error.message : String(error),
       };
+
+      this.lastDiffResult = result;
+      return result;
     }
   }
 }

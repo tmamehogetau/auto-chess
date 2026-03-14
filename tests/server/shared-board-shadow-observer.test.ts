@@ -92,5 +92,6 @@ describe("SharedBoardShadowObserver", () => {
         sharedUnitType: "exists_in_shared_only",
       },
     ]);
+    expect(observer.getLastDiffResult()).toEqual(result);
   });
 });

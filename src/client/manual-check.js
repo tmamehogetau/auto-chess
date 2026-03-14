@@ -1229,7 +1229,14 @@ function updateRaidBoardPresentation(state) {
     const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
 
     if (phase === "End" && isRaidRound) {
-      const isBossVictory = ranking[0] === bossPlayerId;
+      const winnerPlayerId = typeof ranking[0] === "string" ? ranking[0] : null;
+      if (!winnerPlayerId) {
+        finalJudgmentBanner.textContent = "Final Judgment: Pending";
+        finalJudgmentBanner.className = "phase-hp-result pending";
+        return;
+      }
+
+      const isBossVictory = winnerPlayerId === bossPlayerId;
       finalJudgmentBanner.textContent = `Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}`;
       finalJudgmentBanner.className = `phase-hp-result ${isBossVictory ? "boss-victory" : "raid-victory"}`;
     } else {

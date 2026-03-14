@@ -24,8 +24,26 @@ class FakeClassList {
     }
   }
 
-  public remove(..._tokens: string[]): void {}
-  public toggle(_token: string, _force?: boolean): void {}
+  public remove(...tokens: string[]): void {
+    const current = this.owner.className.split(" ").filter((entry) => entry.length > 0);
+    this.owner.className = current.filter((entry) => !tokens.includes(entry)).join(" ");
+  }
+
+  public toggle(token: string, force?: boolean): boolean {
+    const current = this.owner.className.split(" ").filter((entry) => entry.length > 0);
+    const has = current.includes(token);
+    const shouldHave = force ?? !has;
+
+    if (shouldHave && !has) {
+      current.push(token);
+    }
+
+    this.owner.className = shouldHave
+      ? current.join(" ")
+      : current.filter((entry) => entry !== token).join(" ");
+
+    return shouldHave;
+  }
 }
 
 class FakeElement {
@@ -338,5 +356,78 @@ describe("shared-board client", () => {
     expect(invalidTargetCell?.dataset.dropInvalid).toBe("true");
     expect(invalidTargetCell?.dataset.dropValid).toBeUndefined();
     expect(invalidTargetCell?.className).toContain("drag-over");
+  });
+
+  test("shared board drop ignores invalid targets and clears highlight", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+        9: { unitId: "ranger-1", ownerId: "player-2" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    const sourceCell = gridElement.children[7];
+    const invalidTargetCell = gridElement.children[9];
+
+    sourceCell?.ondragstart?.({
+      dataTransfer: {
+        effectAllowed: "",
+        setData: () => {},
+      },
+      preventDefault: () => {},
+    });
+
+    invalidTargetCell?.ondragover?.({ preventDefault: () => {} });
+    invalidTargetCell?.ondrop?.({ preventDefault: () => {} });
+
+    expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
+    expect(messages).toEqual([{ message: "Invalid shared board drop target", type: "error" }]);
+    expect(invalidTargetCell?.dataset.dropInvalid).toBeUndefined();
+    expect(invalidTargetCell?.className).not.toContain("drag-over");
   });
 });

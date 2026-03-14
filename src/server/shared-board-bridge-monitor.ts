@@ -96,6 +96,12 @@ export interface BridgeMonitorOptions {
 
 export const DEFAULT_DASHBOARD_WINDOW_MS = 5 * 60_000;
 
+export function clampWindowMs(windowMs: number): number {
+  return Number.isFinite(windowMs) && windowMs > 0
+    ? windowMs
+    : DEFAULT_DASHBOARD_WINDOW_MS;
+}
+
 export const DEFAULT_MONITOR_OPTIONS: Required<BridgeMonitorOptions> = {
   enableDebugLogs: false,
 };
@@ -213,9 +219,7 @@ export class BridgeMonitor {
     windowMs = DEFAULT_DASHBOARD_WINDOW_MS,
     nowMs = Date.now(),
   ): DashboardMetrics {
-    const safeWindowMs = Number.isFinite(windowMs) && windowMs > 0
-      ? windowMs
-      : DEFAULT_DASHBOARD_WINDOW_MS;
+    const safeWindowMs = clampWindowMs(windowMs);
     const logs = this.getWindowLogs(safeWindowMs, nowMs);
     const eventCount = logs.length;
     const successEvents = logs.filter((log) => log.success).length;
@@ -355,9 +359,7 @@ export class BridgeMonitor {
   }
 
   private getWindowLogs(windowMs: number, nowMs: number): SyncEventLog[] {
-    const safeWindowMs = Number.isFinite(windowMs) && windowMs > 0
-      ? windowMs
-      : DEFAULT_DASHBOARD_WINDOW_MS;
+    const safeWindowMs = clampWindowMs(windowMs);
     const windowStart = nowMs - safeWindowMs;
 
     return this.eventLogs.filter((log) => log.timestamp >= windowStart);

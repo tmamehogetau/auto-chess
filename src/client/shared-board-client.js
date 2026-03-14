@@ -253,6 +253,13 @@ function renderSharedBoard(state) {
       clearSharedDropIndicators(cellElement);
     };
     cellElement.ondrop = (event) => {
+      event.preventDefault();
+      if (!isValidSharedDropTarget(state, i)) {
+        deps.showMessage("Invalid shared board drop target", "error");
+        clearSharedDropIndicators(cellElement);
+        return;
+      }
+
       handleSharedDrop(event, i);
       clearSharedDropIndicators(cellElement);
     };

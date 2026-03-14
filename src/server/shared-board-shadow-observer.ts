@@ -6,6 +6,8 @@ import {
   raidBoardIndexToCombatCell,
   COMBAT_CELL_MIN_INDEX,
   COMBAT_CELL_MAX_INDEX,
+  RAID_BOARD_WIDTH,
+  RAID_BOARD_HEIGHT,
 } from "../shared/board-geometry";
 
 /**
@@ -46,6 +48,8 @@ export class SharedBoardShadowObserver {
   private lastObservationTime = 0;
 
   private readonly minObservationIntervalMs = 100;
+
+  private readonly sharedCellCount = RAID_BOARD_WIDTH * RAID_BOARD_HEIGHT;
 
   constructor(controller: MatchRoomController) {
     this.controller = controller;
@@ -149,7 +153,7 @@ export class SharedBoardShadowObserver {
         }
 
         // shared_board側に余分なユニットがないか確認（逆方向チェック）
-        for (let sharedIndex = 0; sharedIndex < 24; sharedIndex++) {
+        for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
           const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
           if (combatCellOpt === null) continue;
 
@@ -166,7 +170,7 @@ export class SharedBoardShadowObserver {
             mismatches.push({
               combatCell,
               gameUnitType: null,
-              sharedUnitType: sharedCell.unitId ? "exists_in_shared_only" : null,
+              sharedUnitType: "exists_in_shared_only",
             });
           }
         }
@@ -235,7 +239,7 @@ export class SharedBoardShadowObserver {
         }
       }
 
-      for (let sharedIndex = 0; sharedIndex < 24; sharedIndex++) {
+      for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
         const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
         if (combatCellOpt === null) continue;
 
@@ -251,7 +255,7 @@ export class SharedBoardShadowObserver {
           mismatches.push({
             combatCell,
             gameUnitType: null,
-            sharedUnitType: sharedCell.unitId ? "exists_in_shared_only" : null,
+            sharedUnitType: "exists_in_shared_only",
           });
         }
       }

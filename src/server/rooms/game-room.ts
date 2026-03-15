@@ -9,6 +9,10 @@ import {
 } from "./game-room/player-state-sync";
 import { handleAdminQuery } from "./game-room/admin-query-handler";
 import { logPrepCommandActions } from "./game-room/prep-command-logging";
+import {
+  buildPrepCommandPayload,
+  type LoggedPrepCommandPayload,
+} from "./game-room/prep-command-payload";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
@@ -304,7 +308,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       message.correlationId,
     );
 
-    const commandPayload = this.buildPrepCommandPayload(message);
+    const commandPayload = buildPrepCommandPayload(message);
 
     if (this.isSharedBoardAuthoritativePrep() && commandPayload?.boardPlacements !== undefined) {
       delete commandPayload.boardPlacements;
@@ -378,83 +382,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     syncPlayerStateFromCommandResult(player, latestStatus, cmdSeq);
   }
 
-  private buildPrepCommandPayload(
-    message: PrepCommandMessage,
-  ):
-    | {
-        boardUnitCount?: number;
-        boardPlacements?: NonNullable<PrepCommandMessage["boardPlacements"]>;
-        xpPurchaseCount?: number;
-        shopRefreshCount?: number;
-        shopBuySlotIndex?: number;
-        shopLock?: boolean;
-        benchToBoardCell?: { benchIndex: number; cell: number };
-        benchSellIndex?: number;
-        boardSellIndex?: number;
-        itemBuySlotIndex?: number;
-        itemEquipToBench?: { inventoryItemIndex: number; benchIndex: number };
-        itemUnequipFromBench?: { benchIndex: number; itemSlotIndex: number };
-        itemSellInventoryIndex?: number;
-        bossShopBuySlotIndex?: number;
-      }
-    | undefined {
-    if (
-      message.boardUnitCount === undefined &&
-      message.boardPlacements === undefined &&
-      message.xpPurchaseCount === undefined &&
-      message.shopRefreshCount === undefined &&
-      message.shopBuySlotIndex === undefined &&
-      message.shopLock === undefined &&
-      message.benchToBoardCell === undefined &&
-      message.benchSellIndex === undefined &&
-      message.boardSellIndex === undefined &&
-      message.itemBuySlotIndex === undefined &&
-      message.itemEquipToBench === undefined &&
-      message.itemUnequipFromBench === undefined &&
-      message.itemSellInventoryIndex === undefined &&
-      message.bossShopBuySlotIndex === undefined
-    ) {
-      return undefined;
-    }
-
-    return {
-      ...(message.boardUnitCount !== undefined && { boardUnitCount: message.boardUnitCount }),
-      ...(message.boardPlacements !== undefined && { boardPlacements: message.boardPlacements }),
-      ...(message.xpPurchaseCount !== undefined && { xpPurchaseCount: message.xpPurchaseCount }),
-      ...(message.shopRefreshCount !== undefined && { shopRefreshCount: message.shopRefreshCount }),
-      ...(message.shopBuySlotIndex !== undefined && { shopBuySlotIndex: message.shopBuySlotIndex }),
-      ...(message.shopLock !== undefined && { shopLock: message.shopLock }),
-      ...(message.benchToBoardCell !== undefined && { benchToBoardCell: message.benchToBoardCell }),
-      ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
-      ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
-      ...(message.itemBuySlotIndex !== undefined && { itemBuySlotIndex: message.itemBuySlotIndex }),
-      ...(message.itemEquipToBench !== undefined && { itemEquipToBench: message.itemEquipToBench }),
-      ...(message.itemUnequipFromBench !== undefined && { itemUnequipFromBench: message.itemUnequipFromBench }),
-      ...(message.itemSellInventoryIndex !== undefined && { itemSellInventoryIndex: message.itemSellInventoryIndex }),
-      ...(message.bossShopBuySlotIndex !== undefined && { bossShopBuySlotIndex: message.bossShopBuySlotIndex }),
-    };
-  }
 
   private logPrepCommandActions(
     sessionId: string,
-    commandPayload:
-      | {
-          boardUnitCount?: number;
-          boardPlacements?: NonNullable<PrepCommandMessage["boardPlacements"]>;
-          xpPurchaseCount?: number;
-          shopRefreshCount?: number;
-          shopBuySlotIndex?: number;
-          shopLock?: boolean;
-          benchToBoardCell?: { benchIndex: number; cell: number };
-          benchSellIndex?: number;
-          boardSellIndex?: number;
-          itemBuySlotIndex?: number;
-          itemEquipToBench?: { inventoryItemIndex: number; benchIndex: number };
-          itemUnequipFromBench?: { benchIndex: number; itemSlotIndex: number };
-          itemSellInventoryIndex?: number;
-          bossShopBuySlotIndex?: number;
-        }
-      | undefined,
+    commandPayload: LoggedPrepCommandPayload | undefined,
     shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
   ): void {
     logPrepCommandActions(sessionId, commandPayload, {

@@ -263,6 +263,8 @@ const monitorShadowMismatchValue = document.querySelector("[data-monitor-shadow-
 const monitorAlertValue = document.querySelector("[data-monitor-alert]");
 const monitorTopErrorsValue = document.querySelector("[data-monitor-top-errors]");
 const monitorTraceValue = document.querySelector("[data-monitor-trace]");
+const monitorSummaryValue = document.querySelector("[data-monitor-summary]");
+const monitorShadowDetailsValue = document.querySelector("[data-monitor-shadow-details]");
 const monitorLogList = document.querySelector("[data-monitor-log]");
 
 // Hero selection elements
@@ -359,6 +361,8 @@ initAdminMonitor(
     monitorAlertValue,
     monitorTopErrorsValue,
     monitorTraceValue,
+    monitorSummaryValue,
+    monitorShadowDetailsValue,
     monitorLogList,
   },
   {
@@ -2454,4 +2458,8 @@ function confirmHeroSelection() {
   
   showMessage(`Hero selected: ${HEROES.find(h => h.id === selectedHeroId)?.name || selectedHeroId}`, "success");
 }
+
+
+
+
 

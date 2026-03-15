@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -127,15 +127,17 @@ describe("w6-kpi-report.mjs", () => {
   });
 
   it("should exit with error when file path not provided", () => {
-    expect(() => {
-      execSync(`node ${scriptPath}`, { encoding: "utf-8" });
-    }).toThrow();
+    const result = spawnSync("node", [scriptPath], { encoding: "utf-8" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("File path required");
   });
 
   it("should exit with error when file does not exist", () => {
-    expect(() => {
-      execSync(`node ${scriptPath} "/nonexistent/file.ndjson"`, { encoding: "utf-8" });
-    }).toThrow();
+    const result = spawnSync("node", [scriptPath, "/nonexistent/file.ndjson"], { encoding: "utf-8" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("ENOENT");
   });
 
   it("should split eligible and incidental bundles by suitePath", () => {
@@ -246,3 +248,4 @@ describe("w6-kpi-report.mjs", () => {
     expect(output.eligibleBundle.r8CompletionRate).toBeCloseTo(0.75, 2);
   });
 });
+

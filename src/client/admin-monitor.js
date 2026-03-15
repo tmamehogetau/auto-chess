@@ -17,6 +17,8 @@ import { createCorrelationId, shortPlayerId } from "./utils/pure-utils.js";
  * @property {HTMLElement|null} monitorAlertValue
  * @property {HTMLElement|null} monitorTopErrorsValue
  * @property {HTMLElement|null} monitorTraceValue
+ * @property {HTMLElement|null} monitorSummaryValue
+ * @property {HTMLElement|null} monitorShadowDetailsValue
  * @property {HTMLElement|null} monitorLogList
  */
 
@@ -31,10 +33,6 @@ const CLIENT_MESSAGE_TYPES = {
   ADMIN_QUERY: "admin_query",
 };
 
-const SERVER_MESSAGE_TYPES = {
-  ADMIN_RESPONSE: "admin_response",
-};
-
 /** @type {MonitorDOMRefs} */
 let domRefs = {
   monitorRefreshBtn: null,
@@ -47,6 +45,8 @@ let domRefs = {
   monitorAlertValue: null,
   monitorTopErrorsValue: null,
   monitorTraceValue: null,
+  monitorSummaryValue: null,
+  monitorShadowDetailsValue: null,
   monitorLogList: null,
 };
 
@@ -62,6 +62,14 @@ let monitorPollingInterval = null;
 
 /** @type {string} */
 let lastShadowDiffSignature = "";
+
+/** @type {{ hasAlert: boolean; triggeredRules: string[]; shadowStatus: string; mismatchCount: number }} */
+let latestMonitorState = {
+  hasAlert: false,
+  triggeredRules: [],
+  shadowStatus: "unavailable",
+  mismatchCount: 0,
+};
 
 /**
  * モニター初期化
@@ -208,6 +216,10 @@ export function handleShadowDiff(message) {
 
   setMonitorText(domRefs.monitorShadowStatusValue, status);
   setMonitorText(domRefs.monitorShadowMismatchValue, String(mismatchCount));
+  latestMonitorState.shadowStatus = status;
+  latestMonitorState.mismatchCount = mismatchCount;
+  updateMonitorSummary();
+  renderShadowDetails(message, status, mismatchCount);
 
   const signature = `${status}:${mismatchCount}`;
   if (signature === lastShadowDiffSignature) {
@@ -222,7 +234,10 @@ export function handleShadowDiff(message) {
 
   if (status === "mismatch") {
     const mismatchedCells = Array.isArray(message.mismatchedCells)
-      ? message.mismatchedCells.slice(0, 3).map((cell) => cell?.combatCell).filter((cell) => Number.isInteger(cell))
+      ? message.mismatchedCells
+        .slice(0, 3)
+        .map((cell) => cell?.combatCell)
+        .filter((cell) => Number.isInteger(cell))
       : [];
     const cellPreview = mismatchedCells.length > 0 ? ` cells=${mismatchedCells.join(",")}` : "";
     deps.addCombatLogEntry(`Shadow diff mismatch: ${mismatchCount}${cellPreview}`, "lose");
@@ -237,8 +252,12 @@ export function handleShadowDiff(message) {
  */
 export function resetShadowDiffMonitor() {
   lastShadowDiffSignature = "";
+  latestMonitorState.shadowStatus = "unavailable";
+  latestMonitorState.mismatchCount = 0;
   setMonitorText(domRefs.monitorShadowStatusValue, "-");
   setMonitorText(domRefs.monitorShadowMismatchValue, "0");
+  setMonitorText(domRefs.monitorShadowDetailsValue, "Waiting for shadow comparison.");
+  updateMonitorSummary();
 }
 
 /**
@@ -275,9 +294,14 @@ function renderMonitorAlert(data) {
   }
 
   const hasAlert = Boolean(data.hasAlert);
-  const rules = Array.isArray(data.triggeredRules)
-    ? data.triggeredRules.filter((rule) => typeof rule === "string").join(", ")
-    : "";
+  const triggeredRules = Array.isArray(data.triggeredRules)
+    ? data.triggeredRules.filter((rule) => typeof rule === "string")
+    : [];
+  const rules = triggeredRules.join(", ");
+
+  latestMonitorState.hasAlert = hasAlert;
+  latestMonitorState.triggeredRules = triggeredRules;
+  updateMonitorSummary();
 
   if (hasAlert) {
     setMonitorText(domRefs.monitorAlertValue, `ALERT: ${rules || "triggered"}`);
@@ -336,15 +360,98 @@ function renderMonitorLogs(data) {
     const eventType = typeof log?.eventType === "string" ? log.eventType : "unknown";
     const success = Boolean(log?.success);
     const correlation = typeof log?.correlationId === "string" ? log.correlationId : "-";
+    const playerLabel = typeof log?.playerId === "string" ? shortPlayerId(log.playerId) : "-";
+    const errorLabel = typeof log?.errorCode === "string" ? ` err=${log.errorCode}` : "";
 
     const entry = document.createElement("div");
     entry.className = `log-entry ${success ? "win" : "lose"}`;
     const timeLabel = Number.isFinite(timestamp)
       ? new Date(timestamp).toLocaleTimeString()
       : "--:--:--";
-    entry.textContent = `${timeLabel} ${eventType} corr=${correlation}`;
+    entry.textContent = `${timeLabel} ${eventType} player=${playerLabel} corr=${correlation}${errorLabel}`;
     domRefs.monitorLogList.appendChild(entry);
   }
+}
+
+function renderShadowDetails(message, status, mismatchCount) {
+  if (status === "mismatch") {
+    const cells = Array.isArray(message?.mismatchedCells)
+      ? message.mismatchedCells
+        .slice(0, 3)
+        .map((cell) => formatMismatchCell(cell))
+        .filter((cell) => cell.length > 0)
+      : [];
+    const detailLabel = cells.length > 0
+      ? cells.join(" | ")
+      : `${mismatchCount} mismatches detected`;
+    setMonitorText(domRefs.monitorShadowDetailsValue, detailLabel);
+    return;
+  }
+
+  if (status === "degraded") {
+    const lastError = typeof message?.lastError === "string" && message.lastError.length > 0
+      ? message.lastError
+      : "observer unavailable";
+    setMonitorText(domRefs.monitorShadowDetailsValue, `Shadow observer degraded: ${lastError}`);
+    return;
+  }
+
+  if (status === "ok") {
+    setMonitorText(domRefs.monitorShadowDetailsValue, "Shadow aligned with shared board.");
+    return;
+  }
+
+  setMonitorText(domRefs.monitorShadowDetailsValue, "Waiting for shadow comparison.");
+}
+
+function formatMismatchCell(cell) {
+  if (!cell || typeof cell !== "object") {
+    return "";
+  }
+
+  const combatCell = Number(cell.combatCell);
+  const cellLabel = Number.isInteger(combatCell) ? `c${combatCell}` : "c?";
+  const gameUnit = typeof cell.gameUnitType === "string" && cell.gameUnitType.length > 0
+    ? cell.gameUnitType
+    : "empty";
+  const sharedUnit = typeof cell.sharedUnitType === "string" && cell.sharedUnitType.length > 0
+    ? cell.sharedUnitType
+    : "empty";
+  return `${cellLabel} game=${gameUnit} shared=${sharedUnit}`;
+}
+
+function updateMonitorSummary() {
+  const { hasAlert, triggeredRules, shadowStatus, mismatchCount } = latestMonitorState;
+
+  if (shadowStatus === "degraded") {
+    setMonitorText(domRefs.monitorSummaryValue, "Bridge degraded: inspect recent errors and reconnect lifecycle.");
+    return;
+  }
+
+  if (shadowStatus === "mismatch") {
+    const mismatchLabel = mismatchCount > 0 ? `${mismatchCount} mismatches` : "mismatch detected";
+    setMonitorText(
+      domRefs.monitorSummaryValue,
+      `Shadow mismatch: compare cells and recent apply_result logs (${mismatchLabel}).`,
+    );
+    return;
+  }
+
+  if (hasAlert) {
+    const rulesLabel = triggeredRules.length > 0 ? triggeredRules.join(", ") : "triggered";
+    setMonitorText(
+      domRefs.monitorSummaryValue,
+      `Alert active: inspect ${rulesLabel} and recent monitor logs.`,
+    );
+    return;
+  }
+
+  if (shadowStatus === "ok") {
+    setMonitorText(domRefs.monitorSummaryValue, "Healthy: no immediate bridge action.");
+    return;
+  }
+
+  setMonitorText(domRefs.monitorSummaryValue, "Waiting for shared-board monitor snapshot.");
 }
 
 /**
@@ -381,7 +488,7 @@ function isRoomConnectionOpen(room) {
   }
 
   if (typeof connection.readyState === "number") {
-    return connection.readyState === 1; // CONNECTION_OPEN_STATE
+    return connection.readyState === 1;
   }
 
   if (connection.ws && typeof connection.ws.readyState === "number") {

@@ -32,6 +32,8 @@ describe("admin monitor", () => {
         monitorAlertValue: null,
         monitorTopErrorsValue: null,
         monitorTraceValue: null,
+        monitorSummaryValue: null,
+        monitorShadowDetailsValue: null,
         monitorLogList: null,
       },
       {
@@ -61,6 +63,8 @@ describe("admin monitor", () => {
     const monitorAlertValue = new FakeElement();
     const monitorTopErrorsValue = new FakeElement();
     const monitorTraceValue = new FakeElement();
+    const monitorSummaryValue = new FakeElement();
+    const monitorShadowDetailsValue = new FakeElement();
     const monitorLogList = new FakeElement();
 
     globalThis.document = {
@@ -79,6 +83,8 @@ describe("admin monitor", () => {
         monitorAlertValue: monitorAlertValue as unknown as HTMLElement,
         monitorTopErrorsValue: monitorTopErrorsValue as unknown as HTMLElement,
         monitorTraceValue: monitorTraceValue as unknown as HTMLElement,
+        monitorSummaryValue: monitorSummaryValue as unknown as HTMLElement,
+        monitorShadowDetailsValue: monitorShadowDetailsValue as unknown as HTMLElement,
         monitorLogList: monitorLogList as unknown as HTMLElement,
       },
       {
@@ -125,6 +131,8 @@ describe("admin monitor", () => {
           eventType: "apply_result",
           success: true,
           correlationId: "corr-1",
+          playerId: "player-alpha",
+          errorCode: "ignored",
         },
       ],
     });
@@ -135,10 +143,14 @@ describe("admin monitor", () => {
     expect(monitorLatencyValue.textContent).toBe("18.5ms / p95 42.2ms");
     expect(monitorTraceValue.textContent).toBe("admin-123");
     expect(monitorAlertValue.textContent).toBe("ALERT: failure_rate, p95_latency");
+    expect(monitorSummaryValue.textContent).toBe("Alert active: inspect failure_rate, p95_latency and recent monitor logs.");
+    expect(monitorShadowDetailsValue.textContent).toBe("");
     expect(monitorTopErrorsValue.textContent).toBe("invalid_phase(4), forbidden(2)");
     expect(monitorLogList.children).toHaveLength(1);
     expect(monitorLogList.children[0]?.textContent).toContain("apply_result");
     expect(monitorLogList.children[0]?.textContent).toContain("corr-1");
+    expect(monitorLogList.children[0]?.textContent).toContain("player=player");
+    expect(monitorLogList.children[0]?.textContent).toContain("err=ignored");
   });
 
   test("alert and shadow status use explicit monitor-friendly labels", async () => {
@@ -146,6 +158,8 @@ describe("admin monitor", () => {
     const monitorAlertValue = new FakeElement();
     const monitorShadowStatusValue = new FakeElement();
     const monitorShadowMismatchValue = new FakeElement();
+    const monitorSummaryValue = new FakeElement();
+    const monitorShadowDetailsValue = new FakeElement();
 
     initAdminMonitor(
       {
@@ -159,6 +173,8 @@ describe("admin monitor", () => {
         monitorAlertValue: monitorAlertValue as unknown as HTMLElement,
         monitorTopErrorsValue: null,
         monitorTraceValue: null,
+        monitorSummaryValue: monitorSummaryValue as unknown as HTMLElement,
+        monitorShadowDetailsValue: monitorShadowDetailsValue as unknown as HTMLElement,
         monitorLogList: null,
       },
       {
@@ -186,6 +202,65 @@ describe("admin monitor", () => {
     expect(monitorAlertValue.textContent).toBe("OK: healthy");
     expect(monitorShadowStatusValue.textContent).toBe("ok");
     expect(monitorShadowMismatchValue.textContent).toBe("0");
+    expect(monitorSummaryValue.textContent).toBe("Healthy: no immediate bridge action.");
+    expect(monitorShadowDetailsValue.textContent).toBe("Shadow aligned with shared board.");
     expect(logs).toEqual([{ message: "Shadow diff: OK", type: "info" }]);
+  });
+
+  test("mismatch summary shows compare details and stays prioritized over alert text", async () => {
+    const monitorAlertValue = new FakeElement();
+    const monitorSummaryValue = new FakeElement();
+    const monitorShadowDetailsValue = new FakeElement();
+
+    initAdminMonitor(
+      {
+        monitorRefreshBtn: null,
+        monitorEventsValue: null,
+        monitorFailureValue: null,
+        monitorConflictValue: null,
+        monitorLatencyValue: null,
+        monitorShadowStatusValue: new FakeElement() as unknown as HTMLElement,
+        monitorShadowMismatchValue: new FakeElement() as unknown as HTMLElement,
+        monitorAlertValue: monitorAlertValue as unknown as HTMLElement,
+        monitorTopErrorsValue: null,
+        monitorTraceValue: null,
+        monitorSummaryValue: monitorSummaryValue as unknown as HTMLElement,
+        monitorShadowDetailsValue: monitorShadowDetailsValue as unknown as HTMLElement,
+        monitorLogList: null,
+      },
+      {
+        getActiveRoom: () => null,
+        addCombatLogEntry: () => {},
+        setTraceId: () => {},
+      },
+    );
+
+    handleAdminResponse({
+      ok: true,
+      kind: "alerts",
+      data: {
+        hasAlert: true,
+        triggeredRules: ["failure_rate"],
+      },
+    });
+
+    // @ts-expect-error JS client module has no declaration file.
+    const { handleShadowDiff } = await import("../../src/client/admin-monitor.js");
+    handleShadowDiff({
+      status: "mismatch",
+      mismatchCount: 2,
+      mismatchedCells: [
+        { combatCell: 3, gameUnitType: "vanguard", sharedUnitType: null },
+        { combatCell: 5, gameUnitType: null, sharedUnitType: "exists_in_shared_only" },
+      ],
+    });
+
+    expect(monitorAlertValue.textContent).toBe("ALERT: failure_rate");
+    expect(monitorSummaryValue.textContent).toBe(
+      "Shadow mismatch: compare cells and recent apply_result logs (2 mismatches).",
+    );
+    expect(monitorShadowDetailsValue.textContent).toBe(
+      "c3 game=vanguard shared=empty | c5 game=empty shared=exists_in_shared_only",
+    );
   });
 });

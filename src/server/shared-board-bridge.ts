@@ -7,14 +7,21 @@ import type { ShadowDiffMessage, BoardUnitPlacement } from "../shared/room-messa
 import { raidBoardIndexToCombatCell } from "../shared/board-geometry";
 import {
   BridgeMonitor,
-  clampWindowMs,
-  DEFAULT_ALERT_THRESHOLDS,
   DEFAULT_DASHBOARD_WINDOW_MS,
   type AlertStatus,
   type AlertThresholds,
   type DashboardMetrics,
   type ErrorSummary,
 } from "./shared-board-bridge-monitor";
+import { buildReconnectPlan } from "./shared-board-bridge/reconnect-policy";
+import { validateRolePlacements } from "./shared-board-bridge/placement-sync";
+import {
+  getBridgeAlertStatus,
+  getBridgeDashboardMetrics,
+  getBridgeMetrics,
+  getBridgeTopErrors,
+  getRecentBridgeLogs,
+} from "./shared-board-bridge/monitoring-queries";
 
 /**
  * GameRoom側の部分同期インターフェース
@@ -680,7 +687,11 @@ export class SharedBoardBridge {
         };
       }
 
-      const roleValidationError = this.validateRolePlacements(request.playerId, request.placements);
+      const roleValidationError = validateRolePlacements(
+        request.playerId,
+        this.controller.getBossPlayerId?.() ?? undefined,
+        request.placements,
+      );
       if (roleValidationError !== null) {
         return {
           success: false,
@@ -732,33 +743,6 @@ export class SharedBoardBridge {
     }
   }
 
-  private validateRolePlacements(
-    playerId: string,
-    placements: BoardUnitPlacement[],
-  ): string | null {
-    const bossPlayerId = this.controller.getBossPlayerId?.();
-    if (!bossPlayerId || placements.length === 0) {
-      return null;
-    }
-
-    const invalidPlacement = placements.find((placement) => {
-      if (bossPlayerId === playerId) {
-        return placement.cell >= 4;
-      }
-
-      return placement.cell < 4;
-    });
-
-    if (!invalidPlacement) {
-      return null;
-    }
-
-    if (bossPlayerId === playerId) {
-      return `Boss placement must stay in top half: cell ${invalidPlacement.cell}`;
-    }
-
-    return `Raid placement must stay in bottom half: cell ${invalidPlacement.cell}`;
-  }
 
   /**
    * GameRoomの配置をSharedBoardRoomに送信
@@ -791,30 +775,34 @@ export class SharedBoardBridge {
       return;
     }
 
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+    const reconnectPlan = buildReconnectPlan({
+      reconnectAttempts: this.reconnectAttempts,
+      maxReconnectAttempts: this.maxReconnectAttempts,
+      reconnectBaseDelayMs: this.reconnectBaseDelayMs,
+      reconnectMaxDelayMs: this.reconnectMaxDelayMs,
+    });
+
+    this.state = reconnectPlan.nextState;
+
+    if (!reconnectPlan.shouldSchedule || reconnectPlan.delayMs === null) {
       if (!silent) {
         console.error("[SharedBoardBridge] Max reconnection attempts reached");
       }
-      this.state = "DEGRADED";
       return;
     }
 
-    this.reconnectAttempts += 1;
-    this.state = "CONNECTING";
-
-    const delay = Math.min(
-      this.reconnectBaseDelayMs * Math.pow(2, this.reconnectAttempts - 1),
-      this.reconnectMaxDelayMs,
-    );
+    this.reconnectAttempts = reconnectPlan.attempt;
 
     if (!silent) {
-      console.log(`[SharedBoardBridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+      console.log(
+        `[SharedBoardBridge] Reconnecting in ${reconnectPlan.delayMs}ms (attempt ${this.reconnectAttempts})`,
+      );
     }
-    
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();
-    }, delay);
+    }, reconnectPlan.delayMs);
   }
 
   /**
@@ -831,14 +819,7 @@ export class SharedBoardBridge {
    * @returns メトリクス情報
    */
   public getMetrics() {
-    return this.monitor?.getMetrics() ?? {
-      totalEvents: 0,
-      successEvents: 0,
-      failedEvents: 0,
-      conflictEvents: 0,
-      avgLatencyMs: 0,
-      lastEventAt: 0,
-    };
+    return getBridgeMetrics(this.monitor);
   }
 
   /**
@@ -847,7 +828,7 @@ export class SharedBoardBridge {
    * @returns イベントログ配列
    */
   public getRecentLogs(count = 10) {
-    return this.monitor?.getRecentLogs(count) ?? [];
+    return getRecentBridgeLogs(this.monitor, count);
   }
 
   /**
@@ -857,18 +838,7 @@ export class SharedBoardBridge {
     windowMs = DEFAULT_DASHBOARD_WINDOW_MS,
     nowMs = Date.now(),
   ): DashboardMetrics {
-    const safeWindowMs = clampWindowMs(windowMs);
-    return this.monitor?.getDashboardMetrics(safeWindowMs, nowMs) ?? {
-      windowMs: safeWindowMs,
-      generatedAt: nowMs,
-      windowEventCount: 0,
-      successRate: 0,
-      failureRate: 0,
-      conflictRate: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      topErrors: [],
-    };
+    return getBridgeDashboardMetrics(this.monitor, windowMs, nowMs);
   }
 
   /**
@@ -879,7 +849,7 @@ export class SharedBoardBridge {
     windowMs = DEFAULT_DASHBOARD_WINDOW_MS,
     nowMs = Date.now(),
   ): ErrorSummary[] {
-    return this.monitor?.getTopErrors(limit, windowMs, nowMs) ?? [];
+    return getBridgeTopErrors(this.monitor, limit, windowMs, nowMs);
   }
 
   /**
@@ -923,32 +893,7 @@ export class SharedBoardBridge {
     thresholds: Partial<AlertThresholds> = {},
     nowMs = Date.now(),
   ): AlertStatus {
-    if (this.monitor) {
-      return this.monitor.getAlertStatus(thresholds, nowMs);
-    }
-
-    const mergedThresholds: AlertThresholds = {
-      ...DEFAULT_ALERT_THRESHOLDS,
-      ...thresholds,
-    };
-
-    return {
-      hasAlert: false,
-      triggeredRules: [],
-      evaluatedAt: nowMs,
-      thresholds: mergedThresholds,
-      dashboard: {
-        windowMs: mergedThresholds.windowMs,
-        generatedAt: nowMs,
-        windowEventCount: 0,
-        successRate: 0,
-        failureRate: 0,
-        conflictRate: 0,
-        avgLatencyMs: 0,
-        p95LatencyMs: 0,
-        topErrors: [],
-      },
-    };
+    return getBridgeAlertStatus(this.monitor, thresholds, nowMs);
   }
 
   /**
@@ -988,3 +933,4 @@ export class SharedBoardBridge {
     this.monitor = null;
   }
 }
+

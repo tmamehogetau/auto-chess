@@ -11,10 +11,12 @@ Auto-Chess MVP is a multiplayer auto-battler game built with Colyseus framework.
 
 ## Documentation Structure
 
-Documentation is stored in: `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/`
+Documentation entry point is: `docs/`
+
+`docs/` is the canonical path agents should read and write. It may be backed by a symbolic link, but documents should still reference `docs/` paths in prose and cross-links.
 
 ```
-auto-chess-mvp_Docs/
+docs/
 ├─ index.md                          # Entry point hub
 ├─ specs/                            # Specifications & gate definitions
 │  ├─ Game_Specification_Summary.md  # Game spec SoT
@@ -22,17 +24,19 @@ auto-chess-mvp_Docs/
 ├─ plans/                            # Implementation plans
 │  ├─ active/                        # Current plans
 │  │  ├─ MVP_to_Production_Weekly_Execution_Plan.md  # Overall SoT
-│  │  └─ Phase2_Implementation_Plan.md
+│  │  ├─ 2026-03-14_Game_Productization_Roadmap.md
+│  │  └─ 2026-03-21_W15_Regular_Operations_And_Backlog_Plan.md
 │  └─ archive/                       # Completed/superseded plans
 ├─ tickets/                          # Execution tickets
 │  ├─ active/
-│  │  └─ W1_Execution_Tickets.md     # Weekly task SoT
+│  │  └─ README.md                   # No active ticket in steady-state operations
 │  └─ archive/
 ├─ subplans/                         # Dependent detailed plans
-│  └─ Phase2_Sub_Unit_Implementation_Plan.md
+│  └─ *.md
 └─ reference/                        # Reference documents
    ├─ Documentation_Organization_Rules.md
-   └─ touhou-units-migration-plan.md
+   ├─ touhou-unit-master-data.md
+   └─ *.md
 ```
 
 ### Single Source of Truth (SoT)
@@ -41,14 +45,15 @@ auto-chess-mvp_Docs/
 |------|------|---------|
 | Spec | `specs/Game_Specification_Summary.md` | Game specifications |
 | Overview | `plans/active/MVP_to_Production_Weekly_Execution_Plan.md` | 14-week execution plan |
-| Tasks | `tickets/active/W1_Execution_Tickets.md` | Current week tasks |
+| Current Ops | `plans/active/2026-03-21_W15_Regular_Operations_And_Backlog_Plan.md` | Current steady-state operations and backlog SoT |
+| Ticket Status | `tickets/active/README.md` | Explains why `tickets/active` may be empty |
 
 ### Minimal Reading Set
 
 For new agents or quick start, read these 3 files:
 1. `index.md` - Project overview and navigation
 2. `specs/Game_Specification_Summary.md` - What we're building
-3. `tickets/active/W1_Execution_Tickets.md` - What to do now
+3. `plans/active/2026-03-21_W15_Regular_Operations_And_Backlog_Plan.md` - What to do now in steady-state operations
 
 ### Documentation Update Rules
 
@@ -67,7 +72,7 @@ npm run verify:ci
 - Prioritize regressions that change MVP behavior when `enableTouhouRoster=false`.
 - Verify Touhou-only behavior stays gated behind `enableTouhouRoster`, `enableTouhouFactions`, and `enablePerUnitSharedPool`.
 - Check that `unitId` propagates correctly through buy, bench, board, sell, and shared-pool return paths.
-- Flag any mismatch between implemented Touhou faction effects and `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/specs/touhou-faction-effect-matrix.md`.
+- Flag any mismatch between implemented Touhou faction effects and `docs/specs/touhou-faction-effect-matrix.md`.
 - Treat data-loss, state-desync, and pool-inventory inconsistencies as high priority.
 
 ## Done Criteria
@@ -75,7 +80,7 @@ npm run verify:ci
 - Type checking succeeds (`npm run typecheck`)
 - Linting succeeds (`npm run lint`)
 - CI workflow passes on push/pull request
-- Documentation is properly organized under `00_Obsidian_Vault/Projects/auto-chess-mvp_Docs/`
+- Documentation is properly organized under `docs/`
 
 ## Technology Stack
 - Colyseus 0.17.x - Multiplayer game server framework

@@ -9,7 +9,37 @@ import { buildLoserDamage } from "./match-room-controller/damage-calculator";
 import {
   BattleResolutionService,
   type BattleResolutionDependencies,
+  type BattleResolutionResult,
 } from "./match-room-controller/battle-resolution";
+import {
+  buildBattleResultAssignments,
+  buildBattleResultTraceSummary,
+} from "./match-room-controller/matchup-result-helpers";
+import {
+  buildPreparedMatchupContext,
+  buildBattleId,
+  type PreparedMatchupContext,
+  type RaidBattleInput,
+} from "./match-room-controller/matchup-context-builder";
+import {
+  calculateActiveSynergyList,
+  type ActiveSynergy,
+} from "./match-room-controller/synergy-helpers";
+import {
+  applyPrepIncomeToPlayers,
+  initializeShopsForPrep,
+  refreshShopByCount,
+  refreshShopsForPrep,
+} from "./match-room-controller/prep-economy";
+import {
+  beginBattlePhaseWindow,
+  beginEliminationPhaseWindow,
+  beginPrepPhaseWindow,
+  beginSettlePhaseWindow,
+  clearPhaseTiming,
+  hasDeadlineElapsed,
+  type PhaseTimingUpdate,
+} from "./match-room-controller/phase-timing";
 import type {
   BoardUnitType,
   BoardUnitPlacement,
@@ -50,7 +80,6 @@ import {
 } from "./combat/unit-effect-definitions";
 import {
   calculateSynergyDetails,
-  calculateScarletMansionSynergy,
   getTouhouFactionTierEffect,
 } from "./combat/synergy-definitions";
 import {
@@ -1080,84 +1109,112 @@ export class MatchRoomController {
 
     switch (this.gameLoopState.phase) {
       case "Prep":
-        if (this.prepDeadlineAtMs !== null && nowMs >= this.prepDeadlineAtMs) {
-          this.captureBattleStartHp();
-          this.captureBattleInputSnapshot();
-          this.declareSpell(); // スペル宣言
-          this.applyPreBattleSpellEffect();
-          this.gameLoopState.transitionTo("Battle");
-          this.prepDeadlineAtMs = null;
-          this.battleDeadlineAtMs = nowMs + this.battleDurationMs;
-          this.matchLogger?.logRoundTransition("Battle", this.gameLoopState.roundIndex, nowMs);
-          return true;
-        }
-
-        return false;
+        return this.advancePrepPhase(nowMs);
       case "Battle":
-        if (this.battleDeadlineAtMs !== null && nowMs >= this.battleDeadlineAtMs) {
-          this.resolveMissingRoundDamage();
-          this.capturePhaseProgressFromPendingDamage();
-          this.applyPendingRoundDamage();
-          this.capturePostBattleHp();
-          this.applySpellEffect(); // スペル効果を適用
-          this.gameLoopState.transitionTo("Settle");
-          this.battleDeadlineAtMs = null;
-          this.settleDeadlineAtMs = nowMs + this.settleDurationMs;
-          this.matchLogger?.logRoundTransition("Settle", this.gameLoopState.roundIndex, nowMs);
-          return true;
-        }
-
-        return false;
+        return this.advanceBattlePhase(nowMs);
       case "Settle":
-        if (this.settleDeadlineAtMs !== null && nowMs >= this.settleDeadlineAtMs) {
-          this.applyRaidRoundConsequences();
-          const aliveBeforeElimination = new Set(this.gameLoopState.alivePlayerIds);
-          this.gameLoopState.transitionTo("Elimination");
-          this.captureEliminationResult(aliveBeforeElimination);
-          this.settleDeadlineAtMs = null;
-          this.eliminationDeadlineAtMs = nowMs + this.eliminationDurationMs;
-          this.matchLogger?.logRoundTransition("Elimination", this.gameLoopState.roundIndex, nowMs);
-          return true;
-        }
-
-        return false;
+        return this.advanceSettlePhase(nowMs);
       case "Elimination":
-        if (
-          this.eliminationDeadlineAtMs !== null &&
-          nowMs >= this.eliminationDeadlineAtMs
-        ) {
-          this.eliminationDeadlineAtMs = null;
-
-          const maxRounds = this.isRaidMode() || this.featureFlags.enablePhaseExpansion ? 12 : 8;
-          if (this.shouldEndAfterElimination(maxRounds)) {
-            this.gameLoopState.transitionTo("End");
-            return true;
-          }
-
-          this.pendingRoundDamageByPlayer.clear();
-          this.pendingPhaseDamageForTest = null;
-          this.applyPrepIncome();
-          // 噂勢力: elimination 解決後に正しい grantedPlayerIds でログを記録
-          this.logRumorInfluenceWithAlivePlayersAfterElimination();
-          this.refreshShopsForPrep();
-          this.hpAtBattleStartByPlayer = new Map<string, number>();
-          this.hpAfterBattleByPlayer = new Map<string, number>();
-          this.battleParticipantIds = [];
-          this.currentRoundPairings = [];
-          this.battleInputSnapshotByPlayer.clear();
-          this.gameLoopState.transitionTo("Prep");
-          this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
-          this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
-          this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
-          return true;
-        }
-
-        return false;
+        return this.advanceEliminationPhase(nowMs);
       case "End":
         return false;
       default:
         return false;
     }
+  }
+
+  private advancePrepPhase(nowMs: number): boolean {
+    if (!hasDeadlineElapsed(this.prepDeadlineAtMs, nowMs)) {
+      return false;
+    }
+
+    const state = this.ensureStarted();
+    this.captureBattleStartHp();
+    this.captureBattleInputSnapshot();
+    this.declareSpell();
+    this.applyPreBattleSpellEffect();
+    state.transitionTo("Battle");
+    this.applyPhaseTimingUpdate(beginBattlePhaseWindow(nowMs, this.battleDurationMs));
+    this.matchLogger?.logRoundTransition("Battle", state.roundIndex, nowMs);
+    return true;
+  }
+
+  private advanceBattlePhase(nowMs: number): boolean {
+    if (!hasDeadlineElapsed(this.battleDeadlineAtMs, nowMs)) {
+      return false;
+    }
+
+    const state = this.ensureStarted();
+    this.resolveMissingRoundDamage();
+    this.capturePhaseProgressFromPendingDamage();
+    this.applyPendingRoundDamage();
+    this.capturePostBattleHp();
+    this.applySpellEffect();
+    state.transitionTo("Settle");
+    this.applyPhaseTimingUpdate(beginSettlePhaseWindow(nowMs, this.settleDurationMs));
+    this.matchLogger?.logRoundTransition("Settle", state.roundIndex, nowMs);
+    return true;
+  }
+
+  private advanceSettlePhase(nowMs: number): boolean {
+    if (!hasDeadlineElapsed(this.settleDeadlineAtMs, nowMs)) {
+      return false;
+    }
+
+    const state = this.ensureStarted();
+    this.applyRaidRoundConsequences();
+    const aliveBeforeElimination = new Set(state.alivePlayerIds);
+    state.transitionTo("Elimination");
+    this.captureEliminationResult(aliveBeforeElimination);
+    this.applyPhaseTimingUpdate(beginEliminationPhaseWindow(nowMs, this.eliminationDurationMs));
+    this.matchLogger?.logRoundTransition("Elimination", state.roundIndex, nowMs);
+    return true;
+  }
+
+  private advanceEliminationPhase(nowMs: number): boolean {
+    if (!hasDeadlineElapsed(this.eliminationDeadlineAtMs, nowMs)) {
+      return false;
+    }
+
+    const state = this.ensureStarted();
+    this.eliminationDeadlineAtMs = null;
+
+    if (this.shouldEndAfterElimination(this.resolveMaxRounds())) {
+      state.transitionTo("End");
+      this.applyPhaseTimingUpdate(clearPhaseTiming());
+      return true;
+    }
+
+    this.resetForNextPrepRound();
+    state.transitionTo("Prep");
+    this.resetPhaseProgressForRound(state.roundIndex);
+    this.applyPhaseTimingUpdate(beginPrepPhaseWindow(nowMs, this.prepDurationMs));
+    this.matchLogger?.logRoundTransition("Prep", state.roundIndex, nowMs);
+    return true;
+  }
+
+  private resolveMaxRounds(): number {
+    return this.isRaidMode() || this.featureFlags.enablePhaseExpansion ? 12 : 8;
+  }
+
+  private applyPhaseTimingUpdate(update: PhaseTimingUpdate): void {
+    this.prepDeadlineAtMs = update.prepDeadlineAtMs;
+    this.battleDeadlineAtMs = update.battleDeadlineAtMs;
+    this.settleDeadlineAtMs = update.settleDeadlineAtMs;
+    this.eliminationDeadlineAtMs = update.eliminationDeadlineAtMs;
+  }
+
+  private resetForNextPrepRound(): void {
+    this.pendingRoundDamageByPlayer.clear();
+    this.pendingPhaseDamageForTest = null;
+    this.applyPrepIncome();
+    this.logRumorInfluenceWithAlivePlayersAfterElimination();
+    this.refreshShopsForPrep();
+    this.hpAtBattleStartByPlayer = new Map<string, number>();
+    this.hpAfterBattleByPlayer = new Map<string, number>();
+    this.battleParticipantIds = [];
+    this.currentRoundPairings = [];
+    this.battleInputSnapshotByPlayer.clear();
   }
 
   public submitPrepCommand(
@@ -1167,9 +1224,50 @@ export class MatchRoomController {
     commandPayload?: CommandPayload,
   ): CommandResult {
     const payload = commandPayload ?? {};
+    const validationDeps = this.createPrepValidationDependencies();
 
-    // Step 1: Build validation dependencies
-    const validationDeps: ValidationDependencies = {
+    // Step 1: Validate the command
+    const validationInternalResult: ValidationInternalResult = {};
+    const validationError = validatePrepCommand(
+      playerId,
+      cmdSeq,
+      receivedAtMs,
+      payload,
+      validationDeps,
+      validationInternalResult,
+    );
+
+    // W6-2 KPI: バリデーション境界で拒否された場合は失敗を記録
+    if (validationError) {
+      if (validationInternalResult.rejectReason !== "SERVER_INVARIANT_BREACH") {
+        // validationErrorはバリデーション失敗時のみ返されるため、必ずaccepted: false
+        this.matchLogger?.recordPrepValidationFailure({
+          errorCode: (validationError as { accepted: false; code: string }).code,
+        });
+      }
+
+      return validationError;
+    }
+
+    this.matchLogger?.recordPrepValidationPass();
+
+    // Step 2: Execute the command
+    const result = executePrepCommand(
+      playerId,
+      cmdSeq,
+      payload,
+      this.createPrepExecutionDependencies(),
+    );
+
+    // W6-2 KPI: バリデーション通過後、実行が完了したら成功を記録
+    // Note: executePrepCommandが返る = 実行成功（実行内で例外が発生した場合は別のエラーハンドリング）
+    this.matchLogger?.recordPrepExecutionSuccess();
+
+    return result;
+  }
+
+  private createPrepValidationDependencies(): ValidationDependencies {
+    return {
       isKnownPlayer: (id) => this.lastCmdSeqByPlayer.has(id),
       isGameStarted: () => this.gameLoopState !== null,
       getCurrentPhase: () => this.gameLoopState?.phase ?? "Waiting",
@@ -1195,34 +1293,10 @@ export class MatchRoomController {
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
       getRosterFlags: () => this.rosterFlags,
     };
+  }
 
-    // Step 2: Validate the command
-    const validationInternalResult: ValidationInternalResult = {};
-    const validationError = validatePrepCommand(
-      playerId,
-      cmdSeq,
-      receivedAtMs,
-      payload,
-      validationDeps,
-      validationInternalResult,
-    );
-
-    // W6-2 KPI: バリデーション境界で拒否された場合は失敗を記録
-    if (validationError) {
-      if (validationInternalResult.rejectReason !== "SERVER_INVARIANT_BREACH") {
-        // validationErrorはバリデーション失敗時のみ返されるため、必ずaccepted: false
-        this.matchLogger?.recordPrepValidationFailure({
-          errorCode: (validationError as { accepted: false; code: string }).code,
-        });
-      }
-
-      return validationError;
-    }
-
-    this.matchLogger?.recordPrepValidationPass();
-
-    // Step 3: Build execution dependencies
-    const executionDeps: ExecutionDependencies = {
+  private createPrepExecutionDependencies(): ExecutionDependencies {
+    return {
       setBoardUnitCount: (id, count) => this.boardUnitCountByPlayer.set(id, count),
       setBoardPlacements: (id, placements) => this.boardPlacementsByPlayer.set(id, placements),
       setShopLock: (id, locked) => this.shopLockedByPlayer.set(id, locked),
@@ -1239,71 +1313,13 @@ export class MatchRoomController {
         this.deployBenchUnitToBoard(id, benchIndex, cell),
       sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
       sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
-      addItemToInventory: (id, itemType) => {
-        const inventory = this.itemInventoryByPlayer.get(id);
-        if (inventory) {
-          inventory.push(itemType);
-        }
-      },
-      equipItemToBenchUnit: (id, inventoryItemIndex, benchIndex) => {
-        const inventory = this.itemInventoryByPlayer.get(id);
-        const benchUnits = this.benchUnitsByPlayer.get(id);
-        if (inventory && benchUnits) {
-          const benchUnit = benchUnits[benchIndex];
-          if (benchUnit) {
-            const item = inventory[inventoryItemIndex];
-            if (item !== undefined) {
-              inventory.splice(inventoryItemIndex, 1);
-              benchUnit.items = benchUnit.items || [];
-              benchUnit.items.push(item);
-            }
-          }
-        }
-      },
-      unequipItemFromBenchUnit: (id, benchIndex, itemSlotIndex) => {
-        const benchUnits = this.benchUnitsByPlayer.get(id);
-        const inventory = this.itemInventoryByPlayer.get(id);
-        if (benchUnits && inventory) {
-          const benchUnit = benchUnits[benchIndex];
-          if (benchUnit?.items) {
-            const item = benchUnit.items[itemSlotIndex];
-            if (item !== undefined) {
-              benchUnit.items.splice(itemSlotIndex, 1);
-              inventory.push(item);
-            }
-          }
-        }
-      },
-      sellInventoryItem: (id, inventoryItemIndex) => {
-        const inventory = this.itemInventoryByPlayer.get(id);
-        if (inventory) {
-          const item = inventory[inventoryItemIndex];
-          if (item !== undefined) {
-            const itemDef = ITEM_DEFINITIONS[item];
-            const sellValue = Math.floor(itemDef.cost / 2);
-            inventory.splice(inventoryItemIndex, 1);
-            const currentGold = this.goldByPlayer.get(id) || 0;
-            this.goldByPlayer.set(id, currentGold + sellValue);
-          }
-        }
-      },
-      buyBossShopOffer: (id, slotIndex) => {
-        const bossOffers = this.getBossShopOffersForPlayer(id);
-        const benchUnits = this.benchUnitsByPlayer.get(id) ?? [];
-        if (bossOffers && slotIndex < bossOffers.length) {
-          const bossOffer = bossOffers[slotIndex];
-          if (bossOffer && !bossOffer.purchased) {
-            benchUnits.push({
-              unitType: bossOffer.unitType,
-              cost: bossOffer.cost,
-              starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
-              unitCount: 1,
-            });
-            this.benchUnitsByPlayer.set(id, benchUnits);
-            bossOffer.purchased = true;
-          }
-        }
-      },
+      addItemToInventory: (id, itemType) => this.addItemToInventory(id, itemType),
+      equipItemToBenchUnit: (id, inventoryItemIndex, benchIndex) =>
+        this.equipItemToBenchUnit(id, inventoryItemIndex, benchIndex),
+      unequipItemFromBenchUnit: (id, benchIndex, itemSlotIndex) =>
+        this.unequipItemFromBenchUnit(id, benchIndex, itemSlotIndex),
+      sellInventoryItem: (id, inventoryItemIndex) => this.sellInventoryItem(id, inventoryItemIndex),
+      buyBossShopOffer: (id, slotIndex) => this.buyBossShopOffer(id, slotIndex),
       getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
       getOwnedUnits: (id) => this.ownedUnitsByPlayer.get(id) ?? { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
       getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
@@ -1312,34 +1328,132 @@ export class MatchRoomController {
       getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       getRosterFlags: () => this.rosterFlags,
-      logBossShop: (id, offers, purchase) => {
-        const state = this.ensureStarted();
-        this.matchLogger?.logBossShop(
-          state.roundIndex,
-          id,
-          offers,
-          purchase,
-        );
-      },
+      logBossShop: (id, offers, purchase) => this.logBossShopPurchase(id, offers, purchase),
     };
+  }
 
-    // Step 4: Execute the command
-    const result = executePrepCommand(playerId, cmdSeq, payload, executionDeps);
+  private addItemToInventory(playerId: string, itemType: ItemType): void {
+    const inventory = this.itemInventoryByPlayer.get(playerId);
+    if (!inventory) {
+      return;
+    }
 
-    // W6-2 KPI: バリデーション通過後、実行が完了したら成功を記録
-    // Note: executePrepCommandが返る = 実行成功（実行内で例外が発生した場合は別のエラーハンドリング）
-    this.matchLogger?.recordPrepExecutionSuccess();
+    inventory.push(itemType);
+  }
 
-    return result;
+  private equipItemToBenchUnit(
+    playerId: string,
+    inventoryItemIndex: number,
+    benchIndex: number,
+  ): void {
+    const inventory = this.itemInventoryByPlayer.get(playerId);
+    const benchUnits = this.benchUnitsByPlayer.get(playerId);
+    if (!inventory || !benchUnits) {
+      return;
+    }
+
+    const benchUnit = benchUnits[benchIndex];
+    if (!benchUnit) {
+      return;
+    }
+
+    const item = inventory[inventoryItemIndex];
+    if (item === undefined) {
+      return;
+    }
+
+    inventory.splice(inventoryItemIndex, 1);
+    benchUnit.items = benchUnit.items || [];
+    benchUnit.items.push(item);
+  }
+
+  private unequipItemFromBenchUnit(
+    playerId: string,
+    benchIndex: number,
+    itemSlotIndex: number,
+  ): void {
+    const benchUnits = this.benchUnitsByPlayer.get(playerId);
+    const inventory = this.itemInventoryByPlayer.get(playerId);
+    if (!benchUnits || !inventory) {
+      return;
+    }
+
+    const benchUnit = benchUnits[benchIndex];
+    if (!benchUnit?.items) {
+      return;
+    }
+
+    const item = benchUnit.items[itemSlotIndex];
+    if (item === undefined) {
+      return;
+    }
+
+    benchUnit.items.splice(itemSlotIndex, 1);
+    inventory.push(item);
+  }
+
+  private sellInventoryItem(playerId: string, inventoryItemIndex: number): void {
+    const inventory = this.itemInventoryByPlayer.get(playerId);
+    if (!inventory) {
+      return;
+    }
+
+    const item = inventory[inventoryItemIndex];
+    if (item === undefined) {
+      return;
+    }
+
+    const itemDef = ITEM_DEFINITIONS[item];
+    const sellValue = Math.floor(itemDef.cost / 2);
+    inventory.splice(inventoryItemIndex, 1);
+    const currentGold = this.goldByPlayer.get(playerId) || 0;
+    this.goldByPlayer.set(playerId, currentGold + sellValue);
+  }
+
+  private buyBossShopOffer(playerId: string, slotIndex: number): void {
+    const bossOffers = this.getBossShopOffersForPlayer(playerId);
+    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+    if (!bossOffers || slotIndex >= bossOffers.length) {
+      return;
+    }
+
+    const bossOffer = bossOffers[slotIndex];
+    if (!bossOffer || bossOffer.purchased) {
+      return;
+    }
+
+    benchUnits.push({
+      unitType: bossOffer.unitType,
+      cost: bossOffer.cost,
+      starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
+      unitCount: 1,
+    });
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    bossOffer.purchased = true;
+  }
+
+  private logBossShopPurchase(
+    playerId: string,
+    offers: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
+    purchase: { slotIndex: number; unitType: string; cost: number },
+  ): void {
+    const state = this.ensureStarted();
+    this.matchLogger?.logBossShop(
+      state.roundIndex,
+      playerId,
+      offers,
+      purchase,
+    );
   }
 
   private applyPrepIncome(): void {
     const state = this.ensureStarted();
-
-    for (const playerId of state.alivePlayerIds) {
-      const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
-      this.goldByPlayer.set(playerId, currentGold + PREP_BASE_INCOME);
-    }
+    applyPrepIncomeToPlayers({
+      alivePlayerIds: state.alivePlayerIds,
+      goldByPlayer: this.goldByPlayer,
+      baseIncome: PREP_BASE_INCOME,
+      initialGold: INITIAL_GOLD,
+    });
   }
 
   private addXp(playerId: string, gainedXp: number): void {
@@ -1363,146 +1477,85 @@ export class MatchRoomController {
 
   private initializeShopsForPrep(): void {
     const state = this.ensureStarted();
-
-    for (const playerId of state.playerIds) {
-      this.shopRefreshCountByPlayer.set(playerId, 0);
-      this.shopPurchaseCountByPlayer.set(playerId, 0);
-      this.shopLockedByPlayer.set(playerId, false);
-      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
-      const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
-      this.shopOffersByPlayer.set(
-        playerId,
+    initializeShopsForPrep({
+      playerIds: state.playerIds,
+      roundIndex: state.roundIndex,
+      isBossPlayer: (playerId) => state.isBoss(playerId),
+      buildShopOffers: (playerId, roundIndex, refreshCount, purchaseCount, isRumorEligible) =>
         this.shopOfferBuilder.buildShopOffers(
           playerId,
-          state.roundIndex,
-          0,
-          0,
+          roundIndex,
+          refreshCount,
+          purchaseCount,
           isRumorEligible,
         ),
-      );
-
-      // Initialize item shops
-      if (!this.shopLockedByPlayer.get(playerId)) {
-        const itemOffers = this.shopOfferBuilder.buildItemShopOffers(ITEM_TYPES, ITEM_DEFINITIONS);
-        this.itemShopOffersByPlayer.set(playerId, itemOffers);
-      }
-
-      // 噂勢力: ショップ初期化時にeligibleフラグをリセット
-      if (this.enableRumorInfluence) {
-        this.rumorInfluenceEligibleByPlayer.set(playerId, false);
-      }
-
-      // ボス専用ショップ: ボスプレイヤーに初期化
-      if (this.enableBossExclusiveShop && state.isBoss(playerId)) {
-        this.bossShopOffersByPlayer.set(
-          playerId,
-          this.shopOfferBuilder.buildBossShopOffers(),
-        );
-      }
-    }
+      buildItemShopOffers: () =>
+        this.shopOfferBuilder.buildItemShopOffers(ITEM_TYPES, ITEM_DEFINITIONS),
+      buildBossShopOffers: () => this.shopOfferBuilder.buildBossShopOffers(),
+      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
+      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
+      shopLockedByPlayer: this.shopLockedByPlayer,
+      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
+      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
+      shopOffersByPlayer: this.shopOffersByPlayer,
+      itemShopOffersByPlayer: this.itemShopOffersByPlayer,
+      bossShopOffersByPlayer: this.bossShopOffersByPlayer,
+      enableRumorInfluence: this.enableRumorInfluence,
+      enableBossExclusiveShop: this.enableBossExclusiveShop,
+    });
   }
 
   private refreshShopsForPrep(): void {
     const state = this.ensureStarted();
-
-    for (const playerId of state.alivePlayerIds) {
-      const locked = this.shopLockedByPlayer.get(playerId) ?? false;
-
-      if (locked) {
-        continue;
-      }
-
-      this.shopRefreshCountByPlayer.set(playerId, 0);
-      this.shopPurchaseCountByPlayer.set(playerId, 0);
-      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
-      const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
-      this.shopOffersByPlayer.set(
-        playerId,
+    refreshShopsForPrep({
+      alivePlayerIds: state.alivePlayerIds,
+      roundIndex: state.roundIndex,
+      isBossPlayer: (playerId) => state.isBoss(playerId),
+      buildShopOffers: (playerId, roundIndex, refreshCount, purchaseCount, isRumorEligible) =>
         this.shopOfferBuilder.buildShopOffers(
           playerId,
-          state.roundIndex,
-          0,
-          0,
+          roundIndex,
+          refreshCount,
+          purchaseCount,
           isRumorEligible,
         ),
-      );
-
-      // 噂勢力: 確定枠を消費したらeligibleフラグをリセット
-      if (this.enableRumorInfluence && isRumorEligible) {
-        this.rumorInfluenceEligibleByPlayer.set(playerId, false);
-      }
-
-      // ボス専用ショップ: ボスプレイヤーを更新
-      if (this.enableBossExclusiveShop && state.isBoss(playerId)) {
-        this.bossShopOffersByPlayer.set(
-          playerId,
-          this.shopOfferBuilder.buildBossShopOffers(),
-        );
-      }
-    }
-
-    // Clear battle results at the start of each new Prep phase
-    this.battleResultsByPlayer.clear();
+      buildBossShopOffers: () => this.shopOfferBuilder.buildBossShopOffers(),
+      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
+      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
+      shopLockedByPlayer: this.shopLockedByPlayer,
+      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
+      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
+      shopOffersByPlayer: this.shopOffersByPlayer,
+      bossShopOffersByPlayer: this.bossShopOffersByPlayer,
+      battleResultsByPlayer: this.battleResultsByPlayer,
+      enableRumorInfluence: this.enableRumorInfluence,
+      enableBossExclusiveShop: this.enableBossExclusiveShop,
+    });
   }
 
   private refreshShopByCount(playerId: string, refreshCount: number): void {
     const state = this.ensureStarted();
-    const previousOffers = this.shopOffersByPlayer.get(playerId) ?? [];
-    const currentCount = this.shopRefreshCountByPlayer.get(playerId) ?? 0;
-    const nextCount = currentCount + refreshCount;
-    const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
-    let nextOffers = this.shopOfferBuilder.buildShopOffers(
+    refreshShopByCount({
       playerId,
-      state.roundIndex,
-      nextCount,
-      0,
-      isRumorEligible,
-    );
-
-    if (this.areShopOffersEqual(previousOffers, nextOffers)) {
-      nextOffers = this.shopOfferBuilder.buildShopOffers(
-        playerId,
-        state.roundIndex,
-        nextCount,
-        1,
-        isRumorEligible,
-      );
-    }
-
-    this.shopRefreshCountByPlayer.set(playerId, nextCount);
-    this.shopPurchaseCountByPlayer.set(playerId, 0);
-    this.shopOffersByPlayer.set(playerId, nextOffers);
-    if (refreshCount > 0 && this.getAvailableKouRyuudouFreeRefreshes(playerId) > 0) {
-      this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, true);
-    }
-
-    if (this.enableRumorInfluence && isRumorEligible) {
-      this.rumorInfluenceEligibleByPlayer.set(playerId, false);
-    }
-  }
-
-  private areShopOffersEqual(left: ShopOffer[], right: ShopOffer[]): boolean {
-    if (left.length !== right.length) {
-      return false;
-    }
-
-    for (let index = 0; index < left.length; index += 1) {
-      const leftOffer = left[index];
-      const rightOffer = right[index];
-
-      if (!leftOffer || !rightOffer) {
-        return false;
-      }
-
-      const leftKey: ShopOfferKey = `${leftOffer.unitId ?? leftOffer.unitType}:${leftOffer.displayName ?? ""}:${leftOffer.factionId ?? ""}:${leftOffer.rarity}:${leftOffer.cost}`;
-      const rightKey: ShopOfferKey = `${rightOffer.unitId ?? rightOffer.unitType}:${rightOffer.displayName ?? ""}:${rightOffer.factionId ?? ""}:${rightOffer.rarity}:${rightOffer.cost}`;
-
-      if (leftKey !== rightKey) {
-        return false;
-      }
-    }
-
-    return true;
+      roundIndex: state.roundIndex,
+      refreshCount,
+      buildShopOffers: (targetPlayerId, roundIndex, nextRefreshCount, purchaseCount, isRumorEligible) =>
+        this.shopOfferBuilder.buildShopOffers(
+          targetPlayerId,
+          roundIndex,
+          nextRefreshCount,
+          purchaseCount,
+          isRumorEligible,
+        ),
+      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
+      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
+      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
+      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
+      shopOffersByPlayer: this.shopOffersByPlayer,
+      enableRumorInfluence: this.enableRumorInfluence,
+      getAvailableFreeRefreshes: (targetPlayerId) =>
+        this.getAvailableKouRyuudouFreeRefreshes(targetPlayerId),
+    });
   }
 
   private buyShopOfferBySlot(playerId: string, slotIndex: number): void {
@@ -1893,69 +1946,44 @@ export class MatchRoomController {
   private calculateActiveSynergies(
     placements: BoardUnitPlacement[],
     heroSynergyBonusType: BoardUnitType | null = null,
-    playerId?: string, // ログ記録用
-  ): { unitType: string; count: number; tier: number }[] {
-    if (!placements) {
-      return [];
-    }
-
-    const resolvedPlacements = resolveBattlePlacements(placements, this.rosterFlags);
-    const synergyDetails = calculateSynergyDetails(
-      resolvedPlacements,
+    playerId?: string,
+  ): ActiveSynergy[] {
+    const activeSynergies = calculateActiveSynergyList(
+      placements,
       heroSynergyBonusType,
-      { enableTouhouFactions: this.rosterFlags.enableTouhouFactions },
+      this.rosterFlags,
     );
 
-    const result: { unitType: string; count: number; tier: number }[] = [];
+    this.logActiveSynergyActivations(playerId, activeSynergies);
+    return activeSynergies;
+  }
 
-    const unitTypes: BoardUnitType[] = ["vanguard", "ranger", "mage", "assassin"];
+  private logActiveSynergyActivations(
+    playerId: string | undefined,
+    activeSynergies: ActiveSynergy[],
+  ): void {
+    if (!playerId || !this.matchLogger) {
+      return;
+    }
 
-    for (const type of unitTypes) {
-      const count = synergyDetails.countsByType[type] ?? 0;
-      const tier = synergyDetails.activeTiers[type] ?? 0;
+    const state = this.gameLoopState;
+    if (!state) {
+      return;
+    }
 
-      if (count > 0) {
-        result.push({ unitType: type, count, tier });
+    for (const synergy of activeSynergies) {
+      if (synergy.tier <= 0) {
+        continue;
       }
+
+      this.matchLogger.logSynergyActivation(
+        state.roundIndex,
+        playerId,
+        synergy.unitType,
+        synergy.count,
+        [{ type: "tier", value: synergy.tier }],
+      );
     }
-
-    if (this.rosterFlags.enableTouhouFactions) {
-      for (const [factionId, count] of Object.entries(synergyDetails.factionCounts)) {
-        if (!count || count <= 0) {
-          continue;
-        }
-
-        result.push({
-          unitType: factionId,
-          count,
-          tier: synergyDetails.factionActiveTiers[factionId as keyof typeof synergyDetails.factionActiveTiers] ?? 0,
-        });
-      }
-    }
-
-    if (calculateScarletMansionSynergy(placements)) {
-      result.push({ unitType: "scarletMansion", count: 2, tier: 1 });
-    }
-
-    // シナジー発動ログを記録（playerIdが指定されている場合のみ）
-    if (playerId && this.matchLogger) {
-      const state = this.gameLoopState;
-      if (state) {
-        for (const synergy of result) {
-          if (synergy.tier > 0) {
-            this.matchLogger.logSynergyActivation(
-              state.roundIndex,
-              playerId,
-              synergy.unitType,
-              synergy.count,
-              [{ type: 'tier', value: synergy.tier }],
-            );
-          }
-        }
-      }
-    }
-
-    return result;
   }
 
   private resolveHeroSynergyBonusType(playerId: string): BoardUnitType | null {
@@ -1989,15 +2017,7 @@ export class MatchRoomController {
   private buildRaidBattleInput(
     leftPlayerId: string,
     rightPlayerId: string,
-  ): {
-    bossPlayerId: string;
-    raidPlayerIds: string[];
-    bossIsLeft: boolean;
-    leftPlayerIds: string[];
-    rightPlayerIds: string[];
-    leftPlacements: BoardUnitPlacement[];
-    rightPlacements: BoardUnitPlacement[];
-  } | null {
+  ): RaidBattleInput | null {
     const state = this.ensureStarted();
     const bossPlayerId = state.bossPlayerId;
 
@@ -2364,146 +2384,129 @@ export class MatchRoomController {
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
-    const raidBattleInput = this.buildRaidBattleInput(leftPlayerId, rightPlayerId);
-    const leftPlayerIds = raidBattleInput?.leftPlayerIds ?? [leftPlayerId];
-    const rightPlayerIds = raidBattleInput?.rightPlayerIds ?? [rightPlayerId];
-    const leftPlacements = raidBattleInput?.leftPlacements
-      ?? this.battleInputSnapshotByPlayer.get(leftPlayerId)
-      ?? [];
-    const rightPlacements = raidBattleInput?.rightPlacements
-      ?? this.battleInputSnapshotByPlayer.get(rightPlayerId)
-      ?? [];
-    const leftResolvedPlacements = resolveBattlePlacements(leftPlacements, this.rosterFlags);
-    const rightResolvedPlacements = resolveBattlePlacements(rightPlacements, this.rosterFlags);
-    const leftIsBossSide = raidBattleInput?.bossIsLeft ?? false;
-    const rightIsBossSide = raidBattleInput ? !raidBattleInput.bossIsLeft : false;
+    const matchup = this.prepareMatchupContext(leftPlayerId, rightPlayerId);
+    const resolutionResult = this.battleResolutionService.resolveMatchup({
+      battleId: matchup.battleId,
+      roundIndex: this.roundIndex,
+      leftPlayerId: matchup.leftPlayerId,
+      rightPlayerId: matchup.rightPlayerId,
+      leftPlacements: matchup.leftSide.resolvedPlacements,
+      rightPlacements: matchup.rightSide.resolvedPlacements,
+      leftBattleUnits: matchup.leftSide.battleUnits,
+      rightBattleUnits: matchup.rightSide.battleUnits,
+      leftHeroSynergyBonusType: matchup.leftSide.heroSynergyBonusTypes,
+      rightHeroSynergyBonusType: matchup.rightSide.heroSynergyBonusTypes,
+      battleIndex: matchup.battleIndex,
+    });
 
-    // ボード配置をBattleUnitに変換
-    const leftBattleUnits: BattleUnit[] = leftResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "left", index, leftIsBossSide, this.rosterFlags),
-    );
+    this.storeBattleResolutionResults(matchup, resolutionResult);
+    this.logResolvedBattleResult(matchup, resolutionResult);
 
-    const rightBattleUnits: BattleUnit[] = rightResolvedPlacements.map((placement, index) =>
-      createBattleUnit(placement, "right", index, rightIsBossSide, this.rosterFlags),
-    );
+    return resolutionResult.outcome;
+  }
 
-    // スペル効果を適用
-    const leftModifiers = this.buildSideSpellModifiers(leftPlayerIds);
-    this.battleResolutionService.applySpellModifiers(leftBattleUnits, leftModifiers);
-    const rightModifiers = this.buildSideSpellModifiers(rightPlayerIds);
-    this.battleResolutionService.applySpellModifiers(rightBattleUnits, rightModifiers);
+  private prepareMatchupContext(leftPlayerId: string, rightPlayerId: string): PreparedMatchupContext {
+    const matchup = buildPreparedMatchupContext({
+      leftPlayerId,
+      rightPlayerId,
+      roundIndex: this.roundIndex,
+      raidBattleInput: this.buildRaidBattleInput(leftPlayerId, rightPlayerId),
+      battleInputSnapshotByPlayer: this.battleInputSnapshotByPlayer,
+      currentRoundPairings: this.currentRoundPairings,
+      rosterFlags: this.rosterFlags,
+      buildSpellModifiers: (playerIds) => this.buildSideSpellModifiers(playerIds),
+      applySpellModifiers: (battleUnits, modifiers) =>
+        this.battleResolutionService.applySpellModifiers(battleUnits, modifiers),
+      appendHeroBattleUnits: (playerIds, battleUnits) => this.appendHeroBattleUnits(playerIds, battleUnits),
+      buildHeroSynergyBonusTypes: (playerIds) => this.buildSideHeroSynergyBonusTypes(playerIds),
+    });
 
-    // 主人公を追加（選択されている場合）
-    const leftHeroIds = this.buildSideHeroIds(leftPlayerIds);
-    for (const heroPlayerId of leftPlayerIds) {
-      const leftHeroId = this.selectedHeroByPlayer.get(heroPlayerId);
-      const leftHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(leftHeroId, heroPlayerId);
-      if (leftHeroBattleUnit) {
-        leftBattleUnits.push(leftHeroBattleUnit);
+    this.logBattleInputTrace({
+      battleId: matchup.battleId,
+      leftPlayerId,
+      rightPlayerId,
+      leftPlacements: matchup.leftSide.resolvedPlacements,
+      rightPlacements: matchup.rightSide.resolvedPlacements,
+      leftHeroId: matchup.leftSide.heroIds[0] ?? null,
+      rightHeroId: matchup.rightSide.heroIds[0] ?? null,
+    });
+
+    return matchup;
+  }
+
+  private appendHeroBattleUnits(playerIds: string[], battleUnits: BattleUnit[]): string[] {
+    const heroIds = this.buildSideHeroIds(playerIds);
+
+    for (const heroPlayerId of playerIds) {
+      const heroId = this.selectedHeroByPlayer.get(heroPlayerId);
+      const heroBattleUnit = this.battleResolutionService.createHeroBattleUnit(heroId, heroPlayerId);
+      if (heroBattleUnit) {
+        battleUnits.push(heroBattleUnit);
       }
     }
 
-    const rightHeroIds = this.buildSideHeroIds(rightPlayerIds);
-    for (const heroPlayerId of rightPlayerIds) {
-      const rightHeroId = this.selectedHeroByPlayer.get(heroPlayerId);
-      const rightHeroBattleUnit = this.battleResolutionService.createHeroBattleUnit(rightHeroId, heroPlayerId);
-      if (rightHeroBattleUnit) {
-        rightBattleUnits.push(rightHeroBattleUnit);
-      }
-    }
+    return heroIds;
+  }
 
-    const leftHeroSynergyBonusType = this.buildSideHeroSynergyBonusTypes(leftPlayerIds);
-    const rightHeroSynergyBonusType = this.buildSideHeroSynergyBonusTypes(rightPlayerIds);
-
-    // T3: 戦闘入力トレースログ（Battle開始時スナップショット）
-    const battleId = `r${this.roundIndex}-${leftPlayerId}-${rightPlayerId}`;
+  private logBattleInputTrace(params: {
+    battleId: string;
+    leftPlayerId: string;
+    rightPlayerId: string;
+    leftPlacements: BoardUnitPlacement[];
+    rightPlacements: BoardUnitPlacement[];
+    leftHeroId: string | null;
+    rightHeroId: string | null;
+  }): void {
     const battleTraceLog = this.battleResolutionService.createBattleTraceLog({
-      battleId,
-        roundIndex: this.roundIndex,
-        leftPlayerId,
-        rightPlayerId,
-        leftPlacements: leftResolvedPlacements,
-        rightPlacements: rightResolvedPlacements,
-        leftHeroId: leftHeroIds[0] ?? null,
-        rightHeroId: rightHeroIds[0] ?? null,
-      });
+      battleId: params.battleId,
+      roundIndex: this.roundIndex,
+      leftPlayerId: params.leftPlayerId,
+      rightPlayerId: params.rightPlayerId,
+      leftPlacements: params.leftPlacements,
+      rightPlacements: params.rightPlacements,
+      leftHeroId: params.leftHeroId,
+      rightHeroId: params.rightHeroId,
+    });
+
     if (shouldEmitVerboseBattleLogs()) {
       // eslint-disable-next-line no-console
       console.log(JSON.stringify(battleTraceLog));
     }
+  }
 
-    // バトル解決サービスで戦闘を実行
-    const battleIndex = this.currentRoundPairings.findIndex(
-      (p) => p.leftPlayerId === leftPlayerId && p.rightPlayerId === rightPlayerId,
+  private storeBattleResolutionResults(
+    matchup: PreparedMatchupContext,
+    resolutionResult: BattleResolutionResult,
+  ): void {
+    for (const assignment of buildBattleResultAssignments(
+      matchup.leftPlayerId,
+      matchup.rightPlayerId,
+      resolutionResult,
+      matchup.raidBattleInput,
+    )) {
+      this.battleResultsByPlayer.set(assignment.playerId, assignment.battleResult);
+    }
+  }
+
+  private logResolvedBattleResult(
+    matchup: PreparedMatchupContext,
+    resolutionResult: BattleResolutionResult,
+  ): void {
+    const summary = buildBattleResultTraceSummary(
+      matchup.leftPlayerId,
+      resolutionResult,
     );
 
-    const resolutionResult = this.battleResolutionService.resolveMatchup({
-      battleId,
-      roundIndex: this.roundIndex,
-      leftPlayerId,
-      rightPlayerId,
-      leftPlacements: leftResolvedPlacements,
-      rightPlacements: rightResolvedPlacements,
-      leftBattleUnits,
-      rightBattleUnits,
-      leftHeroSynergyBonusType,
-      rightHeroSynergyBonusType,
-      battleIndex,
-    });
-
-    // Store battle results in controller state
-    if (raidBattleInput) {
-      const bossBattleResult = raidBattleInput.bossIsLeft
-        ? resolutionResult.leftBattleResult
-        : resolutionResult.rightBattleResult;
-      const raidBattleResult = raidBattleInput.bossIsLeft
-        ? resolutionResult.rightBattleResult
-        : resolutionResult.leftBattleResult;
-
-      this.battleResultsByPlayer.set(raidBattleInput.bossPlayerId, bossBattleResult);
-      for (const raidPlayerId of raidBattleInput.raidPlayerIds) {
-        this.battleResultsByPlayer.set(raidPlayerId, {
-          ...raidBattleResult,
-          opponentId: raidBattleInput.bossPlayerId,
-        });
-      }
-    } else {
-      this.battleResultsByPlayer.set(leftPlayerId, resolutionResult.leftBattleResult);
-      this.battleResultsByPlayer.set(rightPlayerId, resolutionResult.rightBattleResult);
-    }
-
-    // Log battle result trace
-    const { outcome } = resolutionResult;
-    let winner: "left" | "right" | "draw";
-    let leftDamageTaken: number;
-    let rightDamageTaken: number;
-
-    if (outcome.isDraw) {
-      winner = "draw";
-      leftDamageTaken = 0;
-      rightDamageTaken = 0;
-    } else if (outcome.winnerId === leftPlayerId) {
-      winner = "left";
-      leftDamageTaken = 0;
-      rightDamageTaken = resolutionResult.rightBattleResult.damageTaken;
-    } else {
-      winner = "right";
-      leftDamageTaken = resolutionResult.leftBattleResult.damageTaken;
-      rightDamageTaken = 0;
-    }
-
     this.logBattleResultTrace({
-      battleId,
-      leftPlayerId,
-      rightPlayerId,
-      winner,
-      leftSurvivors: resolutionResult.leftBattleResult.survivors,
-      rightSurvivors: resolutionResult.rightBattleResult.survivors,
-      leftDamageTaken,
-      rightDamageTaken,
+      battleId: matchup.battleId,
+      leftPlayerId: matchup.leftPlayerId,
+      rightPlayerId: matchup.rightPlayerId,
+      winner: summary.winner,
+      leftSurvivors: summary.leftSurvivors,
+      rightSurvivors: summary.rightSurvivors,
+      leftDamageTaken: summary.leftDamageTaken,
+      rightDamageTaken: summary.rightDamageTaken,
     });
-
-    return outcome;
   }
 
   private logBattleResultTrace(params: {
@@ -2814,3 +2817,4 @@ export class MatchRoomController {
    * PrepCommandの基本バリデーション（フェーズ、プレイヤー、タイミング、コマンド順序）
    */
 }
+

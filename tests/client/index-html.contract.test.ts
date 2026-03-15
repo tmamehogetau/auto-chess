@@ -10,16 +10,13 @@ describe("index.html contract", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 
     const requiredAttributes = [
-      // Connection panel
       "data-endpoint-input",
       "data-room-input",
       "data-setid-select",
       "data-autofill-input",
       "data-connect-button",
       "data-leave-button",
-      // Game container
       "data-game-container",
-      // Status bar
       "data-round-display",
       "data-gold-display",
       "data-hp-display",
@@ -27,48 +24,37 @@ describe("index.html contract", () => {
       "data-xp-display",
       "data-phase-display",
       "data-ready-count",
-      // Phase HP (Week3)
       "data-phase-hp-section",
       "data-phase-hp-value",
       "data-phase-hp-fill",
       "data-phase-hp-result",
-      // Ready button
       "data-ready-btn",
-      // Shared board (Week3)
       "data-shared-board-section",
       "data-shared-board-grid",
       "data-shared-cursor-list",
-      // Shop
       "data-unit-shop",
       "data-shop-slot",
       "data-item-shop",
       "data-item-shop-slot",
-      // Board
       "data-board-row-back",
       "data-board-row-front",
       "data-board-cell",
-      // Action buttons
       "data-sell-btn",
       "data-refresh-shop-btn",
       "data-buy-xp-btn",
-      // Bench
       "data-bench",
       "data-bench-slot",
-      // Inventory
       "data-inventory",
       "data-inv-slot",
-      // Combat log
       "data-combat-log",
-      // Message bar
+      "data-monitor-summary",
+      "data-monitor-shadow-details",
       "data-message-bar",
-      // Selection mode
       "data-selection-mode",
-      // Round summary (Week3)
       "data-round-summary-overlay",
       "data-round-summary-round",
       "data-round-summary-list",
       "data-round-summary-close",
-      // Set ID display (for test compatibility)
       "data-set-id-display",
     ];
 

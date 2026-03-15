@@ -1,5 +1,5 @@
 import type { MatchLogger } from "../../match-logger";
-import type { PrepCommandMessage } from "../../../shared/room-messages";
+import type { LoggedPrepCommandPayload } from "./prep-command-payload";
 
 export interface PrepCommandLoggingDeps {
   logger: MatchLogger | null;
@@ -28,25 +28,7 @@ export interface LogPrepCommandActionsOptions {
  */
 export function logPrepCommandActions(
   sessionId: string,
-  commandPayload:
-    | {
-        boardUnitCount?: number;
-        boardPlacements?: NonNullable<PrepCommandMessage["boardPlacements"]>;
-        xpPurchaseCount?: number;
-        shopRefreshCount?: number;
-        shopBuySlotIndex?: number;
-        shopLock?: boolean;
-        benchToBoardCell?: { benchIndex: number; cell: number };
-        benchSellIndex?: number;
-        boardSellIndex?: number;
-        itemBuySlotIndex?: number;
-        itemEquipToBench?: { inventoryItemIndex: number; benchIndex: number };
-        itemUnequipFromBench?: { benchIndex: number; itemSlotIndex: number };
-        itemSellInventoryIndex?: number;
-        bossShopBuySlotIndex?: number;
-        mergeUnits?: { unitType: string; starLevel: number; benchIndices?: number[]; boardCells?: number[] };
-      }
-    | undefined,
+  commandPayload: LoggedPrepCommandPayload | undefined,
   deps: PrepCommandLoggingDeps,
   options?: LogPrepCommandActionsOptions,
 ): void {

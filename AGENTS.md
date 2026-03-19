@@ -36,6 +36,12 @@ npx lefthook run pre-commit
 - Keep Touhou-only behavior gated behind the existing feature flags.
 - Treat `unitId` propagation, pool inventory, and shared-board state consistency as high risk.
 
+## Documentation Handling
+
+- `docs/` is backed by an external docs workspace via symlink.
+- You may read and update files under `docs/` when the task requires documentation work.
+- Do not include `docs/` changes in repository commits unless the user explicitly asks for a docs-repo workflow.
+
 ## Done Criteria
 
 - `npm run verify:ci` passes.

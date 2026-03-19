@@ -281,6 +281,210 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("startWithResolvedRoles starts boss raids with explicit role assignments", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        });
+
+        expect(started).toBe(true);
+        expect(controller.phase).toBe("Prep");
+        expect(controller.getBossPlayerId()).toBe("p2");
+        expect(controller.getRaidPlayerIds()).toEqual(["p1", "p3", "p4"]);
+        expect(controller.getPlayerStatus("p2")).toMatchObject({
+          wantsBoss: true,
+          selectedBossId: "remilia",
+          role: "boss",
+          selectedHeroId: "",
+        });
+        expect(controller.getPlayerStatus("p1")).toMatchObject({
+          wantsBoss: false,
+          selectedBossId: "",
+          role: "raid",
+          selectedHeroId: "reimu",
+        });
+      },
+    );
+  });
+
+  test("startWithResolvedRoles rejects invalid boss selections", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "unknown-boss"]]),
+        });
+
+        expect(started).toBe(false);
+      },
+    );
+  });
+
+  test("startWithResolvedRoles leaves inactive pre-start players queryable", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        });
+
+        expect(started).toBe(true);
+        expect(controller.getPlayerStatus("p4")).toMatchObject({
+          wantsBoss: false,
+          selectedBossId: "",
+          role: "unassigned",
+          selectedHeroId: "",
+        });
+      },
+    );
+  });
+
+  test("startWithResolvedRoles clears stale selections for inactive players", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        controller.selectHero("p4", "reimu");
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        });
+
+        expect(started).toBe(true);
+        expect(controller.getPlayerStatus("p4")).toMatchObject({
+          wantsBoss: false,
+          selectedBossId: "",
+          role: "unassigned",
+          selectedHeroId: "",
+        });
+      },
+    );
+  });
+
+  test("startWithResolvedRoles does not persist raid heroes when hero system is disabled", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: false,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        });
+
+        expect(started).toBe(true);
+        expect(controller.getPlayerStatus("p1").selectedHeroId).toBe("");
+        expect(controller.getPlayerStatus("p3").selectedHeroId).toBe("");
+        expect(controller.getPlayerStatus("p4").selectedHeroId).toBe("");
+      },
+    );
+  });
+
+  test("getPlayerStatus still rejects unknown players after resolved-role start", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        });
+
+        expect(started).toBe(true);
+        expect(() => controller.getPlayerStatus("unknown-player")).toThrow("Unknown player");
+      },
+    );
+  });
+
   test("raid round aggregates hero and spell effects from all raid players", async () => {
     await withFlags(
       {

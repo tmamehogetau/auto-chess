@@ -90,6 +90,7 @@ import {
   calculateSellValue,
 } from "./star-level-config";
 import { HEROES } from "../data/heroes";
+import { isBossCharacterId } from "../shared/boss-characters";
 import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
 import {
@@ -388,6 +389,12 @@ export class MatchRoomController {
 
   private readonly selectedHeroByPlayer: Map<string, string>;
 
+  private readonly selectedBossByPlayer: Map<string, string>;
+
+  private readonly wantsBossByPlayer: Map<string, boolean>;
+
+  private readonly roleByPlayer: Map<string, "unassigned" | "raid" | "boss">;
+
   private readonly readyDeadlineAtMs: number;
 
   private readonly prepDurationMs: number;
@@ -446,6 +453,8 @@ export class MatchRoomController {
 
   private readonly enableBossExclusiveShop: boolean;
 
+  private readonly enableHeroSystem: boolean;
+
   private readonly rumorInfluenceEligibleByPlayer: Map<string, boolean>;
 
   private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
@@ -501,6 +510,9 @@ export class MatchRoomController {
     this.kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
+    this.selectedBossByPlayer = new Map<string, string>();
+    this.wantsBossByPlayer = new Map<string, boolean>();
+    this.roleByPlayer = new Map<string, "unassigned" | "raid" | "boss">();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
@@ -586,6 +598,9 @@ export class MatchRoomController {
       this.itemShopOffersByPlayer.set(playerId, []);
       this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
+      this.selectedBossByPlayer.set(playerId, "");
+      this.wantsBossByPlayer.set(playerId, false);
+      this.roleByPlayer.set(playerId, "unassigned");
     }
 
     // Feature Flagに基づいてサブユニットシステムを初期化
@@ -622,6 +637,8 @@ export class MatchRoomController {
     for (const playerId of playerIds) {
       this.rumorInfluenceEligibleByPlayer.set(playerId, false);
     }
+
+    this.enableHeroSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableHeroSystem');
 
     // Feature Flagに基づいてボス専用ショップを初期化
     this.enableBossExclusiveShop = FeatureFlagService.getInstance().isFeatureEnabled('enableBossExclusiveShop');
@@ -806,22 +823,68 @@ export class MatchRoomController {
       return false;
     }
 
-    this.gameLoopState = new GameLoopState(activePlayerIds);
+    this.startMatch(nowMs, activePlayerIds);
+    return true;
+  }
 
-    // ボスプレイヤーをランダムに設定（ボス専用ショップ用）
-    if (this.enableBossExclusiveShop) {
-      this.gameLoopState.setRandomBoss();
+  public startWithResolvedRoles(
+    nowMs: number,
+    connectedPlayerIds: string[],
+    resolvedRoles: {
+      bossPlayerId: string;
+      selectedHeroByPlayer: Map<string, string>;
+      selectedBossByPlayer: Map<string, string>;
+    },
+  ): boolean {
+    if (this.gameLoopState || !this.enableBossExclusiveShop) {
+      return false;
     }
 
-    // Log initial Prep phase transition
-    this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
+    const activePlayerIds = this.playerIds.filter((id) => connectedPlayerIds.includes(id));
+    if (activePlayerIds.length < 2 || !activePlayerIds.includes(resolvedRoles.bossPlayerId)) {
+      return false;
+    }
 
-    this.initializeShopsForPrep();
-    this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
-    this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
-    this.battleDeadlineAtMs = null;
-    this.settleDeadlineAtMs = null;
-    this.eliminationDeadlineAtMs = null;
+    const raidPlayerIds = activePlayerIds.filter((playerId) => playerId !== resolvedRoles.bossPlayerId);
+    const bossId = resolvedRoles.selectedBossByPlayer.get(resolvedRoles.bossPlayerId) ?? "";
+    if (!isBossCharacterId(bossId)) {
+      return false;
+    }
+
+    if (this.enableHeroSystem) {
+      for (const raidPlayerId of raidPlayerIds) {
+        const heroId = resolvedRoles.selectedHeroByPlayer.get(raidPlayerId) ?? "";
+        if (!HEROES.some((hero) => hero.id === heroId)) {
+          return false;
+        }
+      }
+    }
+
+    for (const playerId of activePlayerIds) {
+      const isBossPlayer = playerId === resolvedRoles.bossPlayerId;
+      this.wantsBossByPlayer.set(playerId, isBossPlayer);
+      this.roleByPlayer.set(playerId, isBossPlayer ? "boss" : "raid");
+      this.selectedBossByPlayer.set(playerId, isBossPlayer ? bossId : "");
+      this.selectedHeroByPlayer.set(
+        playerId,
+        isBossPlayer || !this.enableHeroSystem
+          ? ""
+          : resolvedRoles.selectedHeroByPlayer.get(playerId) ?? "",
+      );
+    }
+
+    for (const playerId of this.playerIds) {
+      if (activePlayerIds.includes(playerId)) {
+        continue;
+      }
+
+      this.wantsBossByPlayer.set(playerId, false);
+      this.roleByPlayer.set(playerId, "unassigned");
+      this.selectedBossByPlayer.set(playerId, "");
+      this.selectedHeroByPlayer.set(playerId, "");
+    }
+
+    this.startMatch(nowMs, activePlayerIds, resolvedRoles.bossPlayerId);
     return true;
   }
 
@@ -964,7 +1027,9 @@ export class MatchRoomController {
   }
 
   public getPlayerStatus(playerId: string): ControllerPlayerStatus {
+    this.ensureKnownPlayer(playerId);
     const state = this.ensureStarted();
+    const isActivePlayer = state.playerIds.includes(playerId);
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
     const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
@@ -985,12 +1050,12 @@ export class MatchRoomController {
     const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
 
     const baseStatus: ControllerPlayerStatus = {
-      wantsBoss: false,
-      selectedBossId: "",
-      role: "unassigned",
-      hp: state.getPlayerHp(playerId),
-      remainingLives: state.getRemainingLives(playerId),
-      eliminated: state.isPlayerEliminated(playerId),
+      wantsBoss: this.wantsBossByPlayer.get(playerId) ?? false,
+      selectedBossId: this.selectedBossByPlayer.get(playerId) ?? "",
+      role: this.roleByPlayer.get(playerId) ?? "unassigned",
+      hp: isActivePlayer ? state.getPlayerHp(playerId) : 100,
+      remainingLives: isActivePlayer ? state.getRemainingLives(playerId) : 0,
+      eliminated: isActivePlayer ? state.isPlayerEliminated(playerId) : false,
       boardUnitCount: this.boardUnitCountByPlayer.get(playerId) ?? 4,
       gold: this.goldByPlayer.get(playerId) ?? INITIAL_GOLD,
       xp: this.xpByPlayer.get(playerId) ?? INITIAL_XP,
@@ -1868,6 +1933,10 @@ export class MatchRoomController {
     this.itemInventoryByPlayer.delete(playerId);
     this.itemShopOffersByPlayer.delete(playerId);
     this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
+    this.selectedHeroByPlayer.delete(playerId);
+    this.selectedBossByPlayer.delete(playerId);
+    this.wantsBossByPlayer.delete(playerId);
+    this.roleByPlayer.delete(playerId);
     this.battleResultsByPlayer.delete(playerId);
     this.pendingRoundDamageByPlayer.delete(playerId);
     this.hpAtBattleStartByPlayer.delete(playerId);
@@ -1889,6 +1958,27 @@ export class MatchRoomController {
         this.increaseSharedPoolForUnit(benchUnit.unitId, unitCost, unitCount);
       }
     }
+  }
+
+  private startMatch(nowMs: number, activePlayerIds: string[], bossPlayerId?: string): void {
+    this.gameLoopState = new GameLoopState(activePlayerIds);
+
+    if (this.enableBossExclusiveShop) {
+      if (bossPlayerId) {
+        this.gameLoopState.setBossPlayer(bossPlayerId);
+      } else {
+        this.gameLoopState.setRandomBoss();
+      }
+    }
+
+    this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
+
+    this.initializeShopsForPrep();
+    this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
+    this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
+    this.battleDeadlineAtMs = null;
+    this.settleDeadlineAtMs = null;
+    this.eliminationDeadlineAtMs = null;
   }
 
   private decreaseSharedPoolForOffer(offer: ShopOffer): void {

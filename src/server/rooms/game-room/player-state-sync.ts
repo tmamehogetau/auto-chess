@@ -63,6 +63,9 @@ export function syncPlayerStateFromController(
   playerState.ownedAssassin = controllerStatus.ownedUnits.assassin;
 
   // Feature-flagged fields (backward compatible with empty defaults)
+  playerState.wantsBoss = controllerStatus.wantsBoss;
+  playerState.selectedBossId = controllerStatus.selectedBossId;
+  playerState.role = controllerStatus.role;
   playerState.selectedHeroId = controllerStatus.selectedHeroId;
   playerState.isRumorEligible = controllerStatus.isRumorEligible;
 
@@ -176,6 +179,15 @@ export function syncPlayerStateFromCommandResult(
   playerState.ownedAssassin = cmdResult.ownedUnits.assassin;
 
   // Feature-flagged fields (backward compatible with empty defaults)
+  if (cmdResult.wantsBoss !== undefined) {
+    playerState.wantsBoss = cmdResult.wantsBoss;
+  }
+  if (cmdResult.selectedBossId !== undefined) {
+    playerState.selectedBossId = cmdResult.selectedBossId;
+  }
+  if (cmdResult.role !== undefined) {
+    playerState.role = cmdResult.role;
+  }
   if (cmdResult.selectedHeroId !== undefined) {
     playerState.selectedHeroId = cmdResult.selectedHeroId;
   }

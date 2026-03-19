@@ -4,6 +4,7 @@ import {
   syncPlayerStateFromController,
   syncPlayerStateFromCommandResult,
   type ControllerPlayerStatus,
+  type CommandResultPayload,
   type PlayerStatusBattleResult,
 } from "../../../src/server/rooms/game-room/player-state-sync";
 import {
@@ -75,6 +76,9 @@ describe("player-state-sync", () => {
           { unitType: "vanguard", count: 3, tier: 2 },
           { unitType: "mage", count: 2, tier: 1 },
         ],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "hero-001",
         isRumorEligible: true,
       };
@@ -230,6 +234,9 @@ describe("player-state-sync", () => {
           opponentSurvivors: 4,
         } as PlayerStatusBattleResult,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -396,6 +403,39 @@ describe("player-state-sync", () => {
       expect(playerState.bossShopOffers.length).toBe(1);
       expect(playerState.bossShopOffers[0]!.unitType).toBe("vanguard");
       expect(playerState.bossShopOffers[0]!.cost).toBe(5);
+    });
+
+    it("should sync boss preference fields from controller status", () => {
+      const controllerStatus: ControllerPlayerStatus = {
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnitCount: 4,
+        gold: 20,
+        xp: 0,
+        level: 1,
+        shopOffers: [],
+        shopLocked: false,
+        benchUnits: [],
+        boardUnits: [],
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        itemInventory: [],
+        itemShopOffers: [],
+        bossShopOffers: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        wantsBoss: true,
+        selectedBossId: "remilia",
+        role: "boss",
+        selectedHeroId: "",
+        isRumorEligible: false,
+      };
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.wantsBoss).toBe(true);
+      expect(playerState.selectedBossId).toBe("remilia");
+      expect(playerState.role).toBe("boss");
     });
 
     it("should expose consumed rumor eligibility separately from rumor shop result", () => {
@@ -684,6 +724,33 @@ describe("player-state-sync", () => {
 
       expect(playerState.selectedHeroId).toBe("hero-special-001");
       expect(playerState.isRumorEligible).toBe(true);
+    });
+
+    it("should sync boss preference fields when provided", () => {
+      const cmdResult: CommandResultPayload = {
+        boardUnitCount: 4,
+        gold: 15,
+        xp: 0,
+        level: 1,
+        shopLocked: false,
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        shopOffers: [],
+        benchUnits: [],
+        boardUnits: [],
+        itemShopOffers: [],
+        itemInventory: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        wantsBoss: true,
+        selectedBossId: "remilia",
+        role: "boss",
+      };
+
+      syncPlayerStateFromCommandResult(playerState, cmdResult, 1);
+
+      expect(playerState.wantsBoss).toBe(true);
+      expect(playerState.selectedBossId).toBe("remilia");
+      expect(playerState.role).toBe("boss");
     });
 
     it("should preserve existing feature fields when not in command result", () => {

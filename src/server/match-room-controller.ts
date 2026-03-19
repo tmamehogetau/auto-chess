@@ -985,6 +985,9 @@ export class MatchRoomController {
     const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
 
     const baseStatus: ControllerPlayerStatus = {
+      wantsBoss: false,
+      selectedBossId: "",
+      role: "unassigned",
       hp: state.getPlayerHp(playerId),
       remainingLives: state.getRemainingLives(playerId),
       eliminated: state.isPlayerEliminated(playerId),

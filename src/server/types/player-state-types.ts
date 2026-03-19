@@ -70,9 +70,9 @@ export interface ActiveSynergyView {
  * suitable for network transmission and client consumption.
  */
 export interface ControllerPlayerStatus {
-  wantsBoss?: boolean;
-  selectedBossId?: string;
-  role?: "unassigned" | "raid" | "boss";
+  wantsBoss: boolean;
+  selectedBossId: string;
+  role: "unassigned" | "raid" | "boss";
   hp: number;
   remainingLives: number;
   eliminated: boolean;
@@ -106,8 +106,6 @@ export interface CommandResultPayload {
   wantsBoss?: boolean;
   selectedBossId?: string;
   role?: "unassigned" | "raid" | "boss";
-  lobbyStage?: "preference" | "selection" | "started";
-  selectionDeadlineAtMs?: number;
   hp?: number;
   eliminated?: boolean;
   boardUnitCount: number;

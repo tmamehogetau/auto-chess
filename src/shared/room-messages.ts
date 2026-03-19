@@ -1,4 +1,5 @@
 import type { TouhouFactionId } from '../data/touhou-units';
+import type { BossCharacterId } from './boss-characters';
 import type { ItemType, UnitId } from './types';
 
 export const CLIENT_MESSAGE_TYPES = {
@@ -26,6 +27,14 @@ export type MatchPhase =
 
 export interface ReadyMessage {
   ready?: boolean;
+}
+
+export interface BossPreferenceMessage {
+  wantsBoss: boolean;
+}
+
+export interface BossSelectMessage {
+  bossId: BossCharacterId;
 }
 
 export interface PrepCommandMessage {

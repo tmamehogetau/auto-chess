@@ -16,6 +16,13 @@ describe("raid board ui contract", () => {
       "data-raid-board-boss-label",
       "data-raid-board-raid-label",
       "data-raid-board-zone-legend",
+      "data-shared-board-help",
+      "data-shared-board-placement-guide",
+      "data-shared-board-status-legend",
+      "data-shared-board-own-status",
+      "data-shared-board-ally-status",
+      "data-shared-board-open-status",
+      "data-shared-board-blocked-status",
     ];
 
     for (const attribute of requiredAttributes) {
@@ -41,12 +48,15 @@ describe("raid board ui contract", () => {
     expect(html.includes("boss-victory")).toBe(true);
     expect(html.includes("raid-victory")).toBe(true);
     expect(html.includes("mode-badge")).toBe(true);
+    expect(html.includes("Boss Pressure Zone")).toBe(true);
+    expect(html.includes("Raid Defense Zone")).toBe(true);
+    expect(html.includes("Your unit")).toBe(true);
+    expect(html.includes("Ally unit")).toBe(true);
+    expect(html.includes("Open lane")).toBe(true);
+    expect(html.includes("Blocked lane")).toBe(true);
     expect(js.includes("const readableMode = sharedBoardMode === \"half-shared\" ? \"Half Shared\"")).toBe(true);
     expect(js.includes("raidBoardModeBadge.textContent = `Mode: ${readableMode}`")).toBe(true);
-    expect(js.includes('Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}')).toBe(true);
-    expect(js.includes('Final Judgment: Pending')).toBe(true);
-    expect(js.includes("HP remaining")).toBe(true);
-    expect(js.includes("% completed")).toBe(true);
-    expect(js.includes("Round ${Number.isFinite(roundIndex) ? roundIndex + 1 : 1}")).toBe(true);
+    expect(js.includes("buildFinalJudgmentCopy({")).toBe(true);
+    expect(js.includes("buildPhaseHpCopy(progress)")).toBe(true);
   });
 });

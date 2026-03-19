@@ -12,8 +12,12 @@ describe("round summary ui contract", () => {
     const requiredAttributes = [
       "data-round-summary-overlay",
       "data-round-summary-round",
+      "data-round-summary-caption",
+      "data-round-summary-tip",
       "data-round-summary-list",
       "data-round-summary-close",
+      "data-battle-result-subtitle",
+      "data-battle-result-hint",
     ];
 
     for (const attribute of requiredAttributes) {

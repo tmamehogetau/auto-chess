@@ -57,6 +57,13 @@
         letter-spacing: 1px;
       }
 
+      .connection-guide {
+        margin-bottom: 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #c4cede;
+      }
+
       .connection-row {
         display: flex;
         gap: 8px;
@@ -490,7 +497,7 @@
       }
 
       .phase-hp-section {
-        display: none;
+        display: block;
         width: 180px;
         padding: 6px 8px;
         background: rgba(0, 0, 0, 0.15);
@@ -561,6 +568,13 @@
 
       .phase-hp-result.failed {
         color: #e74c3c;
+      }
+
+      .phase-hp-help {
+        margin-top: 4px;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #96a2ba;
       }
 
       /* Spell Card Section */
@@ -693,7 +707,9 @@
       /* Ready Button */
       .ready-section {
         display: flex;
-        justify-content: center;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
         margin-bottom: 15px;
       }
 
@@ -730,12 +746,141 @@
         transform: none;
       }
 
+      .ready-hint {
+        max-width: 420px;
+        font-size: 12px;
+        line-height: 1.45;
+        text-align: center;
+        color: #aab3c5;
+      }
+
       .shared-board-section {
         background: var(--panel-bg);
         border-radius: 10px;
         padding: 15px;
         margin-bottom: 15px;
         border: 1px solid var(--border-color);
+      }
+
+      .shared-board-section.raid-stage {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgba(245, 193, 108, 0.38);
+        background:
+          radial-gradient(circle at top, rgba(192, 57, 43, 0.18), transparent 42%),
+          linear-gradient(180deg, rgba(11, 21, 42, 0.96), rgba(18, 33, 62, 0.94));
+        box-shadow:
+          inset 0 1px 0 rgba(255, 214, 209, 0.08),
+          0 18px 40px rgba(4, 10, 25, 0.28);
+      }
+
+      .shared-board-stage-banner {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(245, 193, 108, 0.22);
+        border-radius: 12px;
+        background: rgba(8, 14, 28, 0.48);
+      }
+
+      .shared-board-stage-copy {
+        display: grid;
+        gap: 4px;
+      }
+
+      .shared-board-stage-tag {
+        font-size: 11px;
+        letter-spacing: 1.4px;
+        text-transform: uppercase;
+        color: var(--scarlet-accent);
+      }
+
+      .shared-board-stage-title {
+        font-size: 16px;
+        font-weight: 800;
+        color: var(--scarlet-accent-soft);
+      }
+
+      .shared-board-stage-note {
+        max-width: 240px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--scarlet-body-text);
+        text-align: right;
+      }
+
+      .entry-flow-status {
+        margin: -4px 0 14px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #c4cede;
+      }
+
+      .shared-board-help {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #aab3c5;
+      }
+
+      .shared-board-placement-guide {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #9ed0ff;
+      }
+
+      .shared-board-status-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .shared-board-status-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        font-size: 11px;
+        color: #c4cede;
+      }
+
+      .shared-board-status-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        border: 2px solid rgba(255, 255, 255, 0.65);
+        flex: 0 0 auto;
+      }
+
+      .shared-board-status-swatch.your-unit {
+        background: rgba(241, 196, 15, 0.88);
+        border-color: rgba(255, 248, 196, 0.95);
+      }
+
+      .shared-board-status-swatch.ally-unit {
+        background: rgba(39, 174, 96, 0.78);
+        border-color: rgba(180, 250, 210, 0.9);
+      }
+
+      .shared-board-status-swatch.open-lane {
+        background: rgba(52, 152, 219, 0.62);
+        border-color: rgba(199, 236, 255, 0.95);
+      }
+
+      .shared-board-status-swatch.blocked-lane {
+        background: rgba(231, 76, 60, 0.7);
+        border-color: rgba(255, 215, 209, 0.95);
       }
 
       .shared-board-grid {
@@ -774,6 +919,17 @@
       .shared-board-cell.has-unit {
         border-color: #27ae60;
         background: rgba(39, 174, 96, 0.15);
+      }
+
+      .shared-board-cell.occupied-own {
+        border-color: #f1c40f;
+        background: linear-gradient(180deg, rgba(241, 196, 15, 0.22), rgba(39, 174, 96, 0.18));
+        box-shadow: inset 0 0 0 1px rgba(255, 244, 179, 0.55);
+      }
+
+      .shared-board-cell.occupied-ally {
+        border-color: #2ecc71;
+        background: linear-gradient(180deg, rgba(39, 174, 96, 0.16), rgba(22, 33, 62, 0.18));
       }
 
       .shared-board-cell.boss {
@@ -818,6 +974,15 @@
         box-shadow: 0 0 0 2px rgba(241, 196, 15, 0.35);
       }
 
+      .shared-board-cell.drop-target {
+        box-shadow: inset 0 0 0 2px rgba(52, 152, 219, 0.5);
+      }
+
+      .shared-board-cell.blocked-target {
+        opacity: 0.92;
+        box-shadow: inset 0 0 0 2px rgba(231, 76, 60, 0.28);
+      }
+
       .shared-board-unit {
         display: flex;
         flex-direction: column;
@@ -830,6 +995,24 @@
         height: 14px;
         border-radius: 50%;
         border: 2px solid #ffffff;
+      }
+
+      .shared-board-portrait {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        object-fit: cover;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+      }
+
+      .shared-board-display-name {
+        max-width: 56px;
+        font-size: 10px;
+        line-height: 1.2;
+        text-align: center;
+        color: #f7e6cf;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
       }
 
       .shared-board-unit-id {
@@ -892,6 +1075,10 @@
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-bottom: 10px;
+      }
+
+      .shared-board-section .shop-title {
+        color: var(--scarlet-accent-soft);
       }
 
       .shop-grid {
@@ -1547,11 +1734,20 @@
 
       .round-summary-card {
         width: min(420px, 100%);
-        background: var(--panel-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+        background:
+          radial-gradient(circle at top, rgba(192, 57, 43, 0.18), transparent 50%),
+          linear-gradient(180deg, rgba(20, 29, 53, 0.98), rgba(12, 24, 47, 0.96));
+        border: 1px solid rgba(245, 193, 108, 0.28);
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
+      }
+
+      .round-summary-kicker {
+        font-size: 11px;
+        letter-spacing: 1.4px;
+        text-transform: uppercase;
+        color: var(--scarlet-accent);
       }
 
       .round-summary-title {
@@ -1566,6 +1762,20 @@
         font-size: 20px;
         font-weight: 700;
         color: #e3e9f6;
+      }
+
+      .round-summary-caption {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #aab3c5;
+      }
+
+      .round-summary-tip {
+        margin-top: 6px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #d6deed;
       }
 
       .round-summary-list {
@@ -1656,12 +1866,22 @@
 
       .battle-result-card {
         padding: 40px 60px;
-        background: var(--panel-bg);
+        background:
+          radial-gradient(circle at top, rgba(192, 57, 43, 0.2), transparent 48%),
+          linear-gradient(180deg, rgba(21, 28, 54, 0.98), rgba(12, 20, 41, 0.98));
         border-radius: 16px;
-        border: 3px solid var(--border-color);
+        border: 3px solid rgba(245, 193, 108, 0.28);
         text-align: center;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
         animation: battleCardEnter 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+
+      .battle-result-kicker {
+        margin-bottom: 10px;
+        font-size: 11px;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--scarlet-accent);
       }
 
       @keyframes battleCardEnter {
@@ -1682,6 +1902,22 @@
         text-transform: uppercase;
         margin-bottom: 20px;
         animation: battleTitlePulse 1s ease-out;
+      }
+
+      .battle-result-subtitle {
+        max-width: 420px;
+        margin: 0 auto 18px;
+        font-size: 14px;
+        line-height: 1.45;
+        color: #d6deed;
+      }
+
+      .battle-result-hint {
+        max-width: 420px;
+        margin: -6px auto 18px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #aab3c5;
       }
 
       .battle-result-overlay.victory .battle-result-title {
@@ -1752,11 +1988,22 @@
 
       .hero-selection-card {
         width: min(500px, 100%);
-        background: var(--panel-bg);
-        border: 2px solid var(--border-color);
+        background:
+          radial-gradient(circle at top, rgba(192, 57, 43, 0.18), transparent 54%),
+          linear-gradient(180deg, rgba(19, 29, 55, 0.98), rgba(11, 20, 39, 0.98));
+        border: 2px solid rgba(245, 193, 108, 0.26);
         border-radius: 16px;
         padding: 20px;
         box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+      }
+
+      .hero-selection-kicker {
+        margin-bottom: 10px;
+        font-size: 11px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: var(--scarlet-accent);
+        text-align: center;
       }
 
       .hero-selection-title {
@@ -1908,6 +2155,15 @@
         letter-spacing: 8px;
         text-transform: uppercase;
         animation: battleStartText 1.2s ease-out forwards;
+        text-align: center;
+      }
+
+      .battle-start-kicker {
+        margin-bottom: 12px;
+        font-size: 12px;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--scarlet-accent-soft);
       }
 
       .battle-start-overlay.visible .battle-start-text {
@@ -2045,6 +2301,7 @@
     <!-- Connection Panel -->
     <div class="connection-panel">
       <h2>Connection</h2>
+      <div class="connection-guide" data-connection-guide>Step 1: Connect. Then choose a hero, buy units, place them, and press Ready.</div>
       <div class="connection-row">
         <input data-endpoint-input type="text" placeholder="ws://localhost:2567" />
         <input data-room-input type="text" placeholder="Room name" value="game" />
@@ -2055,7 +2312,7 @@
           <option value="set1">Set 1</option>
           <option value="set2">Set 2</option>
         </select>
-        <input data-autofill-input type="number" min="0" max="3" value="0" placeholder="Bots" />
+        <input data-autofill-input type="number" min="0" max="3" value="3" placeholder="Bots" />
         <strong data-set-id-display>-</strong>
       </div>
       <div class="connection-row">
@@ -2105,32 +2362,51 @@
             <div class="phase-hp-result mode-badge" data-raid-board-mode-badge>Mode: Local</div>
             <div class="phase-hp-result pending" data-final-judgment-banner>Awaiting Judgment</div>
             <div class="phase-hp-section" data-phase-hp-section>
-             <div class="phase-hp-header">
-               <span class="phase-hp-label">Phase HP</span>
+            <div class="phase-hp-header">
+               <span class="phase-hp-label">Boss Phase HP</span>
                <span class="phase-hp-value" data-phase-hp-value data-boss-phase-hp-display>0 / 0</span>
              </div>
             <div class="phase-hp-track">
               <div class="phase-hp-fill pending" data-phase-hp-fill></div>
             </div>
             <div class="phase-hp-result pending" data-phase-hp-result>Pending</div>
+            <div class="phase-hp-help" data-phase-hp-help>Boss phase HP appears here when battle starts. Drop it to 0 to clear the phase.</div>
           </div>
         </div>
       </div>
+
+      <div class="entry-flow-status" data-entry-flow-status>Step 1: Connect. Then choose a hero, buy units, place them, and press Ready.</div>
 
       <!-- Ready Button -->
       <div class="ready-section">
         <button class="ready-btn not-ready" data-ready-btn disabled>
           Ready
         </button>
+        <div class="ready-hint" data-ready-hint>Choose a hero, buy units, place them, then press Ready.</div>
       </div>
 
-      <div class="shared-board-section" data-shared-board-section>
-        <div class="shop-title" data-raid-board-header>Raid Board</div>
-        <div class="shared-board-legend" data-raid-board-zone-legend>
-          <span data-raid-board-boss-label>Boss Top Half</span>
-          <span data-raid-board-raid-label>Raid Bottom Half</span>
+      <div class="shared-board-section raid-stage" data-shared-board-section>
+        <div class="shared-board-stage-banner" data-shared-board-stage-banner>
+          <div class="shared-board-stage-copy" data-shared-board-stage-copy>
+            <div class="shared-board-stage-tag" data-shared-board-stage-tag>Boss Raid</div>
+            <div class="shared-board-stage-title">Shared Battle Board</div>
+          </div>
+          <div class="shared-board-stage-note">One board for the whole fight. Buy to Bench, then deploy onto your side.</div>
         </div>
-        <div class="shop-title">Shared Board (6 x 4)</div>
+        <div class="shop-title" data-raid-board-header>Shared Raid Board</div>
+        <div class="shared-board-legend" data-raid-board-zone-legend>
+          <span data-raid-board-boss-label>Boss Pressure Zone</span>
+          <span data-raid-board-raid-label>Raid Defense Zone</span>
+        </div>
+        <div class="shared-board-help" data-shared-board-help>Everyone fights on this board. Top half is the boss lane and bottom half is the raid line.</div>
+        <div class="shared-board-placement-guide" data-shared-board-placement-guide>Buy a unit into your Bench, then click an open shared-board cell to deploy it.</div>
+        <div class="shared-board-status-legend" data-shared-board-status-legend>
+          <span class="shared-board-status-item" data-shared-board-own-status><span class="shared-board-status-swatch your-unit"></span>Your unit</span>
+          <span class="shared-board-status-item" data-shared-board-ally-status><span class="shared-board-status-swatch ally-unit"></span>Ally unit</span>
+          <span class="shared-board-status-item" data-shared-board-open-status><span class="shared-board-status-swatch open-lane"></span>Open lane</span>
+          <span class="shared-board-status-item" data-shared-board-blocked-status><span class="shared-board-status-swatch blocked-lane"></span>Blocked lane</span>
+        </div>
+        <div class="shop-title">Shared Battle Board (6 x 4)</div>
         <div class="shared-board-grid" data-shared-board-grid></div>
         <div class="shared-cursor-list" data-shared-cursor-list></div>
       </div>
@@ -2160,38 +2436,6 @@
             <div class="cost">0G</div>
           </div>
           <div class="shop-card" data-shop-slot="4">
-            <div class="icon">❓</div>
-            <div class="name">-</div>
-            <div class="cost">0G</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Item Shop -->
-      <div class="shop-section">
-        <div class="shop-title">Item Shop (Click to Buy)</div>
-        <div class="shop-grid" data-item-shop>
-          <div class="shop-card item" data-item-shop-slot="0">
-            <div class="icon">❓</div>
-            <div class="name">-</div>
-            <div class="cost">0G</div>
-          </div>
-          <div class="shop-card item" data-item-shop-slot="1">
-            <div class="icon">❓</div>
-            <div class="name">-</div>
-            <div class="cost">0G</div>
-          </div>
-          <div class="shop-card item" data-item-shop-slot="2">
-            <div class="icon">❓</div>
-            <div class="name">-</div>
-            <div class="cost">0G</div>
-          </div>
-          <div class="shop-card item" data-item-shop-slot="3">
-            <div class="icon">❓</div>
-            <div class="name">-</div>
-            <div class="cost">0G</div>
-          </div>
-          <div class="shop-card item" data-item-shop-slot="4">
             <div class="icon">❓</div>
             <div class="name">-</div>
             <div class="cost">0G</div>
@@ -2265,41 +2509,6 @@
         </div>
       </div>
 
-      <!-- Board -->
-      <div class="board-section">
-        <div class="shop-title">Board (Click to Deploy)</div>
-        <div class="board-label">Back Row (4-7)</div>
-        <div class="board-grid" data-board-row-back>
-          <div class="board-cell" data-board-cell="4">
-            <span class="cell-number">4</span>
-          </div>
-          <div class="board-cell" data-board-cell="5">
-            <span class="cell-number">5</span>
-          </div>
-          <div class="board-cell" data-board-cell="6">
-            <span class="cell-number">6</span>
-          </div>
-          <div class="board-cell" data-board-cell="7">
-            <span class="cell-number">7</span>
-          </div>
-        </div>
-        <div class="board-label">Front Row (0-3)</div>
-        <div class="board-grid" data-board-row-front>
-          <div class="board-cell" data-board-cell="0">
-            <span class="cell-number">0</span>
-          </div>
-          <div class="board-cell" data-board-cell="1">
-            <span class="cell-number">1</span>
-          </div>
-          <div class="board-cell" data-board-cell="2">
-            <span class="cell-number">2</span>
-          </div>
-          <div class="board-cell" data-board-cell="3">
-            <span class="cell-number">3</span>
-          </div>
-        </div>
-      </div>
-
       <!-- Action Bar -->
       <div class="action-bar">
         <button class="action-btn sell-btn" data-sell-btn disabled>
@@ -2315,7 +2524,7 @@
 
       <!-- Bench -->
       <div class="bench-section">
-        <div class="shop-title">Bench (Click to Select)</div>
+        <div class="shop-title">Bench (Select, then place on the Shared Battle Board)</div>
         <div class="bench-grid" data-bench>
           <div class="bench-slot empty" data-bench-slot="0">
             <span class="slot-number">0</span>
@@ -2344,22 +2553,6 @@
           <div class="bench-slot empty" data-bench-slot="8">
             <span class="slot-number">8</span>
           </div>
-        </div>
-      </div>
-
-      <!-- Inventory -->
-      <div class="inventory-section">
-        <div class="shop-title">Inventory (Click Item, then Click Bench Unit to Equip)</div>
-        <div class="inventory-grid" data-inventory>
-          <div class="inventory-slot empty" data-inv-slot="0"></div>
-          <div class="inventory-slot empty" data-inv-slot="1"></div>
-          <div class="inventory-slot empty" data-inv-slot="2"></div>
-          <div class="inventory-slot empty" data-inv-slot="3"></div>
-          <div class="inventory-slot empty" data-inv-slot="4"></div>
-          <div class="inventory-slot empty" data-inv-slot="5"></div>
-          <div class="inventory-slot empty" data-inv-slot="6"></div>
-          <div class="inventory-slot empty" data-inv-slot="7"></div>
-          <div class="inventory-slot empty" data-inv-slot="8"></div>
         </div>
       </div>
 
@@ -2438,13 +2631,16 @@
 
     <!-- Selection Mode Indicator -->
     <div class="selection-mode" data-selection-mode>
-      Click a bench unit to equip item
+      Select a bench unit, then click an open shared-board cell to place it.
     </div>
 
     <div class="round-summary-overlay" data-round-summary-overlay>
       <div class="round-summary-card">
+        <div class="round-summary-kicker" data-round-summary-kicker>Damage Leaders</div>
         <div class="round-summary-title">Round Summary</div>
         <div class="round-summary-round" data-round-summary-round>Round 1</div>
+        <div class="round-summary-caption" data-round-summary-caption>Check who carried the damage and what to cover next round.</div>
+        <div class="round-summary-tip" data-round-summary-tip>Use this to decide whether you need more frontline, more damage, or a safer carry lane.</div>
         <div class="round-summary-list" data-round-summary-list></div>
         <button class="round-summary-close" data-round-summary-close type="button">Close</button>
       </div>
@@ -2453,7 +2649,10 @@
     <!-- Battle Result Overlay -->
     <div class="battle-result-overlay" data-battle-result-overlay>
       <div class="battle-result-card">
+        <div class="battle-result-kicker" data-battle-result-kicker>Round Outcome</div>
         <div class="battle-result-title" data-battle-result-title>VICTORY</div>
+        <div class="battle-result-subtitle" data-battle-result-subtitle>Push the boss HP to 0 and protect your remaining lives.</div>
+        <div class="battle-result-hint" data-battle-result-hint>Use this result to decide whether you need more frontline, safer carries, or stronger focus fire.</div>
         <div class="battle-result-stats" data-battle-result-stats>
           <div class="battle-stat">
             <span class="battle-stat-label">Damage Dealt</span>
@@ -2469,12 +2668,13 @@
 
     <!-- Battle Start Overlay -->
     <div class="battle-start-overlay" data-battle-start-overlay>
-      <div class="battle-start-text">BATTLE START</div>
+      <div class="battle-start-text"><div class="battle-start-kicker" data-battle-start-kicker>Boss Raid</div>BATTLE START</div>
     </div>
 
     <!-- Hero Selection Overlay -->
     <div class="hero-selection-overlay" data-hero-selection-overlay>
       <div class="hero-selection-card">
+        <div class="hero-selection-kicker" data-hero-selection-kicker>Boss Raid</div>
         <div class="hero-selection-title">⚔️ Select Your Hero</div>
         <div class="hero-selection-subtitle">Choose a hero to lead your army. Heroes are always present on the battlefield.</div>
         <div class="hero-grid" data-hero-grid></div>

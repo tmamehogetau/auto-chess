@@ -9,6 +9,7 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
  * @typedef {Object} SharedBoardDOMRefs
  * @property {HTMLElement|null} gridElement 共有ボードグリッド
  * @property {HTMLElement|null} cursorListElement カーソル一覧
+ * @property {HTMLElement|null} placementGuideElement 配置ガイド文言
  */
 
 /**
@@ -17,6 +18,7 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
  * @property {string} gamePlayerId ゲームプレイヤーID
  * @property {(message: string, type: string) => void} onLog ログ追加関数
  * @property {(message: string, type: string) => void} showMessage メッセージ表示関数
+ * @property {() => boolean} isTouhouRosterEnabled 東方ロスター有効判定
  * @property {(client: object, roomName: string, options?: object) => Promise<object>} joinOrCreate ルーム接続関数
  */
 
@@ -26,6 +28,7 @@ const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 let domRefs = {
   gridElement: null,
   cursorListElement: null,
+  placementGuideElement: null,
 };
 
 /** @type {SharedBoardDependencies} */
@@ -34,7 +37,22 @@ let deps = {
   gamePlayerId: "",
   onLog: () => {},
   showMessage: () => {},
+  isTouhouRosterEnabled: () => false,
   joinOrCreate: async () => null,
+};
+
+const PORTRAIT_URL_BY_KEY = {
+  Cirno: "/pics/Cirno.png",
+  Flandre: "/pics/Flandre.png",
+  Hong: "/pics/Hong.png",
+  Koishi: "/pics/Koishi.png",
+  Marisa: "/pics/Marisa.png",
+  Patchouli: "/pics/Patchouli.png",
+  Reimu: "/pics/Reimu.png",
+  Remilia: "/pics/Remilia.png",
+  Rumia: "/pics/Rumia.png",
+  Sakuya: "/pics/Sakuya.png",
+  Satori: "/pics/Satori.png",
 };
 
 /** @type {object|null} */
@@ -60,6 +78,13 @@ let selectedSharedUnitId = null;
 export function initSharedBoardClient(refs, dependencies) {
   domRefs = { ...domRefs, ...refs };
   deps = { ...deps, ...dependencies };
+}
+
+export function setSharedBoardGamePlayerId(gamePlayerId) {
+  deps = {
+    ...deps,
+    gamePlayerId: typeof gamePlayerId === "string" ? gamePlayerId : "",
+  };
 }
 
 /**
@@ -96,7 +121,7 @@ export async function connectSharedBoard(client) {
       if (message?.accepted === true && message.action === "place_unit") {
         selectedSharedUnitId = null;
         renderSharedBoardState(currentSharedBoardState);
-        deps.showMessage("Shared board move applied", "success");
+        deps.showMessage("Shared board move applied. Keep covering open lanes before you press Ready.", "success");
       }
 
       if (message?.accepted === false) {
@@ -105,7 +130,7 @@ export async function connectSharedBoard(client) {
           "info",
         );
         deps.showMessage(
-          `Shared board ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}`,
+          `Shared board ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}. Try an open cell or one of your own occupied cells.`,
           "error",
         );
       }
@@ -194,6 +219,7 @@ function renderSharedBoardState(state) {
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
     renderSharedBoard({ boardWidth: 6, boardHeight: 4, cells: {}, cursors: {}, players: {} });
+    updateSharedBoardPlacementGuide(null);
 
     if (domRefs.cursorListElement) {
       domRefs.cursorListElement.textContent = "Shared board disconnected";
@@ -204,6 +230,7 @@ function renderSharedBoardState(state) {
 
   renderSharedBoard(state);
   renderSharedCursorList(state);
+  updateSharedBoardPlacementGuide(state);
 
   if (!sharedBoardRoom) {
     return;
@@ -223,6 +250,40 @@ function renderSharedBoardState(state) {
   }
 }
 
+function updateSharedBoardPlacementGuide(state) {
+  if (!domRefs.placementGuideElement) {
+    return;
+  }
+
+  if (!state || !sharedBoardRoom) {
+    domRefs.placementGuideElement.textContent = "Connect first. Buy units into your Bench, then place them onto the shared board.";
+    return;
+  }
+
+  if (isSharedSpectator(state)) {
+    domRefs.placementGuideElement.textContent = "Spectator slot: watch the raid board and wait for an active slot before placing units.";
+    return;
+  }
+
+  const hasOwnUnits = mapEntries(state?.cells).some(([, cell]) => (
+    cell?.ownerId === getOwnSharedBoardOwnerId()
+      && cell.unitId
+      && cell.unitId !== "dummy-boss"
+  ));
+
+  if (!hasOwnUnits) {
+    domRefs.placementGuideElement.textContent = "Buy a unit into your Bench, then click an open shared-board cell to deploy it. Once placed, select it here to reposition it.";
+    return;
+  }
+
+  if (selectedSharedUnitId || sharedDraggedUnitId) {
+    domRefs.placementGuideElement.textContent = "Blue cells are open for your selected unit. Red cells are blocked by another player or a locked boss cell.";
+    return;
+  }
+
+  domRefs.placementGuideElement.textContent = "Select or drag one of your units. Blue cells show open moves and red cells show blocked lanes.";
+}
+
 /**
  * 共有ボードDOMを構築
  * @param {object} state 共有ボード状態
@@ -240,12 +301,25 @@ function renderSharedBoard(state) {
     const cell = mapGet(cells, String(i));
     const unitId = cell?.unitId ?? "";
     const ownerId = cell?.ownerId ?? "";
+    const isOwnUnit = Boolean(sharedBoardRoom && ownerId === getOwnSharedBoardOwnerId());
+    const isOccupiedByAnotherPlayer = Boolean(unitId && unitId !== "dummy-boss" && ownerId && !isOwnUnit);
+    const canDropSelectedUnit = Boolean(
+      selectedSharedUnitId && isValidSharedDropTarget(state, i),
+    );
+    const isBlockedDropTarget = Boolean(
+      selectedSharedUnitId && !canDropSelectedUnit,
+    );
 
     const cellElement = document.createElement("div");
     cellElement.className = "shared-board-cell";
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
+    if (canDropSelectedUnit) {
+      cellElement.classList.add("drop-target");
+    } else if (isBlockedDropTarget) {
+      cellElement.classList.add("blocked-target");
+    }
     cellElement.ondragover = (event) => {
       handleSharedDragOver(event, state, cellElement, i);
     };
@@ -255,7 +329,7 @@ function renderSharedBoard(state) {
     cellElement.ondrop = (event) => {
       event.preventDefault();
       if (!isValidSharedDropTarget(state, i)) {
-        deps.showMessage("Invalid shared board drop target", "error");
+        deps.showMessage("That lane is blocked. Pick an open cell or one of your own occupied cells.", "error");
         clearSharedDropIndicators(cellElement);
         return;
       }
@@ -265,9 +339,13 @@ function renderSharedBoard(state) {
     };
 
     if (unitId && unitId !== "dummy-boss") {
-      if (sharedBoardRoom && ownerId === sharedBoardRoom.sessionId) {
+      if (isOwnUnit) {
         cellElement.draggable = true;
         cellElement.classList.add("draggable");
+        cellElement.classList.add("occupied-own");
+        if (selectedSharedUnitId === unitId) {
+          cellElement.classList.add("selected");
+        }
         cellElement.onpointerdown = () => {
           selectSharedUnit(unitId, false);
         };
@@ -277,6 +355,8 @@ function renderSharedBoard(state) {
         cellElement.ondragend = () => {
           handleSharedDragEnd();
         };
+      } else if (isOccupiedByAnotherPlayer) {
+        cellElement.classList.add("occupied-ally");
       }
 
       const unit = document.createElement("div");
@@ -286,43 +366,28 @@ function renderSharedBoard(state) {
       ownerDot.className = "shared-board-owner";
       ownerDot.style.backgroundColor = getSharedPlayerColor(state, ownerId);
 
-      const unitIdLabel = document.createElement("span");
-      unitIdLabel.className = "shared-board-unit-id";
-      unitIdLabel.textContent = shortPlayerId(unitId);
+      if (shouldRenderTouhouPresentation(cell)) {
+        const portrait = document.createElement("img");
+        portrait.className = "shared-board-portrait";
+        portrait.src = PORTRAIT_URL_BY_KEY[cell.portraitKey] ?? PORTRAIT_URL_BY_KEY.Hong;
+        portrait.alt = cell.displayName;
 
-      unit.append(ownerDot, unitIdLabel);
+        const displayName = document.createElement("span");
+        displayName.className = "shared-board-display-name";
+        displayName.textContent = cell.displayName;
+
+        unit.append(ownerDot, portrait, displayName);
+      } else {
+        const unitIdLabel = document.createElement("span");
+        unitIdLabel.className = "shared-board-unit-id";
+        unitIdLabel.textContent = shortPlayerId(unitId);
+        unit.append(ownerDot, unitIdLabel);
+      }
       cellElement.appendChild(unit);
     } else {
       cellElement.classList.add("empty");
     }
-
-    renderSharedCursorChips(state, cellElement, i);
     domRefs.gridElement.appendChild(cellElement);
-  }
-}
-
-/**
- * カーソルチップを表示
- * @param {object} state 共有ボード状態
- * @param {HTMLElement} cellElement セル要素
- * @param {number} cellIndex セルインデックス
- */
-function renderSharedCursorChips(state, cellElement, cellIndex) {
-  if (!state?.cursors) {
-    return;
-  }
-
-  for (const [playerId, cursor] of Object.entries(state.cursors)) {
-    if (cursor?.cellIndex !== cellIndex) {
-      continue;
-    }
-
-    const chip = document.createElement("div");
-    chip.className = "cursor-chip";
-    chip.style.backgroundColor = cursor.color ?? "#999999";
-    const suffix = sharedBoardRoom && sharedBoardRoom.sessionId === playerId ? " (you)" : "";
-    chip.title = `${shortPlayerId(playerId)}${suffix}`;
-    cellElement.appendChild(chip);
   }
 }
 
@@ -336,13 +401,13 @@ function renderSharedCursorList(state) {
   }
 
   if (!state?.cursors) {
-    domRefs.cursorListElement.textContent = "No cursors";
+    domRefs.cursorListElement.textContent = "Board presence: none";
     return;
   }
 
   const entries = mapEntries(state.cursors);
   if (entries.length === 0) {
-    domRefs.cursorListElement.textContent = "No cursors";
+    domRefs.cursorListElement.textContent = "Board presence: none";
     return;
   }
 
@@ -367,6 +432,16 @@ function renderSharedCursorList(state) {
 function getSharedPlayerColor(state, playerId) {
   const player = mapGet(state?.players, playerId);
   return player?.color ?? "#999999";
+}
+
+function shouldRenderTouhouPresentation(cell) {
+  return Boolean(
+    deps.isTouhouRosterEnabled()
+      && typeof cell?.displayName === "string"
+      && cell.displayName.length > 0
+      && typeof cell?.portraitKey === "string"
+      && cell.portraitKey.length > 0,
+  );
 }
 
 /**
@@ -446,6 +521,7 @@ function selectSharedUnit(unitId, shouldNotify = true) {
   }
 
   selectedSharedUnitId = unitId;
+  renderSharedBoardState(currentSharedBoardState);
 
   if (shouldNotify) {
     sendSharedSelectUnit(unitId);
@@ -470,6 +546,8 @@ function handleSharedDragStart(event, state, cellIndex) {
   }
 
   sharedDraggedUnitId = cell.unitId;
+  selectedSharedUnitId = cell.unitId;
+  renderSharedBoardState(currentSharedBoardState);
   sendSharedDragState(true, cell.unitId);
 
   if (event.dataTransfer) {
@@ -487,7 +565,9 @@ function handleSharedDragEnd() {
 }
 
 function isValidSharedDropTarget(state, cellIndex) {
-  if (!sharedBoardRoom || !sharedDraggedUnitId) {
+  const activeUnitId = sharedDraggedUnitId || selectedSharedUnitId;
+
+  if (!sharedBoardRoom || !activeUnitId) {
     return false;
   }
 
@@ -504,7 +584,7 @@ function isValidSharedDropTarget(state, cellIndex) {
     return false;
   }
 
-  return cell.ownerId === sharedBoardRoom.sessionId;
+  return cell.ownerId === getOwnSharedBoardOwnerId();
 }
 
 function clearSharedDropIndicators(cellElement) {
@@ -562,7 +642,7 @@ export function handleSharedCellClick(state, cellIndex) {
   const cell = mapGet(state?.cells, String(cellIndex));
 
   // 自分のユニットがある場合は選択
-  if (cell?.ownerId === sharedBoardRoom.sessionId && cell.unitId && cell.unitId !== "dummy-boss") {
+  if (cell?.ownerId === getOwnSharedBoardOwnerId() && cell.unitId && cell.unitId !== "dummy-boss") {
     selectSharedUnit(cell.unitId, true);
     return;
   }
@@ -570,11 +650,20 @@ export function handleSharedCellClick(state, cellIndex) {
   // 選択中のユニットがある場合は配置
   if (selectedSharedUnitId) {
     // ターゲットが空か、自分のユニットがある場合のみ配置
-    if (!cell?.unitId || cell.ownerId === sharedBoardRoom.sessionId) {
+    if (!cell?.unitId || cell.ownerId === getOwnSharedBoardOwnerId()) {
       sendSharedPlaceUnit(selectedSharedUnitId, cellIndex);
       selectedSharedUnitId = null;
+      renderSharedBoardState(currentSharedBoardState);
     } else {
-      deps.showMessage("Cell is occupied by another player", "error");
+      deps.showMessage("That lane is occupied by another player. Pick an open cell or one of your own occupied cells.", "error");
     }
   }
+}
+
+function getOwnSharedBoardOwnerId() {
+  if (typeof deps.gamePlayerId === "string" && deps.gamePlayerId.length > 0) {
+    return deps.gamePlayerId;
+  }
+
+  return sharedBoardRoom?.sessionId ?? "";
 }

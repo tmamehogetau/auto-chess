@@ -16,6 +16,7 @@ describe("index.html contract", () => {
       "data-autofill-input",
       "data-connect-button",
       "data-leave-button",
+      "data-connection-guide",
       "data-game-container",
       "data-round-display",
       "data-gold-display",
@@ -28,33 +29,47 @@ describe("index.html contract", () => {
       "data-phase-hp-value",
       "data-phase-hp-fill",
       "data-phase-hp-result",
+      "data-phase-hp-help",
       "data-ready-btn",
+      "data-ready-hint",
       "data-shared-board-section",
       "data-shared-board-grid",
+      "data-shared-board-help",
+      "data-shared-board-placement-guide",
+      "data-shared-board-status-legend",
+      "data-shared-board-own-status",
+      "data-shared-board-ally-status",
+      "data-shared-board-open-status",
+      "data-shared-board-blocked-status",
+      "data-shared-board-stage-banner",
+      "data-shared-board-stage-tag",
+      "data-shared-board-stage-copy",
       "data-shared-cursor-list",
       "data-unit-shop",
       "data-shop-slot",
-      "data-item-shop",
-      "data-item-shop-slot",
-      "data-board-row-back",
-      "data-board-row-front",
-      "data-board-cell",
       "data-sell-btn",
       "data-refresh-shop-btn",
       "data-buy-xp-btn",
       "data-bench",
       "data-bench-slot",
-      "data-inventory",
-      "data-inv-slot",
       "data-combat-log",
       "data-monitor-summary",
       "data-monitor-shadow-details",
       "data-message-bar",
       "data-selection-mode",
+      "data-entry-flow-status",
       "data-round-summary-overlay",
+      "data-round-summary-kicker",
       "data-round-summary-round",
+      "data-round-summary-caption",
+      "data-round-summary-tip",
       "data-round-summary-list",
       "data-round-summary-close",
+      "data-battle-result-subtitle",
+      "data-battle-result-kicker",
+      "data-battle-result-hint",
+      "data-battle-start-kicker",
+      "data-hero-selection-kicker",
       "data-set-id-display",
     ];
 
@@ -73,5 +88,21 @@ describe("index.html contract", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 
     expect(html).toMatch(/data-set-id-display>-<\/strong>/);
+  });
+
+  test("solo first-play 用に auto fill は 3 を既定値にする", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html).toMatch(/data-autofill-input[^>]*value="3"/);
+  });
+
+  test("works-version presentation shell を示す stage banner と overlay kicker を持つ", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes("Shared Battle Board")).toBe(true);
+    expect(html.includes("Round Outcome")).toBe(true);
+    expect(html.includes("Damage Leaders")).toBe(true);
+    expect(html.includes("Boss Raid")).toBe(true);
+    expect(html.includes(".shared-board-section.raid-stage")).toBe(true);
   });
 });

@@ -118,6 +118,15 @@ export function mapEntries(mapLike) {
     return [];
   }
 
+  // Colyseus client-side MapSchema-like objects expose entries().
+  if (typeof mapLike.entries === "function") {
+    try {
+      return Array.from(mapLike.entries());
+    } catch {
+      return [];
+    }
+  }
+
   // MapSchemaの場合は$itemsを使用
   if (mapLike.$items) {
     return Object.entries(mapLike.$items);
@@ -145,6 +154,14 @@ export function mapEntries(mapLike) {
 export function mapGet(mapLike, key) {
   if (!mapLike || !key) {
     return undefined;
+  }
+
+  if (typeof mapLike.get === "function") {
+    try {
+      return mapLike.get(String(key));
+    } catch {
+      return undefined;
+    }
   }
 
   // MapSchemaの場合は$itemsを使用

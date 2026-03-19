@@ -5,6 +5,7 @@ import { defineRoom, defineServer } from "colyseus";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../../src/server/rooms/shared-board-room";
 import { FeatureFlagService } from "../../../src/server/feature-flag-service";
+import { combatCellToRaidBoardIndex } from "../../../src/shared/board-geometry";
 import { withFlags, FLAG_CONFIGURATIONS } from "../../server/feature-flag-test-helper";
 import { waitForCondition } from "./helpers/wait";
 import { SERVER_MESSAGE_TYPES } from "../../../src/shared/room-messages";
@@ -82,14 +83,31 @@ async function joinAsActivePlayer(
     return client;
   }
 
-  function findOwnedUnitId(sharedBoardRoom: SharedBoardRoom, ownerId: string): string {
-    for (const cell of sharedBoardRoom.state.cells.values()) {
-      if (cell.ownerId === ownerId && typeof cell.unitId === "string" && cell.unitId.length > 0) {
-        return cell.unitId;
-      }
+  function seedOwnedUnit(
+    sharedBoardRoom: SharedBoardRoom,
+    ownerId: string,
+    combatCell: number,
+  ): { unitId: string; sharedCellIndex: number } {
+    const result = sharedBoardRoom.applyPlacementsFromGame(ownerId, [
+      {
+        cell: combatCell,
+        unitType: "vanguard",
+      },
+    ]);
+
+    expect(result).toEqual({ applied: 1, skipped: 0 });
+
+    const sharedCellIndex = combatCellToRaidBoardIndex(combatCell);
+    const targetCell = sharedBoardRoom.state.cells.get(String(sharedCellIndex));
+
+    if (!targetCell?.unitId) {
+      throw new Error(`No owned unit found for player ${ownerId}`);
     }
 
-    throw new Error(`No owned unit found for player ${ownerId}`);
+    return {
+      unitId: targetCell.unitId,
+      sharedCellIndex,
+    };
   }
 
   /**
@@ -171,18 +189,19 @@ async function placeUnit(
           // 4. Action: 1人目のプレイヤーをSharedBoardRoomに接続
           const targetPlayerId = gameClients[0]!.sessionId;
           const sbClient = await joinAsActivePlayer(sharedBoardRoom, targetPlayerId);
-          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, targetPlayerId);
+          const { unitId: ownedUnitId } = seedOwnedUnit(sharedBoardRoom, targetPlayerId, 0);
+          const targetSharedCell = combatCellToRaidBoardIndex(1);
 
           // ユニットを選択
           sbClient.send("shared_select_unit", { unitId: ownedUnitId });
           await new Promise((resolve) => setTimeout(resolve, 100));
 
-          // 5. Action: ドラッグ&ドロップでユニットを移動（cell 0 → cell 5）
-          const placeResult = await placeUnit(sbClient, ownedUnitId, 5);
+          // 5. Action: ドラッグ&ドロップでユニットを移動（raid lane 内で再配置）
+          const placeResult = await placeUnit(sbClient, ownedUnitId, targetSharedCell);
           expect(placeResult.accepted).toBe(true);
 
           // 6. Verify: SharedBoardRoomで配置が変更されたこと
-          const targetCell = sharedBoardRoom.state.cells.get("5");
+          const targetCell = sharedBoardRoom.state.cells.get(String(targetSharedCell));
           expect(targetCell?.unitId).toBe(ownedUnitId);
           expect(targetCell?.ownerId).toBe(targetPlayerId);
 
@@ -270,12 +289,13 @@ async function placeUnit(
           // 4. Action: プレイヤーをSharedBoardRoomに接続して操作
           const targetPlayerId = gameClients[0]!.sessionId;
           const sbClient = await joinAsActivePlayer(sharedBoardRoom, targetPlayerId);
-          const ownedUnitId = findOwnedUnitId(sharedBoardRoom, targetPlayerId);
+          const { unitId: ownedUnitId } = seedOwnedUnit(sharedBoardRoom, targetPlayerId, 0);
+          const targetSharedCell = combatCellToRaidBoardIndex(1);
 
           sbClient.send("shared_select_unit", { unitId: ownedUnitId });
           await new Promise((resolve) => setTimeout(resolve, 100));
 
-          const placeResult = await placeUnit(sbClient, ownedUnitId, 5);
+          const placeResult = await placeUnit(sbClient, ownedUnitId, targetSharedCell);
           expect(placeResult.accepted).toBe(true);
 
           // 5. Verify: メトリクスとログが記録されている

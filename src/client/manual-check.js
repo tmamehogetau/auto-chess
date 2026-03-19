@@ -16,6 +16,18 @@ import {
 } from "./utils/pure-utils.js";
 
 import {
+  buildBattleResultCopy,
+  buildCommandResultCopy,
+  buildEntryFlowStatus,
+  buildFinalJudgmentCopy,
+  buildPhaseHpCopy,
+  buildReadyHint,
+  buildRoundSummaryCaption,
+  buildRoundSummaryTip,
+} from "./ui/player-facing-copy.js";
+import { playUiCue } from "./ui/audio-cues.js";
+
+import {
   initAdminMonitor,
   startMonitorPolling,
   stopMonitorPolling,
@@ -32,6 +44,7 @@ import {
   getSharedBoardRoom,
   getSharedBoardState,
   getSelectedSharedUnitId,
+  setSharedBoardGamePlayerId,
   sendSharedCursorMove,
   sendSharedDragState,
   sendSharedPlaceUnit,
@@ -72,17 +85,22 @@ const ITEM_ICONS = {
   amulet: "📿",
 };
 
+const SHARED_BOARD_WIDTH = 6;
+const SHARED_BOARD_HEIGHT = 4;
+const SHARED_BOARD_COMBAT_OFFSET_X = 1;
+const SHARED_BOARD_COMBAT_OFFSET_Y = 1;
+
 // Hero definitions (client-side copy)
 const HEROES = [
   {
     id: 'reimu',
     name: '霊夢',
-    role: 'support',
+    role: 'balance',
     hp: 120,
-    attack: 15,
+    attack: 18,
     skill: {
       name: '夢符「二重結界」',
-      description: '味方全体に防御バフを付与（与ダメージ-20%, 被ダメージ+10%）',
+      description: '味方全体に防御バフ（被ダメージ-20%）',
     },
   },
   {
@@ -93,40 +111,40 @@ const HEROES = [
     attack: 25,
     skill: {
       name: '恋符「マスタースパーク」',
-      description: '直線に強力な魔法ダメージ（ATK × 3.0）',
+      description: '全敵に強力な魔法ダメージ（ATK × 3.0）',
     },
   },
   {
-    id: 'sanae',
-    name: '早苗',
+    id: 'okina',
+    name: '隠岐奈',
     role: 'support',
     hp: 110,
-    attack: 18,
+    attack: 16,
     skill: {
-      name: '奇跡「神の風」',
-      description: '味方全体に攻撃力バフと防御バフ（攻撃速度+25%, 被ダメージ-10%）',
+      name: '秘神「裏表の逆転」',
+      description: '味方全体に攻撃力バフ（与ダメージ+25%）',
     },
   },
   {
-    id: 'youmu',
-    name: '妖夢',
-    role: 'dps',
-    hp: 130,
-    attack: 22,
+    id: 'keiki',
+    name: '袿姫',
+    role: 'tank',
+    hp: 180,
+    attack: 12,
     skill: {
-      name: '人符「現世斬」',
-      description: 'ターゲットに3連撃（ATK × 1.2 × 3）',
+      name: '埴安神「偶像の加護」',
+      description: '自身の被ダメージ-40%、周囲の味方に被ダメージ-15%',
     },
   },
   {
-    id: 'sakuya',
-    name: '咲夜',
-    role: 'control',
-    hp: 110,
-    attack: 20,
+    id: 'megumu',
+    name: '女苑',
+    role: 'economy',
+    hp: 90,
+    attack: 14,
     skill: {
-      name: '時符「プライベートスクウェア」',
-      description: '範囲内の敵の移動速度-60%、攻撃速度-30%（3秒間）',
+      name: '吉凶「星の導き」',
+      description: '味方全体に攻撃力バフ（与ダメージ+15%）',
     },
   },
 ];
@@ -137,6 +155,8 @@ const HERO_ROLE_ICONS = {
   dps: "⚔️",
   support: "✨",
   control: "⏱️",
+  balance: "⚖️",
+  economy: "💰",
 };
 
 // Spell cards (client-side copy)
@@ -203,9 +223,11 @@ const setIdSelect = document.querySelector("[data-setid-select]");
 const autoFillInput = document.querySelector("[data-autofill-input]");
 const connectButton = document.querySelector("[data-connect-button]");
 const leaveButton = document.querySelector("[data-leave-button]");
+const connectionGuide = document.querySelector("[data-connection-guide]");
 
 // New UI elements
 const gameContainer = document.querySelector("[data-game-container]");
+const entryFlowStatus = document.querySelector("[data-entry-flow-status]");
 const roundDisplay = document.querySelector("[data-round-display]");
 const goldDisplay = document.querySelector("[data-gold-display]");
 const hpDisplay = document.querySelector("[data-hp-display]");
@@ -221,15 +243,13 @@ const phaseHpSection = document.querySelector("[data-phase-hp-section]");
 const phaseHpValue = document.querySelector("[data-phase-hp-value]");
 const phaseHpFill = document.querySelector("[data-phase-hp-fill]");
 const phaseHpResult = document.querySelector("[data-phase-hp-result]");
+const phaseHpHelp = document.querySelector("[data-phase-hp-help]");
 const readyBtn = document.querySelector("[data-ready-btn]");
+const readyHint = document.querySelector("[data-ready-hint]");
 const unitShopGrid = document.querySelector("[data-unit-shop]");
-const itemShopGrid = document.querySelector("[data-item-shop]");
 const bossShopGrid = document.querySelector("[data-boss-shop]");
 const bossShopSection = document.querySelector("[data-boss-shop-section]");
-const boardRowFront = document.querySelector("[data-board-row-front]");
-const boardRowBack = document.querySelector("[data-board-row-back]");
 const benchGrid = document.querySelector("[data-bench]");
-const inventoryGrid = document.querySelector("[data-inventory]");
 const sellBtn = document.querySelector("[data-sell-btn]");
 const refreshShopBtn = document.querySelector("[data-refresh-shop-btn]");
 const buyXpBtn = document.querySelector("[data-buy-xp-btn]");
@@ -238,15 +258,20 @@ const selectionModeIndicator = document.querySelector("[data-selection-mode]");
 const combatLogContainer = document.querySelector("[data-combat-log]");
 const sharedBoardGrid = document.querySelector("[data-shared-board-grid]");
 const sharedCursorList = document.querySelector("[data-shared-cursor-list]");
+const sharedBoardPlacementGuide = document.querySelector("[data-shared-board-placement-guide]");
 const phaseTransitionOverlay = document.querySelector("[data-phase-transition-overlay]");
 const roundSummaryOverlay = document.querySelector("[data-round-summary-overlay]");
 const roundSummaryRound = document.querySelector("[data-round-summary-round]");
 const roundSummaryList = document.querySelector("[data-round-summary-list]");
 const roundSummaryClose = document.querySelector("[data-round-summary-close]");
+const roundSummaryCaption = document.querySelector("[data-round-summary-caption]");
+const roundSummaryTip = document.querySelector("[data-round-summary-tip]");
 
 // Battle result elements
 const battleResultOverlay = document.querySelector("[data-battle-result-overlay]");
 const battleResultTitle = document.querySelector("[data-battle-result-title]");
+const battleResultSubtitle = document.querySelector("[data-battle-result-subtitle]");
+const battleResultHint = document.querySelector("[data-battle-result-hint]");
 const battleDamageDealt = document.querySelector("[data-battle-damage-dealt]");
 const battleDamageTaken = document.querySelector("[data-battle-damage-taken]");
 
@@ -318,8 +343,6 @@ let heroSelectionConfirmed = false;
 
 // Selection state
 let selectedBenchIndex = null;
-let selectedBoardCell = null;
-let selectedInventoryIndex = null;
 let selectedShopSlot = null;
 
 // Timer state
@@ -380,10 +403,12 @@ initSharedBoardClient(
   {
     gridElement: sharedBoardGrid,
     cursorListElement: sharedCursorList,
+    placementGuideElement: sharedBoardPlacementGuide,
   },
   {
     client: null, // Will be set during connect
     gamePlayerId: "", // Will be set during connect
+    isTouhouRosterEnabled: () => currentGameState?.featureFlagsEnableTouhouRoster === true,
     onLog: addCombatLogEntry,
     showMessage,
   },
@@ -404,6 +429,8 @@ connectButton?.addEventListener("click", () => {
 leaveButton?.addEventListener("click", () => {
   void leave();
 });
+
+updateEntryFlowStatus(null, null);
 
 readyBtn?.addEventListener("click", () => {
   sendReady();
@@ -438,13 +465,6 @@ unitShopGrid?.querySelectorAll("[data-shop-slot]").forEach((card) => {
   });
 });
 
-itemShopGrid?.querySelectorAll("[data-item-shop-slot]").forEach((card) => {
-  card.addEventListener("click", () => {
-    const slot = Number.parseInt(card.dataset.itemShopSlot, 10);
-    handleBuyItem(slot);
-  });
-});
-
 bossShopGrid?.querySelectorAll("[data-boss-shop-slot]").forEach((card) => {
   card.addEventListener("click", () => {
     const slot = Number.parseInt(card.dataset.bossShopSlot, 10);
@@ -460,24 +480,33 @@ benchGrid?.querySelectorAll("[data-bench-slot]").forEach((slot) => {
   });
 });
 
-// Board cell click handlers
-document.querySelectorAll("[data-board-cell]").forEach((cell) => {
-  cell.addEventListener("click", () => {
-    const cellIndex = Number.parseInt(cell.dataset.boardCell, 10);
-    handleBoardClick(cellIndex);
-  });
-});
+sharedBoardGrid?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
 
-// Inventory slot click handlers
-inventoryGrid?.querySelectorAll("[data-inv-slot]").forEach((slot) => {
-  slot.addEventListener("click", () => {
-    const index = Number.parseInt(slot.dataset.invSlot, 10);
-    handleInventoryClick(index);
-  });
+  const cell = target.closest("[data-cell-index]");
+  const cellIndex = Number.parseInt(cell?.getAttribute("data-cell-index") ?? "", 10);
+  if (!Number.isFinite(cellIndex)) {
+    return;
+  }
+
+  if (selectedBenchIndex !== null) {
+    deployBenchUnit(selectedBenchIndex, cellIndex);
+    clearSelections();
+    return;
+  }
+
+  handleSharedCellClick(getSharedBoardState(), cellIndex);
 });
 
 window.addEventListener("beforeunload", () => {
-  void leave();
+  disconnectRoomsForPageExit();
+});
+
+window.addEventListener("pagehide", () => {
+  disconnectRoomsForPageExit();
 });
 
 async function connect() {
@@ -507,6 +536,7 @@ async function connect() {
   connecting = true;
   syncButtonAvailability();
   showMessage("Connecting...", "success");
+  updateEntryFlowStatus(null, null);
 
   try {
     const { endpoint, roomName, setId } = readConfig();
@@ -526,6 +556,7 @@ async function connect() {
     activeRoom = room;
     sessionId = room.sessionId;
     currentPhase = readPhase(room.state?.phase);
+    setSharedBoardGamePlayerId(room.sessionId);
     lastShownSummaryRound = -1;
     hideRoundSummary();
     lastShownBattleRound = -1;
@@ -540,10 +571,6 @@ async function connect() {
 
     // Initialize UI from state
     updateGameUI(room.state);
-
-    await connectSharedBoard(client);
-
-    await connectAutoFillRooms(client, roomName, roomOptions);
 
     // State change handler
     room.onStateChange((state) => {
@@ -582,6 +609,10 @@ async function connect() {
       handleAdminResponse(response);
     });
 
+    await connectSharedBoard(client);
+
+    await connectAutoFillRooms(client, roomName, roomOptions);
+
     startMonitorPolling();
     requestAdminMonitorSnapshot();
 
@@ -604,11 +635,13 @@ async function connect() {
       previousBoardUnits.clear();
       DEFEATED_UNITS.clear();
       gameContainer?.classList.remove("connected");
-      showMessage("Disconnected", "error");
+      showMessage("Disconnected. Press Connect when you are ready to start again.", "error");
+      updateEntryFlowStatus(null, null);
       syncButtonAvailability();
     });
 
-    showMessage("Connected!", "success");
+    showMessage("Connected. Choose a hero, buy units, place them, then press Ready.", "success");
+    updateEntryFlowStatus(room.state, mapGet(room.state?.players, room.sessionId) ?? null);
     maybeScheduleAutoReady();
     maybeScheduleAutoPrep();
   } catch (error) {
@@ -621,6 +654,7 @@ async function connect() {
     lastShownBattleRound = -1;
     hideBattleResult();
     showMessage(`Connection failed: ${message}`, "error");
+    updateEntryFlowStatus(null, null);
   } finally {
     connecting = false;
     syncButtonAvailability();
@@ -662,14 +696,52 @@ async function leave() {
     }
   } finally {
     gameContainer?.classList.remove("connected");
-    showMessage("Disconnected", "error");
+    showMessage("Disconnected. Press Connect when you are ready to start again.", "error");
+    updateEntryFlowStatus(null, null);
     syncButtonAvailability();
   }
 }
 
+function releaseRoomOnPageExit(room) {
+  if (!room) {
+    return;
+  }
+
+  if (typeof room.removeAllListeners === "function") {
+    room.removeAllListeners();
+  }
+
+  if (typeof room.leave === "function") {
+    void room.leave();
+  }
+}
+
+function disconnectRoomsForPageExit() {
+  clearPendingAutoActions();
+  stopMonitorPolling();
+
+  const roomToLeave = activeRoom;
+  const leavingRooms = autoFillRooms.splice(0, autoFillRooms.length);
+
+  activeRoom = null;
+  sessionId = null;
+  currentPhase = null;
+  latestPhaseHpProgress = null;
+  lastShownSummaryRound = -1;
+  lastShownBattleRound = -1;
+
+  leaveSharedBoardRoom();
+
+  for (const room of leavingRooms) {
+    releaseRoomOnPageExit(room);
+  }
+
+  releaseRoomOnPageExit(roomToLeave);
+}
+
 function sendReady() {
   if (!activeRoom) {
-    showMessage("Not connected", "error");
+    showMessage("Connect first. Then you can ready up from the prep screen.", "error");
     return;
   }
 
@@ -677,6 +749,9 @@ function sendReady() {
   const newReady = !currentReady;
 
   activeRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: newReady });
+  if (newReady) {
+    playUiCue("confirm");
+  }
   
   // Optimistically update button
   if (newReady) {
@@ -692,12 +767,12 @@ function sendReady() {
 
 function sendPrepCommand(payload) {
   if (!activeRoom) {
-    showMessage("Not connected", "error");
+    showMessage("Connect first. Then you can buy, place, or sell units.", "error");
     return;
   }
 
   if (currentPhase !== "Prep") {
-    showMessage("Not in prep phase", "error");
+    showMessage("You can only change your board during Prep.", "error");
     return;
   }
 
@@ -707,7 +782,9 @@ function sendPrepCommand(payload) {
 
   activeRoom.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, fullPayload);
   lastMonitorTraceId = correlationId;
-  setMonitorText(monitorTraceValue, correlationId);
+  if (monitorTraceValue) {
+    monitorTraceValue.textContent = correlationId;
+  }
   addCombatLogEntry(`Trace ${correlationId} sent`, "info");
   nextCmdSeq++;
 }
@@ -727,24 +804,8 @@ function handleBuyUnit(shopSlot) {
   }
 
   sendPrepCommand({ shopBuySlotIndex: shopSlot });
+  playUiCue("purchase");
   showMessage(`Buying unit from slot ${shopSlot}...`, "success");
-}
-
-function handleBuyItem(shopSlot) {
-  if (currentPhase !== "Prep") {
-    showMessage("Can only buy during prep phase", "error");
-    return;
-  }
-
-  // Purchase animation
-  const shopCard = itemShopGrid?.querySelector(`[data-item-shop-slot="${shopSlot}"]`);
-  if (shopCard) {
-    shopCard.classList.add("purchased");
-    setTimeout(() => shopCard.classList.remove("purchased"), 500);
-  }
-
-  sendPrepCommand({ itemBuySlotIndex: shopSlot });
-  showMessage(`Buying item from slot ${shopSlot}...`, "success");
 }
 
 function handleBuyBossShopUnit(shopSlot) {
@@ -761,6 +822,7 @@ function handleBuyBossShopUnit(shopSlot) {
   }
 
   sendPrepCommand({ bossShopBuySlotIndex: shopSlot });
+  playUiCue("purchase");
   showMessage(`Buying unit from boss shop slot ${shopSlot}...`, "success");
 }
 
@@ -787,6 +849,7 @@ function handleBuyXp() {
   }
 
   sendPrepCommand({ xpPurchaseCount: 1 });
+  playUiCue("purchase");
   showMessage("Buying XP...", "success");
 }
 
@@ -848,12 +911,6 @@ function updateSpellSelectUI(roundIndex) {
 // Selection and deployment handlers
 function handleBenchClick(index) {
   // If we have an item selected, try to equip it
-  if (selectedInventoryIndex !== null) {
-    equipItemToBench(selectedInventoryIndex, index);
-    clearSelections();
-    return;
-  }
-
   // Toggle selection
   if (selectedBenchIndex === index) {
     clearSelections();
@@ -862,45 +919,7 @@ function handleBenchClick(index) {
     selectedBenchIndex = index;
     const slot = benchGrid?.querySelector(`[data-bench-slot="${index}"]`);
     slot?.classList.add("selected");
-    updateActionButtons();
-  }
-}
-
-function handleBoardClick(cellIndex) {
-  // If we have a bench unit selected, deploy it
-  if (selectedBenchIndex !== null) {
-    deployBenchUnit(selectedBenchIndex, cellIndex);
-    clearSelections();
-    return;
-  }
-
-  // Toggle board cell selection for selling
-  if (selectedBoardCell === cellIndex) {
-    clearSelections();
-  } else {
-    clearSelections();
-    selectedBoardCell = cellIndex;
-    const cell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
-    cell?.classList.add("selected");
-    updateActionButtons();
-  }
-}
-
-function handleInventoryClick(index) {
-  // Check if slot has an item
-  const slot = inventoryGrid?.querySelector(`[data-inv-slot="${index}"]`);
-  if (slot?.classList.contains("empty")) {
-    return;
-  }
-
-  // Toggle selection
-  if (selectedInventoryIndex === index) {
-    clearSelections();
-  } else {
-    clearSelections();
-    selectedInventoryIndex = index;
-    slot?.classList.add("selected");
-    showSelectionMode("Click a bench unit to equip item");
+    showSelectionMode("Bench unit selected. Click an open cell on the Shared Battle Board to deploy it.");
     updateActionButtons();
   }
 }
@@ -911,28 +930,19 @@ function deployBenchUnit(benchIndex, cellIndex) {
     return;
   }
 
-  sendPrepCommand({
-    benchToBoardCell: {
-      benchIndex: benchIndex,
-      cell: cellIndex,
-    },
-  });
-  showMessage(`Deploying unit to cell ${cellIndex}...`, "success");
-}
-
-function equipItemToBench(itemIndex, benchIndex) {
-  if (currentPhase !== "Prep") {
-    showMessage("Can only equip during prep phase", "error");
+  const combatCell = sharedBoardIndexToCombatCell(cellIndex);
+  if (combatCell === null) {
+    showMessage("That shared-board cell is outside the playable combat area. Use one of the center lane cells.", "error");
     return;
   }
 
   sendPrepCommand({
-    itemEquipToBench: {
-      inventoryItemIndex: itemIndex,
+    benchToBoardCell: {
       benchIndex: benchIndex,
+      cell: combatCell,
     },
   });
-  showMessage("Equipping item...", "success");
+  showMessage(`Deploying bench unit to Shared Battle Board cell ${cellIndex} (combat cell ${combatCell})...`, "success");
 }
 
 function handleSell() {
@@ -945,17 +955,11 @@ function handleSell() {
     sendPrepCommand({ benchSellIndex: selectedBenchIndex });
     showMessage("Selling bench unit...", "success");
     clearSelections();
-  } else if (selectedBoardCell !== null) {
-    sendPrepCommand({ boardSellIndex: selectedBoardCell });
-    showMessage("Selling board unit...", "success");
-    clearSelections();
   }
 }
 
 function clearSelections() {
   selectedBenchIndex = null;
-  selectedBoardCell = null;
-  selectedInventoryIndex = null;
   selectedShopSlot = null;
 
   document.querySelectorAll(".selected").forEach((el) => {
@@ -967,10 +971,27 @@ function clearSelections() {
 }
 
 function updateActionButtons() {
-  const canSell = selectedBenchIndex !== null || selectedBoardCell !== null;
+  const canSell = selectedBenchIndex !== null;
   if (sellBtn) {
     sellBtn.disabled = !canSell || currentPhase !== "Prep";
   }
+}
+
+function sharedBoardIndexToCombatCell(boardIndex) {
+  if (!Number.isInteger(boardIndex) || boardIndex < 0 || boardIndex >= SHARED_BOARD_WIDTH * SHARED_BOARD_HEIGHT) {
+    return null;
+  }
+
+  const x = boardIndex % SHARED_BOARD_WIDTH;
+  const y = Math.floor(boardIndex / SHARED_BOARD_WIDTH);
+  const combatX = x - SHARED_BOARD_COMBAT_OFFSET_X;
+  const combatY = y - SHARED_BOARD_COMBAT_OFFSET_Y;
+
+  if (combatX < 0 || combatX >= 4 || combatY < 0 || combatY >= 2) {
+    return null;
+  }
+
+  return combatY * 4 + combatX;
 }
 
 function showSelectionMode(text) {
@@ -1089,11 +1110,20 @@ function updateGameUI(state) {
     }
   }
 
+  if (readyHint) {
+    readyHint.textContent = buildReadyHint({
+      phase: readPhase(state.phase),
+      isReady,
+      heroEnabled: state.featureFlagsEnableHeroSystem === true,
+      heroSelected: Boolean(player.selectedHeroId),
+      readyCount,
+      totalCount,
+    });
+  }
+  updateEntryFlowStatus(state, player);
+
   // Update unit shop
   updateUnitShop(player.shopOffers);
-
-  // Update item shop
-  updateItemShop(player.itemShopOffers);
 
   // Update boss shop
   updateBossShop(
@@ -1101,14 +1131,8 @@ function updateGameUI(state) {
     state.featureFlagsEnableBossExclusiveShop === true && state.bossPlayerId === sessionId,
   );
 
-  // Update board
-  updateBoard(player.boardUnits);
-
   // Update bench
   updateBench(player.benchUnits);
-
-  // Update inventory
-  updateInventory(player.itemInventory);
 
   // Update synergies
   updateSynergyDisplay(player.activeSynergies);
@@ -1125,7 +1149,12 @@ function updateGameUI(state) {
 
   // Check for battle result
   const battleResult = player.lastBattleResult;
-  if (battleResult) {
+  const hasBattleResult = Boolean(
+    battleResult?.opponentId
+      && Number.isFinite(Number(state.roundIndex))
+      && Number(state.roundIndex) > 0,
+  );
+  if (hasBattleResult) {
     // Only show once per round (track last shown round)
     if (lastShownBattleRound !== state.roundIndex) {
       lastShownBattleRound = state.roundIndex;
@@ -1230,23 +1259,21 @@ function updateRaidBoardPresentation(state) {
     const phase = readPhase(state?.phase);
     const ranking = Array.isArray(state?.ranking) ? state.ranking : [];
     const bossPlayerId = typeof state?.bossPlayerId === "string" ? state.bossPlayerId : "";
-    const isRaidRound = bossPlayerId !== "" && Array.isArray(state?.raidPlayerIds);
+    const finalJudgmentText = buildFinalJudgmentCopy({
+      phase,
+      ranking,
+      bossPlayerId,
+      raidPlayerIds: state?.raidPlayerIds,
+      roundIndex: Number(state?.roundIndex),
+    });
 
-    if (phase === "End" && isRaidRound) {
-      const winnerPlayerId = typeof ranking[0] === "string" ? ranking[0] : null;
-      if (!winnerPlayerId) {
-        finalJudgmentBanner.textContent = "Final Judgment: Pending";
-        finalJudgmentBanner.className = "phase-hp-result pending";
-        return;
-      }
+    finalJudgmentBanner.textContent = finalJudgmentText;
+    finalJudgmentBanner.className = "phase-hp-result pending";
 
-      const isBossVictory = winnerPlayerId === bossPlayerId;
-      finalJudgmentBanner.textContent = `Final Judgment: ${isBossVictory ? "Boss Victory" : "Raid Victory"}`;
-      finalJudgmentBanner.className = `phase-hp-result ${isBossVictory ? "boss-victory" : "raid-victory"}`;
-    } else {
-      const roundIndex = Number(state?.roundIndex);
-      finalJudgmentBanner.textContent = `Round ${Number.isFinite(roundIndex) ? roundIndex + 1 : 1}`;
-      finalJudgmentBanner.className = "phase-hp-result pending";
+    if (finalJudgmentText.includes("Boss Victory")) {
+      finalJudgmentBanner.className = "phase-hp-result boss-victory";
+    } else if (finalJudgmentText.includes("Raid Victory")) {
+      finalJudgmentBanner.className = "phase-hp-result raid-victory";
     }
   }
 }
@@ -1314,6 +1341,8 @@ function triggerBattleStartAnimation() {
     return;
   }
 
+  playUiCue("battle-start");
+
   // Show the overlay
   battleStartOverlay.classList.add('visible');
 
@@ -1377,15 +1406,20 @@ function renderPhaseHpProgress(progress) {
     return;
   }
 
+  const copy = buildPhaseHpCopy(progress);
+
   if (!progress) {
-    phaseHpSection.style.display = "none";
+    phaseHpSection.style.display = "block";
     phaseHpFill.style.width = "0%";
     phaseHpFill.classList.remove("pending", "success", "failed");
     phaseHpFill.classList.add("pending");
     phaseHpResult.classList.remove("pending", "success", "failed");
     phaseHpResult.classList.add("pending");
-    phaseHpResult.textContent = PHASE_RESULT_LABELS.pending;
-    phaseHpValue.textContent = "0 / 0";
+    phaseHpResult.textContent = copy.resultText || PHASE_RESULT_LABELS.pending;
+    phaseHpValue.textContent = copy.valueText;
+    if (phaseHpHelp) {
+      phaseHpHelp.textContent = copy.helperText;
+    }
     return;
   }
 
@@ -1393,17 +1427,17 @@ function renderPhaseHpProgress(progress) {
 
   const completionRate = Math.max(0, progress.completionRate);
   const visiblePercent = Math.round(Math.min(1, completionRate) * 100);
-  const textPercent = Math.round(completionRate * 100);
-
-  const remainingHp = Math.max(0, Math.round(progress.targetHp - progress.damageDealt));
-  phaseHpValue.textContent = `${remainingHp} HP remaining (${textPercent}% completed)`;
+  phaseHpValue.textContent = copy.valueText;
   phaseHpFill.style.width = `${visiblePercent}%`;
   phaseHpFill.classList.remove("pending", "success", "failed");
   phaseHpFill.classList.add(progress.result);
 
   phaseHpResult.classList.remove("pending", "success", "failed");
   phaseHpResult.classList.add(progress.result);
-  phaseHpResult.textContent = PHASE_RESULT_LABELS[progress.result];
+  phaseHpResult.textContent = copy.resultText || PHASE_RESULT_LABELS[progress.result];
+  if (phaseHpHelp) {
+    phaseHpHelp.textContent = copy.helperText;
+  }
 }
 
 function hideRoundSummary() {
@@ -1429,6 +1463,8 @@ function showBattleResult(isVictory, battleResult) {
     return;
   }
 
+  playUiCue(isVictory ? "victory" : "defeat");
+
   // Clear any existing auto-hide timeout
   if (battleResultAutoHideTimeout !== null) {
     clearTimeout(battleResultAutoHideTimeout);
@@ -1439,15 +1475,20 @@ function showBattleResult(isVictory, battleResult) {
   battleResultOverlay.classList.remove("hiding");
   
   // Set title and styling based on result
-  battleResultTitle.textContent = isVictory ? "🏆 VICTORY" : "💀 DEFEAT";
+  const copy = buildBattleResultCopy({ isVictory, battleResult });
+  battleResultTitle.textContent = copy.title;
   battleResultOverlay.classList.remove("victory", "defeat");
   battleResultOverlay.classList.add(isVictory ? "victory" : "defeat");
   
   // Set damage statistics
-  const damageDealt = Math.round(battleResult?.damageDealt || 0);
-  const damageTaken = Math.round(battleResult?.damageTaken || 0);
-  battleDamageDealt.textContent = damageDealt;
-  battleDamageTaken.textContent = damageTaken;
+  battleDamageDealt.textContent = copy.damageDealt;
+  battleDamageTaken.textContent = copy.damageTaken;
+  if (battleResultSubtitle) {
+    battleResultSubtitle.textContent = copy.subtitle;
+  }
+  if (battleResultHint) {
+    battleResultHint.textContent = copy.hint;
+  }
   
   // Show the overlay
   battleResultOverlay.classList.add("visible");
@@ -1455,7 +1496,7 @@ function showBattleResult(isVictory, battleResult) {
   // Auto-hide after 3 seconds
   battleResultAutoHideTimeout = setTimeout(() => {
     hideBattleResult();
-  }, 3000);
+  }, 4500);
 }
 
 /**
@@ -1506,6 +1547,12 @@ function showRoundSummary(roundIndex, ranking) {
   }
 
   roundSummaryRound.textContent = `Round ${roundIndex + 1}`;
+  if (roundSummaryCaption) {
+    roundSummaryCaption.textContent = buildRoundSummaryCaption({ ranking, sessionId });
+  }
+  if (roundSummaryTip) {
+    roundSummaryTip.textContent = buildRoundSummaryTip({ ranking, sessionId });
+  }
   roundSummaryList.innerHTML = "";
 
   for (let index = 0; index < ranking.length; index += 1) {
@@ -1703,35 +1750,6 @@ function updateUnitShop(offers) {
       `;
       card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep" || isDepleted);
       card.classList.toggle("depleted", isDepleted);
-    } else {
-      card.innerHTML = `
-        <div class="icon">❓</div>
-        <div class="name">-</div>
-        <div class="cost">-</div>
-      `;
-      card.classList.add("disabled");
-    }
-  });
-}
-
-function updateItemShop(offers) {
-  if (!offers || !itemShopGrid) return;
-
-  offers.forEach((offer, index) => {
-    const card = itemShopGrid.querySelector(`[data-item-shop-slot="${index}"]`);
-    if (!card) return;
-
-    if (offer) {
-      const icon = ITEM_ICONS[offer.itemType] || "📦";
-      const cost = offer.cost || 0;
-      const canAfford = currentGold >= cost;
-
-      card.innerHTML = `
-        <div class="icon">${icon}</div>
-        <div class="name">${offer.itemType}</div>
-        <div class="cost">${cost}G</div>
-      `;
-      card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
     } else {
       card.innerHTML = `
         <div class="icon">❓</div>
@@ -1998,38 +2016,12 @@ function updateBench(benchUnits) {
   });
 }
 
-function updateInventory(inventory) {
-  // Clear all slots
-  inventoryGrid?.querySelectorAll("[data-inv-slot]").forEach((slot) => {
-    slot.textContent = "";
-    slot.classList.add("empty");
-  });
-
-  if (!inventory) return;
-
-  // Convert to array if needed
-  const items = Array.isArray(inventory) ? inventory : Array.from(inventory);
-
-  items.forEach((item, index) => {
-    if (index >= 9) return;
-
-    const slot = inventoryGrid?.querySelector(`[data-inv-slot="${index}"]`);
-    if (!slot) return;
-
-    const itemType = String(item);
-    const icon = ITEM_ICONS[itemType] || "📦";
-
-    slot.textContent = icon;
-    slot.classList.remove("empty");
-  });
-}
-
 function handleCommandResult(result) {
   if (result?.accepted === true) {
-    showMessage("Action successful!", "success");
+    showMessage(buildCommandResultCopy({ accepted: true }), "success");
   } else if (result?.accepted === false) {
     const hint = buildRejectHint(result.code);
-    showMessage(`Failed: ${result.code}${hint ? ` - ${hint}` : ""}`, "error");
+    showMessage(buildCommandResultCopy({ accepted: false, code: result.code, hint }), "error");
   }
 }
 
@@ -2049,6 +2041,34 @@ function showMessage(text, type) {
   setTimeout(() => {
     messageBar.classList.add("hidden");
   }, 3000);
+}
+
+function updateEntryFlowStatus(state, player) {
+  if (!connectionGuide && !entryFlowStatus) {
+    return;
+  }
+
+  const safePhase = readPhase(state?.phase ?? currentPhase);
+  const heroEnabled = state?.featureFlagsEnableHeroSystem === true;
+  const heroSelected = Boolean(player?.selectedHeroId);
+  const isReady = Boolean(player?.ready);
+  const connected = Boolean(activeRoom && isRoomConnectionOpen(activeRoom));
+  const text = buildEntryFlowStatus({
+    connected,
+    connecting,
+    phase: safePhase,
+    heroEnabled,
+    heroSelected,
+    isReady,
+  });
+
+  if (connectionGuide) {
+    connectionGuide.textContent = text;
+  }
+
+  if (entryFlowStatus) {
+    entryFlowStatus.textContent = text;
+  }
 }
 
 // Legacy support functions
@@ -2145,7 +2165,7 @@ function syncButtonAvailability() {
   }
 
   if (sellBtn) {
-    sellBtn.disabled = !connected || !prepPhase || (selectedBenchIndex === null && selectedBoardCell === null);
+    sellBtn.disabled = !connected || !prepPhase || selectedBenchIndex === null;
   }
 
   if (refreshShopBtn) {
@@ -2158,10 +2178,6 @@ function syncButtonAvailability() {
 
   // Disable shop cards if not in prep phase
   unitShopGrid?.querySelectorAll(".shop-card").forEach((card) => {
-    card.classList.toggle("disabled", !prepPhase);
-  });
-
-  itemShopGrid?.querySelectorAll(".shop-card").forEach((card) => {
     card.classList.toggle("disabled", !prepPhase);
   });
 
@@ -2290,6 +2306,7 @@ function showPlayerDamagePopup(amount) {
 // Auto-fill functions
 async function connectAutoFillRooms(client, roomName, roomOptions) {
   const nextAutoFillBots = autoConfig.autoFillBots;
+  const joinedHelperRooms = [];
 
   if (!Number.isInteger(nextAutoFillBots) || nextAutoFillBots <= 0) {
     return;
@@ -2298,13 +2315,17 @@ async function connectAutoFillRooms(client, roomName, roomOptions) {
   for (let index = 0; index < nextAutoFillBots; index += 1) {
     try {
       const helperRoom = await client.joinOrCreate(roomName, roomOptions);
-      helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      joinedHelperRooms.push(helperRoom);
       autoFillRooms.push(helperRoom);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       showMessage(`Autofill join failed: ${message}`, "error");
       break;
     }
+  }
+
+  for (const helperRoom of joinedHelperRooms) {
+    helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
   }
 }
 
@@ -2455,6 +2476,7 @@ function confirmHeroSelection() {
   
   heroSelectionConfirmed = true;
   hideHeroSelection();
+  playUiCue("confirm");
   
   showMessage(`Hero selected: ${HEROES.find(h => h.id === selectedHeroId)?.name || selectedHeroId}`, "success");
 }

@@ -12,7 +12,9 @@ describe("shared board integration ui contract", () => {
     const requiredAttributes = [
       "data-shared-board-section",
       "data-shared-board-grid",
+      "data-shared-board-placement-guide",
       "data-shared-cursor-list",
+      "data-shared-board-status-legend",
     ];
 
     for (const attribute of requiredAttributes) {

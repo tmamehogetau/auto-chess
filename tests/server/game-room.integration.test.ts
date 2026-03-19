@@ -11,6 +11,7 @@ import {
 } from "../../src/client/main";
 import { GameRoom } from "../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
+import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -348,6 +349,170 @@ describe("GameRoom integration", () => {
       ]);
       expect(serverRoom.state.sharedBoardAuthorityEnabled).toBe(true);
       expect(serverRoom.state.sharedBoardMode).toBe("half-shared");
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test("benchToBoardCell accepted in authoritative prep is reflected to shared board cells", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableBossExclusiveShop: true,
+        enableSharedBoardShadow: true,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const roomInternals = serverRoom as unknown as {
+        sharedBoardBridge?: {
+          getState: () => string;
+        };
+      };
+
+      for (const client of clients.slice(1)) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      }
+
+      const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await roundStatePromise;
+
+      await waitForCondition(
+        () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
+        500,
+      );
+
+      const targetClient = clients[0];
+      const targetPlayerId = targetClient.sessionId;
+      const targetRaidCell = combatCellToRaidBoardIndex(4);
+
+      const occupiedBeforePlacement = Array.from(sharedBoardRoom.state.cells.values()).filter(
+        (cell) => cell.unitId !== "" && cell.unitId !== "dummy-boss",
+      );
+      expect(occupiedBeforePlacement).toHaveLength(0);
+
+      targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 1,
+        shopBuySlotIndex: 0,
+      });
+      expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 2,
+        benchToBoardCell: {
+          benchIndex: 0,
+          cell: 4,
+        },
+      });
+      expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      await waitForCondition(() => {
+        const sharedCell = sharedBoardRoom.state.cells.get(String(targetRaidCell));
+        return sharedCell?.ownerId === targetPlayerId && sharedCell.unitId !== "";
+      }, 500);
+
+      const reflectedCell = sharedBoardRoom.state.cells.get(String(targetRaidCell));
+      expect(reflectedCell?.ownerId).toBe(targetPlayerId);
+      expect(reflectedCell?.unitId).not.toBe("");
+      expect(reflectedCell?.unitId).not.toBe("dummy-boss");
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test("boss benchToBoardCell reflects scarlet display metadata to shared board cells", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableBossExclusiveShop: true,
+        enableSharedBoardShadow: true,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const roomInternals = serverRoom as unknown as {
+        sharedBoardBridge?: {
+          getState: () => string;
+        };
+      };
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      }
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(
+        () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
+        500,
+      );
+
+      const bossClient = clients[1];
+      const bossPlayerId = bossClient.sessionId;
+      const targetBossCell = combatCellToRaidBoardIndex(1);
+
+      bossClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 1,
+        bossShopBuySlotIndex: 0,
+      });
+      expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      bossClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 2,
+        benchToBoardCell: {
+          benchIndex: 0,
+          cell: 1,
+        },
+      });
+      expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      await waitForCondition(() => {
+        const sharedCell = sharedBoardRoom.state.cells.get(String(targetBossCell)) as {
+          ownerId?: string;
+          unitId?: string;
+          displayName?: string;
+          portraitKey?: string;
+        } | undefined;
+        return sharedCell?.ownerId === bossPlayerId && sharedCell.displayName === "紅美鈴";
+      }, 500);
+
+      const reflectedCell = sharedBoardRoom.state.cells.get(String(targetBossCell)) as {
+        ownerId?: string;
+        unitId?: string;
+        displayName?: string;
+        portraitKey?: string;
+      } | undefined;
+      expect(reflectedCell?.ownerId).toBe(bossPlayerId);
+      expect(reflectedCell?.unitId).not.toBe("");
+      expect(reflectedCell?.displayName).toBe("紅美鈴");
+      expect(reflectedCell?.portraitKey).toBe("Hong");
     } finally {
       randomSpy.mockRestore();
     }

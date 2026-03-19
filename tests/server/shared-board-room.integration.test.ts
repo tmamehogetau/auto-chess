@@ -5,6 +5,7 @@ import { defineRoom, defineServer } from "colyseus";
 
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
 import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
+import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -39,6 +40,63 @@ const sendConcurrently = async (
         }),
     ),
   );
+};
+
+const seedSharedBoardUnit = (
+  serverRoom: SharedBoardRoom,
+  playerId: string,
+  combatCell: number,
+  unitType: "vanguard" | "ranger" | "mage" | "assassin" = "vanguard",
+): { unitId: string; cellIndex: number } => {
+  const result = serverRoom.applyPlacementsFromGame(playerId, [{ cell: combatCell, unitType }]);
+
+  expect(result).toEqual({ applied: 1, skipped: 0 });
+
+  const cellIndex = combatCellToRaidBoardIndex(combatCell);
+  const targetCell = serverRoom.state.cells.get(String(cellIndex));
+
+  if (!targetCell || targetCell.unitId === "") {
+    throw new Error(`Expected seeded unit for ${playerId} at combat cell ${combatCell}`);
+  }
+
+  return {
+    unitId: targetCell.unitId,
+    cellIndex,
+  };
+};
+
+const findFirstEmptyCellIndex = (
+  serverRoom: SharedBoardRoom,
+  excludedIndexes: number[] = [],
+): number => {
+  const excludedSet = new Set(excludedIndexes);
+  const candidate = [...serverRoom.state.cells.values()].find(
+    (cell) =>
+      cell.index !== serverRoom.state.dummyBossCell
+      && cell.unitId === ""
+      && !excludedSet.has(cell.index),
+  );
+
+  if (!candidate) {
+    throw new Error("Expected an empty target cell");
+  }
+
+  return candidate.index;
+};
+
+const findOwnedUnit = (
+  serverRoom: SharedBoardRoom,
+  ownerId: string,
+): SharedBoardCellState => {
+  const cell = [...serverRoom.state.cells.values()].find(
+    (entry) => entry.ownerId === ownerId && entry.unitId !== "",
+  );
+
+  if (!cell) {
+    throw new Error(`Expected ${ownerId} to own a unit`);
+  }
+
+  return cell;
 };
 
 describe("SharedBoardRoom integration", () => {
@@ -89,11 +147,11 @@ describe("SharedBoardRoom integration", () => {
     await testServer.shutdown();
   });
 
-  test("最初の3接続がactiveで4人目がspectatorになる", async () => {
+  test("最初の4接続がactiveで5人目がspectatorになる", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
 
-    // Set up message waiting before connecting (server sends ROLE via setTimeout)
     const clientPromises = [
+      testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
@@ -113,19 +171,42 @@ describe("SharedBoardRoom integration", () => {
     const activeRoles = roles.filter((role) => !role.isSpectator);
     const spectatorRoles = roles.filter((role) => role.isSpectator);
 
-    expect(activeRoles).toHaveLength(3);
+    expect(activeRoles).toHaveLength(4);
     expect(spectatorRoles).toHaveLength(1);
     expect(spectatorRoles[0].slotIndex).toBe(-1);
 
     const activeSlots = activeRoles
       .map((role) => role.slotIndex)
       .sort((left, right) => left - right);
-    expect(activeSlots).toEqual([0, 1, 2]);
+    expect(activeSlots).toEqual([0, 1, 2, 3]);
+  });
+
+  test("join時にdummy-boss以外の初期トークンを生成しない", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    clients.forEach((client) => client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE));
+    await Promise.all(
+      clients.map((client) => client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE, 5_000)),
+    );
+
+    const occupiedCells = Array.from(serverRoom.state.cells.values()).filter(
+      (cell) => cell.unitId !== "" && cell.unitId !== "dummy-boss",
+    );
+
+    expect(occupiedCells).toHaveLength(0);
   });
 
   test("同意離脱でactive枠が即時解放され新規接続がactiveになる", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
@@ -209,6 +290,7 @@ describe("SharedBoardRoom integration", () => {
   test("spectatorがplace/resetするとNOT_ACTIVE_PLAYERで拒否される", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),
@@ -299,18 +381,7 @@ describe("SharedBoardRoom integration", () => {
       throw new Error("Expected first player to exist");
     }
 
-    let firstUnitId = "";
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "") {
-        firstUnitId = cell.unitId;
-        break;
-      }
-    }
-
-    if (firstUnitId === "") {
-      throw new Error("Expected first player to have a unit");
-    }
+    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0).unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, {
       unitId: firstUnitId,
@@ -361,29 +432,8 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined && secondPlayer !== undefined;
     }, 1_000);
 
-    let firstUnitId = "";
-    let firstCellIndex = -1;
-    let secondUnitId = "";
-    let secondCellIndex = -1;
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.unitId !== "") {
-        if (cell.ownerId === firstClient.sessionId && firstUnitId === "") {
-          firstUnitId = cell.unitId;
-          firstCellIndex = cell.index;
-        } else if (
-          cell.ownerId === secondClient.sessionId &&
-          secondUnitId === ""
-        ) {
-          secondUnitId = cell.unitId;
-          secondCellIndex = cell.index;
-        }
-      }
-    }
-
-    if (firstUnitId === "" || secondUnitId === "") {
-      throw new Error("Expected both players to have units");
-    }
+    const { cellIndex: firstCellIndex } = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0);
+    const { unitId: secondUnitId } = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger");
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -411,17 +461,7 @@ describe("SharedBoardRoom integration", () => {
       return player !== undefined;
     }, 1_000);
 
-    let unitId = "";
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === client.sessionId && cell.unitId !== "") {
-        unitId = cell.unitId;
-        break;
-      }
-    }
-
-    if (unitId === "") {
-      throw new Error("Expected player to have a unit");
-    }
+    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, 0).unitId;
 
     client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId,
@@ -473,27 +513,12 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined;
     }, 1_000);
 
-    let firstUnitId = "";
-    let firstCellIndex = -1;
-    let emptyCellIndex = -1;
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "") {
-        firstUnitId = cell.unitId;
-        firstCellIndex = cell.index;
-      }
-      if (cell.unitId === "" && emptyCellIndex === -1) {
-        emptyCellIndex = cell.index;
-      }
-    }
-
-    if (firstUnitId === "") {
-      throw new Error("Expected first player to have a unit");
-    }
-
-    if (emptyCellIndex === -1) {
-      throw new Error("Expected an empty cell");
-    }
+    const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      0,
+    );
+    const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex]);
 
     firstClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: firstUnitId,
@@ -504,17 +529,7 @@ describe("SharedBoardRoom integration", () => {
       await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
     expect(placeResult).toEqual({ accepted: true, action: "place_unit" });
 
-    let secondUnitId = "";
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === secondClient.sessionId && cell.unitId !== "") {
-        secondUnitId = cell.unitId;
-        break;
-      }
-    }
-
-    if (secondUnitId === "") {
-      throw new Error("Expected second player to have a unit");
-    }
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -552,25 +567,12 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined;
     }, 1_000);
 
-    let firstUnitId = "";
-    let emptyCellIndex = -1;
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "") {
-        firstUnitId = cell.unitId;
-      }
-      if (cell.unitId === "" && emptyCellIndex === -1) {
-        emptyCellIndex = cell.index;
-      }
-    }
-
-    if (firstUnitId === "") {
-      throw new Error("Expected first player to have a unit");
-    }
-
-    if (emptyCellIndex === -1) {
-      throw new Error("Expected an empty cell");
-    }
+    const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      0,
+    );
+    const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex]);
 
     firstClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: firstUnitId,
@@ -579,17 +581,7 @@ describe("SharedBoardRoom integration", () => {
 
     await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
 
-    let secondUnitId = "";
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === secondClient.sessionId && cell.unitId !== "") {
-        secondUnitId = cell.unitId;
-        break;
-      }
-    }
-
-    if (secondUnitId === "") {
-      throw new Error("Expected second player to have a unit");
-    }
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -663,30 +655,13 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined;
     }, 1_000);
 
-    let firstUnitId = "";
-    let cellAIndex = -1;
-    let cellBIndex = -1;
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "") {
-        firstUnitId = cell.unitId;
-      }
-      if (cell.unitId === "") {
-        if (cellAIndex === -1) {
-          cellAIndex = cell.index;
-        } else if (cellBIndex === -1) {
-          cellBIndex = cell.index;
-        }
-      }
-    }
-
-    if (firstUnitId === "") {
-      throw new Error("Expected first player to have a unit");
-    }
-
-    if (cellAIndex === -1 || cellBIndex === -1) {
-      throw new Error("Expected two empty cells");
-    }
+    const { unitId: firstUnitId, cellIndex: firstSourceCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      0,
+    );
+    const cellAIndex = findFirstEmptyCellIndex(serverRoom, [firstSourceCellIndex]);
+    const cellBIndex = findFirstEmptyCellIndex(serverRoom, [firstSourceCellIndex, cellAIndex]);
 
     // P1が空きセルAへ配置
     firstClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
@@ -696,17 +671,7 @@ describe("SharedBoardRoom integration", () => {
 
     await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
 
-    let secondUnitId = "";
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === secondClient.sessionId && cell.unitId !== "") {
-        secondUnitId = cell.unitId;
-        break;
-      }
-    }
-
-    if (secondUnitId === "") {
-      throw new Error("Expected second player to have a unit");
-    }
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
 
     // P2がAへ即時配置でTARGET_LOCKED
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
@@ -792,32 +757,18 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined && secondPlayer !== undefined;
     }, 1_000);
 
-    let firstUnitId = "";
-    let secondUnitId = "";
-    let emptyCellIndex = -1;
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "" && firstUnitId === "") {
-        firstUnitId = cell.unitId;
-      } else if (cell.ownerId === secondClient.sessionId && cell.unitId !== "" && secondUnitId === "") {
-        secondUnitId = cell.unitId;
-      }
-      if (cell.unitId === "" && emptyCellIndex === -1) {
-        emptyCellIndex = cell.index;
-      }
-    }
-
-    if (firstUnitId === "") {
-      throw new Error("Expected first player to have a unit");
-    }
-
-    if (secondUnitId === "") {
-      throw new Error("Expected second player to have a unit");
-    }
-
-    if (emptyCellIndex === -1) {
-      throw new Error("Expected an empty cell");
-    }
+    const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      0,
+    );
+    const { unitId: secondUnitId, cellIndex: secondCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      secondClient.sessionId,
+      1,
+      "ranger",
+    );
+    const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex, secondCellIndex]);
 
     const firstResultPromise = firstClient.waitForMessage(
       SERVER_MESSAGE_TYPES.ACTION_RESULT,
@@ -897,18 +848,7 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined;
     }, 1_000);
 
-    let firstUnitId = "";
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === firstClient.sessionId && cell.unitId !== "") {
-        firstUnitId = cell.unitId;
-        break;
-      }
-    }
-
-    if (firstUnitId === "") {
-      throw new Error("Expected first player to have a unit");
-    }
+    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0).unitId;
 
     const firstResultPromise = firstClient.waitForMessage(
       SERVER_MESSAGE_TYPES.ACTION_RESULT,
@@ -970,6 +910,33 @@ describe("SharedBoardRoom integration", () => {
     expect(targetCell?.unitId.startsWith("vanguard-")).toBe(true);
   });
 
+  test("server sync API derives Touhou display metadata from unitId", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    const targetCellIndex = combatCellToRaidBoardIndex(0);
+    const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
+      {
+        cell: 0,
+        unitType: "assassin",
+        unitId: "koishi",
+      },
+    ]);
+
+    expect(result.applied).toBe(1);
+    expect(result.skipped).toBe(0);
+
+    const targetCell = serverRoom.state.cells.get(String(targetCellIndex)) as SharedBoardCellState & {
+      displayName?: string;
+      portraitKey?: string;
+    };
+    expect(targetCell?.displayName).toBe("古明地こいし");
+    expect(targetCell?.portraitKey).toBe("Koishi");
+  });
+
   test("join options の gamePlayerId を bridge向け配置イベントに反映する", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const mappedGamePlayerId = "game-player-1";
@@ -980,31 +947,12 @@ describe("SharedBoardRoom integration", () => {
     client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
     await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
 
-    let unitId = "";
-    let sourceCellIndex = -1;
-
-    for (const cell of serverRoom.state.cells.values()) {
-      if (cell.ownerId === mappedGamePlayerId && cell.unitId !== "") {
-        unitId = cell.unitId;
-        sourceCellIndex = cell.index;
-        break;
-      }
-    }
-
-    if (unitId === "") {
-      throw new Error("Expected connected player to have an initial unit");
-    }
-
-    const targetCellIndex = [...serverRoom.state.cells.values()].find(
-      (cell) =>
-        cell.index !== sourceCellIndex
-        && cell.index !== serverRoom.state.dummyBossCell
-        && cell.unitId === "",
-    )?.index;
-
-    if (typeof targetCellIndex !== "number") {
-      throw new Error("Expected at least one empty target cell");
-    }
+    const { unitId, cellIndex: sourceCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      mappedGamePlayerId,
+      0,
+    );
+    const targetCellIndex = findFirstEmptyCellIndex(serverRoom, [sourceCellIndex]);
 
     let emittedPlayerId: string | null = null;
     serverRoom.onPlacementChange((playerId) => {

@@ -14,6 +14,7 @@ describe("phase hp ui contract", () => {
       "data-phase-hp-value",
       "data-phase-hp-fill",
       "data-phase-hp-result",
+      "data-phase-hp-help",
     ];
 
     for (const attribute of requiredAttributes) {
@@ -27,5 +28,8 @@ describe("phase hp ui contract", () => {
     expect(html.includes(".phase-hp-fill.success")).toBe(true);
     expect(html.includes(".phase-hp-fill.failed")).toBe(true);
     expect(html.includes("data-phase-hp-value")).toBe(true);
+    expect(html.includes("Boss Phase HP")).toBe(true);
+    expect(html.includes("Boss phase HP appears here when battle starts. Drop it to 0 to clear the phase.")).toBe(true);
+    expect(html.includes(".phase-hp-section {\n        display: block;")).toBe(true);
   });
 });

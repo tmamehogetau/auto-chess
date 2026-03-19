@@ -30,6 +30,134 @@ describe("manual-check script contract", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("mapEntries(state?.players).map(([, player]) => player)")).toBe(true);
-    expect(source.includes("const isRaidRound = bossPlayerId !== \"\" && Array.isArray(state?.raidPlayerIds)")).toBe(true);
+    expect(source.includes("buildFinalJudgmentCopy({")).toBe(true);
+    expect(source.includes("raidPlayerIds: state?.raidPlayerIds")).toBe(true);
+  });
+
+  test("entry flow guidance と command result copy を player-facing helper で扱う", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("buildEntryFlowStatus({")).toBe(true);
+    expect(source.includes("updateEntryFlowStatus(")).toBe(true);
+    expect(source.includes("buildCommandResultCopy({ accepted: false, code: result.code, hint })")).toBe(true);
+  });
+
+  test("bench から shared-board へ配置する click 導線を持つ", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("sharedBoardGrid?.addEventListener(\"click\"")).toBe(true);
+    expect(source.includes("handleSharedCellClick(getSharedBoardState(), cellIndex)")).toBe(true);
+    expect(source.includes("benchToBoardCell")).toBe(true);
+  });
+
+  test("bench deploy converts shared-board index into combat cell and rejects non-playable cells", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("function sharedBoardIndexToCombatCell(boardIndex) {")).toBe(true);
+    expect(source.includes("const combatCell = sharedBoardIndexToCombatCell(cellIndex);")).toBe(true);
+    expect(source.includes("cell: combatCell,")).toBe(true);
+    expect(source.includes("outside the playable combat area")).toBe(true);
+  });
+
+  test("manual-check sets gamePlayerId on the shared-board client before shared-board connect", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("setSharedBoardGamePlayerId(room.sessionId);")).toBe(true);
+    expect(source.includes("await connectSharedBoard(client);")).toBe(true);
+    expect(source.indexOf("setSharedBoardGamePlayerId(room.sessionId);"))
+      .toBeLessThan(source.indexOf("await connectSharedBoard(client);"));
+  });
+
+  test("phase hp と battle result は読み切れる表示時間と待機説明を持つ", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("phaseHpSection.style.display = \"block\"")).toBe(true);
+    expect(source.includes("}, 4500);")).toBe(true);
+  });
+
+  test("state listeners are registered before auto-fill rooms are connected", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.indexOf("room.onStateChange((state) => {")).toBeGreaterThan(-1);
+    expect(source.indexOf("room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {")).toBeGreaterThan(-1);
+    expect(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions);")).toBeGreaterThan(-1);
+    expect(source.indexOf("room.onStateChange((state) => {"))
+      .toBeLessThan(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions);"));
+    expect(source.indexOf("room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {"))
+      .toBeLessThan(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions);"));
+  });
+
+  test("empty lastBattleResult does not produce a Round 0 defeat log", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const hasBattleResult = Boolean(")).toBe(true);
+    expect(source.includes("battleResult?.opponentId")).toBe(true);
+    expect(source.includes("lastShownBattleRound !== state.roundIndex")).toBe(true);
+  });
+
+  test("prep command trace update does not depend on admin-monitor private helpers", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("setMonitorText(monitorTraceValue, correlationId);")).toBe(false);
+    expect(source.includes("monitorTraceValue.textContent = correlationId;")).toBe(true);
+  });
+
+  test("page exit uses synchronous room cleanup instead of awaiting leave()", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("window.addEventListener(\"pagehide\", () => {")).toBe(true);
+    expect(source.includes("disconnectRoomsForPageExit();")).toBe(true);
+    expect(source.includes("void leave();")).toBe(true);
+    expect(source.includes("window.addEventListener(\"beforeunload\", () => {\n  disconnectRoomsForPageExit();\n});")).toBe(true);
+    expect(source.includes("window.addEventListener(\"pagehide\", () => {\n  disconnectRoomsForPageExit();\n});")).toBe(true);
+  });
+
+  test("page exit cleanup leaves active, shared-board, and autofill rooms immediately", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("function disconnectRoomsForPageExit() {")).toBe(true);
+    expect(source.includes("function releaseRoomOnPageExit(room) {")).toBe(true);
+    expect(source.includes("stopMonitorPolling();")).toBe(true);
+    expect(source.includes("leaveSharedBoardRoom();")).toBe(true);
+    expect(source.includes("const leavingRooms = autoFillRooms.splice(0, autoFillRooms.length);")).toBe(true);
+    expect(source.includes("void room.leave();")).toBe(true);
+    expect(source.includes("releaseRoomOnPageExit(roomToLeave);")).toBe(true);
+  });
+
+  test("autofill helpers join first and send ready after the full helper batch is connected", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const joinedHelperRooms = [];")).toBe(true);
+    expect(source.includes("joinedHelperRooms.push(helperRoom);")).toBe(true);
+    expect(source.includes("for (const helperRoom of joinedHelperRooms) {")).toBe(true);
+    expect(source.includes("helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });")).toBe(true);
+    expect(source.indexOf("joinedHelperRooms.push(helperRoom);"))
+      .toBeLessThan(source.indexOf("for (const helperRoom of joinedHelperRooms) {"));
+  });
+
+  test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes('from "./ui/audio-cues.js"')).toBe(true);
+    expect(source.includes('playUiCue("confirm")')).toBe(true);
+    expect(source.includes('playUiCue("purchase")')).toBe(true);
+    expect(source.includes('playUiCue("battle-start")')).toBe(true);
+    expect(source.includes('playUiCue(isVictory ? "victory" : "defeat")')).toBe(true);
+  });
+
+  test("hero selection uses the current hero roster instead of the legacy lineup", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("id: 'okina'")).toBe(true);
+    expect(source.includes("id: 'keiki'")).toBe(true);
+    expect(source.includes("id: 'megumu'")).toBe(true);
+    expect(source.includes("name: '隠岐奈'")).toBe(true);
+    expect(source.includes("name: '袿姫'")).toBe(true);
+    expect(source.includes("name: '女苑'")).toBe(true);
+    expect(source.includes("id: 'sanae'")).toBe(false);
+    expect(source.includes("id: 'youmu'")).toBe(false);
+    expect(source.includes("id: 'sakuya'")).toBe(false);
+    expect(source.includes('balance: "⚖️"')).toBe(true);
+    expect(source.includes('economy: "💰"')).toBe(true);
   });
 });

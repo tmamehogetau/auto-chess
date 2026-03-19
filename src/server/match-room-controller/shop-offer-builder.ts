@@ -160,6 +160,8 @@ export class ShopOfferBuilder {
       const unit = this.deps.getRandomScarletMansionUnit();
       offers.push({
         unitType: unit.unitType,
+        unitId: unit.unitId,
+        displayName: unit.displayName,
         rarity: unit.cost as UnitRarity,
         cost: unit.cost,
       });

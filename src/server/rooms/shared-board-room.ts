@@ -8,6 +8,7 @@ import {
 } from "../schema/shared-board-state";
 import { combatCellToRaidBoardIndex } from "../../shared/board-geometry";
 import type { BoardUnitPlacement } from "../../shared/room-messages";
+import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
 
 interface SharedBoardRoomOptions {
   boardWidth?: number;
@@ -81,7 +82,7 @@ const SERVER_MESSAGE_TYPES = {
 } as const;
 
 export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
-  private static readonly MAX_ACTIVE_PLAYERS = 3;
+  private static readonly MAX_ACTIVE_PLAYERS = 4;
 
   private static readonly MAX_CLIENTS = 8;
 
@@ -89,7 +90,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private static readonly DEFAULT_LOCK_DURATION_MS = 1000;
 
-  private static readonly ACTIVE_PLAYER_COLORS = ["#FF6B6B", "#4ECDC4", "#FFE66D"];
+  private static readonly ACTIVE_PLAYER_COLORS = ["#FF6B6B", "#4ECDC4", "#FFE66D", "#A29BFE"];
 
   private static readonly SPECTATOR_COLOR = "#999999";
 
@@ -100,8 +101,6 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   private lockDurationMs = SharedBoardRoom.DEFAULT_LOCK_DURATION_MS;
 
   private readonly activePlayerIds: string[] = [];
-
-  private readonly unitIdByPlayer = new Map<string, string>();
 
   private readonly gamePlayerIdBySharedSessionId = new Map<string, string>();
 
@@ -184,7 +183,6 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
     if (!isSpectator) {
       this.activePlayerIds.push(sessionId);
-      this.placeInitialTokenForPlayer(sessionId, slotIndex);
     }
 
     this.appendEvent(`${sessionId.slice(0, 8)} joined (${isSpectator ? "spectator" : `slot ${slotIndex}`})`);
@@ -248,6 +246,8 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       cell.index = index;
       cell.unitId = "";
       cell.ownerId = "";
+      cell.displayName = "";
+      cell.portraitKey = "";
       cell.lockedBy = "";
       cell.lockUntilMs = 0;
       this.state.cells.set(String(index), cell);
@@ -417,8 +417,12 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
       targetCell.unitId = sourceCell.unitId;
       targetCell.ownerId = sourceCell.ownerId;
+      targetCell.displayName = sourceCell.displayName;
+      targetCell.portraitKey = sourceCell.portraitKey;
       sourceCell.unitId = "";
       sourceCell.ownerId = "";
+      sourceCell.displayName = "";
+      sourceCell.portraitKey = "";
     }
 
     const cursor = this.state.cursors.get(client.sessionId);
@@ -523,13 +527,14 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.state.players.delete(playerId);
     this.state.cursors.delete(playerId);
 
-    this.unitIdByPlayer.delete(playerId);
     this.gamePlayerIdBySharedSessionId.delete(playerId);
 
     for (const cell of this.state.cells.values()) {
       if (cell.ownerId === this.resolveOwnerId(playerId)) {
         cell.unitId = "";
         cell.ownerId = "";
+        cell.displayName = "";
+        cell.portraitKey = "";
       }
     }
 
@@ -541,72 +546,13 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       if (cell.index !== this.state.dummyBossCell) {
         cell.unitId = "";
         cell.ownerId = "";
+        cell.displayName = "";
+        cell.portraitKey = "";
       }
       cell.lockedBy = "";
       cell.lockUntilMs = 0;
     }
 
-    for (const playerId of this.activePlayerIds) {
-      const player = this.state.players.get(playerId);
-
-      if (!player || player.isSpectator || player.slotIndex < 0) {
-        continue;
-      }
-
-      this.placeInitialTokenForPlayer(playerId, player.slotIndex);
-    }
-  }
-
-  private placeInitialTokenForPlayer(playerId: string, slotIndex: number): void {
-    const unitId = this.unitIdByPlayer.get(playerId) ?? `unit-${playerId.slice(0, 6)}`;
-    const ownerId = this.resolveOwnerId(playerId);
-    this.unitIdByPlayer.set(playerId, unitId);
-
-    const preferredCell = (this.boardHeight - 1) * this.boardWidth + slotIndex;
-    const targetCell = this.findFirstAvailableCell(preferredCell);
-
-    if (targetCell === null) {
-      return;
-    }
-
-    const cell = this.state.cells.get(String(targetCell));
-
-    if (!cell) {
-      return;
-    }
-
-    cell.unitId = unitId;
-    cell.ownerId = ownerId;
-  }
-
-  private findFirstAvailableCell(preferredCell: number): number | null {
-    const cellCount = this.boardWidth * this.boardHeight;
-
-    if (this.isCellEmpty(preferredCell)) {
-      return preferredCell;
-    }
-
-    for (let index = 0; index < cellCount; index += 1) {
-      if (this.isCellEmpty(index)) {
-        return index;
-      }
-    }
-
-    return null;
-  }
-
-  private isCellEmpty(cellIndex: number): boolean {
-    if (!this.isValidCellIndex(cellIndex) || cellIndex === this.state.dummyBossCell) {
-      return false;
-    }
-
-    const cell = this.state.cells.get(String(cellIndex));
-
-    if (!cell) {
-      return false;
-    }
-
-    return cell.unitId === "";
   }
 
   private isValidCellIndex(cellIndex: number): boolean {
@@ -687,6 +633,8 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       ) {
         cell.unitId = "";
         cell.ownerId = "";
+        cell.displayName = "";
+        cell.portraitKey = "";
         cell.lockedBy = "";
         cell.lockUntilMs = 0;
       }
@@ -709,8 +657,11 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       }
 
       const stableUnitId = `${placement.unitType}-${playerId.slice(0, 6)}-${placement.cell}`;
+      const presentation = resolveSharedBoardUnitPresentation(placement.unitId, placement.unitType);
       targetCell.unitId = stableUnitId;
       targetCell.ownerId = playerId;
+      targetCell.displayName = presentation?.displayName ?? "";
+      targetCell.portraitKey = presentation?.portraitKey ?? "";
       targetCell.lockedBy = "";
       targetCell.lockUntilMs = 0;
       applied += 1;

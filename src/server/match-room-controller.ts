@@ -1422,12 +1422,18 @@ export class MatchRoomController {
       return;
     }
 
-    benchUnits.push({
+    const benchUnit: BenchUnit = {
       unitType: bossOffer.unitType,
       cost: bossOffer.cost,
       starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
       unitCount: 1,
-    });
+    };
+
+    if (bossOffer.unitId !== undefined) {
+      benchUnit.unitId = bossOffer.unitId;
+    }
+
+    benchUnits.push(benchUnit);
     this.benchUnitsByPlayer.set(playerId, benchUnits);
     bossOffer.purchased = true;
   }
@@ -2817,4 +2823,3 @@ export class MatchRoomController {
    * PrepCommandの基本バリデーション（フェーズ、プレイヤー、タイミング、コマンド順序）
    */
 }
-

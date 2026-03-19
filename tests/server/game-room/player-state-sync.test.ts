@@ -8,6 +8,7 @@ import {
 } from "../../../src/server/rooms/game-room/player-state-sync";
 import {
   PlayerPresenceState,
+  MatchRoomState,
   ShopOfferState,
   ShopItemOfferState,
   BattleResultSchema,
@@ -16,9 +17,19 @@ import {
 
 describe("player-state-sync", () => {
   let playerState: PlayerPresenceState;
+  let roomState: MatchRoomState;
 
   beforeEach(() => {
     playerState = new PlayerPresenceState();
+    roomState = new MatchRoomState();
+  });
+
+  it("should expose default boss preference fields", () => {
+    expect(playerState.wantsBoss).toBe(false);
+    expect(playerState.selectedBossId).toBe("");
+    expect(playerState.role).toBe("unassigned");
+    expect(roomState.lobbyStage).toBe("preference");
+    expect(roomState.selectionDeadlineAtMs).toBe(0);
   });
 
   describe("syncPlayerStateFromController", () => {
@@ -141,6 +152,9 @@ describe("player-state-sync", () => {
         ] as ControllerPlayerStatus["bossShopOffers"],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -172,6 +186,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -251,6 +268,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -287,6 +307,9 @@ describe("player-state-sync", () => {
           { unitType: "vanguard", count: 4, tier: 3 },
           { unitType: "assassin", count: 2, tier: 1 },
         ],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -326,6 +349,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -356,6 +382,9 @@ describe("player-state-sync", () => {
         ],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "hero-special-001",
         isRumorEligible: true,
       };
@@ -391,6 +420,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -429,6 +461,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };
@@ -708,6 +743,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "", // Empty when hero system disabled
         isRumorEligible: false, // False when rumor influence disabled
       };
@@ -739,6 +777,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: undefined as unknown as [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
         selectedHeroId: "",
         isRumorEligible: false,
       };

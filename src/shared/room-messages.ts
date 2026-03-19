@@ -5,6 +5,8 @@ export const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
   PREP_COMMAND: "prep_command",
   ADMIN_QUERY: "admin_query",
+  BOSS_PREFERENCE: "boss_preference",
+  BOSS_SELECT: "boss_select",
 } as const;
 
 export const SERVER_MESSAGE_TYPES = {
@@ -107,6 +109,8 @@ export interface RoundStateMessage {
   phase: MatchPhase;
   roundIndex: number;
   phaseDeadlineAtMs: number;
+  lobbyStage?: "preference" | "selection" | "started";
+  selectionDeadlineAtMs?: number;
   ranking: string[];
   bossPlayerId?: string;
   raidPlayerIds?: string[];

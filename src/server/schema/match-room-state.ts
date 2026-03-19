@@ -80,6 +80,12 @@ export class PlayerPresenceState extends Schema {
 
   declare public connected: boolean;
 
+  declare public wantsBoss: boolean;
+
+  declare public selectedBossId: string;
+
+  declare public role: "unassigned" | "raid" | "boss";
+
   declare public hp: number;
 
   declare public remainingLives: number;
@@ -130,6 +136,9 @@ export class PlayerPresenceState extends Schema {
     super();
     this.ready = false;
     this.connected = true;
+    this.wantsBoss = false;
+    this.selectedBossId = "";
+    this.role = "unassigned";
     this.hp = 100;
     this.remainingLives = 0;
     this.eliminated = false;
@@ -161,7 +170,11 @@ export class MatchRoomState extends Schema {
 
   declare public setId: UnitEffectSetId;
 
+  declare public lobbyStage: "preference" | "selection" | "started";
+
   declare public phaseDeadlineAtMs: number;
+
+  declare public selectionDeadlineAtMs: number;
 
   declare public prepDeadlineAtMs: number;
 
@@ -211,7 +224,9 @@ export class MatchRoomState extends Schema {
     super();
     this.phase = "Waiting";
     this.setId = "set1";
+    this.lobbyStage = "preference";
     this.phaseDeadlineAtMs = 0;
+    this.selectionDeadlineAtMs = 0;
     this.prepDeadlineAtMs = 0;
     this.roundIndex = 0;
     this.ranking = new ArraySchema<string>();
@@ -270,6 +285,9 @@ defineTypes(SynergySchema, {
 defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
+  wantsBoss: "boolean",
+  selectedBossId: "string",
+  role: "string",
   hp: "number",
   remainingLives: "number",
   eliminated: "boolean",
@@ -298,7 +316,9 @@ defineTypes(PlayerPresenceState, {
 defineTypes(MatchRoomState, {
   phase: "string",
   setId: "string",
+  lobbyStage: "string",
   phaseDeadlineAtMs: "number",
+  selectionDeadlineAtMs: "number",
   prepDeadlineAtMs: "number",
   roundIndex: "number",
   ranking: ["string"],

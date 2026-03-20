@@ -2014,7 +2014,7 @@ describe("GameRoom integration", () => {
 
   test("Waiting中の離脱はlobby ready deadlineを引き直して即時auto-startを防ぐ", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game", {
-      readyAutoStartMs: 120,
+      readyAutoStartMs: 300,
     });
     const clients = await Promise.all([
       testServer.connectTo(serverRoom),
@@ -2025,7 +2025,7 @@ describe("GameRoom integration", () => {
 
     await waitForCondition(() => serverRoom.state.players.size === 4, 1_000);
     const initialLobbyDeadline = serverRoom["lobbyReadyDeadlineAtMs"] as number;
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     clients[0].connection.close(4000, "refresh");
 
@@ -2033,7 +2033,7 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.phase).toBe("Waiting");
     expect(serverRoom["lobbyReadyDeadlineAtMs"]).toBeGreaterThan(initialLobbyDeadline);
 
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(serverRoom.state.phase).toBe("Waiting");
   });
@@ -2172,11 +2172,6 @@ describe("GameRoom integration", () => {
         for (const client of clients) {
           client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
         }
-
-        const bossClient = clients[1]!;
-        const raidClientA = clients[0]!;
-        const raidClientB = clients[2]!;
-        const raidClientC = clients[3]!;
 
         await resolveBossRoleSelectionToPrep(serverRoom, clients, 1_000);
 

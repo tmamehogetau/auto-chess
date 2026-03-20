@@ -56,6 +56,7 @@ class FakeElement {
   public title = "";
   public role = "";
   public ariaLabel = "";
+  public onclick: (() => void) | null = null;
   public onpointerdown: (() => void) | null = null;
   public ondragstart: ((event: unknown) => void) | null = null;
   public ondragend: (() => void) | null = null;
@@ -108,6 +109,7 @@ class FakeElement {
 
   public click(): void {
     this.clickCount += 1;
+    this.onclick?.();
   }
 }
 
@@ -1029,6 +1031,87 @@ describe("shared-board client", () => {
     expect(firstCell?.getAttribute("role")).toBe("button");
     expect(firstCell?.ariaLabel).toBe("Board cell 0");
     expect(typeof firstCell?.onkeydown).toBe("function");
+  });
+
+  test("shared board keyboard activation reuses cell click flow for select and place", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+        8: { unitId: "", ownerId: "" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    const sourceCell = gridElement.children[7];
+
+    let preventedSelection = false;
+    sourceCell?.onkeydown?.({
+      key: "Enter",
+      preventDefault: () => {
+        preventedSelection = true;
+      },
+    });
+
+    expect(preventedSelection).toBe(true);
+    expect(sourceCell?.clickCount).toBe(1);
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    const targetCell = gridElement.children[8];
+    let preventedPlacement = false;
+    targetCell?.onkeydown?.({
+      key: " ",
+      preventDefault: () => {
+        preventedPlacement = true;
+      },
+    });
+
+    expect(preventedPlacement).toBe(true);
+    expect(targetCell?.clickCount).toBe(1);
+    expect(sendCalls).toContainEqual({
+      type: "shared_place_unit",
+      payload: { unitId: "vanguard-1", toCell: 8 },
+    });
   });
 
   test("shared board drag start treats gamePlayerId ownership as own unit", async () => {

@@ -319,6 +319,9 @@ function renderSharedBoard(state) {
     cellElement.setAttribute("role", "button");
     cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell));
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
+    cellElement.onclick = () => {
+      handleSharedCellClick(state, i);
+    };
     cellElement.onkeydown = (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();

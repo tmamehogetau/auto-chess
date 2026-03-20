@@ -51,16 +51,22 @@ class FakeElement {
   public dataset: Record<string, string> = {};
   public style: Record<string, string> = {};
   public textContent = "";
+  public tabIndex = -1;
   public draggable = false;
   public title = "";
+  public role = "";
+  public ariaLabel = "";
   public onpointerdown: (() => void) | null = null;
   public ondragstart: ((event: unknown) => void) | null = null;
   public ondragend: (() => void) | null = null;
   public ondragover: ((event: unknown) => void) | null = null;
   public ondragleave: (() => void) | null = null;
   public ondrop: ((event: unknown) => void) | null = null;
+  public onkeydown: ((event: { key: string; preventDefault: () => void }) => void) | null = null;
   public classList: FakeClassList;
   public children: FakeElement[] = [];
+  public attributes: Record<string, string> = {};
+  public clickCount = 0;
   private innerHtmlValue = "";
 
   public constructor() {
@@ -84,6 +90,24 @@ class FakeElement {
 
   public appendChild(child: FakeElement): void {
     this.children.push(child);
+  }
+
+  public setAttribute(name: string, value: string): void {
+    this.attributes[name] = value;
+    if (name === "aria-label") {
+      this.ariaLabel = value;
+    }
+    if (name === "role") {
+      this.role = value;
+    }
+  }
+
+  public getAttribute(name: string): string | null {
+    return this.attributes[name] ?? null;
+  }
+
+  public click(): void {
+    this.clickCount += 1;
   }
 }
 
@@ -866,5 +890,120 @@ describe("shared-board client", () => {
 
     expect(sparseTargetCell?.dataset.dropValid).toBe("true");
     expect(sparseTargetCell?.dataset.dropInvalid).toBeUndefined();
+  });
+
+  test("shared board cells expose keyboard button semantics after render", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {},
+      cursors: {},
+      players: {},
+    });
+
+    const firstCell = gridElement.children[0];
+    expect(firstCell?.tabIndex).toBe(0);
+    expect(firstCell?.getAttribute("role")).toBe("button");
+    expect(firstCell?.ariaLabel).toBe("Board cell 0");
+    expect(typeof firstCell?.onkeydown).toBe("function");
+  });
+
+  test("shared board drag start treats gamePlayerId ownership as own unit", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    let preventDefaultCalled = false;
+    const transferred: Array<{ type: string; value: string }> = [];
+
+    const room = {
+      sessionId: "shared-room-session",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    const sourceCell = gridElement.children[7];
+    sourceCell?.ondragstart?.({
+      dataTransfer: {
+        effectAllowed: "",
+        setData: (type: string, value: string) => {
+          transferred.push({ type, value });
+        },
+      },
+      preventDefault: () => {
+        preventDefaultCalled = true;
+      },
+    });
+
+    expect(preventDefaultCalled).toBe(false);
+    expect(transferred).toEqual([{ type: "text/plain", value: "vanguard-1" }]);
   });
 });

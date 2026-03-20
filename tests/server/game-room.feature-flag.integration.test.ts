@@ -76,9 +76,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
     await waitForCondition(() => serverRoom.state.lobbyStage === "selection", timeoutMs);
 
-    raidClientA.send("HERO_SELECT", { heroId: "reimu" });
-    raidClientB.send("HERO_SELECT", { heroId: "marisa" });
-    raidClientC.send("HERO_SELECT", { heroId: "okina" });
+    raidClientA.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+    raidClientB.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+    raidClientC.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
     bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
 
     await waitForCondition(() => serverRoom.state.phase === "Prep", timeoutMs);

@@ -159,7 +159,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       },
     );
 
-    this.onMessage("HERO_SELECT", (client, message) => {
+    this.onMessage(CLIENT_MESSAGE_TYPES.HERO_SELECT, (client, message) => {
       void this.handleHeroSelect(client, message as { heroId: string });
     });
 

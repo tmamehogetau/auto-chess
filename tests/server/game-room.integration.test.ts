@@ -11,6 +11,7 @@ import {
 } from "../../src/client/main";
 import { GameRoom } from "../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
+import { resolveSharedBoardUnitPresentation } from "../../src/server/shared-board-unit-presentation";
 import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 import {
   CLIENT_MESSAGE_TYPES,
@@ -104,13 +105,50 @@ const moveBossRoleSelectionToSelectionStage = async (
   clients: Array<{ sessionId: string; send: (type: string, message?: unknown) => void }>,
   bossClientIndex = 1,
 ): Promise<void> => {
-  clients[bossClientIndex]?.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+  const bossClient = clients[bossClientIndex];
+  if (!bossClient) {
+    throw new Error("Expected boss client");
+  }
+
+  bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+  await waitForCondition(
+    () => serverRoom.state.players.get(bossClient.sessionId)?.wantsBoss === true,
+    1_000,
+  );
 
   for (const client of clients) {
     client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
   }
 
   await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
+};
+
+const resolveBossRoleSelectionToPrep = async (
+  serverRoom: GameRoom,
+  clients: Array<{
+    sessionId: string;
+    send: (type: string, message?: unknown) => void;
+    waitForMessage: (type: string) => Promise<unknown>;
+  }>,
+  timeoutMs = 1_000,
+): Promise<void> => {
+  const bossClient = clients[1];
+  const raidClientA = clients[0];
+  const raidClientB = clients[2];
+  const raidClientC = clients[3];
+
+  if (!bossClient || !raidClientA || !raidClientB || !raidClientC) {
+    throw new Error("Expected four clients for boss role selection");
+  }
+
+  await moveBossRoleSelectionToSelectionStage(serverRoom, clients);
+
+  raidClientA.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+  raidClientB.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+  raidClientC.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
+  bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+  await waitForCondition(() => serverRoom.state.phase === "Prep", timeoutMs);
 };
 
 class FakeRoot {
@@ -362,9 +400,9 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.players.get(bossClient.sessionId)?.role).toBe("boss");
     expect(serverRoom.state.players.get(raidClientA.sessionId)?.role).toBe("raid");
 
-    raidClientA.send("HERO_SELECT", { heroId: "reimu" });
-    raidClientB.send("HERO_SELECT", { heroId: "marisa" });
-    raidClientC.send("HERO_SELECT", { heroId: "okina" });
+    raidClientA.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+    raidClientB.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+    raidClientC.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
 
     await waitForCondition(() => (
       serverRoom.state.players.get(raidClientA.sessionId)?.selectedHeroId === "reimu"
@@ -423,7 +461,7 @@ describe("GameRoom integration", () => {
 
     await moveBossRoleSelectionToSelectionStage(serverRoom, clients);
 
-    bossClient.send("HERO_SELECT", { heroId: "reimu" });
+    bossClient.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
     expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
       accepted: false,
       code: "INVALID_PAYLOAD",
@@ -501,9 +539,9 @@ describe("GameRoom integration", () => {
 
     await moveBossRoleSelectionToSelectionStage(serverRoom, clients);
 
-    clients[0]?.send("HERO_SELECT", { heroId: "reimu" });
-    clients[2]?.send("HERO_SELECT", { heroId: "marisa" });
-    clients[3]?.send("HERO_SELECT", { heroId: "okina" });
+    clients[0]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+    clients[2]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+    clients[3]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
     bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
 
     await waitForCondition(() => serverRoom.state.phase === "Prep", 500);
@@ -738,6 +776,18 @@ describe("GameRoom integration", () => {
       }
       const targetBossCell = combatCellToRaidBoardIndex(1);
 
+      const expectedOffer = serverRoom.state.players.get(bossPlayerId)?.bossShopOffers[0];
+      if (!expectedOffer) {
+        throw new Error("Expected boss shop offer at slot 0");
+      }
+      const expectedPresentation = resolveSharedBoardUnitPresentation(
+        expectedOffer.unitId,
+        expectedOffer.unitType,
+      );
+      if (!expectedPresentation) {
+        throw new Error("Expected presentation metadata for purchased boss unit");
+      }
+
       bossClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
         cmdSeq: 1,
         bossShopBuySlotIndex: 0,
@@ -764,7 +814,7 @@ describe("GameRoom integration", () => {
           displayName?: string;
           portraitKey?: string;
         } | undefined;
-        return sharedCell?.ownerId === bossPlayerId && sharedCell.displayName === "紅美鈴";
+        return sharedCell?.ownerId === bossPlayerId && (sharedCell.unitId?.length ?? 0) > 0;
       }, 500);
 
       const reflectedCell = sharedBoardRoom.state.cells.get(String(targetBossCell)) as {
@@ -775,8 +825,8 @@ describe("GameRoom integration", () => {
       } | undefined;
       expect(reflectedCell?.ownerId).toBe(bossPlayerId);
       expect(reflectedCell?.unitId).not.toBe("");
-      expect(reflectedCell?.displayName).toBe("紅美鈴");
-      expect(reflectedCell?.portraitKey).toBe("Hong");
+      expect(reflectedCell?.displayName).toBe(expectedPresentation.displayName);
+      expect(reflectedCell?.portraitKey).toBe(expectedPresentation.portraitKey);
     } finally {
       randomSpy.mockRestore();
     }
@@ -2055,20 +2105,7 @@ describe("GameRoom integration", () => {
         const raidClientB = clients[2]!;
         const raidClientC = clients[3]!;
 
-        bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
-
-        for (const client of clients) {
-          client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-        }
-
-        await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
-
-        raidClientA.send("HERO_SELECT", { heroId: "reimu" });
-        raidClientB.send("HERO_SELECT", { heroId: "marisa" });
-        raidClientC.send("HERO_SELECT", { heroId: "okina" });
-        bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
-
-        await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+        await resolveBossRoleSelectionToPrep(serverRoom, clients, 1_000);
 
         // Access the match logger to verify action logging
         const matchLogger = (serverRoom as unknown as {

@@ -8,6 +8,7 @@ export const CLIENT_MESSAGE_TYPES = {
   ADMIN_QUERY: "admin_query",
   BOSS_PREFERENCE: "boss_preference",
   BOSS_SELECT: "boss_select",
+  HERO_SELECT: "HERO_SELECT",
 } as const;
 
 export const SERVER_MESSAGE_TYPES = {

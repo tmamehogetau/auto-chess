@@ -312,14 +312,23 @@ function renderSharedBoard(state) {
 
     const cellElement = document.createElement("div");
     cellElement.className = "shared-board-cell";
+    cellElement.tabIndex = 0;
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
     if (typeof cellElement.setAttribute === "function") {
+      cellElement.setAttribute("role", "button");
       cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell));
     } else {
+      cellElement.role = "button";
       cellElement.ariaLabel = buildSharedBoardCellAriaLabel(i, cell);
     }
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
+    cellElement.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        cellElement.click();
+      }
+    };
     if (canDropSelectedUnit) {
       cellElement.classList.add("drop-target");
     } else if (isBlockedDropTarget) {
@@ -545,7 +554,7 @@ function handleSharedDragStart(event, state, cellIndex) {
   }
 
   const cell = mapGet(state?.cells, String(cellIndex));
-  if (!cell || cell.ownerId !== sharedBoardRoom.sessionId || !cell.unitId) {
+  if (!cell || cell.ownerId !== getOwnSharedBoardOwnerId() || !cell.unitId) {
     event.preventDefault();
     return;
   }

@@ -28,12 +28,12 @@ describe("player-app script contract", () => {
     expect(source.includes("CLIENT_MESSAGE_TYPES.READY")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
-    expect(source.includes('"HERO_SELECT"')).toBe(true);
+    expect(source.includes("CLIENT_MESSAGE_TYPES.HERO_SELECT")).toBe(true);
     expect(source.includes("gameRoomSession.connect()")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
-    expect(source.includes('gameRoomSession.send("HERO_SELECT"')).toBe(true);
+    expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.HERO_SELECT")).toBe(true);
     expect(source.includes("function sharedBoardIndexToCombatCell(")).toBe(true);
     expect(source.includes("handlePlayerShopBuy(")).toBe(true);
     expect(source.includes("handlePlayerBenchSelect(")).toBe(true);

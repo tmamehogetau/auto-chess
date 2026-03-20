@@ -469,7 +469,7 @@ function renderRoleSelectionActions(state, player) {
         }
         button.addEventListener("click", () => {
           selectedHeroId = hero.id;
-          gameRoomSession.send("HERO_SELECT", { heroId: hero.id });
+          gameRoomSession.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: hero.id });
         });
         heroOptionsElement.appendChild(button);
       }

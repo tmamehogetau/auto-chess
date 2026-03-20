@@ -35,6 +35,36 @@ describe("player-facing copy", () => {
     })).toContain("Press Ready to open the first prep phase");
   });
 
+  test("boss selection 中の ready hint は boss 側に hero ではなく boss confirm を促す", () => {
+    expect(buildReadyHint({
+      phase: "Waiting",
+      isReady: true,
+      heroEnabled: true,
+      heroSelected: false,
+      bossRoleSelectionEnabled: true,
+      lobbyStage: "selection",
+      isBossPlayer: true,
+      bossSelected: false,
+      readyCount: 4,
+      totalCount: 4,
+    })).toContain("Confirm your boss character");
+  });
+
+  test("boss selection 中の ready hint は raid 側に hero 選択待ちを返す", () => {
+    expect(buildReadyHint({
+      phase: "Waiting",
+      isReady: false,
+      heroEnabled: true,
+      heroSelected: false,
+      bossRoleSelectionEnabled: true,
+      lobbyStage: "selection",
+      isBossPlayer: false,
+      bossSelected: false,
+      readyCount: 4,
+      totalCount: 4,
+    })).toContain("Choose a hero while the boss locks in");
+  });
+
   test("entry flow status は未接続時に 4 段階の主導線を返す", () => {
     expect(buildEntryFlowStatus({
       connected: false,

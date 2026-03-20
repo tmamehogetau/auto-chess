@@ -1182,6 +1182,10 @@ function updateGameUI(state) {
       isReady,
       heroEnabled: state.featureFlagsEnableHeroSystem === true,
       heroSelected: Boolean(player.selectedHeroId),
+      bossRoleSelectionEnabled,
+      lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference",
+      isBossPlayer,
+      bossSelected: Boolean(player.selectedBossId),
       readyCount,
       totalCount,
     });

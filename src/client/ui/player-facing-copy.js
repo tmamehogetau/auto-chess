@@ -15,9 +15,25 @@ export function buildReadyHint({
   isReady,
   heroEnabled,
   heroSelected,
+  bossRoleSelectionEnabled,
+  lobbyStage,
+  isBossPlayer,
+  bossSelected,
   readyCount,
   totalCount,
 }) {
+  if (phase === "Waiting" && bossRoleSelectionEnabled && lobbyStage === "selection") {
+    if (isBossPlayer && !bossSelected) {
+      return "Confirm your boss character to open the first prep phase.";
+    }
+
+    if (!isBossPlayer && !heroSelected) {
+      return "Choose a hero while the boss locks in.";
+    }
+
+    return "Selections are resolving. Wait for the room to open the first prep phase.";
+  }
+
   if (phase === "Waiting" && heroEnabled && !heroSelected) {
     return "Choose a hero first. Then press Ready to open the first prep phase.";
   }

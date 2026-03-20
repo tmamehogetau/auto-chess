@@ -3,6 +3,10 @@ export type ReadyHintInput = {
   isReady?: boolean;
   heroEnabled?: boolean;
   heroSelected?: boolean;
+  bossRoleSelectionEnabled?: boolean;
+  lobbyStage?: string;
+  isBossPlayer?: boolean;
+  bossSelected?: boolean;
   readyCount?: number;
   totalCount?: number;
 };

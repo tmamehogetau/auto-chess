@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 
-// @ts-expect-error JS client module has no declaration file.
-import { connectSharedBoard, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId } from "../../src/client/shared-board-client.js";
+// @ts-ignore JS client module has no declaration file.
+import { connectSharedBoard, getSelectedSharedUnitId, handleSharedCellClick, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId } from "../../src/client/shared-board-client.js";
 
 class FakeClassList {
   private readonly owner: FakeElement;
@@ -827,6 +827,95 @@ describe("shared-board client", () => {
     }]);
     expect(invalidTargetCell?.dataset.dropInvalid).toBeUndefined();
     expect(invalidTargetCell?.className).not.toContain("drag-over");
+  });
+
+  test("click placement keeps the selected unit until the server accepts the move", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    let sharedActionResultHandler: ((message: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        if (type === "shared_action_result") {
+          sharedActionResultHandler = handler;
+        }
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+
+    applyStateChange({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+        8: { unitId: "", ownerId: "" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    gridElement.children[7]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    handleSharedCellClick({
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+        8: { unitId: "", ownerId: "" },
+      },
+    }, 8);
+
+    expect(sendCalls).toContainEqual({
+      type: "shared_place_unit",
+      payload: { unitId: "vanguard-1", toCell: 8 },
+    });
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    const applySharedActionResult = sharedActionResultHandler as unknown as (message: unknown) => void;
+
+    applySharedActionResult({
+      accepted: false,
+      action: "place_unit",
+      code: "INVALID_PAYLOAD",
+    });
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    applySharedActionResult({
+      accepted: true,
+      action: "place_unit",
+    });
+    expect(getSelectedSharedUnitId()).toBeNull();
   });
 
   test("shared board treats sparse cells as valid empty drop targets", async () => {

@@ -666,8 +666,6 @@ export function handleSharedCellClick(state, cellIndex) {
     // ターゲットが空か、自分のユニットがある場合のみ配置
     if (!cell?.unitId || cell.ownerId === getOwnSharedBoardOwnerId()) {
       sendSharedPlaceUnit(selectedSharedUnitId, cellIndex);
-      selectedSharedUnitId = null;
-      renderSharedBoardState(currentSharedBoardState);
     } else {
       deps.showMessage("That lane is occupied by another player. Pick an open cell.", "error");
     }

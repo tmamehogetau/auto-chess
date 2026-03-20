@@ -63,6 +63,7 @@ describe("player-app script contract", () => {
     expect(source.includes('phase === "Prep"')).toBe(true);
     expect(source.includes('phase === "Battle"')).toBe(true);
     expect(source.includes('phase === "Settle"')).toBe(true);
+    expect(source.includes('phase === "Elimination"')).toBe(true);
   });
 
   test("connect failure は tester が再試行できる文面へ戻す", () => {

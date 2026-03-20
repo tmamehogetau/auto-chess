@@ -1,8 +1,50 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { createGameRoomSession } from "../../src/client/game-room-session.js";
 
 describe("game-room session", () => {
+  const originalWindow = globalThis.window;
+
+  afterEach(() => {
+    globalThis.window = originalWindow;
+  });
+
+  test("missing endpoint falls back to the current page origin", async () => {
+    let capturedEndpoint = "";
+    globalThis.window = {
+      location: {
+        host: "play.example.com",
+        protocol: "https:",
+        search: "",
+      },
+    } as unknown as Window & typeof globalThis;
+
+    const session = createGameRoomSession({
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(endpoint: string) {
+            capturedEndpoint = endpoint;
+          }
+
+          public async joinOrCreate() {
+            return {
+              leave: async () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+        },
+      }),
+    });
+
+    await session.connect();
+
+    expect(capturedEndpoint).toBe("wss://play.example.com");
+  });
+
   test("connect failure restores idle state and re-enables retry flow", async () => {
     const connectionStates: string[] = [];
     const session = createGameRoomSession({

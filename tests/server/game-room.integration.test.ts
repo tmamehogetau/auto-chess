@@ -532,6 +532,53 @@ describe("GameRoom integration", () => {
     }
   });
 
+  test("pre-start disconnect reset also clears controller-ready state", async () => {
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer);
+    const remainingClient = clients[1]!;
+    const droppedClient = clients[0]!;
+
+    await moveBossRoleSelectionToSelectionStage(serverRoom, clients);
+
+    droppedClient.connection.close(4_001, "pre-start drop");
+
+    await waitForCondition(() => serverRoom.state.lobbyStage === "preference", 1_000);
+
+    remainingClient.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(serverRoom.state.phase).toBe("Waiting");
+    expect(serverRoom.state.lobbyStage).toBe("preference");
+    expect(serverRoom.state.players.get(remainingClient.sessionId)?.ready).toBe(true);
+    expect(serverRoom.state.selectionDeadlineAtMs).toBe(0);
+  });
+
+  test("boss role handlers reject malformed selection packets without mutating lobby state", async () => {
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer);
+    const bossClient = clients[1]!;
+    const raidClient = clients[0]!;
+
+    await moveBossRoleSelectionToSelectionStage(serverRoom, clients);
+
+    bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, null);
+    expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: false,
+      code: "INVALID_PAYLOAD",
+    });
+
+    raidClient.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, null);
+    expect(await raidClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: false,
+      code: "INVALID_PAYLOAD",
+    });
+
+    const wantsBossBefore = serverRoom.state.players.get(raidClient.sessionId)?.wantsBoss;
+    raidClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, null);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(serverRoom.state.players.get(raidClient.sessionId)?.wantsBoss).toBe(wantsBossBefore);
+  });
+
   test("post-start reconnect keeps resolved role selections in synced room state", async () => {
     const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer);
     const bossClient = clients[1]!;

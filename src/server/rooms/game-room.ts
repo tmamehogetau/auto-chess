@@ -427,9 +427,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       }
     }
 
-    for (const player of this.state.players.values()) {
+    for (const [playerId, player] of this.state.players.entries()) {
       player.ready = false;
       player.lastCmdSeq = 0;
+      this.controller?.setReady(playerId, false);
     }
 
     this.state.phase = "Waiting";
@@ -505,7 +506,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
   }
 
-  private handleBossPreference(client: Client, message: BossPreferenceMessage): void {
+  private handleBossPreference(client: Client, message: BossPreferenceMessage | null | undefined): void {
     if (!this.isBossRoleSelectionEnabled()) {
       return;
     }
@@ -514,6 +515,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       phase: this.state.phase,
       lobbyStage: this.state.lobbyStage,
     })) {
+      return;
+    }
+
+    if (!isRecordMessage(message)) {
       return;
     }
 
@@ -526,8 +531,16 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.broadcastRoundState();
   }
 
-  private async handleBossSelect(client: Client, message: BossSelectMessage): Promise<void> {
+  private async handleBossSelect(client: Client, message: BossSelectMessage | null | undefined): Promise<void> {
     if (!this.controller) {
+      return;
+    }
+
+    if (!isRecordMessage(message) || typeof message.bossId !== "string") {
+      client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
+        accepted: false,
+        code: "INVALID_PAYLOAD",
+      });
       return;
     }
 
@@ -553,8 +566,18 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     await this.tryStartMatch(Date.now());
   }
 
-  private async handleHeroSelect(client: Client, message: { heroId: string }): Promise<void> {
+  private async handleHeroSelect(client: Client, message: { heroId: string } | null | undefined): Promise<void> {
     if (!this.controller) {
+      return;
+    }
+
+    if (!isRecordMessage(message)) {
+      if (this.isBossRoleSelectionEnabled()) {
+        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
+          accepted: false,
+          code: "INVALID_PAYLOAD",
+        });
+      }
       return;
     }
 
@@ -583,7 +606,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       }
     }
 
-    const { heroId } = message;
+    const heroId = message.heroId;
 
     if (!heroId || typeof heroId !== "string") {
       if (this.isBossRoleSelectionEnabled()) {
@@ -1032,4 +1055,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     this.controller.setPendingPhaseDamageForTest(damageValue);
   }
+}
+
+function isRecordMessage(message: unknown): message is Record<string, unknown> {
+  return message !== null && typeof message === "object";
 }

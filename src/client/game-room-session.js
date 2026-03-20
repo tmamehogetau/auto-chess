@@ -21,7 +21,7 @@ export const SERVER_MESSAGE_TYPES = {
 export function createGameRoomSession(options = {}) {
   const endpoint = typeof options.endpoint === "string" && options.endpoint.length > 0
     ? options.endpoint
-    : getSearchParam("endpoint") ?? DEFAULT_ENDPOINT;
+    : getSearchParam("endpoint") ?? resolveDefaultEndpoint();
   const roomName = typeof options.roomName === "string" && options.roomName.length > 0
     ? options.roomName
     : getSearchParam("roomName") ?? DEFAULT_ROOM_NAME;
@@ -180,4 +180,20 @@ function getSearchParam(key) {
   }
 
   return new URLSearchParams(window.location.search).get(key);
+}
+
+function resolveDefaultEndpoint() {
+  if (typeof window === "undefined") {
+    return DEFAULT_ENDPOINT;
+  }
+
+  const host = typeof window.location?.host === "string"
+    ? window.location.host.trim()
+    : "";
+  if (host.length === 0) {
+    return DEFAULT_ENDPOINT;
+  }
+
+  const protocol = window.location?.protocol === "https:" ? "wss://" : "ws://";
+  return `${protocol}${host}`;
 }

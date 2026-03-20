@@ -268,7 +268,7 @@ function resolvePlayerPhaseView(state) {
     return "prep";
   }
 
-  if (phase === "Battle" || phase === "Settle" || phase === "End") {
+  if (phase === "Battle" || phase === "Settle" || phase === "Elimination" || phase === "End") {
     return "result";
   }
 

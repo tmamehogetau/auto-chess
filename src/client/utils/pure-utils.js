@@ -169,11 +169,6 @@ export function mapGet(mapLike, key) {
     return mapLike.$items[key];
   }
 
-  // 通常のMapの場合
-  if (mapLike instanceof Map) {
-    return mapLike.get(key);
-  }
-
   // 通常のオブジェクトの場合
   if (typeof mapLike === "object") {
     return mapLike[key];

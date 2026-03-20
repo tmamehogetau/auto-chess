@@ -5,9 +5,23 @@ import { describe, expect, test } from "vitest";
 
 const playerHtmlPath = resolve(process.cwd(), "src/client/player.html");
 
+function extractPhaseSection(html: string, phaseName: string): string {
+  const match = html.match(
+    new RegExp(`<section[^>]*data-player-phase="${phaseName}"[^>]*>[\\s\\S]*?<\\/section>`),
+  );
+
+  if (!match?.[0]) {
+    throw new Error(`Missing phase section: ${phaseName}`);
+  }
+
+  return match[0];
+}
+
 describe("player.html contract", () => {
   test("phase-driven player shell を持ち operator-only controls を含まない", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
+    const lobbySection = extractPhaseSection(html, "lobby");
+    const selectionSection = extractPhaseSection(html, "selection");
 
     const requiredAttributes = [
       "data-player-shell",
@@ -42,12 +56,9 @@ describe("player.html contract", () => {
       expect(html.includes(attribute)).toBe(true);
     }
 
-    expect(html).toMatch(
-      /data-player-phase="lobby"[\s\S]*data-player-boss-pref-on[\s\S]*data-player-ready-button/,
-    );
-    expect(html).not.toMatch(
-      /data-player-phase="selection"[\s\S]*data-player-boss-pref-on/,
-    );
+    expect(lobbySection.includes("data-player-boss-pref-on")).toBe(true);
+    expect(lobbySection.includes("data-player-ready-button")).toBe(true);
+    expect(selectionSection.includes("data-player-boss-pref-on")).toBe(false);
 
     const operatorOnlyAttributes = [
       "data-endpoint-input",
@@ -72,10 +83,35 @@ describe("player.html contract", () => {
 
   test("initial load では lobby 以外の phase を hidden にしておく", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
+    const lobbySection = extractPhaseSection(html, "lobby");
+    const selectionSection = extractPhaseSection(html, "selection");
+    const prepSection = extractPhaseSection(html, "prep");
+    const resultSection = extractPhaseSection(html, "result");
 
-    expect(html).toMatch(/data-player-phase="lobby"(?![^>]*hidden)/);
-    expect(html).toMatch(/data-player-phase="selection"[^>]*hidden/);
-    expect(html).toMatch(/data-player-phase="prep"[^>]*hidden/);
-    expect(html).toMatch(/data-player-phase="result"[^>]*hidden/);
+    expect(lobbySection).not.toMatch(/data-player-phase="lobby"[^>]*hidden/);
+    expect(selectionSection).toMatch(/data-player-phase="selection"[^>]*hidden/);
+    expect(prepSection).toMatch(/data-player-phase="prep"[^>]*hidden/);
+    expect(resultSection).toMatch(/data-player-phase="result"[^>]*hidden/);
+  });
+
+  test("player prep shell も shared-board help と status legend を持つ", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    const requiredAttributes = [
+      "data-shared-board-help",
+      "data-shared-board-placement-guide",
+      "data-shared-board-status-legend",
+      "data-shared-board-own-status",
+      "data-shared-board-ally-status",
+      "data-shared-board-open-status",
+      "data-shared-board-blocked-status",
+      'aria-label="Board cell 0"',
+      'aria-label="Shop slot 0"',
+      'aria-label="Bench slot 0"',
+    ];
+
+    for (const attribute of requiredAttributes) {
+      expect(html.includes(attribute)).toBe(true);
+    }
   });
 });

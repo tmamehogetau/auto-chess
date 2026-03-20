@@ -366,7 +366,11 @@ describe("GameRoom integration", () => {
     raidClientB.send("HERO_SELECT", { heroId: "marisa" });
     raidClientC.send("HERO_SELECT", { heroId: "okina" });
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCondition(() => (
+      serverRoom.state.players.get(raidClientA.sessionId)?.selectedHeroId === "reimu"
+      && serverRoom.state.players.get(raidClientB.sessionId)?.selectedHeroId === "marisa"
+      && serverRoom.state.players.get(raidClientC.sessionId)?.selectedHeroId === "okina"
+    ), 500);
     expect(serverRoom.state.phase).toBe("Waiting");
 
     bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });

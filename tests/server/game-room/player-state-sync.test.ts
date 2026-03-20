@@ -787,6 +787,47 @@ describe("player-state-sync", () => {
       // But bossShopOffers should be cleared when not provided (default behavior)
       expect(playerState.bossShopOffers.length).toBe(0);
     });
+
+    it("should preserve feature fields when controller status omits them", () => {
+      playerState.wantsBoss = true;
+      playerState.selectedBossId = "remilia";
+      playerState.role = "boss";
+      playerState.selectedHeroId = "existing-hero";
+      playerState.isRumorEligible = true;
+
+      const controllerStatus = {
+        hp: 90,
+        remainingLives: 1,
+        eliminated: false,
+        boardUnitCount: 2,
+        gold: 12,
+        xp: 3,
+        level: 2,
+        shopOffers: [],
+        shopLocked: false,
+        benchUnits: [],
+        boardUnits: [],
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        itemInventory: [],
+        itemShopOffers: [],
+        bossShopOffers: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        wantsBoss: undefined,
+        selectedBossId: undefined,
+        role: undefined,
+        selectedHeroId: undefined,
+        isRumorEligible: undefined,
+      } as unknown as ControllerPlayerStatus;
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.wantsBoss).toBe(true);
+      expect(playerState.selectedBossId).toBe("remilia");
+      expect(playerState.role).toBe("boss");
+      expect(playerState.selectedHeroId).toBe("existing-hero");
+      expect(playerState.isRumorEligible).toBe(true);
+    });
   });
 
   describe("disabled feature fields backward compatibility", () => {

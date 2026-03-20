@@ -65,6 +65,10 @@ describe("GameRoom Integration with Feature Flags", () => {
     const raidClientC = clients[3]!;
 
     bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+    await waitForCondition(
+      () => serverRoom.state.players.get(bossClient.sessionId)?.wantsBoss === true,
+      timeoutMs,
+    );
 
     for (const client of clients) {
       client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });

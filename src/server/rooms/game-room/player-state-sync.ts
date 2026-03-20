@@ -63,11 +63,21 @@ export function syncPlayerStateFromController(
   playerState.ownedAssassin = controllerStatus.ownedUnits.assassin;
 
   // Feature-flagged fields (backward compatible with empty defaults)
-  playerState.wantsBoss = controllerStatus.wantsBoss;
-  playerState.selectedBossId = controllerStatus.selectedBossId;
-  playerState.role = controllerStatus.role;
-  playerState.selectedHeroId = controllerStatus.selectedHeroId;
-  playerState.isRumorEligible = controllerStatus.isRumorEligible;
+  if (controllerStatus.wantsBoss !== undefined) {
+    playerState.wantsBoss = controllerStatus.wantsBoss;
+  }
+  if (controllerStatus.selectedBossId !== undefined) {
+    playerState.selectedBossId = controllerStatus.selectedBossId;
+  }
+  if (controllerStatus.role !== undefined) {
+    playerState.role = controllerStatus.role;
+  }
+  if (controllerStatus.selectedHeroId !== undefined) {
+    playerState.selectedHeroId = controllerStatus.selectedHeroId;
+  }
+  if (controllerStatus.isRumorEligible !== undefined) {
+    playerState.isRumorEligible = controllerStatus.isRumorEligible;
+  }
 
   // Shop offers - clear and repopulate
   clearArraySchema(playerState.shopOffers);

@@ -58,6 +58,7 @@ let latestPhaseHpProgress = null;
 let selectedHeroId = null;
 let selectedBossId = "remilia";
 let selectedBenchIndex = null;
+let cmdSeqCounter = 0;
 
 const HERO_OPTIONS = [
   { id: "reimu", name: "霊夢", role: "balance" },
@@ -334,7 +335,7 @@ function handlePlayerShopBuy(slotIndex) {
   }
 
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-    cmdSeq: Date.now(),
+    cmdSeq: nextCmdSeq(),
     shopBuySlotIndex: slotIndex,
   });
 }
@@ -383,7 +384,7 @@ function handlePlayerSharedCellClick(cellIndex) {
   }
 
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-    cmdSeq: Date.now(),
+    cmdSeq: nextCmdSeq(),
     benchToBoardCell: {
       benchIndex: selectedBenchIndex,
       cell: combatCell,
@@ -433,6 +434,11 @@ function resolvePhaseHpProgress(message) {
     completionRate: Number.isFinite(completionRate) ? Math.max(0, completionRate) : 0,
     result: rawResult === "success" || rawResult === "failed" ? rawResult : "pending",
   };
+}
+
+function nextCmdSeq() {
+  cmdSeqCounter += 1;
+  return cmdSeqCounter;
 }
 
 function renderRoleSelectionActions(state, player) {

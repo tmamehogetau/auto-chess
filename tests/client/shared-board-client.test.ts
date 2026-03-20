@@ -588,6 +588,71 @@ describe("shared-board client", () => {
     expect(nameplate?.textContent).toBe("古明地こいし");
   });
 
+  test("shared board does not apply Touhou portrait metadata when roster is disabled", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isTouhouRosterEnabled: () => false,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: {
+          unitId: "koishi-player-1-4",
+          ownerId: "player-1",
+          displayName: "古明地こいし",
+          portraitKey: "Koishi",
+        },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const unit = gridElement.children[7]?.children[0];
+    expect(unit?.className).toContain("shared-board-unit");
+
+    const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };
+    expect(portrait?.src).not.toBe("/pics/Koishi.png");
+    expect(portrait?.alt).not.toBe("古明地こいし");
+
+    const nameplate = unit?.children[2];
+    expect(nameplate?.textContent).not.toBe("古明地こいし");
+  });
+
   test("shared board dragover marks valid and invalid drop zones", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
@@ -733,7 +798,7 @@ describe("shared-board client", () => {
 
     expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
     expect(messages).toEqual([{
-      message: "That lane is blocked. Pick an open cell or one of your own occupied cells.",
+      message: "That lane is blocked. Pick an open cell.",
       type: "error",
     }]);
     expect(invalidTargetCell?.dataset.dropInvalid).toBeUndefined();

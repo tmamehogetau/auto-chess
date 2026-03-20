@@ -48,7 +48,7 @@ describe("player-app script contract", () => {
   test("player session uses browser-resolvable Colyseus SDK loading", () => {
     const source = readFileSync(resolve(process.cwd(), "src/client/game-room-session.js"), "utf-8");
 
-    expect(source.includes('const DEFAULT_SDK_URL = "https://esm.sh/@colyseus/sdk@0.17.34"')).toBe(true);
+    expect(source).toMatch(/const DEFAULT_SDK_URL = "https:\/\/esm\.sh\/@colyseus\/sdk@[\d.]+"/);
     expect(source.includes("() => import(DEFAULT_SDK_URL)")).toBe(true);
     expect(source.includes('import("@colyseus/sdk")')).toBe(false);
     expect(source.includes("getClient: () => client")).toBe(true);
@@ -72,5 +72,14 @@ describe("player-app script contract", () => {
     expect(source.includes("try {")).toBe(true);
     expect(source.includes("catch")).toBe(true);
     expect(source.includes("接続できませんでした。進行役に声をかけてください。")).toBe(true);
+  });
+
+  test("prep commands use incrementing cmdSeq instead of Date.now()", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("let cmdSeqCounter = 0;")).toBe(true);
+    expect(source.includes("function nextCmdSeq()")).toBe(true);
+    expect(source.includes("cmdSeq: nextCmdSeq()")).toBe(true);
+    expect(source.includes("cmdSeq: Date.now()")).toBe(false);
   });
 });

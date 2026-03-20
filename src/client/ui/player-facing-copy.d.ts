@@ -46,9 +46,9 @@ export type LobbyRoleCopyInput = {
 
 export type FinalJudgmentInput = {
   phase?: string;
-  ranking?: unknown[];
+  ranking?: string[] | Iterable<string>;
   bossPlayerId?: string;
-  raidPlayerIds?: unknown[];
+  raidPlayerIds?: string[] | Iterable<string>;
   roundIndex?: number;
 };
 

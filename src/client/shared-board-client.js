@@ -130,7 +130,7 @@ export async function connectSharedBoard(client) {
           "info",
         );
         deps.showMessage(
-          `Shared board ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}. Try an open cell or one of your own occupied cells.`,
+          `Shared board ${message.action ?? "action"} rejected: ${message.code ?? "UNKNOWN"}. Try an open cell.`,
           "error",
         );
       }
@@ -314,6 +314,11 @@ function renderSharedBoard(state) {
     cellElement.className = "shared-board-cell";
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
+    if (typeof cellElement.setAttribute === "function") {
+      cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell));
+    } else {
+      cellElement.ariaLabel = buildSharedBoardCellAriaLabel(i, cell);
+    }
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
     if (canDropSelectedUnit) {
       cellElement.classList.add("drop-target");
@@ -329,7 +334,7 @@ function renderSharedBoard(state) {
     cellElement.ondrop = (event) => {
       event.preventDefault();
       if (!isValidSharedDropTarget(state, i)) {
-        deps.showMessage("That lane is blocked. Pick an open cell or one of your own occupied cells.", "error");
+        deps.showMessage("That lane is blocked. Pick an open cell.", "error");
         clearSharedDropIndicators(cellElement);
         return;
       }
@@ -655,7 +660,7 @@ export function handleSharedCellClick(state, cellIndex) {
       selectedSharedUnitId = null;
       renderSharedBoardState(currentSharedBoardState);
     } else {
-      deps.showMessage("That lane is occupied by another player. Pick an open cell or one of your own occupied cells.", "error");
+      deps.showMessage("That lane is occupied by another player. Pick an open cell.", "error");
     }
   }
 }
@@ -666,4 +671,18 @@ function getOwnSharedBoardOwnerId() {
   }
 
   return sharedBoardRoom?.sessionId ?? "";
+}
+
+function buildSharedBoardCellAriaLabel(cellIndex, cell) {
+  const unitName = typeof cell?.displayName === "string" && cell.displayName.length > 0
+    ? cell.displayName
+    : typeof cell?.unitId === "string" && cell.unitId.length > 0
+      ? shortPlayerId(cell.unitId)
+      : null;
+
+  if (unitName) {
+    return `Board cell ${cellIndex}, contains ${unitName}`;
+  }
+
+  return `Board cell ${cellIndex}`;
 }

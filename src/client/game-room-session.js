@@ -109,9 +109,12 @@ export function createGameRoomSession(options = {}) {
     client = null;
     connectionState = "disconnecting";
     notifyConnection();
-    await roomToLeave.leave(consented);
-    connectionState = "idle";
-    notifyConnection();
+    try {
+      await roomToLeave.leave(consented);
+    } finally {
+      connectionState = "idle";
+      notifyConnection();
+    }
   }
 
   function onStateChange(listener) {

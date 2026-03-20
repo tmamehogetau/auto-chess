@@ -30,6 +30,6 @@ describe("phase hp ui contract", () => {
     expect(html.includes("data-phase-hp-value")).toBe(true);
     expect(html.includes("Boss Phase HP")).toBe(true);
     expect(html.includes("Boss phase HP appears here when battle starts. Drop it to 0 to clear the phase.")).toBe(true);
-    expect(html).toMatch(/\.phase-hp-section \{\r?\n        display: block;/);
+    expect(html).toMatch(/\.phase-hp-section\s*\{\s*display:\s*block;/);
   });
 });

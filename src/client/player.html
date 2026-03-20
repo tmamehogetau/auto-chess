@@ -346,32 +346,39 @@
           <div class="player-prep-grid" data-player-prep-surface>
             <div class="player-card player-board" data-player-shared-board-grid>
               <strong>Shared Board</strong>
-              <div data-player-board-copy>shared-board をここへ mount する。</div>
+              <div data-shared-board-help>Boss は上段、raid は下段を守ります。open lane を選んで配置してください。</div>
+              <div data-player-board-copy data-shared-board-placement-guide>shared-board をここへ mount する。</div>
+              <div class="player-cursor-list" data-shared-board-status-legend>
+                <span data-shared-board-own-status>Your unit</span>
+                <span data-shared-board-ally-status>Ally unit</span>
+                <span data-shared-board-open-status>Open lane</span>
+                <span data-shared-board-blocked-status>Blocked lane</span>
+              </div>
               <div class="shared-board-grid" data-player-board-cells>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="0">0</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="1">1</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="2">2</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="3">3</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="4">4</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="5">5</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="6">6</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="7">7</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="8">8</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="9">9</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="10">10</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="11">11</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="12">12</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="13">13</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="14">14</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="15">15</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="16">16</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="17">17</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="18">18</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="19">19</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="20">20</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="21">21</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="22">22</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="23">23</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="0" aria-label="Board cell 0">0</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="1" aria-label="Board cell 1">1</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="2" aria-label="Board cell 2">2</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="3" aria-label="Board cell 3">3</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="4" aria-label="Board cell 4">4</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="5" aria-label="Board cell 5">5</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="6" aria-label="Board cell 6">6</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="7" aria-label="Board cell 7">7</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="8" aria-label="Board cell 8">8</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="9" aria-label="Board cell 9">9</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="10" aria-label="Board cell 10">10</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="11" aria-label="Board cell 11">11</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="12" aria-label="Board cell 12">12</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="13" aria-label="Board cell 13">13</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="14" aria-label="Board cell 14">14</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="15" aria-label="Board cell 15">15</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="16" aria-label="Board cell 16">16</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="17" aria-label="Board cell 17">17</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="18" aria-label="Board cell 18">18</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="19" aria-label="Board cell 19">19</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="20" aria-label="Board cell 20">20</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="21" aria-label="Board cell 21">21</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="22" aria-label="Board cell 22">22</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="23" aria-label="Board cell 23">23</button>
               </div>
               <div class="player-cursor-list" data-player-shared-cursor-list>Board presence をここに出す。</div>
             </div>
@@ -380,26 +387,26 @@
                 <strong>Shop</strong>
                 <div data-player-shop-copy>ユニット購入 UI をここへ mount する。</div>
                 <div class="player-mini-grid" data-player-shop-grid>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="0">0</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="1">1</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="2">2</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="3">3</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="4">4</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="0" aria-label="Shop slot 0">0</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="1" aria-label="Shop slot 1">1</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="2" aria-label="Shop slot 2">2</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="3" aria-label="Shop slot 3">3</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="4" aria-label="Shop slot 4">4</button>
                 </div>
               </div>
               <div class="player-card" data-player-bench>
                 <strong>Bench</strong>
                 <div data-player-bench-copy>bench UI をここへ mount する。</div>
                 <div class="player-mini-grid" data-player-bench-grid>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="0">0</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="1">1</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="2">2</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="3">3</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="4">4</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="5">5</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="6">6</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="7">7</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="8">8</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="0" aria-label="Bench slot 0">0</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="1" aria-label="Bench slot 1">1</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="2" aria-label="Bench slot 2">2</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="3" aria-label="Bench slot 3">3</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="4" aria-label="Bench slot 4">4</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="5" aria-label="Bench slot 5">5</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="6" aria-label="Bench slot 6">6</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="7" aria-label="Bench slot 7">7</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="8" aria-label="Bench slot 8">8</button>
                 </div>
               </div>
             </div>

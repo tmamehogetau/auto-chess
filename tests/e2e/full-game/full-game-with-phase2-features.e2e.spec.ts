@@ -88,6 +88,10 @@ describe("E2E: Full Game with Phase 2 Features", () => {
       const raidClientC = clients[3]!;
 
       bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+      await waitForCondition(
+        () => gameRoom.state.players.get(bossClient.sessionId)?.wantsBoss === true,
+        5_000,
+      );
 
       for (const client of clients) {
         client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });

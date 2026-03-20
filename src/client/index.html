@@ -1986,6 +1986,21 @@
         display: flex;
       }
 
+      .boss-selection-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.88);
+        z-index: 1310;
+        padding: 20px;
+      }
+
+      .boss-selection-overlay.visible {
+        display: flex;
+      }
+
       .hero-selection-card {
         width: min(500px, 100%);
         background:
@@ -1995,6 +2010,106 @@
         border-radius: 16px;
         padding: 20px;
         box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+      }
+
+      .boss-selection-card {
+        width: min(420px, 100%);
+        background:
+          radial-gradient(circle at top, rgba(168, 54, 78, 0.2), transparent 54%),
+          linear-gradient(180deg, rgba(37, 10, 24, 0.98), rgba(20, 8, 19, 0.98));
+        border: 2px solid rgba(245, 193, 108, 0.32);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+        text-align: center;
+      }
+
+      .boss-selection-portrait {
+        width: 128px;
+        height: 128px;
+        object-fit: cover;
+        border-radius: 18px;
+        border: 2px solid rgba(255, 215, 0, 0.35);
+        background: rgba(255, 255, 255, 0.04);
+        margin-bottom: 14px;
+      }
+
+      .boss-selection-name {
+        font-size: 22px;
+        font-weight: 800;
+        color: #fff1c7;
+        margin-bottom: 8px;
+        letter-spacing: 0.04em;
+      }
+
+      .boss-selection-role-copy {
+        font-size: 13px;
+        color: #d5c5cf;
+        margin-bottom: 18px;
+      }
+
+      .boss-confirm-btn {
+        width: 100%;
+        border: none;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #1a1116;
+        background: linear-gradient(135deg, #f6d27a, #c75d5d);
+        cursor: pointer;
+      }
+
+      .boss-lobby-panel {
+        display: none;
+        margin: 14px 0 8px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(245, 193, 108, 0.18);
+        background:
+          linear-gradient(180deg, rgba(44, 17, 29, 0.94), rgba(20, 11, 25, 0.96));
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+      }
+
+      .boss-lobby-panel.visible {
+        display: block;
+      }
+
+      .boss-role-copy {
+        font-size: 12px;
+        color: #d8ced4;
+        margin-bottom: 10px;
+      }
+
+      .boss-preference-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .boss-preference-toggle {
+        border: 1px solid rgba(245, 193, 108, 0.28);
+        border-radius: 999px;
+        padding: 9px 16px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #fff1c7;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .boss-preference-summary {
+        font-size: 12px;
+        color: #f7d78b;
+      }
+
+      .boss-preference-list {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #b8bac7;
       }
 
       .hero-selection-kicker {
@@ -2377,6 +2492,15 @@
 
       <div class="entry-flow-status" data-entry-flow-status>Step 1: Connect. Then choose a hero, buy units, place them, and press Ready.</div>
 
+      <div class="boss-lobby-panel" data-boss-lobby-panel>
+        <div class="boss-role-copy" data-boss-role-copy>ボス希望を出して Ready</div>
+        <div class="boss-preference-actions">
+          <button class="boss-preference-toggle" data-boss-preference-toggle type="button">Boss希望: OFF</button>
+          <div class="boss-preference-summary" data-boss-preference-summary>Boss希望者: 0</div>
+        </div>
+        <div class="boss-preference-list" data-boss-preference-list>まだ誰も希望していません</div>
+      </div>
+
       <!-- Ready Button -->
       <div class="ready-section">
         <button class="ready-btn not-ready" data-ready-btn disabled>
@@ -2679,6 +2803,16 @@
         <div class="hero-selection-subtitle">Choose a hero to lead your army. Heroes are always present on the battlefield.</div>
         <div class="hero-grid" data-hero-grid></div>
         <button class="hero-confirm-btn" data-hero-confirm-btn type="button" disabled>Confirm Hero Selection</button>
+      </div>
+    </div>
+
+    <div class="boss-selection-overlay" data-boss-selection-overlay hidden>
+      <div class="boss-selection-card" data-boss-selection-card>
+        <div class="hero-selection-kicker">Boss Raid</div>
+        <img class="boss-selection-portrait" data-boss-selection-portrait alt="Boss portrait" />
+        <div class="boss-selection-name" data-boss-selection-name>レミリア</div>
+        <div class="boss-selection-role-copy" data-boss-selection-role-copy>紅魔館の主</div>
+        <button class="boss-confirm-btn" data-boss-confirm-btn type="button">Confirm Boss</button>
       </div>
     </div>
 

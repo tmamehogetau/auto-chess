@@ -32,6 +32,10 @@ describe("index.html contract", () => {
       "data-phase-hp-help",
       "data-ready-btn",
       "data-ready-hint",
+      "data-boss-preference-toggle",
+      "data-boss-preference-summary",
+      "data-boss-preference-list",
+      "data-boss-role-copy",
       "data-shared-board-section",
       "data-shared-board-grid",
       "data-shared-board-help",
@@ -70,6 +74,12 @@ describe("index.html contract", () => {
       "data-battle-result-hint",
       "data-battle-start-kicker",
       "data-hero-selection-kicker",
+      "data-boss-selection-overlay",
+      "data-boss-selection-card",
+      "data-boss-selection-portrait",
+      "data-boss-selection-name",
+      "data-boss-selection-role-copy",
+      "data-boss-confirm-btn",
       "data-set-id-display",
     ];
 

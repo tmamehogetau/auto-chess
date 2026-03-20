@@ -20,6 +20,7 @@ import {
   buildCommandResultCopy,
   buildEntryFlowStatus,
   buildFinalJudgmentCopy,
+  buildLobbyRoleCopy,
   buildPhaseHpCopy,
   buildReadyHint,
   buildRoundSummaryCaption,
@@ -59,6 +60,8 @@ const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
   PREP_COMMAND: "prep_command",
   ADMIN_QUERY: "admin_query",
+  BOSS_PREFERENCE: "boss_preference",
+  BOSS_SELECT: "boss_select",
 };
 
 const SERVER_MESSAGE_TYPES = {
@@ -158,6 +161,15 @@ const HERO_ROLE_ICONS = {
   balance: "⚖️",
   economy: "💰",
 };
+
+const BOSS_CHARACTERS = [
+  {
+    id: "remilia",
+    name: "レミリア",
+    roleCopy: "紅魔館の主",
+    portraitSrc: "/pics/Remilia.png",
+  },
+];
 
 // Spell cards (client-side copy)
 const SPELL_CARDS = [
@@ -259,6 +271,11 @@ const combatLogContainer = document.querySelector("[data-combat-log]");
 const sharedBoardGrid = document.querySelector("[data-shared-board-grid]");
 const sharedCursorList = document.querySelector("[data-shared-cursor-list]");
 const sharedBoardPlacementGuide = document.querySelector("[data-shared-board-placement-guide]");
+const bossLobbyPanel = document.querySelector("[data-boss-lobby-panel]");
+const bossPreferenceToggle = document.querySelector("[data-boss-preference-toggle]");
+const bossPreferenceSummary = document.querySelector("[data-boss-preference-summary]");
+const bossPreferenceList = document.querySelector("[data-boss-preference-list]");
+const bossRoleCopy = document.querySelector("[data-boss-role-copy]");
 const phaseTransitionOverlay = document.querySelector("[data-phase-transition-overlay]");
 const roundSummaryOverlay = document.querySelector("[data-round-summary-overlay]");
 const roundSummaryRound = document.querySelector("[data-round-summary-round]");
@@ -296,6 +313,11 @@ const monitorLogList = document.querySelector("[data-monitor-log]");
 const heroSelectionOverlay = document.querySelector("[data-hero-selection-overlay]");
 const heroGrid = document.querySelector("[data-hero-grid]");
 const heroConfirmBtn = document.querySelector("[data-hero-confirm-btn]");
+const bossSelectionOverlay = document.querySelector("[data-boss-selection-overlay]");
+const bossSelectionPortrait = document.querySelector("[data-boss-selection-portrait]");
+const bossSelectionName = document.querySelector("[data-boss-selection-name]");
+const bossSelectionRoleCopy = document.querySelector("[data-boss-selection-role-copy]");
+const bossConfirmBtn = document.querySelector("[data-boss-confirm-btn]");
 
 const heroSection = document.querySelector("[data-hero-section]");
 const heroDisplay = document.querySelector("[data-hero-display]");
@@ -340,6 +362,8 @@ const DEFEATED_UNITS = new Set(); // Track units currently being animated as def
 // Hero selection state
 let selectedHeroId = null;
 let heroSelectionConfirmed = false;
+let selectedBossId = null;
+let bossSelectionConfirmed = false;
 
 // Selection state
 let selectedBenchIndex = null;
@@ -417,6 +441,14 @@ initSharedBoardClient(
 // Hero selection event listeners
 heroConfirmBtn?.addEventListener("click", () => {
   confirmHeroSelection();
+});
+
+bossPreferenceToggle?.addEventListener("click", () => {
+  toggleBossPreference();
+});
+
+bossConfirmBtn?.addEventListener("click", () => {
+  confirmBossSelection();
 });
 
 syncButtonAvailability();
@@ -561,6 +593,10 @@ async function connect() {
     hideRoundSummary();
     lastShownBattleRound = -1;
     hideBattleResult();
+    hideHeroSelection();
+    hideBossSelection();
+    heroSelectionConfirmed = false;
+    bossSelectionConfirmed = false;
 
     // Reset unit death animation tracking
     previousBoardUnits.clear();
@@ -630,6 +666,8 @@ async function connect() {
       hideRoundSummary();
       lastShownBattleRound = -1;
       hideBattleResult();
+      hideHeroSelection();
+      hideBossSelection();
       resetShadowDiffMonitor();
       // Reset unit death animation tracking
       previousBoardUnits.clear();
@@ -681,6 +719,8 @@ async function leave() {
   hideRoundSummary();
   lastShownBattleRound = -1;
   hideBattleResult();
+  hideHeroSelection();
+  hideBossSelection();
   resetShadowDiffMonitor();
   // Reset unit death animation tracking
   previousBoardUnits.clear();
@@ -763,6 +803,30 @@ function sendReady() {
     readyBtn?.classList.add("not-ready");
     readyBtn.textContent = "Ready";
   }
+}
+
+function sendBossPreference(wantsBoss) {
+  if (!activeRoom) {
+    showMessage("Connect first. Then choose whether you want the boss role.", "error");
+    return;
+  }
+
+  activeRoom.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss });
+}
+
+function sendBossSelect(bossId) {
+  if (!activeRoom) {
+    showMessage("Connect first. Then confirm your boss character.", "error");
+    return;
+  }
+
+  activeRoom.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId });
+}
+
+function toggleBossPreference() {
+  const wantsBoss = currentPlayerState?.wantsBoss === true;
+  sendBossPreference(!wantsBoss);
+  playUiCue("confirm");
 }
 
 function sendPrepCommand(payload) {
@@ -1033,6 +1097,8 @@ function updateGameUI(state) {
 
   const player = state.players?.get?.(sessionId);
   if (!player) return;
+  const bossRoleSelectionEnabled = isBossRoleSelectionEnabled(state);
+  const isBossPlayer = bossRoleSelectionEnabled && state.bossPlayerId === sessionId;
 
   currentPlayerState = player;
   const previousGold = currentGold;
@@ -1121,6 +1187,7 @@ function updateGameUI(state) {
     });
   }
   updateEntryFlowStatus(state, player);
+  renderBossRoleSelectionState(state, player);
 
   // Update unit shop
   updateUnitShop(player.shopOffers);
@@ -1180,10 +1247,37 @@ function updateGameUI(state) {
   // Update next command sequence
   if (typeof player.lastCmdSeq === "number") {
 
-  // Show hero selection dialog in Waiting phase if hero system enabled and not selected yet
-  if (state.featureFlagsEnableHeroSystem && state.phase === "Waiting" && !player.selectedHeroId && !heroSelectionConfirmed) {
+  if (state.phase === "Waiting" && state.lobbyStage === "preference") {
+    heroSelectionConfirmed = false;
+    bossSelectionConfirmed = false;
+  }
+
+  if (bossRoleSelectionEnabled && state.phase === "Waiting" && state.lobbyStage === "selection") {
+    if (isBossPlayer) {
+      if (!player.selectedBossId && !bossSelectionConfirmed) {
+        showBossSelection();
+      } else {
+        hideBossSelection();
+      }
+      hideHeroSelection();
+    } else if (player.role === "raid" && !player.selectedHeroId && !heroSelectionConfirmed) {
+      hideBossSelection();
+      showHeroSelection();
+    } else {
+      hideBossSelection();
+      hideHeroSelection();
+    }
+  } else if (
+    state.featureFlagsEnableHeroSystem
+    && state.phase === "Waiting"
+    && !bossRoleSelectionEnabled
+    && !player.selectedHeroId
+    && !heroSelectionConfirmed
+  ) {
+    hideBossSelection();
     showHeroSelection();
-  } else if (state.phase !== "Waiting" || player.selectedHeroId || heroSelectionConfirmed) {
+  } else {
+    hideBossSelection();
     hideHeroSelection();
   }
 
@@ -2051,6 +2145,9 @@ function updateEntryFlowStatus(state, player) {
   const safePhase = readPhase(state?.phase ?? currentPhase);
   const heroEnabled = state?.featureFlagsEnableHeroSystem === true;
   const heroSelected = Boolean(player?.selectedHeroId);
+  const bossRoleSelectionEnabled = isBossRoleSelectionEnabled(state);
+  const bossSelected = Boolean(player?.selectedBossId);
+  const isBossPlayer = bossRoleSelectionEnabled && state?.bossPlayerId === sessionId;
   const isReady = Boolean(player?.ready);
   const connected = Boolean(activeRoom && isRoomConnectionOpen(activeRoom));
   const text = buildEntryFlowStatus({
@@ -2059,6 +2156,10 @@ function updateEntryFlowStatus(state, player) {
     phase: safePhase,
     heroEnabled,
     heroSelected,
+    bossRoleSelectionEnabled,
+    lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference",
+    isBossPlayer,
+    bossSelected,
     isReady,
   });
 
@@ -2068,6 +2169,60 @@ function updateEntryFlowStatus(state, player) {
 
   if (entryFlowStatus) {
     entryFlowStatus.textContent = text;
+  }
+}
+
+function isBossRoleSelectionEnabled(state) {
+  return (
+    state?.featureFlagsEnableBossExclusiveShop === true
+    && state?.featureFlagsEnableHeroSystem === true
+  );
+}
+
+function getBossCharacter(bossId = "remilia") {
+  return BOSS_CHARACTERS.find((boss) => boss.id === bossId) ?? BOSS_CHARACTERS[0];
+}
+
+function renderBossRoleSelectionState(state, player) {
+  const enabled = isBossRoleSelectionEnabled(state);
+  const waitingPhase = state?.phase === "Waiting";
+  const visible = enabled && waitingPhase;
+
+  bossLobbyPanel?.classList.toggle("visible", visible);
+
+  if (!visible) {
+    return;
+  }
+
+  const wantsBossPlayers = mapEntries(state?.players)
+    .filter(([, currentPlayer]) => currentPlayer?.wantsBoss === true)
+    .map(([playerId]) => shortPlayerId(playerId));
+  const wantsBoss = player?.wantsBoss === true;
+  const isBossPlayer = state.bossPlayerId === sessionId;
+  const roleCopyText = buildLobbyRoleCopy({
+    lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference",
+    isBossPlayer,
+    heroSelected: Boolean(player?.selectedHeroId),
+    bossSelected: Boolean(player?.selectedBossId),
+  });
+
+  if (bossPreferenceToggle) {
+    bossPreferenceToggle.textContent = wantsBoss ? "Boss希望: ON" : "Boss希望: OFF";
+    bossPreferenceToggle.disabled = state?.lobbyStage !== "preference";
+  }
+
+  if (bossPreferenceSummary) {
+    bossPreferenceSummary.textContent = `Boss希望者: ${wantsBossPlayers.length}`;
+  }
+
+  if (bossPreferenceList) {
+    bossPreferenceList.textContent = wantsBossPlayers.length > 0
+      ? `希望中: ${wantsBossPlayers.join(", ")}`
+      : "まだ誰も希望していません";
+  }
+
+  if (bossRoleCopy) {
+    bossRoleCopy.textContent = roleCopyText;
   }
 }
 
@@ -2415,6 +2570,31 @@ function hideHeroSelection() {
   heroSelectionOverlay?.classList.remove("visible");
 }
 
+function showBossSelection() {
+  const boss = getBossCharacter(currentPlayerState?.selectedBossId || "remilia");
+
+  selectedBossId = boss.id;
+  bossSelectionOverlay?.removeAttribute("hidden");
+  bossSelectionOverlay?.classList.add("visible");
+
+  if (bossSelectionPortrait) {
+    bossSelectionPortrait.src = boss.portraitSrc;
+  }
+
+  if (bossSelectionName) {
+    bossSelectionName.textContent = boss.name;
+  }
+
+  if (bossSelectionRoleCopy) {
+    bossSelectionRoleCopy.textContent = boss.roleCopy;
+  }
+}
+
+function hideBossSelection() {
+  bossSelectionOverlay?.classList.remove("visible");
+  bossSelectionOverlay?.setAttribute("hidden", "");
+}
+
 function renderHeroGrid() {
   if (!heroGrid) return;
   
@@ -2479,6 +2659,17 @@ function confirmHeroSelection() {
   playUiCue("confirm");
   
   showMessage(`Hero selected: ${HEROES.find(h => h.id === selectedHeroId)?.name || selectedHeroId}`, "success");
+}
+
+function confirmBossSelection() {
+  if (!selectedBossId || !activeRoom) return;
+
+  sendBossSelect(selectedBossId);
+  bossSelectionConfirmed = true;
+  hideBossSelection();
+  playUiCue("confirm");
+
+  showMessage(`Boss selected: ${getBossCharacter(selectedBossId)?.name || selectedBossId}`, "success");
 }
 
 

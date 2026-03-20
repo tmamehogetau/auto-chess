@@ -5,6 +5,7 @@ import {
   buildCommandResultCopy,
   buildEntryFlowStatus,
   buildFinalJudgmentCopy,
+  buildLobbyRoleCopy,
   buildPhaseHpCopy,
   buildReadyHint,
   buildRoundSummaryCaption,
@@ -54,6 +55,33 @@ describe("player-facing copy", () => {
       heroSelected: false,
       isReady: false,
     })).toContain("Press Ready to open the first prep phase");
+  });
+
+  test("lobby role copy は preference で boss 希望を促す", () => {
+    expect(buildLobbyRoleCopy({
+      lobbyStage: "preference",
+      isBossPlayer: false,
+      heroSelected: false,
+      bossSelected: false,
+    })).toBe("ボス希望を出して Ready");
+  });
+
+  test("lobby role copy は boss selection で boss 側の待機文を返す", () => {
+    expect(buildLobbyRoleCopy({
+      lobbyStage: "selection",
+      isBossPlayer: true,
+      heroSelected: false,
+      bossSelected: false,
+    })).toBe("ボスキャラを選んで開始を待つ");
+  });
+
+  test("lobby role copy は raid selection 完了後に待機文を返す", () => {
+    expect(buildLobbyRoleCopy({
+      lobbyStage: "selection",
+      isBossPlayer: false,
+      heroSelected: true,
+      bossSelected: false,
+    })).toBe("他プレイヤーの選択完了待ち");
   });
 
   test("phase hp copy は pending で目標を短文で説明する", () => {

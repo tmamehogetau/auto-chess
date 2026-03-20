@@ -38,8 +38,19 @@ describe("manual-check script contract", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("buildEntryFlowStatus({")).toBe(true);
+    expect(source.includes("buildLobbyRoleCopy({")).toBe(true);
     expect(source.includes("updateEntryFlowStatus(")).toBe(true);
     expect(source.includes("buildCommandResultCopy({ accepted: false, code: result.code, hint })")).toBe(true);
+  });
+
+  test("boss role selection uses explicit preference and selection actions", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
+    expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
+    expect(source.includes("state.bossPlayerId === sessionId")).toBe(true);
+    expect(source.includes("showBossSelection()")).toBe(true);
+    expect(source.includes("hideHeroSelection()")).toBe(true);
   });
 
   test("bench から shared-board へ配置する click 導線を持つ", () => {

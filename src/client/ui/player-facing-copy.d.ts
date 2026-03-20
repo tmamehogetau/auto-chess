@@ -26,7 +26,18 @@ export type EntryFlowStatusInput = {
   phase?: string;
   heroEnabled?: boolean;
   heroSelected?: boolean;
+  bossRoleSelectionEnabled?: boolean;
+  lobbyStage?: string;
+  isBossPlayer?: boolean;
+  bossSelected?: boolean;
   isReady?: boolean;
+};
+
+export type LobbyRoleCopyInput = {
+  lobbyStage?: string;
+  isBossPlayer?: boolean;
+  heroSelected?: boolean;
+  bossSelected?: boolean;
 };
 
 export type FinalJudgmentInput = {
@@ -59,6 +70,7 @@ export type RoundSummaryEntry = {
 
 export function buildReadyHint(input: ReadyHintInput): string;
 export function buildEntryFlowStatus(input: EntryFlowStatusInput): string;
+export function buildLobbyRoleCopy(input: LobbyRoleCopyInput): string;
 export function buildPhaseHpCopy(progress: PhaseHpProgress): PhaseHpCopy;
 export function buildFinalJudgmentCopy(input: FinalJudgmentInput): string;
 export function buildBattleResultCopy(input: {

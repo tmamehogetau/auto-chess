@@ -60,6 +60,10 @@ export function buildEntryFlowStatus({
   heroEnabled,
   heroSelected,
   isReady,
+  bossRoleSelectionEnabled,
+  lobbyStage,
+  isBossPlayer,
+  bossSelected,
 }) {
   if (connecting) {
     return "Opening your raid room. Wait for the board, then follow the next step.";
@@ -67,6 +71,24 @@ export function buildEntryFlowStatus({
 
   if (!connected) {
     return "Step 1: Connect. Then choose a hero, buy units, place them, and press Ready.";
+  }
+
+  if (bossRoleSelectionEnabled && phase === "Waiting") {
+    if (lobbyStage === "preference") {
+      return "Step 2: Choose whether to volunteer as boss, then press Ready.";
+    }
+
+    if (lobbyStage === "selection") {
+      if (isBossPlayer && !bossSelected) {
+        return "Step 3: Confirm your boss character to open the first prep phase.";
+      }
+
+      if (!isBossPlayer && !heroSelected) {
+        return "Step 3: Choose your hero while the boss locks in.";
+      }
+
+      return "Selections are resolving. Wait for the room to open the first prep phase.";
+    }
   }
 
   if (heroEnabled && !heroSelected && (phase === "Waiting" || phase === "Prep")) {
@@ -98,6 +120,23 @@ export function buildEntryFlowStatus({
   }
 
   return "Stay with the flow: Hero, buy, place, Ready, then read the result.";
+}
+
+export function buildLobbyRoleCopy({
+  lobbyStage,
+  isBossPlayer,
+  heroSelected,
+  bossSelected,
+}) {
+  if (lobbyStage === "selection") {
+    if (isBossPlayer) {
+      return bossSelected ? "他プレイヤーの選択完了待ち" : "ボスキャラを選んで開始を待つ";
+    }
+
+    return heroSelected ? "他プレイヤーの選択完了待ち" : "主人公を選んで開始を待つ";
+  }
+
+  return "ボス希望を出して Ready";
 }
 
 export function buildPhaseHpCopy(progress) {

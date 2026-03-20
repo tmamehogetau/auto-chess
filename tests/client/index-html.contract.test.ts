@@ -115,4 +115,12 @@ describe("index.html contract", () => {
     expect(html.includes("Boss Raid")).toBe(true);
     expect(html.includes(".shared-board-section.raid-stage")).toBe(true);
   });
+
+  test("operator shell として tester を player.html へ誘導する", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes("Operator Console")).toBe(true);
+    expect(html.includes("data-operator-guide")).toBe(true);
+    expect(html.includes("./player.html")).toBe(true);
+  });
 });

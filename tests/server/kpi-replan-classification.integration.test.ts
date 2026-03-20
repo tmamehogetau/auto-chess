@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { promisify } from "node:util";
 
 import { ColyseusTestServer } from "@colyseus/testing";
@@ -18,9 +19,27 @@ import {
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const execFileAsync = promisify(execFile);
-const vitestCliPath = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
+const vitestCliPath = resolveVitestCliPath(process.cwd());
 const previousEnableStructuredMatchLogs = process.env.ENABLE_STRUCTURED_MATCH_LOGS;
 const previousSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+
+function resolveVitestCliPath(startDir: string): string {
+  let currentDir = startDir;
+  const { root } = parse(startDir);
+
+  while (true) {
+    const candidate = join(currentDir, "node_modules", "vitest", "vitest.mjs");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    if (currentDir === root) {
+      return join(startDir, "node_modules", "vitest", "vitest.mjs");
+    }
+
+    currentDir = dirname(currentDir);
+  }
+}
 
 async function getAvailablePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -835,6 +854,10 @@ describe("KPI REPLAN classification", () => {
     expect(env.FULL_GAME_SIMULATION_TEST_PORT).not.toBe(env.REALISTIC_KPI_SIMULATION_TEST_PORT);
     expect(env.FULL_GAME_SIMULATION_TEST_PORT).not.toBe("26772");
     expect(env.REALISTIC_KPI_SIMULATION_TEST_PORT).not.toBe("26774");
+  });
+
+  test("vitest CLI path resolves when tests run from a worktree cwd", () => {
+    expect(existsSync(vitestCliPath)).toBe(true);
   });
 
   test("current realistic aggregate keeps clean prep and non-empty composition signal", async () => {

@@ -115,12 +115,13 @@ describe("manual-check script contract", () => {
 
   test("page exit uses synchronous room cleanup instead of awaiting leave()", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
+    const normalizedSource = source.replace(/\r\n/g, "\n");
 
     expect(source.includes("window.addEventListener(\"pagehide\", () => {")).toBe(true);
     expect(source.includes("disconnectRoomsForPageExit();")).toBe(true);
     expect(source.includes("void leave();")).toBe(true);
-    expect(source.includes("window.addEventListener(\"beforeunload\", () => {\n  disconnectRoomsForPageExit();\n});")).toBe(true);
-    expect(source.includes("window.addEventListener(\"pagehide\", () => {\n  disconnectRoomsForPageExit();\n});")).toBe(true);
+    expect(normalizedSource.includes("window.addEventListener(\"beforeunload\", () => {\n  disconnectRoomsForPageExit();\n});")).toBe(true);
+    expect(normalizedSource.includes("window.addEventListener(\"pagehide\", () => {\n  disconnectRoomsForPageExit();\n});")).toBe(true);
   });
 
   test("page exit cleanup leaves active, shared-board, and autofill rooms immediately", () => {

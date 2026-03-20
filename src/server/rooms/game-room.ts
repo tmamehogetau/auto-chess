@@ -214,6 +214,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.lobbyStage = "preference";
     this.state.selectionDeadlineAtMs = 0;
 
+    for (const joinedClient of this.clients) {
+      const player = this.state.players.get(joinedClient.sessionId);
+      if (player?.ready === true) {
+        this.controller.setReady(joinedClient.sessionId, true);
+      }
+    }
+
     // SharedBoardBridge初期化（Feature Flag制御・非同期・fail-open）
     if (this.enableSharedBoardShadow && this.controller) {
       this.sharedBoardBridge = new SharedBoardBridge(
@@ -483,10 +490,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private async handleReady(client: Client, message: ReadyMessage): Promise<void> {
-    if (!this.controller) {
-      return;
-    }
-
     const player = this.state.players.get(client.sessionId);
 
     if (!player) {
@@ -494,14 +497,16 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     const nextReady = message.ready ?? true;
-    this.controller.setReady(client.sessionId, nextReady);
     player.ready = nextReady;
+    this.controller?.setReady(client.sessionId, nextReady);
 
-    await this.tryStartMatch(Date.now());
+    if (this.controller) {
+      await this.tryStartMatch(Date.now());
+    }
   }
 
   private handleBossPreference(client: Client, message: BossPreferenceMessage): void {
-    if (!this.controller || !this.isBossRoleSelectionEnabled()) {
+    if (!this.isBossRoleSelectionEnabled()) {
       return;
     }
 

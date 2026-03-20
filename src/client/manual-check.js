@@ -52,24 +52,13 @@ import {
   handleSharedDrop,
   handleSharedCellClick,
 } from "./shared-board-client.js";
+import {
+  CLIENT_MESSAGE_TYPES,
+  DEFAULT_ROOM_NAME,
+  SERVER_MESSAGE_TYPES,
+} from "./game-room-session.js";
 
 const VALID_SET_IDS = new Set(["set1", "set2"]);
-const DEFAULT_ROOM_NAME = "game";
-
-const CLIENT_MESSAGE_TYPES = {
-  READY: "ready",
-  PREP_COMMAND: "prep_command",
-  ADMIN_QUERY: "admin_query",
-  BOSS_PREFERENCE: "boss_preference",
-  BOSS_SELECT: "boss_select",
-};
-
-const SERVER_MESSAGE_TYPES = {
-  COMMAND_RESULT: "command_result",
-  ROUND_STATE: "round_state",
-  SHADOW_DIFF: "shadow_diff",
-  ADMIN_RESPONSE: "admin_response",
-};
 
 // Unit type icons
 const UNIT_ICONS = {

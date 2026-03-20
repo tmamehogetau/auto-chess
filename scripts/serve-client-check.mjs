@@ -4,7 +4,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
-const defaultEntryPath = "/src/client/index.html";
+const defaultEntryPath = "/src/client/player.html";
 const port = Number.parseInt(process.env.CLIENT_CHECK_PORT ?? "8080", 10);
 
 const contentTypeByExtension = {
@@ -64,9 +64,11 @@ const server = createServer(async (request, response) => {
 
 server.listen(port, () => {
   const baseUrl = `http://localhost:${port}`;
-  const entryUrl = `${baseUrl}${defaultEntryPath}`;
-  const sampleUrl = `${entryUrl}?endpoint=ws://localhost:2567&roomName=game&setId=set2&autoconnect=1`;
+  const playerUrl = `${baseUrl}/src/client/player.html`;
+  const operatorUrl = `${baseUrl}/src/client/index.html`;
+  const sampleUrl = `${operatorUrl}?endpoint=ws://localhost:2567&roomName=game&setId=set2&autoconnect=1`;
 
-  console.log(`[client-check] serving: ${entryUrl}`);
-  console.log(`[client-check] sample : ${sampleUrl}`);
+  console.log(`[client-check] player  : ${playerUrl}`);
+  console.log(`[client-check] operator: ${operatorUrl}`);
+  console.log(`[client-check] sample  : ${sampleUrl}`);
 });

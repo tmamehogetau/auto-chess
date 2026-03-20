@@ -172,12 +172,26 @@ describe("player-facing copy", () => {
     expect(result.hint).toContain("positioning");
   });
 
-  test("command result copy は reject を初見向けに返す", () => {
-    expect(buildCommandResultCopy({
+  test("command result copy は raw reject code を tester に見せない", () => {
+    const copy = buildCommandResultCopy({
       accepted: false,
       code: "INVALID_PLACEMENT",
       hint: "Use an open cell on the board.",
-    })).toContain("That action did not go through");
+    });
+
+    expect(copy).not.toContain("INVALID_PLACEMENT");
+    expect(copy).toContain("ここには置けません");
+  });
+
+  test("command result copy は prep 外の配置 reject を行動ベースで返す", () => {
+    const copy = buildCommandResultCopy({
+      accepted: false,
+      code: "PHASE_LOCKED",
+      hint: "",
+    });
+
+    expect(copy).not.toContain("PHASE_LOCKED");
+    expect(copy).toContain("いまは準備時間ではありません");
   });
 
   test("round summary caption は top damage を短く伝える", () => {

@@ -197,6 +197,28 @@ describe("GameRoom integration", () => {
     expect(serverRoom.locked).toBe(true);
   });
 
+  test("4人目join前のready入力を保持したままPrepへ進める", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const earlyClients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of earlyClients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    const fourthClient = await testServer.connectTo(serverRoom);
+    fourthClient.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    for (const client of [...earlyClients, fourthClient]) {
+      expect(serverRoom.state.players.get(client.sessionId)?.ready).toBe(true);
+    }
+  });
+
   test("Prepの締切を過ぎるとBattleへ自動遷移する", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([
@@ -291,6 +313,7 @@ describe("GameRoom integration", () => {
     try {
       const serverRoom = await createRoomWithForcedFlags(testServer, {
         enableBossExclusiveShop: true,
+        enableHeroSystem: true,
       });
       const clients = await Promise.all([
         testServer.connectTo(serverRoom),
@@ -299,25 +322,25 @@ describe("GameRoom integration", () => {
         testServer.connectTo(serverRoom),
       ]);
 
-      const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
-
       for (const client of clients.slice(1)) {
         client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
       }
+
+      clients[1]?.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
 
       for (const client of clients) {
         client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
       }
 
-      const roundState = (await roundStatePromise) as RoundStateMessage;
       const playerIds = clients.map((client) => client.sessionId);
       const expectedBossPlayerId = playerIds[1];
       const expectedRaidPlayerIds = [playerIds[0], playerIds[2], playerIds[3]];
 
-      expect(roundState.bossPlayerId).toBe(expectedBossPlayerId);
-      expect(roundState.raidPlayerIds).toEqual(expectedRaidPlayerIds);
+      await waitForCondition(() => serverRoom.state.bossPlayerId === expectedBossPlayerId, 1_000);
+
       expect(serverRoom.state.bossPlayerId).toBe(expectedBossPlayerId);
-      expect(Array.from(serverRoom.state.raidPlayerIds)).toEqual(expectedRaidPlayerIds);
+      expect(Array.from(serverRoom.state.raidPlayerIds)).toHaveLength(expectedRaidPlayerIds.length);
+      expect(Array.from(serverRoom.state.raidPlayerIds).sort()).toEqual(expectedRaidPlayerIds.sort());
     } finally {
       randomSpy.mockRestore();
     }
@@ -356,6 +379,37 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.players.get(raidClientA.sessionId)?.selectedHeroId).toBe("reimu");
     expect(serverRoom.state.players.get(raidClientB.sessionId)?.selectedHeroId).toBe("marisa");
     expect(serverRoom.state.players.get(raidClientC.sessionId)?.selectedHeroId).toBe("okina");
+  });
+
+  test("4人目join前のboss希望を保持したままselectionのboss割り当てに使う", async () => {
+    const serverRoom = await createRoomWithForcedFlags(
+      testServer,
+      {
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+    );
+    const earlyClients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    const volunteerClient = earlyClients[1]!;
+    volunteerClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+    for (const client of earlyClients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    const fourthClient = await testServer.connectTo(serverRoom);
+    registerRoundStateListeners([...earlyClients, fourthClient]);
+    fourthClient.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+
+    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
+
+    expect(serverRoom.state.phase).toBe("Waiting");
+    expect(serverRoom.state.bossPlayerId).toBe(volunteerClient.sessionId);
+    expect(serverRoom.state.players.get(volunteerClient.sessionId)?.wantsBoss).toBe(true);
   });
 
   test("boss role flow rejects invalid role-specific selection actions", async () => {

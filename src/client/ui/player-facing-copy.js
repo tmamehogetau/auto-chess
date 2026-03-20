@@ -313,7 +313,27 @@ export function buildCommandResultCopy({ accepted, code, hint }) {
   }
 
   if (accepted === false) {
-    return `That action did not go through: ${code}${hint ? ` - ${hint}` : ""}`;
+    if (code === "INVALID_PLACEMENT" || code === "INVALID_CELL" || code === "CELL_OCCUPIED") {
+      return "ここには置けません";
+    }
+
+    if (code === "PHASE_LOCKED" || code === "NOT_PREP" || code === "PREP_ONLY") {
+      return "いまは準備時間ではありません";
+    }
+
+    if (code === "INSUFFICIENT_GOLD") {
+      return "ゴールドが足りません";
+    }
+
+    if (code === "BENCH_FULL") {
+      return "ベンチがいっぱいです";
+    }
+
+    if (typeof hint === "string" && hint.length > 0) {
+      return "その操作は反映できませんでした。進行役に声をかけてください。";
+    }
+
+    return "その操作は反映できませんでした。";
   }
 
   return "";

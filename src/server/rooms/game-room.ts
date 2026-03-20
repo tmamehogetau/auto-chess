@@ -442,6 +442,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.clearRaidPlayerIds();
     this.state.roundIndex = 0;
     syncRanking(this.state.ranking, []);
+    if (this.controller && this.clients.length >= 2) {
+      this.restartLobbyReadyDeadline(Date.now());
+    } else {
+      this.lobbyReadyDeadlineAtMs = 0;
+    }
     this.broadcastRoundState();
   }
 

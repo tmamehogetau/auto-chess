@@ -2012,6 +2012,32 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.phase).toBe("Waiting");
   });
 
+  test("Waiting中の離脱はlobby ready deadlineを引き直して即時auto-startを防ぐ", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game", {
+      readyAutoStartMs: 120,
+    });
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await waitForCondition(() => serverRoom.state.players.size === 4, 1_000);
+    const initialLobbyDeadline = serverRoom["lobbyReadyDeadlineAtMs"] as number;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    clients[0].connection.close(4000, "refresh");
+
+    await waitForCondition(() => serverRoom.state.players.size === 3, 1_000);
+    expect(serverRoom.state.phase).toBe("Waiting");
+    expect(serverRoom["lobbyReadyDeadlineAtMs"]).toBeGreaterThan(initialLobbyDeadline);
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(serverRoom.state.phase).toBe("Waiting");
+  });
+
   test("shared board shadow無効時のadmin_queryはnot availableを返す", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const client = await testServer.connectTo(serverRoom);

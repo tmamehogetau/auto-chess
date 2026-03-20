@@ -41,6 +41,7 @@ let deps = {
   joinOrCreate: async () => null,
 };
 
+// These keys must stay aligned with deployed `/pics/{Key}.png` assets.
 const PORTRAIT_URL_BY_KEY = {
   Cirno: "/pics/Cirno.png",
   Flandre: "/pics/Flandre.png",
@@ -315,13 +316,8 @@ function renderSharedBoard(state) {
     cellElement.tabIndex = 0;
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
-    if (typeof cellElement.setAttribute === "function") {
-      cellElement.setAttribute("role", "button");
-      cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell));
-    } else {
-      cellElement.role = "button";
-      cellElement.ariaLabel = buildSharedBoardCellAriaLabel(i, cell);
-    }
+    cellElement.setAttribute("role", "button");
+    cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell));
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
     cellElement.onkeydown = (event) => {
       if (event.key === "Enter" || event.key === " ") {

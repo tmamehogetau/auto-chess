@@ -1,12 +1,18 @@
 import { CloseCode, type Client, Room } from "colyseus";
 
 import { MatchRoomController } from "../match-room-controller";
+import { isBossCharacterId } from "../../shared/boss-characters";
 import { resolveCorrelationId } from "./game-room/correlation-id";
 import { syncRanking } from "./game-room/ranking-sync";
 import {
   syncPlayerStateFromController,
   syncPlayerStateFromCommandResult,
 } from "./game-room/player-state-sync";
+import {
+  canAcceptBossPreference,
+  resetSelectionStage,
+  resolveBossPlayerId,
+} from "./game-room/lobby-role-selection";
 import { handleAdminQuery } from "./game-room/admin-query-handler";
 import { logPrepCommandActions } from "./game-room/prep-command-logging";
 import {
@@ -25,6 +31,8 @@ import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
   type AdminQueryMessage,
+  type BossPreferenceMessage,
+  type BossSelectMessage,
   type PrepCommandMessage,
   type ReadyMessage,
   type RoundStateMessage,
@@ -41,6 +49,7 @@ interface GameRoomOptions {
   battleDurationMs?: number;
   settleDurationMs?: number;
   eliminationDurationMs?: number;
+  selectionTimeoutMs?: number;
   setId?: UnitEffectSetId;
 }
 
@@ -48,6 +57,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private static readonly MAX_PLAYERS = 4;
 
   private static readonly RECONNECT_WINDOW_SECONDS = 90;
+
+  private static readonly DEFAULT_SELECTION_TIMEOUT_MS = 30_000;
 
   private readyAutoStartMs = 60_000;
 
@@ -61,6 +72,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private setId: UnitEffectSetId = DEFAULT_UNIT_EFFECT_SET_ID;
 
+  private selectionTimeoutMs = GameRoom.DEFAULT_SELECTION_TIMEOUT_MS;
+
   private controller: MatchRoomController | null = null;
 
   private sharedBoardBridge: SharedBoardBridge | null = null;
@@ -72,6 +85,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private playerHpCache: Map<string, number> = new Map();
 
   private lastRoundIndex = 0;
+
+  private lobbyReadyDeadlineAtMs = 0;
 
   public onCreate(options: GameRoomOptions = {}): void {
     this.maxClients = GameRoom.MAX_PLAYERS;
@@ -88,6 +103,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.settleDurationMs = options.settleDurationMs ?? this.settleDurationMs;
     this.eliminationDurationMs =
       options.eliminationDurationMs ?? this.eliminationDurationMs;
+    this.selectionTimeoutMs = options.selectionTimeoutMs ?? this.selectionTimeoutMs;
     this.setId = rawSetId ?? this.setId;
     this.state.setId = this.setId;
 
@@ -115,6 +131,20 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       await this.handleReady(client, message);
     });
 
+    this.onMessage<BossPreferenceMessage>(
+      CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE,
+      (client, message) => {
+        this.handleBossPreference(client, message);
+      },
+    );
+
+    this.onMessage<BossSelectMessage>(
+      CLIENT_MESSAGE_TYPES.BOSS_SELECT,
+      async (client, message) => {
+        await this.handleBossSelect(client, message);
+      },
+    );
+
     this.onMessage<PrepCommandMessage>(
       CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       (client, message) => {
@@ -130,7 +160,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     );
 
     this.onMessage("HERO_SELECT", (client, message) => {
-      this.handleHeroSelect(client, message as { heroId: string });
+      void this.handleHeroSelect(client, message as { heroId: string });
     });
 
     this.clock.setInterval(() => {
@@ -157,6 +187,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private initializeController(): void {
+    const createdAtMs = Date.now();
+
     if (this.sharedBoardBridge) {
       this.sharedBoardBridge.dispose();
       this.sharedBoardBridge = null;
@@ -164,7 +196,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     this.controller = new MatchRoomController(
       this.clients.map((joinedClient) => joinedClient.sessionId),
-      Date.now(),
+      createdAtMs,
       {
         readyAutoStartMs: this.readyAutoStartMs,
         prepDurationMs: this.prepDurationMs,
@@ -177,6 +209,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         },
       },
     );
+    this.lobbyReadyDeadlineAtMs = createdAtMs + this.readyAutoStartMs;
+    this.state.phaseDeadlineAtMs = 0;
+    this.state.lobbyStage = "preference";
+    this.state.selectionDeadlineAtMs = 0;
 
     // SharedBoardBridge初期化（Feature Flag制御・非同期・fail-open）
     if (this.enableSharedBoardShadow && this.controller) {
@@ -188,6 +224,191 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
   }
 
+  private disposePreStartController(): void {
+    if (this.sharedBoardBridge) {
+      this.sharedBoardBridge.dispose();
+      this.sharedBoardBridge = null;
+    }
+
+    this.controller = null;
+    this.lobbyReadyDeadlineAtMs = 0;
+  }
+
+  private isBossRoleSelectionEnabled(): boolean {
+    return (
+      this.state.featureFlagsEnableBossExclusiveShop
+      && this.state.featureFlagsEnableHeroSystem
+    );
+  }
+
+  private restartLobbyReadyDeadline(nowMs: number): void {
+    this.lobbyReadyDeadlineAtMs = nowMs + this.readyAutoStartMs;
+  }
+
+  private clearRaidPlayerIds(): void {
+    this.state.raidPlayerIds.splice(0, this.state.raidPlayerIds.length);
+  }
+
+  private broadcastRoundState(): void {
+    this.broadcast(
+      SERVER_MESSAGE_TYPES.ROUND_STATE,
+      this.createRoundStateMessage(),
+    );
+  }
+
+  private finalizeStartedMatch(connectedPlayerIds: string[]): void {
+    this.matchLogger = new MatchLogger(this.roomId, this.roomId);
+    for (const playerId of connectedPlayerIds) {
+      this.matchLogger.registerPlayer(playerId);
+    }
+
+    this.controller?.setMatchLogger(this.matchLogger);
+  }
+
+  private resetSelectionToPreference(nowMs: number): void {
+    const connectedPlayerIds = this.clients.map((client) => client.sessionId);
+    const resetState = resetSelectionStage({
+      connectedPlayerIds,
+      players: this.state.players,
+    });
+
+    this.state.lobbyStage = resetState.lobbyStage;
+    this.state.selectionDeadlineAtMs = resetState.selectionDeadlineAtMs;
+    this.state.bossPlayerId = resetState.bossPlayerId;
+    this.state.phase = "Waiting";
+    this.state.prepDeadlineAtMs = 0;
+    this.clearRaidPlayerIds();
+
+    if (connectedPlayerIds.length >= 2 && this.controller) {
+      this.restartLobbyReadyDeadline(nowMs);
+      this.broadcastRoundState();
+      return;
+    }
+
+    this.state.phaseDeadlineAtMs = 0;
+    this.disposePreStartController();
+    this.broadcastRoundState();
+  }
+
+  private maybeResolveBossSelectionStage(nowMs: number): void {
+    const connectedPlayerIds = this.clients.map((client) => client.sessionId);
+
+    if (connectedPlayerIds.length < 2) {
+      return;
+    }
+
+    const allReady = connectedPlayerIds.every(
+      (playerId) => this.state.players.get(playerId)?.ready === true,
+    );
+    const autoStartReached = nowMs >= this.lobbyReadyDeadlineAtMs;
+
+    if (!allReady && !autoStartReached) {
+      return;
+    }
+
+    const wantsBossByPlayer = new Map<string, boolean>();
+    for (const playerId of connectedPlayerIds) {
+      wantsBossByPlayer.set(
+        playerId,
+        this.state.players.get(playerId)?.wantsBoss === true,
+      );
+    }
+
+    const bossPlayerId = resolveBossPlayerId({
+      connectedPlayerIds,
+      wantsBossByPlayer,
+      random: () => Math.random(),
+    });
+
+    if (bossPlayerId === "") {
+      return;
+    }
+
+    this.state.lobbyStage = "selection";
+    this.state.selectionDeadlineAtMs = nowMs + this.selectionTimeoutMs;
+    this.state.phaseDeadlineAtMs = 0;
+    this.state.bossPlayerId = bossPlayerId;
+    this.clearRaidPlayerIds();
+
+    for (const playerId of connectedPlayerIds) {
+      const player = this.state.players.get(playerId);
+      if (!player) {
+        continue;
+      }
+
+      const isBossPlayer = playerId === bossPlayerId;
+      player.role = isBossPlayer ? "boss" : "raid";
+      if (isBossPlayer) {
+        player.selectedHeroId = "";
+        continue;
+      }
+
+      player.selectedBossId = "";
+      this.state.raidPlayerIds.push(playerId);
+    }
+
+    this.broadcastRoundState();
+  }
+
+  private areRequiredSelectionsComplete(connectedPlayerIds: string[]): boolean {
+    if (this.state.bossPlayerId === "") {
+      return false;
+    }
+
+    const bossPlayer = this.state.players.get(this.state.bossPlayerId);
+    if (!bossPlayer || bossPlayer.role !== "boss" || !isBossCharacterId(bossPlayer.selectedBossId)) {
+      return false;
+    }
+
+    return connectedPlayerIds
+      .filter((playerId) => playerId !== this.state.bossPlayerId)
+      .every((playerId) => {
+        const player = this.state.players.get(playerId);
+        return player?.role === "raid" && player.selectedHeroId !== "";
+      });
+  }
+
+  private async startResolvedMatch(nowMs: number, connectedPlayerIds: string[]): Promise<void> {
+    if (!this.controller) {
+      return;
+    }
+
+    const selectedHeroByPlayer = new Map<string, string>();
+    const selectedBossByPlayer = new Map<string, string>();
+
+    for (const playerId of connectedPlayerIds) {
+      const player = this.state.players.get(playerId);
+      if (!player) {
+        continue;
+      }
+
+      if (player.role === "boss") {
+        selectedBossByPlayer.set(playerId, player.selectedBossId);
+        continue;
+      }
+
+      if (player.role === "raid") {
+        selectedHeroByPlayer.set(playerId, player.selectedHeroId);
+      }
+    }
+
+    const started = this.controller.startWithResolvedRoles(nowMs, connectedPlayerIds, {
+      bossPlayerId: this.state.bossPlayerId,
+      selectedHeroByPlayer,
+      selectedBossByPlayer,
+    });
+
+    if (!started) {
+      return;
+    }
+
+    this.state.lobbyStage = "started";
+    this.state.selectionDeadlineAtMs = 0;
+    this.finalizeStartedMatch(connectedPlayerIds);
+    this.syncStateFromController();
+    await this.lock();
+  }
+
   private cleanupLobbyPlayer(sessionId: string): void {
     this.state.players.delete(sessionId);
 
@@ -195,7 +416,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.controller.removePlayer(sessionId);
 
       if (this.clients.length < 2) {
-        this.controller = null;
+        this.disposePreStartController();
       }
     }
 
@@ -205,10 +426,15 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     this.state.phase = "Waiting";
+    this.state.lobbyStage = "preference";
     this.state.phaseDeadlineAtMs = 0;
+    this.state.selectionDeadlineAtMs = 0;
     this.state.prepDeadlineAtMs = 0;
+    this.state.bossPlayerId = "";
+    this.clearRaidPlayerIds();
     this.state.roundIndex = 0;
     syncRanking(this.state.ranking, []);
+    this.broadcastRoundState();
   }
 
   public async onLeave(client: Client, code: number): Promise<void> {
@@ -221,6 +447,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     const isLobbyPhase = this.controller === null || this.controller.phase === "Waiting";
 
     if (isLobbyPhase) {
+      if (this.state.lobbyStage === "selection") {
+        this.state.players.delete(client.sessionId);
+        this.controller?.removePlayer(client.sessionId);
+        this.resetSelectionToPreference(Date.now());
+        return;
+      }
+
       this.cleanupLobbyPlayer(client.sessionId);
       return;
     }
@@ -267,7 +500,55 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     await this.tryStartMatch(Date.now());
   }
 
-  private handleHeroSelect(client: Client, message: { heroId: string }): void {
+  private handleBossPreference(client: Client, message: BossPreferenceMessage): void {
+    if (!this.controller || !this.isBossRoleSelectionEnabled()) {
+      return;
+    }
+
+    if (!canAcceptBossPreference({
+      phase: this.state.phase,
+      lobbyStage: this.state.lobbyStage,
+    })) {
+      return;
+    }
+
+    const player = this.state.players.get(client.sessionId);
+    if (!player || typeof message.wantsBoss !== "boolean") {
+      return;
+    }
+
+    player.wantsBoss = message.wantsBoss;
+    this.broadcastRoundState();
+  }
+
+  private async handleBossSelect(client: Client, message: BossSelectMessage): Promise<void> {
+    if (!this.controller) {
+      return;
+    }
+
+    const player = this.state.players.get(client.sessionId);
+    if (
+      !player
+      || !this.isBossRoleSelectionEnabled()
+      || this.state.phase !== "Waiting"
+      || this.state.lobbyStage !== "selection"
+      || player.role !== "boss"
+      || !isBossCharacterId(message.bossId)
+      || client.sessionId !== this.state.bossPlayerId
+    ) {
+      client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
+        accepted: false,
+        code: "INVALID_PAYLOAD",
+      });
+      return;
+    }
+
+    player.selectedBossId = message.bossId;
+    this.broadcastRoundState();
+    await this.tryStartMatch(Date.now());
+  }
+
+  private async handleHeroSelect(client: Client, message: { heroId: string }): Promise<void> {
     if (!this.controller) {
       return;
     }
@@ -283,16 +564,48 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
+    if (this.isBossRoleSelectionEnabled()) {
+      if (
+        this.state.phase !== "Waiting"
+        || this.state.lobbyStage !== "selection"
+        || player.role !== "raid"
+      ) {
+        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
+          accepted: false,
+          code: "INVALID_PAYLOAD",
+        });
+        return;
+      }
+    }
+
     const { heroId } = message;
 
     if (!heroId || typeof heroId !== "string") {
+      if (this.isBossRoleSelectionEnabled()) {
+        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
+          accepted: false,
+          code: "INVALID_PAYLOAD",
+        });
+      }
       return;
     }
 
     try {
       this.controller.selectHero(client.sessionId, heroId);
       player.selectedHeroId = heroId;
+      if (this.isBossRoleSelectionEnabled()) {
+        this.broadcastRoundState();
+        await this.tryStartMatch(Date.now());
+      }
     } catch (error) {
+      if (this.isBossRoleSelectionEnabled()) {
+        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
+          accepted: false,
+          code: "INVALID_PAYLOAD",
+        });
+        return;
+      }
+
       console.error(`Hero selection error for ${client.sessionId}:`, error);
     }
   }
@@ -412,27 +725,53 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     const connectedPlayerIds = this.clients.map((c) => c.sessionId);
+
+    if (this.isBossRoleSelectionEnabled() && this.controller.phase === "Waiting") {
+      if (this.state.lobbyStage === "selection") {
+        if (connectedPlayerIds.length < 2) {
+          this.resetSelectionToPreference(nowMs);
+          return;
+        }
+
+        if (this.areRequiredSelectionsComplete(connectedPlayerIds)) {
+          await this.startResolvedMatch(nowMs, connectedPlayerIds);
+        }
+
+        return;
+      }
+
+      this.maybeResolveBossSelectionStage(nowMs);
+      return;
+    }
+
     const started = this.controller.startIfReady(nowMs, connectedPlayerIds);
 
     if (!started) {
       return;
     }
 
-    // Initialize match logger
-    this.matchLogger = new MatchLogger(this.roomId, this.roomId);
-    for (const playerId of connectedPlayerIds) {
-      this.matchLogger.registerPlayer(playerId);
-    }
-
-    // Set match logger in controller
-    this.controller?.setMatchLogger(this.matchLogger);
-
+    this.finalizeStartedMatch(connectedPlayerIds);
     this.syncStateFromController();
     await this.lock();
   }
 
   private advanceLoop(nowMs: number): void {
     if (!this.controller) {
+      return;
+    }
+
+    if (this.controller.phase === "Waiting") {
+      if (
+        this.isBossRoleSelectionEnabled()
+        && this.state.lobbyStage === "selection"
+        && this.state.selectionDeadlineAtMs > 0
+        && nowMs >= this.state.selectionDeadlineAtMs
+      ) {
+        this.resetSelectionToPreference(nowMs);
+        return;
+      }
+
+      void this.tryStartMatch(nowMs);
       return;
     }
 
@@ -468,6 +807,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
     this.state.prepDeadlineAtMs =
       this.controller.phase === "Prep" ? this.controller.prepDeadlineAtMs ?? 0 : 0;
+    this.state.lobbyStage = this.controller.phase === "Waiting"
+      ? this.state.lobbyStage
+      : "started";
+    this.state.selectionDeadlineAtMs = this.controller.phase === "Waiting"
+      ? this.state.selectionDeadlineAtMs
+      : 0;
     this.state.roundIndex = this.controller.roundIndex;
     this.state.setId = this.setId;
 
@@ -547,12 +892,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
 
   private createRoundStateMessage(): RoundStateMessage {
-    const phaseProgress = this.controller?.getPhaseProgress();
+    const phaseProgress =
+      this.controller && this.controller.phase !== "Waiting"
+        ? this.controller.getPhaseProgress()
+        : undefined;
 
     return {
       phase: this.state.phase as RoundStateMessage["phase"],
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
+      lobbyStage: this.state.lobbyStage,
+      selectionDeadlineAtMs: this.state.selectionDeadlineAtMs,
       ranking: Array.from(this.state.ranking),
       bossPlayerId: this.state.bossPlayerId,
       raidPlayerIds: Array.from(this.state.raidPlayerIds),

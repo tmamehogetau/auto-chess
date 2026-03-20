@@ -77,12 +77,37 @@ describe("E2E: Full Game with Phase 2 Features", () => {
       client.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});
     }
 
-    // 全員Ready
-    for (const client of clients) {
-      client.send("ready", { ready: true });
+    const isBossRoleSelectionEnabled =
+      gameRoom.state.featureFlagsEnableBossExclusiveShop
+      && gameRoom.state.featureFlagsEnableHeroSystem;
+
+    if (isBossRoleSelectionEnabled) {
+      const bossClient = clients[1]!;
+      const raidClientA = clients[0]!;
+      const raidClientB = clients[2]!;
+      const raidClientC = clients[3]!;
+
+      bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(() => gameRoom.state.lobbyStage === "selection", 5_000);
+
+      raidClientA.send("HERO_SELECT", { heroId: "reimu" });
+      raidClientB.send("HERO_SELECT", { heroId: "marisa" });
+      raidClientC.send("HERO_SELECT", { heroId: "okina" });
+      bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+      await waitForCondition(() => gameRoom.state.phase === "Prep", 5_000);
+      return clients;
     }
 
-    // Prep状態待機
+    for (const client of clients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
     await waitForCondition(() => gameRoom.state.phase !== "Waiting", 5_000);
 
     return clients;
@@ -145,11 +170,6 @@ describe("E2E: Full Game with Phase 2 Features", () => {
       await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
         const gameRoom = await testServer.createRoom<GameRoom>("game");
         const clients = await setupGameWith4Players(gameRoom);
-
-        // Hero選択
-        for (const client of clients) {
-          await selectHero(client, "reimu");
-        }
 
         // R1: Prep → Battle → Settle → Prep
         await waitForPhase(gameRoom, "Prep", 5_000);

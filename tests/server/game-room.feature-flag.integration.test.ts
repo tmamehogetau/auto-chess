@@ -48,6 +48,38 @@ describe("GameRoom Integration with Feature Flags", () => {
     };
   }
 
+  async function startAllEnabledBossRoleMatch(
+    serverRoom: GameRoom,
+    clients: Array<{
+      sessionId: string;
+      send: (type: string, message: unknown) => void;
+      waitForMessage: (type: string) => Promise<unknown>;
+      connection: { close: (code?: number, reason?: string) => void };
+      reconnectionToken: string;
+    }>,
+    timeoutMs = 1_000,
+  ): Promise<void> {
+    const bossClient = clients[1]!;
+    const raidClientA = clients[0]!;
+    const raidClientB = clients[2]!;
+    const raidClientC = clients[3]!;
+
+    bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+
+    for (const client of clients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", timeoutMs);
+
+    raidClientA.send("HERO_SELECT", { heroId: "reimu" });
+    raidClientB.send("HERO_SELECT", { heroId: "marisa" });
+    raidClientC.send("HERO_SELECT", { heroId: "okina" });
+    bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", timeoutMs);
+  }
+
   describe("Main Test Scenarios with Dual Flag Configurations", () => {
     let testServer!: ColyseusTestServer;
 
@@ -182,6 +214,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
             client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
@@ -205,6 +240,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
             client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
@@ -248,11 +286,7 @@ describe("GameRoom Integration with Feature Flags", () => {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
           }
 
-          for (const client of clients) {
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-          }
-
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
 
           expect(serverRoom.state.setId).toBe("set1");
           expect(serverRoom.state.prepDeadlineAtMs).toBeGreaterThan(0);
@@ -276,6 +310,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
             client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
@@ -300,11 +337,7 @@ describe("GameRoom Integration with Feature Flags", () => {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
           }
 
-          for (const client of clients) {
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-          }
-
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
           await waitForCondition(() => serverRoom.state.phase === "Battle", 1_000);
 
           expect(serverRoom.state.phase).toBe("Battle");
@@ -325,11 +358,7 @@ describe("GameRoom Integration with Feature Flags", () => {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
           }
 
-          for (const client of clients) {
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-          }
-
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
           await waitForCondition(() => serverRoom.state.phase === "Battle", 1_000);
           await waitForCondition(() => serverRoom.state.phase === "Settle", 1_000);
           await waitForCondition(() => serverRoom.state.phase === "Elimination", 1_000);
@@ -351,10 +380,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
 
           const target = serverRoom.state.players.get(clients[0].sessionId);
 
@@ -374,10 +402,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
 
           const droppedClient = clients[0];
           const previousSessionId = droppedClient.sessionId;
@@ -487,8 +514,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
+
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
 
           // Wait for game to complete
           await waitForCondition(
@@ -577,11 +605,7 @@ describe("GameRoom Integration with Feature Flags", () => {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
           }
 
-          for (const client of clients) {
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-          }
-
-          await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
 
           const sortedSessionIds = clients.map((client) => client.sessionId).sort();
           const strongestA = sortedSessionIds[2];
@@ -613,8 +637,8 @@ describe("GameRoom Integration with Feature Flags", () => {
           const strongestBResult =
             await strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
 
-      expect(strongestAResult).toEqual({ accepted: true });
-      expect(strongestBResult).toEqual({ accepted: true });
+          expect(strongestAResult).toEqual({ accepted: true });
+          expect(strongestBResult).toEqual({ accepted: true });
         });
       });
     });
@@ -877,6 +901,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
             client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 
@@ -938,6 +965,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           for (const client of clients) {
             client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
             client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
           }
 

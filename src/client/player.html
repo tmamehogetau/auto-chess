@@ -349,6 +349,38 @@
         gap: 4px;
       }
 
+      .shared-board-battle-unit {
+        width: 100%;
+        gap: 3px;
+      }
+
+      .shared-board-battle-unit.shared-board-battle-boss {
+        color: #ffd7d7;
+      }
+
+      .shared-board-battle-unit.shared-board-battle-raid {
+        color: #d8fff0;
+      }
+
+      .shared-board-battle-hp-copy {
+        font-size: 9px;
+        color: var(--text);
+      }
+
+      .shared-board-battle-hp-bar {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+      }
+
+      .shared-board-battle-hp-bar-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ffb347 0%, #ffd166 100%);
+      }
+
       .shared-board-owner {
         width: 14px;
         height: 14px;
@@ -532,7 +564,7 @@
           <div class="player-prep-grid" data-player-prep-surface>
             <div class="player-card player-board" data-player-shared-board-grid>
               <strong>Shared Board</strong>
-              <div data-shared-board-help>Boss は上段、raid は下段を守ります。open lane を選んで配置してください。</div>
+              <div data-shared-board-help>shared-board は 6x6 です。Boss は上半分、raid は下半分を使います。現在の Prep slice では highlighted raid cells が配置対象です。</div>
               <div data-player-board-copy data-shared-board-placement-guide>shared-board をここへ mount する。</div>
               <div class="player-inline-actions">
                 <button class="player-action-btn" type="button" data-player-board-return-button>Return Selected Unit</button>
@@ -541,8 +573,8 @@
               <div class="player-cursor-list" data-shared-board-status-legend>
                 <span data-shared-board-own-status>Your unit</span>
                 <span data-shared-board-ally-status>Ally unit</span>
-                <span data-shared-board-open-status>Open lane</span>
-                <span data-shared-board-blocked-status>Blocked lane</span>
+                <span data-shared-board-open-status>Active cell</span>
+                <span data-shared-board-blocked-status>Inactive cell</span>
               </div>
               <div class="shared-board-grid" data-player-board-cells>
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="0" aria-label="Board cell 0">0</button>
@@ -569,6 +601,18 @@
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="21" aria-label="Board cell 21">21</button>
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="22" aria-label="Board cell 22">22</button>
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="23" aria-label="Board cell 23">23</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="24" aria-label="Board cell 24">24</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="25" aria-label="Board cell 25">25</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="26" aria-label="Board cell 26">26</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="27" aria-label="Board cell 27">27</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="28" aria-label="Board cell 28">28</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="29" aria-label="Board cell 29">29</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="30" aria-label="Board cell 30">30</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="31" aria-label="Board cell 31">31</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="32" aria-label="Board cell 32">32</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="33" aria-label="Board cell 33">33</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="34" aria-label="Board cell 34">34</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="35" aria-label="Board cell 35">35</button>
               </div>
               <div class="player-cursor-list" data-player-shared-cursor-list>Board presence をここに出す。</div>
             </div>

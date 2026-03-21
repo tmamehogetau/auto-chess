@@ -489,7 +489,7 @@ function handlePlayerSharedCellClick(cellIndex) {
 
   const combatCell = sharedBoardIndexToCombatCell(cellIndex);
   if (combatCell === null) {
-    showPlayerStatus("中央 4x2 の open lane にだけ配置できます。");
+    showPlayerStatus("いま配置できるのは、下側の highlighted raid cells だけです。");
     return;
   }
 
@@ -505,14 +505,14 @@ function handlePlayerSharedCellClick(cellIndex) {
 }
 
 function sharedBoardIndexToCombatCell(boardIndex) {
-  if (!Number.isInteger(boardIndex) || boardIndex < 0 || boardIndex >= 24) {
+  if (!Number.isInteger(boardIndex) || boardIndex < 0 || boardIndex >= 36) {
     return null;
   }
 
   const x = boardIndex % 6;
   const y = Math.floor(boardIndex / 6);
   const combatX = x - 1;
-  const combatY = y - 1;
+  const combatY = y - 3;
 
   if (combatX < 0 || combatX >= 4 || combatY < 0 || combatY >= 2) {
     return null;

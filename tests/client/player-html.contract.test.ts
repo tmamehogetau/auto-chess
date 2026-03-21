@@ -112,6 +112,7 @@ describe("player.html contract", () => {
       "data-shared-board-open-status",
       "data-shared-board-blocked-status",
       'aria-label="Board cell 0"',
+      'aria-label="Board cell 35"',
       'aria-label="Shop slot 0"',
       'aria-label="Bench slot 0"',
       'data-player-board-sell-button',
@@ -122,5 +123,15 @@ describe("player.html contract", () => {
     for (const attribute of requiredAttributes) {
       expect(html.includes(attribute)).toBe(true);
     }
+  });
+
+  test("player prep shell seeds a 6x6 shared-board placeholder without legacy 4x2 copy", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const sharedCellCount = (html.match(/data-player-shared-cell="/g) ?? []).length;
+
+    expect(sharedCellCount).toBe(36);
+    expect(html.includes("center 4x2")).toBe(false);
+    expect(html.includes("中央 4x2")).toBe(false);
+    expect(html.includes("open lane")).toBe(false);
   });
 });

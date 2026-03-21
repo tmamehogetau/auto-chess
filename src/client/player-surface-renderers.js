@@ -110,8 +110,8 @@ export function renderPlayerPrepSummary({
 }) {
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
     boardCopyElement.textContent = selectedBenchIndex === null
-      ? "共有ボードの中央 4x2 が playable lane です。bench を選んで open lane へ配置し、置いた unit は選んで再配置や売却ができます。"
-      : `Bench ${selectedBenchIndex + 1} を選択中です。open lane をクリックして配置するか、Sell で売却します。`;
+      ? "共有ボードは 6x6 です。bench を選んで、下側の highlighted raid cells へ配置します。置いた unit は選んで再配置や売却ができます。"
+      : `Bench ${selectedBenchIndex + 1} を選択中です。highlighted raid cells をクリックして配置するか、Sell で売却します。`;
   }
 
   const offers = toRenderableArray(player?.shopOffers);

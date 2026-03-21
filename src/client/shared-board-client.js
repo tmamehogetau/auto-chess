@@ -72,7 +72,7 @@ let sharedDraggedUnitId = null;
 /** @type {string|null} */
 let selectedSharedUnitId = null;
 
-/** @type {{ battleId: string, boardWidth: number, boardHeight: number, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean }> } | null} */
+/** @type {{ battleId: string, boardWidth: number, boardHeight: number, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string }> } | null} */
 let currentSharedBattleReplay = null;
 
 /** @type {ReturnType<typeof setTimeout>[]} */
@@ -449,6 +449,27 @@ function renderSharedBoard(state) {
           ? cell.displayName
           : shortPlayerId(unitId);
         unit.append(ownerDot, unitIdLabel);
+      }
+
+      if (isSharedBoardBattleMode(state) && Number.isFinite(Number(cell?.maxHp))) {
+        unit.classList.add("shared-board-battle-unit");
+        unit.classList.add(cell?.ownerId === "boss" ? "shared-board-battle-boss" : "shared-board-battle-raid");
+
+        const hpCopy = document.createElement("span");
+        hpCopy.className = "shared-board-battle-hp-copy";
+        const currentHp = Math.max(0, Math.round(Number(cell?.currentHp) || 0));
+        const maxHp = Math.max(currentHp, Math.round(Number(cell?.maxHp) || 0));
+        hpCopy.textContent = `${currentHp} / ${maxHp}`;
+
+        const hpBar = document.createElement("div");
+        hpBar.className = "shared-board-battle-hp-bar";
+
+        const hpFill = document.createElement("div");
+        hpFill.className = "shared-board-battle-hp-bar-fill";
+        hpFill.style.width = `${resolveSharedBattleHpPercent(cell)}%`;
+
+        hpBar.appendChild(hpFill);
+        unit.append(hpCopy, hpBar);
       }
       cellElement.appendChild(unit);
     } else {
@@ -921,6 +942,9 @@ function resolveSharedBoardCellsForRender(state) {
       ownerId: unit.side,
       displayName: resolveBattleReplayLabel(unit.battleUnitId),
       portraitKey: "",
+      currentHp: unit.currentHp,
+      maxHp: unit.maxHp,
+      battleState: unit.state,
     };
   }
 
@@ -940,6 +964,17 @@ function clearSharedBattleReplay() {
 
   sharedBattleReplayTimeoutIds = [];
   currentSharedBattleReplay = null;
+}
+
+function resolveSharedBattleHpPercent(cell) {
+  const currentHp = Math.max(0, Number(cell?.currentHp) || 0);
+  const maxHp = Math.max(currentHp, Number(cell?.maxHp) || 0);
+
+  if (maxHp <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, (currentHp / maxHp) * 100));
 }
 
 function startSharedBattleReplay(message) {
@@ -964,6 +999,7 @@ function startSharedBattleReplay(message) {
       currentHp: unit.currentHp,
       maxHp: unit.maxHp,
       alive: true,
+      state: "idle",
     });
   }
 
@@ -1008,6 +1044,7 @@ function applySharedBattleReplayEvent(event) {
 
     unit.x = event.to.x;
     unit.y = event.to.y;
+    unit.state = "moving";
     return;
   }
 
@@ -1018,6 +1055,7 @@ function applySharedBattleReplayEvent(event) {
     }
 
     unit.currentHp = event.remainingHp;
+    unit.state = unit.currentHp > 0 ? "attacking" : "dead";
     return;
   }
 
@@ -1028,6 +1066,7 @@ function applySharedBattleReplayEvent(event) {
     }
 
     unit.alive = false;
+    unit.state = "dead";
     return;
   }
 
@@ -1043,6 +1082,7 @@ function applySharedBattleReplayEvent(event) {
       existing.currentHp = keyframeUnit.currentHp;
       existing.maxHp = keyframeUnit.maxHp;
       existing.alive = keyframeUnit.alive;
+      existing.state = keyframeUnit.state;
     }
   }
 }

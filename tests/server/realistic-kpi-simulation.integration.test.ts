@@ -16,6 +16,14 @@ function getRealisticKpiSimulationTestServerPort(): number {
   return Number.isFinite(configuredPort) ? configuredPort : 26_784;
 }
 
+const FAST_TEST_ROOM_TIMINGS = {
+  readyAutoStartMs: 150,
+  prepDurationMs: 80,
+  battleDurationMs: 60,
+  settleDurationMs: 35,
+  eliminationDurationMs: 35,
+} as const;
+
 // =============================================================================
 // Shared Test Helpers
 // =============================================================================
@@ -371,13 +379,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
 
     const server = defineServer({
       rooms: {
-        game: defineRoom(GameRoom, {
-          readyAutoStartMs: 300,
-          prepDurationMs: 200,
-          battleDurationMs: 100,
-          settleDurationMs: 50,
-          eliminationDurationMs: 50,
-        }),
+        game: defineRoom(GameRoom, FAST_TEST_ROOM_TIMINGS),
       },
     });
 

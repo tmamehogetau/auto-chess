@@ -15,6 +15,14 @@ function getFullGameSimulationTestServerPort(): number {
   return Number.isFinite(configuredPort) ? configuredPort : 2_572;
 }
 
+const FAST_TEST_ROOM_TIMINGS = {
+  readyAutoStartMs: 150,
+  prepDurationMs: 60,
+  battleDurationMs: 60,
+  settleDurationMs: 35,
+  eliminationDurationMs: 35,
+} as const;
+
 type TestClient = {
   sessionId: string;
   send: (type: string, msg: unknown) => void;
@@ -198,13 +206,7 @@ describe("Full Game Simulation (R1-R8)", () => {
   beforeAll(async () => {
     const server = defineServer({
       rooms: {
-        game: defineRoom(GameRoom, {
-          readyAutoStartMs: 300,
-          prepDurationMs: 80,
-          battleDurationMs: 80,
-          settleDurationMs: 50,
-          eliminationDurationMs: 50,
-        }),
+        game: defineRoom(GameRoom, FAST_TEST_ROOM_TIMINGS),
       },
     });
 

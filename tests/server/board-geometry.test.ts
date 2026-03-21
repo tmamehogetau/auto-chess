@@ -1,68 +1,45 @@
 import { describe, expect, test } from "vitest";
 
+import { DEFAULT_SHARED_BOARD_CONFIG } from "../../src/shared/shared-board-config";
 import {
-  BOSS_BOARD_HEIGHT,
-  BOSS_BOARD_WIDTH,
-  COMBAT_CELL_MAX_INDEX,
-  COMBAT_CELL_MIN_INDEX,
-  RAID_BOARD_HEIGHT,
-  RAID_BOARD_WIDTH,
-  bossBoardIndexToCombatCell,
-  combatCellToBossBoardIndex,
-  combatCellToCanonicalCoordinate,
-  combatCellToRaidBoardIndex,
-  raidBoardIndexToCombatCell,
+  sharedBoardCoordinateToIndex,
+  sharedBoardIndexToCoordinate,
+  sharedBoardManhattanDistance,
 } from "../../src/shared/board-geometry";
 
 describe("board geometry", () => {
-  test("combat cell range is fixed to 0-7", () => {
-    expect(COMBAT_CELL_MIN_INDEX).toBe(0);
-    expect(COMBAT_CELL_MAX_INDEX).toBe(7);
+  test("shared board coordinates round-trip on the default 6x6 board", () => {
+    const index = sharedBoardCoordinateToIndex({ x: 5, y: 5 }, DEFAULT_SHARED_BOARD_CONFIG);
+
+    expect(index).toBe(35);
+    expect(sharedBoardIndexToCoordinate(35, DEFAULT_SHARED_BOARD_CONFIG)).toEqual({ x: 5, y: 5 });
   });
 
-  test("board dimensions match spec anchors", () => {
-    expect(RAID_BOARD_WIDTH).toBe(6);
-    expect(RAID_BOARD_HEIGHT).toBe(4);
-    expect(BOSS_BOARD_WIDTH).toBe(7);
-    expect(BOSS_BOARD_HEIGHT).toBe(4);
-  });
+  test("shared board coordinate conversion covers the full default board", () => {
+    const visited = new Set<number>();
 
-  test("all combat cells map to unique canonical coordinates", () => {
-    const visited = new Set<string>();
-
-    for (let cell = COMBAT_CELL_MIN_INDEX; cell <= COMBAT_CELL_MAX_INDEX; cell += 1) {
-      const coordinate = combatCellToCanonicalCoordinate(cell);
-      visited.add(`${coordinate.x},${coordinate.y}`);
+    for (let y = 0; y < DEFAULT_SHARED_BOARD_CONFIG.height; y += 1) {
+      for (let x = 0; x < DEFAULT_SHARED_BOARD_CONFIG.width; x += 1) {
+        const index = sharedBoardCoordinateToIndex({ x, y }, DEFAULT_SHARED_BOARD_CONFIG);
+        visited.add(index);
+        expect(sharedBoardIndexToCoordinate(index, DEFAULT_SHARED_BOARD_CONFIG)).toEqual({ x, y });
+      }
     }
 
-    expect(visited.size).toBe(8);
+    expect(visited.size).toBe(36);
   });
 
-  test("raid board mapping is reversible for all combat cells", () => {
-    for (let cell = COMBAT_CELL_MIN_INDEX; cell <= COMBAT_CELL_MAX_INDEX; cell += 1) {
-      const raidIndex = combatCellToRaidBoardIndex(cell);
-      expect(raidBoardIndexToCombatCell(raidIndex)).toBe(cell);
-    }
+  test("shared board Manhattan distance uses full-board coordinates", () => {
+    expect(sharedBoardManhattanDistance({ x: 0, y: 0 }, { x: 5, y: 5 })).toBe(10);
+    expect(sharedBoardManhattanDistance({ x: 1, y: 4 }, { x: 4, y: 2 })).toBe(5);
   });
 
-  test("boss board mapping is reversible for all combat cells", () => {
-    for (let cell = COMBAT_CELL_MIN_INDEX; cell <= COMBAT_CELL_MAX_INDEX; cell += 1) {
-      const bossIndex = combatCellToBossBoardIndex(cell);
-      expect(bossBoardIndexToCombatCell(bossIndex)).toBe(cell);
-    }
-  });
-
-  test("non-mapped raid/boss board indices return null", () => {
-    expect(raidBoardIndexToCombatCell(0)).toBeNull();
-    expect(bossBoardIndexToCombatCell(0)).toBeNull();
-  });
-
-  test("invalid combat cell indices throw explicit error", () => {
-    expect(() => combatCellToRaidBoardIndex(-1)).toThrow(
-      "combat cell index must be integer 0-7",
-    );
-    expect(() => combatCellToBossBoardIndex(8)).toThrow(
-      "combat cell index must be integer 0-7",
-    );
+  test("out-of-range shared board coordinates throw explicit errors", () => {
+    expect(() =>
+      sharedBoardCoordinateToIndex({ x: DEFAULT_SHARED_BOARD_CONFIG.width, y: 0 }, DEFAULT_SHARED_BOARD_CONFIG),
+    ).toThrow("coordinate out of board range");
+    expect(() =>
+      sharedBoardIndexToCoordinate(DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height, DEFAULT_SHARED_BOARD_CONFIG),
+    ).toThrow("board index must be integer 0-35");
   });
 });

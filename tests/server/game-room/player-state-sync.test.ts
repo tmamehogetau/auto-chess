@@ -49,6 +49,7 @@ describe("player-state-sync", () => {
         ],
         shopLocked: true,
         benchUnits: ["unit-a", "unit-b"],
+        benchDisplayNames: ["Unit A", "Unit B"],
         boardUnits: ["board-unit-1", "board-unit-2", "board-unit-3"],
         ownedUnits: {
           vanguard: 2,
@@ -112,6 +113,8 @@ describe("player-state-sync", () => {
       // Bench and board units
       expect(playerState.benchUnits.length).toBe(2);
       expect(playerState.benchUnits[0]).toBe("unit-a");
+      expect(playerState.benchDisplayNames.length).toBe(2);
+      expect(playerState.benchDisplayNames[1]).toBe("Unit B");
       expect(playerState.boardUnits.length).toBe(3);
       expect(playerState.boardUnits[2]).toBe("board-unit-3");
     });
@@ -136,6 +139,7 @@ describe("player-state-sync", () => {
         ] as ControllerPlayerStatus["shopOffers"],
         shopLocked: true,
         benchUnits: ["unit-a"],
+        benchDisplayNames: ["Unit A"],
         boardUnits: ["board-unit-1"],
         ownedUnits: {
           vanguard: 2,
@@ -183,6 +187,7 @@ describe("player-state-sync", () => {
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
+        benchDisplayNames: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         itemInventory: [],
@@ -220,6 +225,7 @@ describe("player-state-sync", () => {
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
+        benchDisplayNames: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         itemInventory: [],
@@ -232,6 +238,16 @@ describe("player-state-sync", () => {
           damageTaken: 12,
           survivors: 1,
           opponentSurvivors: 4,
+          survivorSnapshots: [
+            {
+              unitId: "koishi",
+              displayName: "古明地こいし",
+              unitType: "assassin",
+              hp: 27,
+              maxHp: 60,
+              combatCell: 5,
+            },
+          ],
         } as PlayerStatusBattleResult,
         activeSynergies: [],
         wantsBoss: false,
@@ -249,6 +265,9 @@ describe("player-state-sync", () => {
       expect(playerState.lastBattleResult.damageTaken).toBe(12);
       expect(playerState.lastBattleResult.survivors).toBe(1);
       expect(playerState.lastBattleResult.opponentSurvivors).toBe(4);
+      expect(playerState.lastBattleResult.survivorSnapshots.length).toBe(1);
+      expect(playerState.lastBattleResult.survivorSnapshots[0]!.displayName).toBe("古明地こいし");
+      expect(playerState.lastBattleResult.survivorSnapshots[0]!.hp).toBe(27);
     });
 
     it("should clear battle result when not present", () => {
@@ -290,6 +309,7 @@ describe("player-state-sync", () => {
       expect(playerState.lastBattleResult.damageTaken).toBe(0);
       expect(playerState.lastBattleResult.survivors).toBe(0);
       expect(playerState.lastBattleResult.opponentSurvivors).toBe(0);
+      expect(playerState.lastBattleResult.survivorSnapshots.length).toBe(0);
     });
 
     it("should sync active synergies correctly", () => {
@@ -494,6 +514,7 @@ describe("player-state-sync", () => {
         shopOffers: [{ unitType: "mage", cost: 3, rarity: 2, isRumorUnit: false }],
         shopLocked: false,
         benchUnits: ["new-unit-1"],
+        benchDisplayNames: ["New Unit 1"],
         boardUnits: ["board-1", "board-2"],
         ownedUnits: { vanguard: 1, ranger: 0, mage: 1, assassin: 0 },
         itemInventory: [],
@@ -517,6 +538,7 @@ describe("player-state-sync", () => {
       expect(playerState.shopOffers[0]!.cost).toBe(3);
       expect(playerState.benchUnits.length).toBe(1);
       expect(playerState.benchUnits[0]).toBe("new-unit-1");
+      expect(playerState.benchDisplayNames[0]).toBe("New Unit 1");
     });
   });
 
@@ -538,6 +560,7 @@ describe("player-state-sync", () => {
           { unitType: "assassin", cost: 4, rarity: 3, isRumorUnit: false },
         ],
         benchUnits: ["unit-x", "unit-y", "unit-z"],
+        benchDisplayNames: ["紅美鈴", "十六夜咲夜", "パチュリー・ノーレッジ"],
         boardUnits: ["b1", "b2", "b3", "b4", "b5"],
         itemShopOffers: [{ itemType: "staff", cost: 5 }],
         itemInventory: ["potion"],
@@ -564,6 +587,7 @@ describe("player-state-sync", () => {
       expect(playerState.ownedRanger).toBe(2);
       expect(playerState.ownedMage).toBe(1);
       expect(playerState.benchUnits.length).toBe(3);
+      expect(playerState.benchDisplayNames[2]).toBe("パチュリー・ノーレッジ");
       expect(playerState.boardUnits.length).toBe(5);
     });
 
@@ -577,6 +601,7 @@ describe("player-state-sync", () => {
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
         benchUnits: [],
+        benchDisplayNames: [],
         boardUnits: [],
         itemShopOffers: [],
         itemInventory: [],
@@ -599,6 +624,7 @@ describe("player-state-sync", () => {
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
         benchUnits: [],
+        benchDisplayNames: [],
         boardUnits: [],
         itemShopOffers: [],
         itemInventory: [],
@@ -617,6 +643,7 @@ describe("player-state-sync", () => {
       // Pre-populate with old data
       playerState.shopOffers.push(new ShopOfferState());
       playerState.benchUnits.push("old");
+      playerState.benchDisplayNames.push("Old");
       playerState.itemInventory.push("old-item");
 
       const cmdResult = {
@@ -628,6 +655,7 @@ describe("player-state-sync", () => {
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
         benchUnits: ["new-1", "new-2"],
+        benchDisplayNames: ["紅美鈴", "十六夜咲夜"],
         boardUnits: [],
         itemShopOffers: [],
         itemInventory: ["new-item"],
@@ -640,6 +668,7 @@ describe("player-state-sync", () => {
       expect(playerState.shopOffers.length).toBe(0);
       expect(playerState.benchUnits.length).toBe(2);
       expect(playerState.benchUnits[0]).toBe("new-1");
+      expect(playerState.benchDisplayNames[1]).toBe("十六夜咲夜");
       expect(playerState.itemInventory.length).toBe(1);
       expect(playerState.itemInventory[0]).toBe("new-item");
     });
@@ -657,6 +686,7 @@ describe("player-state-sync", () => {
           { unitType: "mage", cost: 2, rarity: 2, isRumorUnit: true },
         ],
         benchUnits: [],
+        benchDisplayNames: [],
         boardUnits: [],
         itemShopOffers: [],
         itemInventory: [],
@@ -683,6 +713,7 @@ describe("player-state-sync", () => {
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
         benchUnits: [],
+        benchDisplayNames: [],
         boardUnits: [],
         itemShopOffers: [],
         itemInventory: [],

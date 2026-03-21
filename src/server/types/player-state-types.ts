@@ -18,6 +18,16 @@ export interface PlayerStatusBattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  survivorSnapshots?: BattleResultSurvivorSnapshot[];
+}
+
+export interface BattleResultSurvivorSnapshot {
+  unitId: string;
+  displayName: string;
+  unitType: string;
+  hp: number;
+  maxHp: number;
+  combatCell: number;
 }
 
 /**
@@ -83,6 +93,7 @@ export interface ControllerPlayerStatus {
   shopOffers: ShopOfferView[];
   shopLocked: boolean;
   benchUnits: string[];
+  benchDisplayNames?: string[];
   boardUnits: string[];
   ownedUnits: OwnedUnitsView;
   itemInventory: string[];
@@ -116,6 +127,7 @@ export interface CommandResultPayload {
   ownedUnits: OwnedUnitsView;
   shopOffers: ShopOfferView[];
   benchUnits: string[];
+  benchDisplayNames?: string[];
   boardUnits: string[];
   itemShopOffers: ShopItemOfferView[];
   itemInventory: string[];

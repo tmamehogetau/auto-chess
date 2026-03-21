@@ -51,6 +51,9 @@ export interface PrepCommandMessage {
     benchIndex: number;
     cell: number;
   };
+  boardToBenchCell?: {
+    cell: number;
+  };
   benchSellIndex?: number;
   boardSellIndex?: number;
   itemBuySlotIndex?: number;           // Buy item from shop
@@ -141,6 +144,14 @@ export interface RoundStateMessage {
     damageTaken: number;       // Damage you received
     survivors: number;         // Your surviving units
     opponentSurvivors: number; // Enemy surviving units
+    survivorSnapshots?: Array<{
+      unitId: string;
+      displayName: string;
+      unitType: string;
+      hp: number;
+      maxHp: number;
+      combatCell: number;
+    }>;
   };
 
   // Active synergies for this player
@@ -161,6 +172,7 @@ export interface PlayerMatchStatus {
   shopOffers: any[];
   shopLocked: boolean;
   benchUnits: string[];
+  benchDisplayNames?: string[];
   boardUnits: string[];
   ownedUnits: any;
   itemInventory: ItemType[];
@@ -172,6 +184,14 @@ export interface PlayerMatchStatus {
     damageTaken: number;
     survivors: number;
     opponentSurvivors: number;
+    survivorSnapshots?: Array<{
+      unitId: string;
+      displayName: string;
+      unitType: string;
+      hp: number;
+      maxHp: number;
+      combatCell: number;
+    }>;
   };
   activeSynergies?: {
     unitType: string;

@@ -1706,6 +1706,49 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.boardUnitCount).toBe(beforeCount);
   });
 
+  test("boardToBenchCellで盤面ユニットをbenchへ戻すとstateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      boardPlacements: [{ cell: 3, unitType: "mage" }],
+    });
+    expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+      accepted: true,
+    });
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 2,
+      boardToBenchCell: { cell: 3 },
+    });
+
+    const result = await targetClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.COMMAND_RESULT,
+    );
+    expect(result).toEqual({ accepted: true });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+
+    expect(afterPlayer?.boardUnitCount).toBe(0);
+    expect(Array.from(afterPlayer?.boardUnits ?? [])).toEqual([]);
+    expect(Array.from(afterPlayer?.benchUnits ?? [])).toEqual(["mage"]);
+  });
+
   test("同種3体購入でベンチ上の自動合成結果がstateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([

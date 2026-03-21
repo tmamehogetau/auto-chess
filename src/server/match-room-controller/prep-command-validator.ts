@@ -56,6 +56,9 @@ export interface CommandPayload {
     benchIndex: number;
     cell: number;
   };
+  boardToBenchCell?: {
+    cell: number;
+  };
   benchSellIndex?: number;
   boardSellIndex?: number;
   itemBuySlotIndex?: number;
@@ -273,6 +276,16 @@ function validatePayload(
     }
   }
 
+  if (payload.boardToBenchCell !== undefined) {
+    if (
+      !Number.isInteger(payload.boardToBenchCell.cell) ||
+      payload.boardToBenchCell.cell < COMBAT_CELL_MIN_INDEX ||
+      payload.boardToBenchCell.cell > COMBAT_CELL_MAX_INDEX
+    ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+  }
+
   // boardSellIndex validation
   if (payload.boardSellIndex !== undefined) {
     if (
@@ -366,8 +379,20 @@ function validateCommandConflicts(
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
+  if (payload.boardToBenchCell !== undefined && payload.benchToBoardCell !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardSellIndex and benchSellIndex cannot be used together
   if (payload.boardSellIndex !== undefined && payload.benchSellIndex !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  if (payload.boardToBenchCell !== undefined && payload.benchSellIndex !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  if (payload.boardToBenchCell !== undefined && payload.boardSellIndex !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
@@ -376,13 +401,25 @@ function validateCommandConflicts(
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
+  if (payload.boardToBenchCell !== undefined && payload.shopBuySlotIndex !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardSellIndex and boardUnitCount cannot be used together
   if (payload.boardSellIndex !== undefined && payload.boardUnitCount !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
+  if (payload.boardToBenchCell !== undefined && payload.boardUnitCount !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardSellIndex and boardPlacements cannot be used together
   if (payload.boardSellIndex !== undefined && payload.boardPlacements !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  if (payload.boardToBenchCell !== undefined && payload.boardPlacements !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
@@ -446,6 +483,22 @@ function validatePreconditions(
 
     if (!hasBoardUnit) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+  }
+
+  if (payload.boardToBenchCell !== undefined) {
+    const benchUnits = deps.getBenchUnits(playerId);
+    const boardPlacements = deps.getBoardPlacements(playerId);
+    const hasBoardUnit = boardPlacements.some(
+      (placement) => placement.cell === payload.boardToBenchCell?.cell,
+    );
+
+    if (!hasBoardUnit) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (benchUnits.length >= MAX_BENCH_SIZE) {
+      return { accepted: false, code: "BENCH_FULL" };
     }
   }
 

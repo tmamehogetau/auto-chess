@@ -8,6 +8,8 @@ import type { BattleUnit, BattleResult as SimulatorBattleResult } from "../comba
 import type { BoardUnitPlacement } from "../../shared/room-messages";
 import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
+import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
+import type { BattleResultSurvivorSnapshot } from "../types/player-state-types";
 
 /**
  * Spell combat modifiers
@@ -43,6 +45,7 @@ export interface PlayerBattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  survivorSnapshots?: BattleResultSurvivorSnapshot[];
 }
 
 /**
@@ -233,6 +236,7 @@ export class BattleResolutionService {
         damageTaken: damageToLeft,
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
       };
 
       rightBattleResult = {
@@ -242,6 +246,7 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
       };
 
       outcome = {
@@ -277,6 +282,7 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
       };
 
       rightBattleResult = {
@@ -286,6 +292,7 @@ export class BattleResolutionService {
         damageTaken: damageToRight,
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
       };
 
       outcome = {
@@ -317,6 +324,7 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
       };
 
       rightBattleResult = {
@@ -326,6 +334,7 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
       };
 
       outcome = {
@@ -355,6 +364,23 @@ export class BattleResolutionService {
       leftBattleResult,
       rightBattleResult,
     };
+  }
+
+  private buildSurvivorSnapshots(survivors: BattleUnit[]): BattleResultSurvivorSnapshot[] {
+    return survivors.map((survivor) => {
+      const unitId = typeof survivor.sourceUnitId === "string" && survivor.sourceUnitId.length > 0
+        ? survivor.sourceUnitId
+        : survivor.id;
+      const presentation = resolveSharedBoardUnitPresentation(unitId, survivor.type);
+      return {
+        unitId,
+        displayName: presentation?.displayName ?? survivor.type,
+        unitType: survivor.type,
+        hp: Math.max(0, Math.round(Number(survivor.hp) || 0)),
+        maxHp: Math.max(0, Math.round(Number(survivor.maxHp) || 0)),
+        combatCell: Number.isInteger(survivor.cell) ? survivor.cell : -1,
+      };
+    });
   }
 
   /**

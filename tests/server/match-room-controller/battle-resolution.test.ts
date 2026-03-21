@@ -36,6 +36,7 @@ describe("BattleResolutionService", () => {
 
   const createMockBattleUnit = (id: string, side: "left" | "right"): BattleUnit => ({
     id,
+    sourceUnitId: id,
     type: "vanguard",
     starLevel: 1,
     hp: 100,
@@ -103,6 +104,16 @@ describe("BattleResolutionService", () => {
       expect(result.outcome.isDraw).toBe(false);
       expect(result.leftBattleResult.won).toBe(true);
       expect(result.rightBattleResult.won).toBe(false);
+      expect(result.leftBattleResult.survivorSnapshots).toEqual([
+        {
+          unitId: "unit1",
+          displayName: "vanguard",
+          unitType: "vanguard",
+          hp: 100,
+          maxHp: 100,
+          combatCell: 0,
+        },
+      ]);
     });
 
     it("should resolve matchup with right winner", () => {

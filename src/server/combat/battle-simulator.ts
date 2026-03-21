@@ -34,6 +34,7 @@ export interface Action {
  */
 export interface BattleUnit {
   id: string;
+  sourceUnitId?: string;
   type: BoardUnitType;
   starLevel: number;
   hp: number;
@@ -173,6 +174,7 @@ export function createBattleUnit(
 
   return {
     id: `${side}-${unitType}-${index}`,
+    sourceUnitId: resolvedPlacement.unitId ?? `${side}-${unitType}-${index}`,
     type: unitType,
     starLevel,
     hp: finalHp,

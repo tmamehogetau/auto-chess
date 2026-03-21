@@ -834,6 +834,39 @@ describe("PrepCommandValidator", () => {
 
       expect(result).toBeNull();
     });
+
+    test("valid boardToBenchCell returns null with correct context", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue([
+          { unitType: "mage" },
+          { unitType: "vanguard" },
+        ]),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          { cell: 2, unitType: "vanguard" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardToBenchCell: { cell: 2 },
+      }, deps);
+
+      expect(result).toBeNull();
+    });
+
+    test("boardToBenchCell returns BENCH_FULL when bench is full", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue(Array.from({ length: 9 }, () => ({ unitType: "mage" }))),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          { cell: 2, unitType: "vanguard" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardToBenchCell: { cell: 2 },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
+    });
   });
 
   describe("boardPlacements Validation", () => {

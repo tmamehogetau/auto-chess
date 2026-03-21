@@ -95,6 +95,7 @@ import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
 import {
   getActiveRosterKind,
+  getActiveRosterUnitById,
   getTouhouDraftRosterUnits,
   validateRosterAvailability,
 } from "./roster/roster-provider";
@@ -346,6 +347,14 @@ interface BattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  survivorSnapshots?: Array<{
+    unitId: string;
+    displayName: string;
+    unitType: string;
+    hp: number;
+    maxHp: number;
+    combatCell: number;
+  }>;
 }
 
 export class MatchRoomController {
@@ -1067,6 +1076,7 @@ export class MatchRoomController {
           ? `${benchUnit.unitType}:${benchUnit.starLevel}`
           : benchUnit.unitType,
       ),
+      benchDisplayNames: benchUnits.map((benchUnit) => this.resolveBenchUnitDisplayName(benchUnit)),
       boardUnits: boardPlacements.map((placement) => {
         const starLevel = placement.starLevel ?? 1;
         const hasSubUnitAssist =
@@ -1379,6 +1389,7 @@ export class MatchRoomController {
       buyShopOffer: (id, slotIndex) => this.buyShopOfferBySlot(id, slotIndex),
       deployBenchUnitToBoard: (id, benchIndex, cell) =>
         this.deployBenchUnitToBoard(id, benchIndex, cell),
+      returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
       sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
       sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
       addItemToInventory: (id, itemType) => this.addItemToInventory(id, itemType),
@@ -1807,6 +1818,42 @@ export class MatchRoomController {
     this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
   }
 
+  private returnBoardUnitToBench(playerId: string, cell: number): void {
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
+
+    if (targetIndex < 0 || benchUnits.length >= MAX_BENCH_SIZE) {
+      return;
+    }
+
+    const returnedPlacement = boardPlacements[targetIndex];
+
+    if (!returnedPlacement) {
+      return;
+    }
+
+    boardPlacements.splice(targetIndex, 1);
+
+    const benchUnit: BenchUnit = {
+      unitType: returnedPlacement.unitType,
+      cost: returnedPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[returnedPlacement.unitType] ?? 1,
+      starLevel: returnedPlacement.starLevel ?? 1,
+      unitCount: returnedPlacement.unitCount ?? returnedPlacement.starLevel ?? 1,
+      items: [...(returnedPlacement.items ?? [])],
+    };
+
+    if (returnedPlacement.unitId !== undefined) {
+      benchUnit.unitId = returnedPlacement.unitId;
+    }
+
+    benchUnits.push(benchUnit);
+
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+  }
+
   private sellBenchUnit(playerId: string, benchIndex: number): void {
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
     const benchUnit = benchUnits[benchIndex];
@@ -1894,6 +1941,14 @@ export class MatchRoomController {
       sellValue,
       soldPlacement.unitCount ?? soldPlacement.starLevel ?? 1,
     );
+  }
+
+  private resolveBenchUnitDisplayName(benchUnit: BenchUnit): string {
+    if (!benchUnit.unitId) {
+      return "";
+    }
+
+    return getActiveRosterUnitById(this.rosterFlags, benchUnit.unitId)?.name ?? "";
   }
 
   private ensureKnownPlayer(playerId: string): void {

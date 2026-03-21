@@ -1,4 +1,5 @@
 import {
+  BattleResultSurvivorSchema,
   PlayerPresenceState,
   ShopOfferState,
   ShopItemOfferState,
@@ -6,6 +7,7 @@ import {
 } from "../../schema/match-room-state";
 import type { BoardUnitType, ItemType } from "../../../shared/types";
 import type {
+  BattleResultSurvivorSnapshot,
   ControllerPlayerStatus,
   CommandResultPayload,
 } from "../../types/player-state-types";
@@ -32,6 +34,23 @@ const toItemType = (s: string): ItemType => s as ItemType;
 function clearArraySchema<T>(array: { length: number; pop: () => T | undefined }): void {
   while (array.length > 0) {
     array.pop();
+  }
+}
+
+function syncBattleResultSurvivorSnapshots(
+  target: { survivorSnapshots: { length: number; pop: () => unknown; push: (value: BattleResultSurvivorSchema) => void } },
+  snapshots: BattleResultSurvivorSnapshot[] | undefined,
+): void {
+  clearArraySchema(target.survivorSnapshots);
+  for (const snapshot of snapshots ?? []) {
+    const nextSnapshot = new BattleResultSurvivorSchema();
+    nextSnapshot.unitId = snapshot?.unitId ?? "";
+    nextSnapshot.displayName = snapshot?.displayName ?? "";
+    nextSnapshot.unitType = snapshot?.unitType ?? "vanguard";
+    nextSnapshot.hp = Number(snapshot?.hp ?? 0);
+    nextSnapshot.maxHp = Number(snapshot?.maxHp ?? 0);
+    nextSnapshot.combatCell = Number(snapshot?.combatCell ?? -1);
+    target.survivorSnapshots.push(nextSnapshot);
   }
 }
 
@@ -99,6 +118,11 @@ export function syncPlayerStateFromController(
     playerState.benchUnits.push(benchUnit);
   }
 
+  clearArraySchema(playerState.benchDisplayNames);
+  for (const benchDisplayName of controllerStatus.benchDisplayNames ?? []) {
+    playerState.benchDisplayNames.push(benchDisplayName);
+  }
+
   // Board units - clear and repopulate
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of controllerStatus.boardUnits) {
@@ -142,6 +166,10 @@ export function syncPlayerStateFromController(
     playerState.lastBattleResult.damageTaken = controllerStatus.lastBattleResult.damageTaken;
     playerState.lastBattleResult.survivors = controllerStatus.lastBattleResult.survivors;
     playerState.lastBattleResult.opponentSurvivors = controllerStatus.lastBattleResult.opponentSurvivors;
+    syncBattleResultSurvivorSnapshots(
+      playerState.lastBattleResult,
+      controllerStatus.lastBattleResult.survivorSnapshots,
+    );
   } else {
     playerState.lastBattleResult.opponentId = "";
     playerState.lastBattleResult.won = false;
@@ -149,6 +177,7 @@ export function syncPlayerStateFromController(
     playerState.lastBattleResult.damageTaken = 0;
     playerState.lastBattleResult.survivors = 0;
     playerState.lastBattleResult.opponentSurvivors = 0;
+    syncBattleResultSurvivorSnapshots(playerState.lastBattleResult, []);
   }
 
   // Active synergies - clear and repopulate
@@ -225,6 +254,11 @@ export function syncPlayerStateFromCommandResult(
     playerState.benchUnits.push(benchUnit);
   }
 
+  clearArraySchema(playerState.benchDisplayNames);
+  for (const benchDisplayName of cmdResult.benchDisplayNames ?? []) {
+    playerState.benchDisplayNames.push(benchDisplayName);
+  }
+
   // Board units - clear and repopulate
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of cmdResult.boardUnits) {
@@ -268,6 +302,10 @@ export function syncPlayerStateFromCommandResult(
     playerState.lastBattleResult.damageTaken = cmdResult.lastBattleResult.damageTaken;
     playerState.lastBattleResult.survivors = cmdResult.lastBattleResult.survivors;
     playerState.lastBattleResult.opponentSurvivors = cmdResult.lastBattleResult.opponentSurvivors;
+    syncBattleResultSurvivorSnapshots(
+      playerState.lastBattleResult,
+      cmdResult.lastBattleResult.survivorSnapshots,
+    );
   } else {
     playerState.lastBattleResult.opponentId = "";
     playerState.lastBattleResult.won = false;
@@ -275,6 +313,7 @@ export function syncPlayerStateFromCommandResult(
     playerState.lastBattleResult.damageTaken = 0;
     playerState.lastBattleResult.survivors = 0;
     playerState.lastBattleResult.opponentSurvivors = 0;
+    syncBattleResultSurvivorSnapshots(playerState.lastBattleResult, []);
   }
 
   // Active synergies - clear and repopulate

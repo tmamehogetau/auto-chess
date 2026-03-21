@@ -1311,6 +1311,34 @@ describe("MatchRoomController", () => {
     expect(status.ownedUnits[soldOwnedKey]).toBe(beforeSellOwned[soldOwnedKey] - 1);
   });
 
+  test("boardToBenchCellで盤面ユニットをbenchへ戻せる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const placeResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      boardPlacements: [{ cell: 3, unitType: "mage" }],
+    });
+    const returnResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      boardToBenchCell: { cell: 3 },
+    });
+    const status = controller.getPlayerStatus("p1");
+
+    expect(placeResult).toEqual({ accepted: true });
+    expect(returnResult).toEqual({ accepted: true });
+    expect(status.boardUnitCount).toBe(0);
+    expect(status.boardUnits).toEqual([]);
+    expect(status.benchUnits).toEqual(["mage"]);
+  });
+
   test("enablePerUnitSharedPool=true では Touhou unitId ごとに購入在庫が減る", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
       const controller = new MatchRoomController(["p1", "p2", "p3", "p4"], 1_000, controllerOptions);

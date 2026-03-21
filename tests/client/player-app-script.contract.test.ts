@@ -37,9 +37,15 @@ describe("player-app script contract", () => {
     expect(source.includes("function sharedBoardIndexToCombatCell(")).toBe(true);
     expect(source.includes("handlePlayerShopBuy(")).toBe(true);
     expect(source.includes("handlePlayerBenchSelect(")).toBe(true);
+    expect(source.includes("handlePlayerBenchSell(")).toBe(true);
+    expect(source.includes("handlePlayerBoardSell(")).toBe(true);
+    expect(source.includes("handlePlayerBoardReturn(")).toBe(true);
     expect(source.includes("handlePlayerSharedCellClick(")).toBe(true);
     expect(source.includes("shopBuySlotIndex")).toBe(true);
     expect(source.includes("benchToBoardCell")).toBe(true);
+    expect(source.includes("boardToBenchCell")).toBe(true);
+    expect(source.includes("benchSellIndex")).toBe(true);
+    expect(source.includes("boardSellIndex")).toBe(true);
     expect(source.includes("startMonitorPolling")).toBe(false);
     expect(source.includes("connectAutoFillRooms")).toBe(false);
     expect(source.includes("requestAdminMonitorSnapshot")).toBe(false);
@@ -58,12 +64,16 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("function resolvePlayerPhaseView(")).toBe(true);
+    expect(source.includes("function syncPlayerBattleStartSweep(")).toBe(true);
+    expect(source.includes("function triggerPlayerBattleStartSweep(")).toBe(true);
+    expect(source.includes("function clearPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes('lobbyStage === "preference"')).toBe(true);
     expect(source.includes('lobbyStage === "selection"')).toBe(true);
     expect(source.includes('phase === "Prep"')).toBe(true);
     expect(source.includes('phase === "Battle"')).toBe(true);
     expect(source.includes('phase === "Settle"')).toBe(true);
     expect(source.includes('phase === "Elimination"')).toBe(true);
+    expect(source.includes('data-player-battle-start-banner')).toBe(true);
   });
 
   test("connect failure は tester が再試行できる文面へ戻す", () => {

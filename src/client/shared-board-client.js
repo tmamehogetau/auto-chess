@@ -273,16 +273,16 @@ function updateSharedBoardPlacementGuide(state) {
   ));
 
   if (!hasOwnUnits) {
-    domRefs.placementGuideElement.textContent = "Buy a unit into your Bench, then click an open shared-board cell to deploy it. Once placed, select it here to reposition it.";
+    domRefs.placementGuideElement.textContent = "Buy a unit into your Bench, then place it onto one of the center 4x2 cells. Boss covers the top lane, raid covers the bottom lane.";
     return;
   }
 
   if (selectedSharedUnitId || sharedDraggedUnitId) {
-    domRefs.placementGuideElement.textContent = "Blue cells are open for your selected unit. Red cells are blocked by another player or a locked boss cell.";
+    domRefs.placementGuideElement.textContent = "Blue cells inside the center 4x2 are open for your selected unit. Red cells are blocked or outside the playable lane.";
     return;
   }
 
-  domRefs.placementGuideElement.textContent = "Select or drag one of your units. Blue cells show open moves and red cells show blocked lanes.";
+  domRefs.placementGuideElement.textContent = "Select or drag one of your units. The center 4x2 is the playable lane: boss on top, raid on bottom.";
 }
 
 /**
@@ -300,6 +300,7 @@ function renderSharedBoard(state) {
 
   for (let i = 0; i < boardWidth * boardHeight; i += 1) {
     const cell = mapGet(cells, String(i));
+    const playableLaneZone = resolvePlayableLaneZone(state, i);
     const unitId = cell?.unitId ?? "";
     const ownerId = cell?.ownerId ?? "";
     const isOwnUnit = Boolean(sharedBoardRoom && ownerId === getOwnSharedBoardOwnerId());
@@ -316,9 +317,16 @@ function renderSharedBoard(state) {
     cellElement.tabIndex = 0;
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
+    cellElement.dataset.playableLane = playableLaneZone;
     cellElement.setAttribute("role", "button");
-    cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell));
+    cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell, state));
     cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
+    if (playableLaneZone === "outside") {
+      cellElement.classList.add("outside-playable");
+    } else {
+      cellElement.classList.add("playable-lane");
+      cellElement.classList.add(playableLaneZone === "boss" ? "playable-boss-lane" : "playable-raid-lane");
+    }
     cellElement.onclick = () => {
       handleSharedCellClick(state, i);
     };
@@ -342,7 +350,7 @@ function renderSharedBoard(state) {
     cellElement.ondrop = (event) => {
       event.preventDefault();
       if (!isValidSharedDropTarget(state, i)) {
-        deps.showMessage("That lane is blocked. Pick an open cell.", "error");
+        deps.showMessage(buildSharedDropRejectMessage(state, i), "error");
         clearSharedDropIndicators(cellElement);
         return;
       }
@@ -584,6 +592,10 @@ function isValidSharedDropTarget(state, cellIndex) {
     return false;
   }
 
+  if (!isPlayableSharedBoardCell(state, cellIndex)) {
+    return false;
+  }
+
   const cell = mapGet(state?.cells, String(cellIndex));
   if (!cell) {
     return true;
@@ -598,6 +610,63 @@ function isValidSharedDropTarget(state, cellIndex) {
   }
 
   return cell.ownerId === getOwnSharedBoardOwnerId();
+}
+
+function isPlayableSharedBoardCell(state, cellIndex) {
+  return sharedBoardIndexToCombatCell(state, cellIndex) !== null;
+}
+
+function resolvePlayableLaneZone(state, cellIndex) {
+  const combatCell = sharedBoardIndexToCombatCell(state, cellIndex);
+
+  if (combatCell === null) {
+    return "outside";
+  }
+
+  const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+  const combatWidth = boardWidth - 2;
+  return combatCell < combatWidth ? "boss" : "raid";
+}
+
+function sharedBoardIndexToCombatCell(state, boardIndex) {
+  const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+  const boardHeight = Number.isInteger(state?.boardHeight) ? state.boardHeight : 4;
+  const maxIndex = boardWidth * boardHeight - 1;
+
+  if (!Number.isInteger(boardIndex) || boardIndex < 0 || boardIndex > maxIndex) {
+    return null;
+  }
+
+  const x = boardIndex % boardWidth;
+  const y = Math.floor(boardIndex / boardWidth);
+  const combatX = x - 1;
+  const combatY = y - 1;
+  const combatWidth = boardWidth - 2;
+  const combatHeight = boardHeight - 2;
+
+  if (
+    combatX < 0 ||
+    combatY < 0 ||
+    combatX >= combatWidth ||
+    combatY >= combatHeight
+  ) {
+    return null;
+  }
+
+  return combatY * combatWidth + combatX;
+}
+
+function buildSharedDropRejectMessage(state, cellIndex) {
+  if (!isPlayableSharedBoardCell(state, cellIndex)) {
+    return "That lane is outside the playable combat area. Pick one of the center cells.";
+  }
+
+  const cell = mapGet(state?.cells, String(cellIndex));
+  if (cell?.unitId && cell.ownerId !== getOwnSharedBoardOwnerId()) {
+    return "That lane is occupied by another player. Pick an open cell.";
+  }
+
+  return "That lane is blocked. Pick an open cell.";
 }
 
 function clearSharedDropIndicators(cellElement) {
@@ -662,12 +731,12 @@ export function handleSharedCellClick(state, cellIndex) {
 
   // 選択中のユニットがある場合は配置
   if (selectedSharedUnitId) {
-    // ターゲットが空か、自分のユニットがある場合のみ配置
-    if (!cell?.unitId || cell.ownerId === getOwnSharedBoardOwnerId()) {
+    if (isValidSharedDropTarget(state, cellIndex)) {
       sendSharedPlaceUnit(selectedSharedUnitId, cellIndex);
-    } else {
-      deps.showMessage("That lane is occupied by another player. Pick an open cell.", "error");
+      return;
     }
+
+    deps.showMessage(buildSharedDropRejectMessage(state, cellIndex), "error");
   }
 }
 
@@ -679,7 +748,13 @@ function getOwnSharedBoardOwnerId() {
   return sharedBoardRoom?.sessionId ?? "";
 }
 
-function buildSharedBoardCellAriaLabel(cellIndex, cell) {
+function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
+  const playableLaneZone = resolvePlayableLaneZone(state, cellIndex);
+  const laneCopy = playableLaneZone === "outside"
+    ? "outside the playable lane"
+    : playableLaneZone === "boss"
+      ? "boss playable lane"
+      : "raid playable lane";
   const unitName = typeof cell?.displayName === "string" && cell.displayName.length > 0
     ? cell.displayName
     : typeof cell?.unitId === "string" && cell.unitId.length > 0
@@ -687,8 +762,8 @@ function buildSharedBoardCellAriaLabel(cellIndex, cell) {
       : null;
 
   if (unitName) {
-    return `Board cell ${cellIndex}, contains ${unitName}`;
+    return `Board cell ${cellIndex}, ${laneCopy}, contains ${unitName}`;
   }
 
-  return `Board cell ${cellIndex}`;
+  return `Board cell ${cellIndex}, ${laneCopy}`;
 }

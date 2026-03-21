@@ -319,6 +319,65 @@ describe("shared-board client", () => {
     expect(gridElement.children[23]?.className).toContain("zone-raid");
   });
 
+  test("shared board marks center 4x2 as playable lane and dims the outer ring", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "raid-player",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {},
+      cursors: {},
+      players: {
+        "raid-player": { isSpectator: false },
+      },
+    });
+
+    expect(gridElement.children[0]?.className).toContain("outside-playable");
+    expect(gridElement.children[7]?.className).toContain("playable-lane");
+    expect(gridElement.children[7]?.className).toContain("playable-boss-lane");
+    expect(gridElement.children[13]?.className).toContain("playable-lane");
+    expect(gridElement.children[13]?.className).toContain("playable-raid-lane");
+    expect(placementGuideElement.textContent).toContain("center 4x2");
+  });
+
   test("shared board cells distinguish own units and ally units for readability", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
@@ -479,11 +538,11 @@ describe("shared-board client", () => {
       },
     });
 
-    expect(placementGuideElement.textContent).toContain("Select or drag one of your units");
+    expect(placementGuideElement.textContent).toContain("center 4x2");
 
     gridElement.children[7]?.onpointerdown?.();
 
-    expect(placementGuideElement.textContent).toContain("Blue cells are open for your selected unit");
+    expect(placementGuideElement.textContent).toContain("center 4x2");
     expect(gridElement.children[7]?.className).toContain("selected");
     expect(gridElement.children[8]?.className).toContain("drop-target");
     expect(gridElement.children[9]?.className).toContain("blocked-target");
@@ -824,7 +883,7 @@ describe("shared-board client", () => {
 
     expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
     expect(messages).toEqual([{
-      message: "That lane is blocked. Pick an open cell.",
+      message: "That lane is occupied by another player. Pick an open cell.",
       type: "error",
     }]);
     expect(invalidTargetCell?.dataset.dropInvalid).toBeUndefined();
@@ -918,6 +977,78 @@ describe("shared-board client", () => {
       action: "place_unit",
     });
     expect(getSelectedSharedUnitId()).toBeNull();
+  });
+
+  test("shared board click placement rejects non-playable cells before sending", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+    applyStateChange({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {},
+    });
+
+    gridElement.children[7]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    handleSharedCellClick({
+      boardWidth: 6,
+      boardHeight: 4,
+      cells: {
+        7: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+    }, 0);
+
+    expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
+    expect(messages).toEqual([{
+      message: "That lane is outside the playable combat area. Pick one of the center cells.",
+      type: "error",
+    }]);
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
   });
 
   test("shared board treats sparse cells as valid empty drop targets", async () => {
@@ -1029,7 +1160,9 @@ describe("shared-board client", () => {
     const firstCell = gridElement.children[0];
     expect(firstCell?.tabIndex).toBe(0);
     expect(firstCell?.getAttribute("role")).toBe("button");
-    expect(firstCell?.ariaLabel).toBe("Board cell 0");
+    expect(firstCell?.ariaLabel).toBe(
+      "Board cell 0, outside the playable lane",
+    );
     expect(typeof firstCell?.onkeydown).toBe("function");
   });
 

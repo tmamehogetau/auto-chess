@@ -6,7 +6,7 @@ import {
   SharedBoardPlayerState,
   SharedBoardState,
 } from "../schema/shared-board-state";
-import { combatCellToRaidBoardIndex } from "../../shared/board-geometry";
+import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../shared/board-geometry";
 import type { BoardUnitPlacement } from "../../shared/room-messages";
 import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
 
@@ -366,7 +366,11 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return;
     }
 
-    if (!this.isValidCellIndex(payload.toCell) || payload.toCell === this.state.dummyBossCell) {
+    if (
+      !this.isValidCellIndex(payload.toCell) ||
+      payload.toCell === this.state.dummyBossCell ||
+      !this.isPlayablePlacementCellIndex(payload.toCell)
+    ) {
       this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
       return;
     }
@@ -557,6 +561,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private isValidCellIndex(cellIndex: number): boolean {
     return cellIndex >= 0 && cellIndex < this.boardWidth * this.boardHeight;
+  }
+
+  private isPlayablePlacementCellIndex(cellIndex: number): boolean {
+    return raidBoardIndexToCombatCell(cellIndex) !== null;
   }
 
   private ownsUnit(playerId: string, unitId: string): boolean {

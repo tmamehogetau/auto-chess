@@ -23,6 +23,7 @@ export function buildPrepCommandPayload(
     message.shopBuySlotIndex === undefined &&
     message.shopLock === undefined &&
     message.benchToBoardCell === undefined &&
+    message.boardToBenchCell === undefined &&
     message.benchSellIndex === undefined &&
     message.boardSellIndex === undefined &&
     message.itemBuySlotIndex === undefined &&
@@ -42,6 +43,7 @@ export function buildPrepCommandPayload(
     ...(message.shopBuySlotIndex !== undefined && { shopBuySlotIndex: message.shopBuySlotIndex }),
     ...(message.shopLock !== undefined && { shopLock: message.shopLock }),
     ...(message.benchToBoardCell !== undefined && { benchToBoardCell: message.benchToBoardCell }),
+    ...(message.boardToBenchCell !== undefined && { boardToBenchCell: message.boardToBenchCell }),
     ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
     ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
     ...(message.itemBuySlotIndex !== undefined && { itemBuySlotIndex: message.itemBuySlotIndex }),

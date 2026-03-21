@@ -29,6 +29,9 @@ describe("player.html contract", () => {
       'data-player-phase="selection"',
       'data-player-phase="prep"',
       'data-player-phase="result"',
+      "data-player-battle-start-banner",
+      "data-player-battle-start-kicker",
+      "data-player-battle-start-round",
       "data-player-status-copy",
       "data-player-connect-btn",
       "data-player-participant-summary",
@@ -46,6 +49,9 @@ describe("player.html contract", () => {
       "data-player-shop-slot",
       "data-player-bench",
       "data-player-bench-slot",
+      "data-player-bench-sell-button",
+      "data-player-board-sell-button",
+      "data-player-board-return-button",
       "data-player-ready-btn",
       "data-player-ready-button",
       "data-player-result-surface",
@@ -108,6 +114,9 @@ describe("player.html contract", () => {
       'aria-label="Board cell 0"',
       'aria-label="Shop slot 0"',
       'aria-label="Bench slot 0"',
+      'data-player-board-sell-button',
+      'data-player-bench-sell-button',
+      'data-player-board-return-button',
     ];
 
     for (const attribute of requiredAttributes) {

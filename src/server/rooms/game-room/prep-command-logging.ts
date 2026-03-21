@@ -70,6 +70,14 @@ export function logPrepCommandActions(
     });
   }
 
+  if (commandPayload.boardToBenchCell !== undefined) {
+    deps.logger.logAction(sessionId, roundIndex, "undeploy", {
+      cell: commandPayload.boardToBenchCell.cell,
+      goldBefore,
+      goldAfter: goldBefore,
+    });
+  }
+
   if (commandPayload.shopRefreshCount !== undefined) {
     deps.logger.logAction(sessionId, roundIndex, "shop_refresh", {
       itemCount: commandPayload.shopRefreshCount,

@@ -4,7 +4,7 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
-import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
+import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../src/shared/board-geometry";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
 
 const waitForCondition = async (
@@ -70,9 +70,10 @@ const findFirstEmptyCellIndex = (
   excludedIndexes: number[] = [],
 ): number => {
   const excludedSet = new Set(excludedIndexes);
-  const candidate = [...serverRoom.state.cells.values()].find(
+  const candidate = [...serverRoom.state.cells.values()].reverse().find(
     (cell) =>
       cell.index !== serverRoom.state.dummyBossCell
+      && raidBoardIndexToCombatCell(cell.index) !== null
       && cell.unitId === ""
       && !excludedSet.has(cell.index),
   );
@@ -485,6 +486,34 @@ describe("SharedBoardRoom integration", () => {
       SERVER_MESSAGE_TYPES.ACTION_RESULT,
     );
     expect(bossCellReject).toEqual({
+      accepted: false,
+      action: "place_unit",
+      code: "TARGET_OCCUPIED",
+    });
+  });
+
+  test("中央4x2の外へのplaceでTARGET_OCCUPIED", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(client.sessionId);
+      return player !== undefined;
+    }, 1_000);
+
+    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, 0).unitId;
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId,
+      toCell: 0,
+    });
+
+    const nonPlayableReject =
+      await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    expect(nonPlayableReject).toEqual({
       accepted: false,
       action: "place_unit",
       code: "TARGET_OCCUPIED",

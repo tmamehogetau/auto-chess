@@ -34,6 +34,7 @@ export interface ExecutionDependencies {
 
   // Unit operations
   deployBenchUnitToBoard: (playerId: string, benchIndex: number, cell: number) => void;
+  returnBoardUnitToBench: (playerId: string, cell: number) => void;
   sellBenchUnit: (playerId: string, benchIndex: number) => void;
   sellBoardUnit: (playerId: string, cell: number) => void;
 
@@ -218,17 +219,22 @@ export function executePrepCommand(
     );
   }
 
-  // 11. Execute bench sell
+  // 11. Execute board to bench
+  if (payload.boardToBenchCell !== undefined) {
+    deps.returnBoardUnitToBench(playerId, payload.boardToBenchCell.cell);
+  }
+
+  // 12. Execute bench sell
   if (payload.benchSellIndex !== undefined) {
     deps.sellBenchUnit(playerId, payload.benchSellIndex);
   }
 
-  // 12. Execute board sell
+  // 13. Execute board sell
   if (payload.boardSellIndex !== undefined) {
     deps.sellBoardUnit(playerId, payload.boardSellIndex);
   }
 
-  // 13. Execute item equip to bench
+  // 14. Execute item equip to bench
   if (payload.itemEquipToBench !== undefined) {
     deps.equipItemToBenchUnit(
       playerId,
@@ -237,7 +243,7 @@ export function executePrepCommand(
     );
   }
 
-  // 14. Execute item unequip from bench
+  // 15. Execute item unequip from bench
   if (payload.itemUnequipFromBench !== undefined) {
     deps.unequipItemFromBenchUnit(
       playerId,
@@ -246,12 +252,12 @@ export function executePrepCommand(
     );
   }
 
-  // 15. Execute item sell
+  // 16. Execute item sell
   if (payload.itemSellInventoryIndex !== undefined) {
     deps.sellInventoryItem(playerId, payload.itemSellInventoryIndex);
   }
 
-  // 16. Update last command sequence
+  // 17. Update last command sequence
   deps.setLastCmdSeq(playerId, cmdSeq);
 
   return { accepted: true };

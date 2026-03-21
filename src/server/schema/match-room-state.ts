@@ -50,6 +50,7 @@ export class BattleResultSchema extends Schema {
   declare public damageTaken: number;
   declare public survivors: number;
   declare public opponentSurvivors: number;
+  declare public survivorSnapshots: ArraySchema<BattleResultSurvivorSchema>;
 
   public constructor() {
     super();
@@ -59,6 +60,26 @@ export class BattleResultSchema extends Schema {
     this.damageTaken = 0;
     this.survivors = 0;
     this.opponentSurvivors = 0;
+    this.survivorSnapshots = new ArraySchema<BattleResultSurvivorSchema>();
+  }
+}
+
+export class BattleResultSurvivorSchema extends Schema {
+  declare public unitId: string;
+  declare public displayName: string;
+  declare public unitType: string;
+  declare public hp: number;
+  declare public maxHp: number;
+  declare public combatCell: number;
+
+  public constructor() {
+    super();
+    this.unitId = "";
+    this.displayName = "";
+    this.unitType = "vanguard";
+    this.hp = 0;
+    this.maxHp = 0;
+    this.combatCell = -1;
   }
 }
 
@@ -106,6 +127,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public benchUnits: ArraySchema<string>;
 
+  declare public benchDisplayNames: ArraySchema<string>;
+
   declare public boardUnits: ArraySchema<string>;
 
   declare public ownedVanguard: number;
@@ -149,6 +172,7 @@ export class PlayerPresenceState extends Schema {
     this.xp = 0;
     this.level = 1;
     this.benchUnits = new ArraySchema<string>();
+    this.benchDisplayNames = new ArraySchema<string>();
     this.boardUnits = new ArraySchema<string>();
     this.ownedVanguard = 0;
     this.ownedRanger = 0;
@@ -274,6 +298,16 @@ defineTypes(BattleResultSchema, {
   damageTaken: "number",
   survivors: "number",
   opponentSurvivors: "number",
+  survivorSnapshots: [BattleResultSurvivorSchema],
+});
+
+defineTypes(BattleResultSurvivorSchema, {
+  unitId: "string",
+  displayName: "string",
+  unitType: "string",
+  hp: "number",
+  maxHp: "number",
+  combatCell: "number",
 });
 
 defineTypes(SynergySchema, {
@@ -298,6 +332,7 @@ defineTypes(PlayerPresenceState, {
   xp: "number",
   level: "number",
   benchUnits: ["string"],
+  benchDisplayNames: ["string"],
   boardUnits: ["string"],
   ownedVanguard: "number",
   ownedRanger: "number",

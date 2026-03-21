@@ -17,6 +17,7 @@ describe("PrepCommandExecutor", () => {
     refreshShop: vi.fn(),
     buyShopOffer: vi.fn(),
     deployBenchUnitToBoard: vi.fn(),
+    returnBoardUnitToBench: vi.fn(),
     sellBenchUnit: vi.fn(),
     sellBoardUnit: vi.fn(),
     addItemToInventory: vi.fn(),
@@ -210,6 +211,17 @@ describe("PrepCommandExecutor", () => {
       executePrepCommand("p1", 1, payload, deps);
 
       expect(deps.addGold).toHaveBeenCalledWith("p1", -2);
+    });
+  });
+
+  describe("Board To Bench", () => {
+    test("returns board unit to bench when boardToBenchCell provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = { boardToBenchCell: { cell: 3 } };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.returnBoardUnitToBench).toHaveBeenCalledWith("p1", 3);
     });
   });
 

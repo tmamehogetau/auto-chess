@@ -16,6 +16,11 @@ const UNIT_ICONS = {
   assassin: "🗡️",
 };
 
+const RESULT_IMPRINT_BOARD_WIDTH = 6;
+const RESULT_IMPRINT_BOARD_HEIGHT = 4;
+const RESULT_IMPRINT_COMBAT_WIDTH = RESULT_IMPRINT_BOARD_WIDTH - 2;
+const RESULT_IMPRINT_COMBAT_HEIGHT = RESULT_IMPRINT_BOARD_HEIGHT - 2;
+
 export function renderPlayerLobbySummary({ participantSummaryElement, state }) {
   if (!(participantSummaryElement instanceof HTMLElement)) {
     return;
@@ -95,12 +100,18 @@ export function renderPlayerPrepSummary({
   sessionId = "",
   currentPhase,
   selectedBenchIndex,
+  canSellBench = false,
+  canSellBoard = false,
+  canReturnBoard = false,
+  benchSellButton,
+  boardReturnButton,
+  boardSellButton,
   sharedBoardConnected = false,
 }) {
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
     boardCopyElement.textContent = selectedBenchIndex === null
-      ? "共有ボードの中央 4x2 が playable lane です。bench を選んで open lane へ配置します。"
-      : `Bench ${selectedBenchIndex + 1} を選択中です。open lane をクリックして配置します。`;
+      ? "共有ボードの中央 4x2 が playable lane です。bench を選んで open lane へ配置し、置いた unit は選んで再配置や売却ができます。"
+      : `Bench ${selectedBenchIndex + 1} を選択中です。open lane をクリックして配置するか、Sell で売却します。`;
   }
 
   const offers = toRenderableArray(player?.shopOffers);
@@ -128,9 +139,10 @@ export function renderPlayerPrepSummary({
   });
 
   const benchUnits = toRenderableArray(player?.benchUnits);
+  const benchDisplayNames = toRenderableArray(player?.benchDisplayNames);
   if (benchCopyElement instanceof HTMLElement) {
     benchCopyElement.textContent = selectedBenchIndex === null
-      ? `${benchUnits.length} / 9 on bench。配置したい unit を選びます。`
+      ? `${benchUnits.length} / 9 on bench。配置か売却したい unit を選びます。`
       : `${benchUnits.length} / 9 on bench。Bench ${selectedBenchIndex + 1} を選択中です。`;
   }
 
@@ -139,7 +151,7 @@ export function renderPlayerPrepSummary({
       return;
     }
 
-    const unitText = formatBenchUnitLabel(benchUnits[index]);
+    const unitText = formatBenchUnitLabel(benchUnits[index], benchDisplayNames[index]);
     button.disabled = !unitText || currentPhase !== "Prep";
     button.classList.toggle("selected", selectedBenchIndex === index);
     button.textContent = unitText ?? `Bench ${index + 1}`;
@@ -152,6 +164,18 @@ export function renderPlayerPrepSummary({
 
     button.disabled = currentPhase !== "Prep";
   });
+
+  if (benchSellButton instanceof HTMLButtonElement) {
+    benchSellButton.disabled = currentPhase !== "Prep" || !canSellBench;
+  }
+
+  if (boardSellButton instanceof HTMLButtonElement) {
+    boardSellButton.disabled = currentPhase !== "Prep" || !canSellBoard;
+  }
+
+  if (boardReturnButton instanceof HTMLButtonElement) {
+    boardReturnButton.disabled = currentPhase !== "Prep" || !canReturnBoard;
+  }
 
   if (readyCopyElement instanceof HTMLElement) {
     const players = mapEntries(state?.players).map(([, currentPlayer]) => currentPlayer);
@@ -207,6 +231,9 @@ export function renderPlayerResultSummary({
     };
   const caption = buildRoundSummaryCaption({ ranking, sessionId });
   const tip = buildRoundSummaryTip({ ranking, sessionId });
+  const survivorSnapshots = toRenderableArray(battleResult?.survivorSnapshots);
+  const survivorMarkup = buildSurvivorSnapshotMarkup(survivorSnapshots);
+  const imprintMarkup = buildSharedBoardImprintMarkup(survivorSnapshots);
 
   resultSurfaceElement.innerHTML = `
     <div class="player-card">
@@ -230,6 +257,8 @@ export function renderPlayerResultSummary({
       <div>${caption}</div>
       <div>${tip}</div>
     </div>
+    ${imprintMarkup}
+    ${survivorMarkup}
   `;
 }
 
@@ -252,9 +281,13 @@ function buildRoundDamageRanking(players) {
   return ranking.slice(0, 3);
 }
 
-function formatBenchUnitLabel(unit) {
+function formatBenchUnitLabel(unit, displayName) {
   if (!unit) {
     return null;
+  }
+
+  if (typeof displayName === "string" && displayName.length > 0) {
+    return displayName;
   }
 
   if (typeof unit === "string") {
@@ -283,4 +316,166 @@ function toRenderableArray(value) {
   }
 
   return Array.from(value);
+}
+
+function buildSurvivorSnapshotMarkup(survivorSnapshots) {
+  if (survivorSnapshots.length === 0) {
+    return "";
+  }
+
+  const survivorRows = survivorSnapshots.map((snapshot) => {
+    const currentHp = Math.max(0, Math.round(Number(snapshot?.hp) || 0));
+    const maxHp = Math.max(currentHp, Math.round(Number(snapshot?.maxHp) || 0));
+    const displayName = typeof snapshot?.displayName === "string" && snapshot.displayName.length > 0
+      ? snapshot.displayName
+      : typeof snapshot?.unitType === "string" && snapshot.unitType.length > 0
+        ? snapshot.unitType
+        : "Unknown unit";
+    const hpPercent = maxHp > 0 ? Math.max(0, Math.min(100, (currentHp / maxHp) * 100)) : 0;
+
+    return `
+      <div class="player-survivor-row">
+        <div class="player-survivor-copy">
+          <span>${displayName}</span>
+          <span>${currentHp} / ${maxHp}</span>
+        </div>
+        <div class="player-survivor-bar">
+          <div class="player-survivor-bar-fill" style="width: ${hpPercent}%"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="player-card">
+      <strong>Surviving Units</strong>
+      <div>戦闘後に立っていた unit の残HPです。</div>
+      <div class="player-survivor-list">${survivorRows}</div>
+    </div>
+  `;
+}
+
+function buildSharedBoardImprintMarkup(survivorSnapshots) {
+  if (survivorSnapshots.length === 0) {
+    return `
+      <div class="player-card">
+        <strong>Shared-board Imprint</strong>
+        <div>No surviving units remained in your center lane.</div>
+      </div>
+    `;
+  }
+
+  const snapshotByBoardCellIndex = new Map();
+  for (const snapshot of survivorSnapshots) {
+    const boardCellIndex = combatCellToResultBoardIndex(Number(snapshot?.combatCell));
+    if (boardCellIndex === null) {
+      continue;
+    }
+
+    snapshotByBoardCellIndex.set(boardCellIndex, snapshot);
+  }
+
+  const cellMarkup = [];
+  for (let boardCellIndex = 0; boardCellIndex < RESULT_IMPRINT_BOARD_WIDTH * RESULT_IMPRINT_BOARD_HEIGHT; boardCellIndex += 1) {
+    const playableLaneZone = resolveResultImprintLaneZone(boardCellIndex);
+    const snapshot = snapshotByBoardCellIndex.get(boardCellIndex) ?? null;
+    const classNames = [
+      "shared-board-cell",
+      playableLaneZone === "outside" ? "outside-playable" : "playable-lane",
+      boardCellIndex < RESULT_IMPRINT_BOARD_WIDTH * 2 ? "zone-boss" : "zone-raid",
+    ];
+
+    if (playableLaneZone === "boss") {
+      classNames.push("playable-boss-lane");
+    }
+
+    if (playableLaneZone === "raid") {
+      classNames.push("playable-raid-lane");
+    }
+
+    if (snapshot) {
+      classNames.push("result-imprint-survivor");
+    } else if (playableLaneZone !== "outside") {
+      classNames.push("result-imprint-empty");
+    }
+
+    if (!snapshot) {
+      cellMarkup.push(`
+        <div
+          class="${classNames.join(" ")}"
+          data-result-imprint-cell="${boardCellIndex}"
+        ></div>
+      `);
+      continue;
+    }
+
+    const currentHp = Math.max(0, Math.round(Number(snapshot?.hp) || 0));
+    const maxHp = Math.max(currentHp, Math.round(Number(snapshot?.maxHp) || 0));
+    const hpPercent = maxHp > 0 ? Math.max(0, Math.min(100, (currentHp / maxHp) * 100)) : 0;
+    const displayName = typeof snapshot?.displayName === "string" && snapshot.displayName.length > 0
+      ? snapshot.displayName
+      : typeof snapshot?.unitType === "string" && snapshot.unitType.length > 0
+        ? snapshot.unitType
+        : "Unknown unit";
+
+    cellMarkup.push(`
+      <div
+        class="${classNames.join(" ")}"
+        data-result-imprint-cell="${boardCellIndex}"
+      >
+        <div class="shared-board-unit result-imprint-unit">
+          <span class="shared-board-display-name">${displayName}</span>
+          <span class="result-imprint-hp-copy">${currentHp} / ${maxHp}</span>
+          <div class="result-imprint-hp-bar">
+            <div class="result-imprint-hp-bar-fill" style="width: ${hpPercent}%"></div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  return `
+    <div class="player-card">
+      <strong>Shared-board Imprint</strong>
+      <div>Only surviving units stay stamped onto the center lane.</div>
+      <div class="shared-board-grid result-imprint-grid">${cellMarkup.join("")}</div>
+    </div>
+  `;
+}
+
+function combatCellToResultBoardIndex(combatCell) {
+  if (
+    !Number.isInteger(combatCell) ||
+    combatCell < 0 ||
+    combatCell >= RESULT_IMPRINT_COMBAT_WIDTH * RESULT_IMPRINT_COMBAT_HEIGHT
+  ) {
+    return null;
+  }
+
+  const combatX = combatCell % RESULT_IMPRINT_COMBAT_WIDTH;
+  const combatY = Math.floor(combatCell / RESULT_IMPRINT_COMBAT_WIDTH);
+  return (combatY + 1) * RESULT_IMPRINT_BOARD_WIDTH + combatX + 1;
+}
+
+function resolveResultImprintLaneZone(boardCellIndex) {
+  const maxBoardCellIndex = RESULT_IMPRINT_BOARD_WIDTH * RESULT_IMPRINT_BOARD_HEIGHT - 1;
+  if (!Number.isInteger(boardCellIndex) || boardCellIndex < 0 || boardCellIndex > maxBoardCellIndex) {
+    return "outside";
+  }
+
+  const x = boardCellIndex % RESULT_IMPRINT_BOARD_WIDTH;
+  const y = Math.floor(boardCellIndex / RESULT_IMPRINT_BOARD_WIDTH);
+  const combatX = x - 1;
+  const combatY = y - 1;
+
+  if (
+    combatX < 0 ||
+    combatY < 0 ||
+    combatX >= RESULT_IMPRINT_COMBAT_WIDTH ||
+    combatY >= RESULT_IMPRINT_COMBAT_HEIGHT
+  ) {
+    return "outside";
+  }
+
+  return combatY === 0 ? "boss" : "raid";
 }

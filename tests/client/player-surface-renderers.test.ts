@@ -160,6 +160,23 @@ describe("player surface renderers", () => {
     expect(benchSlotElements[0]?.textContent).toContain("vanguard");
   });
 
+  test("prep summary prefers benchDisplayNames when available", () => {
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: ["vanguard-player-1-1", "mage-player-1-2"],
+        benchDisplayNames: ["紅美鈴", "パチュリー・ノーレッジ"],
+      },
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    expect(benchSlotElements[0]?.textContent).toContain("紅美鈴");
+    expect(benchSlotElements[1]?.textContent).toContain("パチュリー・ノーレッジ");
+  });
+
   test("result summary shows phase hp, battle result, and next-round guidance", () => {
     const resultSurfaceElement = new FakeElement();
 
@@ -184,6 +201,16 @@ describe("player surface renderers", () => {
           damageTaken: 12,
           survivors: 1,
           opponentSurvivors: 4,
+          survivorSnapshots: [
+            {
+              unitId: "koishi",
+              displayName: "古明地こいし",
+              unitType: "assassin",
+              hp: 27,
+              maxHp: 60,
+              combatCell: 5,
+            },
+          ],
         },
       },
       phaseHpProgress: {
@@ -199,6 +226,48 @@ describe("player surface renderers", () => {
     expect(resultSurfaceElement.innerHTML).toContain("Round 3: read the result and fix one weak lane");
     expect(resultSurfaceElement.innerHTML).toContain("💀 DEFEAT");
     expect(resultSurfaceElement.innerHTML).toContain("trailed by 14 damage");
+    expect(resultSurfaceElement.innerHTML).toContain("Surviving Units");
+    expect(resultSurfaceElement.innerHTML).toContain("古明地こいし");
+    expect(resultSurfaceElement.innerHTML).toContain("27 / 60");
+  });
+
+  test("result summary stamps survivor hp onto a shared-board imprint", () => {
+    const resultSurfaceElement = new FakeElement();
+
+    renderPlayerResultSummary({
+      resultSurfaceElement: resultSurfaceElement as unknown as HTMLElement,
+      state: {
+        phase: "Settle",
+        roundIndex: 2,
+        players: {},
+      },
+      player: {
+        lastBattleResult: {
+          won: true,
+          damageDealt: 18,
+          damageTaken: 3,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorSnapshots: [
+            {
+              unitId: "koishi",
+              displayName: "古明地こいし",
+              unitType: "assassin",
+              hp: 27,
+              maxHp: 60,
+              combatCell: 5,
+            },
+          ],
+        },
+      },
+      sessionId: "raid-1",
+    });
+
+    expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
+    expect(resultSurfaceElement.innerHTML).toContain("Only surviving units stay stamped onto the center lane.");
+    expect(resultSurfaceElement.innerHTML).toContain('data-result-imprint-cell="13"');
+    expect(resultSurfaceElement.innerHTML).toContain("古明地こいし");
+    expect(resultSurfaceElement.innerHTML).toContain("27 / 60");
   });
 
   test("result summary reads iterable ranking and raid members for final judgment", () => {

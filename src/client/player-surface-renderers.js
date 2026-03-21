@@ -17,9 +17,9 @@ const UNIT_ICONS = {
 };
 
 const RESULT_IMPRINT_BOARD_WIDTH = 6;
-const RESULT_IMPRINT_BOARD_HEIGHT = 4;
-const RESULT_IMPRINT_COMBAT_WIDTH = RESULT_IMPRINT_BOARD_WIDTH - 2;
-const RESULT_IMPRINT_COMBAT_HEIGHT = RESULT_IMPRINT_BOARD_HEIGHT - 2;
+const RESULT_IMPRINT_BOARD_HEIGHT = 6;
+const RESULT_IMPRINT_COMBAT_WIDTH = 4;
+const RESULT_IMPRINT_COMBAT_HEIGHT = 2;
 
 export function renderPlayerLobbySummary({ participantSummaryElement, state }) {
   if (!(participantSummaryElement instanceof HTMLElement)) {
@@ -232,8 +232,12 @@ export function renderPlayerResultSummary({
   const caption = buildRoundSummaryCaption({ ranking, sessionId });
   const tip = buildRoundSummaryTip({ ranking, sessionId });
   const survivorSnapshots = toRenderableArray(battleResult?.survivorSnapshots);
+  const timelineEvents = parseBattleTimelineEvents(battleResult?.timelineEvents);
   const survivorMarkup = buildSurvivorSnapshotMarkup(survivorSnapshots);
-  const imprintMarkup = buildSharedBoardImprintMarkup(survivorSnapshots);
+  const imprintMarkup = buildSharedBoardImprintMarkup({
+    survivorSnapshots,
+    timelineEvents,
+  });
 
   resultSurfaceElement.innerHTML = `
     <div class="player-card">
@@ -355,47 +359,30 @@ function buildSurvivorSnapshotMarkup(survivorSnapshots) {
   `;
 }
 
-function buildSharedBoardImprintMarkup(survivorSnapshots) {
-  if (survivorSnapshots.length === 0) {
+function buildSharedBoardImprintMarkup({ survivorSnapshots, timelineEvents }) {
+  const imprintState = resolveResultImprintState({ survivorSnapshots, timelineEvents });
+
+  if (!imprintState) {
     return `
       <div class="player-card">
         <strong>Shared-board Imprint</strong>
-        <div>No surviving units remained in your center lane.</div>
+        <div>No surviving units remained on the shared board.</div>
       </div>
     `;
   }
 
-  const snapshotByBoardCellIndex = new Map();
-  for (const snapshot of survivorSnapshots) {
-    const boardCellIndex = combatCellToResultBoardIndex(Number(snapshot?.combatCell));
-    if (boardCellIndex === null) {
-      continue;
-    }
-
-    snapshotByBoardCellIndex.set(boardCellIndex, snapshot);
-  }
-
   const cellMarkup = [];
-  for (let boardCellIndex = 0; boardCellIndex < RESULT_IMPRINT_BOARD_WIDTH * RESULT_IMPRINT_BOARD_HEIGHT; boardCellIndex += 1) {
-    const playableLaneZone = resolveResultImprintLaneZone(boardCellIndex);
-    const snapshot = snapshotByBoardCellIndex.get(boardCellIndex) ?? null;
+  for (let boardCellIndex = 0; boardCellIndex < imprintState.boardWidth * imprintState.boardHeight; boardCellIndex += 1) {
+    const deploymentZone = resolveResultImprintDeploymentZone(boardCellIndex, imprintState.boardWidth, imprintState.boardHeight);
+    const snapshot = imprintState.snapshotByBoardCellIndex.get(boardCellIndex) ?? null;
     const classNames = [
       "shared-board-cell",
-      playableLaneZone === "outside" ? "outside-playable" : "playable-lane",
-      boardCellIndex < RESULT_IMPRINT_BOARD_WIDTH * 2 ? "zone-boss" : "zone-raid",
+      deploymentZone === "boss" ? "zone-boss" : "zone-raid",
     ];
-
-    if (playableLaneZone === "boss") {
-      classNames.push("playable-boss-lane");
-    }
-
-    if (playableLaneZone === "raid") {
-      classNames.push("playable-raid-lane");
-    }
 
     if (snapshot) {
       classNames.push("result-imprint-survivor");
-    } else if (playableLaneZone !== "outside") {
+    } else {
       classNames.push("result-imprint-empty");
     }
 
@@ -437,10 +424,160 @@ function buildSharedBoardImprintMarkup(survivorSnapshots) {
   return `
     <div class="player-card">
       <strong>Shared-board Imprint</strong>
-      <div>Only surviving units stay stamped onto the center lane.</div>
+      <div>Battle end-state on the ${imprintState.boardWidth}x${imprintState.boardHeight} shared board.</div>
       <div class="shared-board-grid result-imprint-grid">${cellMarkup.join("")}</div>
     </div>
   `;
+}
+
+function resolveResultImprintState({ survivorSnapshots, timelineEvents }) {
+  const timelineState = resolveTimelineEndState(timelineEvents, survivorSnapshots);
+  if (timelineState) {
+    return timelineState;
+  }
+
+  if (survivorSnapshots.length === 0) {
+    return null;
+  }
+
+  const snapshotByBoardCellIndex = new Map();
+  for (const snapshot of survivorSnapshots) {
+    const boardCellIndex = combatCellToResultBoardIndex(Number(snapshot?.combatCell));
+    if (boardCellIndex === null) {
+      continue;
+    }
+
+    snapshotByBoardCellIndex.set(boardCellIndex, snapshot);
+  }
+
+  return {
+    boardWidth: RESULT_IMPRINT_BOARD_WIDTH,
+    boardHeight: RESULT_IMPRINT_BOARD_HEIGHT,
+    snapshotByBoardCellIndex,
+  };
+}
+
+function resolveTimelineEndState(timelineEvents, survivorSnapshots) {
+  if (!Array.isArray(timelineEvents) || timelineEvents.length === 0) {
+    return null;
+  }
+
+  const battleStartEvent = timelineEvents.find((event) => event?.type === "battleStart");
+  if (!battleStartEvent) {
+    return null;
+  }
+
+  const boardWidth = Number.isInteger(battleStartEvent?.boardConfig?.width)
+    ? battleStartEvent.boardConfig.width
+    : RESULT_IMPRINT_BOARD_WIDTH;
+  const boardHeight = Number.isInteger(battleStartEvent?.boardConfig?.height)
+    ? battleStartEvent.boardConfig.height
+    : RESULT_IMPRINT_BOARD_HEIGHT;
+  const survivorsByUnitId = new Map(survivorSnapshots.map((snapshot) => [snapshot?.unitId, snapshot]));
+  const unitsById = new Map();
+
+  for (const unit of battleStartEvent.units ?? []) {
+    if (typeof unit?.battleUnitId !== "string" || unit.battleUnitId.length === 0) {
+      continue;
+    }
+
+    unitsById.set(unit.battleUnitId, {
+      battleUnitId: unit.battleUnitId,
+      side: unit.side === "boss" ? "boss" : "raid",
+      x: Number.isInteger(unit.x) ? unit.x : 0,
+      y: Number.isInteger(unit.y) ? unit.y : 0,
+      hp: Math.max(0, Math.round(Number(unit.currentHp) || 0)),
+      maxHp: Math.max(0, Math.round(Number(unit.maxHp) || 0)),
+      alive: true,
+    });
+  }
+
+  for (const event of timelineEvents) {
+    if (!event || event.type === "battleStart" || event.type === "battleEnd" || event.type === "attackStart") {
+      continue;
+    }
+
+    if (event.type === "move") {
+      const unit = unitsById.get(event.battleUnitId);
+      if (!unit) {
+        continue;
+      }
+
+      unit.x = Number.isInteger(event?.to?.x) ? event.to.x : unit.x;
+      unit.y = Number.isInteger(event?.to?.y) ? event.to.y : unit.y;
+      continue;
+    }
+
+    if (event.type === "damageApplied") {
+      const unit = unitsById.get(event.targetBattleUnitId);
+      if (!unit) {
+        continue;
+      }
+
+      unit.hp = Math.max(0, Math.round(Number(event.remainingHp) || 0));
+      if (unit.hp <= 0) {
+        unit.alive = false;
+      }
+      continue;
+    }
+
+    if (event.type === "unitDeath") {
+      const unit = unitsById.get(event.battleUnitId);
+      if (!unit) {
+        continue;
+      }
+
+      unit.alive = false;
+      unit.hp = 0;
+      continue;
+    }
+
+    if (event.type === "keyframe") {
+      for (const keyframeUnit of event.units ?? []) {
+        const unit = unitsById.get(keyframeUnit?.battleUnitId);
+        if (!unit) {
+          continue;
+        }
+
+        unit.x = Number.isInteger(keyframeUnit.x) ? keyframeUnit.x : unit.x;
+        unit.y = Number.isInteger(keyframeUnit.y) ? keyframeUnit.y : unit.y;
+        unit.hp = Math.max(0, Math.round(Number(keyframeUnit.currentHp) || 0));
+        unit.maxHp = Math.max(unit.hp, Math.round(Number(keyframeUnit.maxHp) || 0));
+        unit.alive = keyframeUnit.alive === true;
+      }
+    }
+  }
+
+  const snapshotByBoardCellIndex = new Map();
+  for (const unit of unitsById.values()) {
+    if (unit.alive !== true) {
+      continue;
+    }
+
+    const boardCellIndex = unit.y * boardWidth + unit.x;
+    if (!Number.isInteger(boardCellIndex) || boardCellIndex < 0 || boardCellIndex >= boardWidth * boardHeight) {
+      continue;
+    }
+
+    const survivorSnapshot = survivorsByUnitId.get(unit.battleUnitId) ?? null;
+    snapshotByBoardCellIndex.set(boardCellIndex, {
+      hp: survivorSnapshot?.hp ?? unit.hp,
+      maxHp: survivorSnapshot?.maxHp ?? unit.maxHp,
+      displayName: typeof survivorSnapshot?.displayName === "string" && survivorSnapshot.displayName.length > 0
+        ? survivorSnapshot.displayName
+        : resolveBattleTimelineUnitLabel(unit.battleUnitId),
+      unitType: typeof survivorSnapshot?.unitType === "string" && survivorSnapshot.unitType.length > 0
+        ? survivorSnapshot.unitType
+        : resolveBattleTimelineUnitLabel(unit.battleUnitId),
+      side: unit.side,
+    });
+  }
+
+  return {
+    boardWidth,
+    boardHeight,
+    snapshotByBoardCellIndex,
+  };
 }
 
 function combatCellToResultBoardIndex(combatCell) {
@@ -454,28 +591,50 @@ function combatCellToResultBoardIndex(combatCell) {
 
   const combatX = combatCell % RESULT_IMPRINT_COMBAT_WIDTH;
   const combatY = Math.floor(combatCell / RESULT_IMPRINT_COMBAT_WIDTH);
-  return (combatY + 1) * RESULT_IMPRINT_BOARD_WIDTH + combatX + 1;
+  return (combatY + 3) * RESULT_IMPRINT_BOARD_WIDTH + combatX + 1;
 }
 
-function resolveResultImprintLaneZone(boardCellIndex) {
-  const maxBoardCellIndex = RESULT_IMPRINT_BOARD_WIDTH * RESULT_IMPRINT_BOARD_HEIGHT - 1;
+function resolveResultImprintDeploymentZone(boardCellIndex, boardWidth, boardHeight) {
+  const maxBoardCellIndex = boardWidth * boardHeight - 1;
   if (!Number.isInteger(boardCellIndex) || boardCellIndex < 0 || boardCellIndex > maxBoardCellIndex) {
-    return "outside";
+    return "raid";
   }
 
-  const x = boardCellIndex % RESULT_IMPRINT_BOARD_WIDTH;
-  const y = Math.floor(boardCellIndex / RESULT_IMPRINT_BOARD_WIDTH);
-  const combatX = x - 1;
-  const combatY = y - 1;
+  const y = Math.floor(boardCellIndex / boardWidth);
+  return y < Math.floor(boardHeight / 2) ? "boss" : "raid";
+}
 
-  if (
-    combatX < 0 ||
-    combatY < 0 ||
-    combatX >= RESULT_IMPRINT_COMBAT_WIDTH ||
-    combatY >= RESULT_IMPRINT_COMBAT_HEIGHT
-  ) {
-    return "outside";
+function resolveBattleTimelineUnitLabel(battleUnitId) {
+  if (typeof battleUnitId !== "string" || battleUnitId.length === 0) {
+    return "Unknown unit";
   }
 
-  return combatY === 0 ? "boss" : "raid";
+  const tokens = battleUnitId.split("-");
+  return tokens.find((token) => ["vanguard", "ranger", "mage", "assassin"].includes(token)) ?? shortPlayerId(battleUnitId);
+}
+
+function parseBattleTimelineEvents(timelineEvents) {
+  const parsedEvents = [];
+
+  for (const rawEvent of toRenderableArray(timelineEvents)) {
+    if (rawEvent && typeof rawEvent === "object") {
+      parsedEvents.push(rawEvent);
+      continue;
+    }
+
+    if (typeof rawEvent !== "string" || rawEvent.length === 0) {
+      continue;
+    }
+
+    try {
+      const parsedEvent = JSON.parse(rawEvent);
+      if (parsedEvent && typeof parsedEvent === "object") {
+        parsedEvents.push(parsedEvent);
+      }
+    } catch {
+      // Ignore malformed timeline payloads and fall back to survivor snapshots.
+    }
+  }
+
+  return parsedEvents;
 }

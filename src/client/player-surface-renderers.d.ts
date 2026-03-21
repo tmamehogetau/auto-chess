@@ -100,6 +100,7 @@ export function renderPlayerResultSummary(input: {
       damageTaken?: number;
       survivors?: number;
       opponentSurvivors?: number;
+      timelineEvents?: Array<string | Record<string, unknown>> | Iterable<string | Record<string, unknown>>;
       survivorSnapshots?: Array<{
         unitId?: string;
         displayName?: string;

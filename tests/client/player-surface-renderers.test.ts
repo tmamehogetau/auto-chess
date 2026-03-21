@@ -264,10 +264,95 @@ describe("player surface renderers", () => {
     });
 
     expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
-    expect(resultSurfaceElement.innerHTML).toContain("Only surviving units stay stamped onto the center lane.");
-    expect(resultSurfaceElement.innerHTML).toContain('data-result-imprint-cell="13"');
+    expect(resultSurfaceElement.innerHTML).toContain("Battle end-state on the 6x6 shared board.");
     expect(resultSurfaceElement.innerHTML).toContain("古明地こいし");
     expect(resultSurfaceElement.innerHTML).toContain("27 / 60");
+    expect((resultSurfaceElement.innerHTML.match(/data-result-imprint-cell="/g) ?? []).length).toBe(36);
+    expect(resultSurfaceElement.innerHTML).not.toContain("center lane");
+  });
+
+  test("result summary derives shared-board imprint from timeline end-state without survivor snapshots", () => {
+    const resultSurfaceElement = new FakeElement();
+
+    renderPlayerResultSummary({
+      resultSurfaceElement: resultSurfaceElement as unknown as HTMLElement,
+      state: {
+        phase: "Settle",
+        roundIndex: 3,
+        players: {},
+      },
+      player: {
+        lastBattleResult: {
+          won: true,
+          damageDealt: 21,
+          damageTaken: 6,
+          survivors: 1,
+          opponentSurvivors: 0,
+          timelineEvents: [
+            JSON.stringify({
+              type: "battleStart",
+              battleId: "battle-raid-3",
+              round: 3,
+              boardConfig: { width: 6, height: 6 },
+              units: [
+                {
+                  battleUnitId: "raid-vanguard-1",
+                  side: "raid",
+                  x: 0,
+                  y: 5,
+                  currentHp: 20,
+                  maxHp: 20,
+                },
+                {
+                  battleUnitId: "boss-ranger-1",
+                  side: "boss",
+                  x: 0,
+                  y: 0,
+                  currentHp: 18,
+                  maxHp: 18,
+                },
+              ],
+            }),
+            JSON.stringify({
+              type: "move",
+              battleId: "battle-raid-3",
+              atMs: 120,
+              battleUnitId: "raid-vanguard-1",
+              from: { x: 0, y: 5 },
+              to: { x: 1, y: 4 },
+            }),
+            JSON.stringify({
+              type: "damageApplied",
+              battleId: "battle-raid-3",
+              atMs: 160,
+              sourceBattleUnitId: "boss-ranger-1",
+              targetBattleUnitId: "raid-vanguard-1",
+              amount: 6,
+              remainingHp: 14,
+            }),
+            JSON.stringify({
+              type: "unitDeath",
+              battleId: "battle-raid-3",
+              atMs: 180,
+              battleUnitId: "boss-ranger-1",
+            }),
+            JSON.stringify({
+              type: "battleEnd",
+              battleId: "battle-raid-3",
+              atMs: 250,
+              winner: "raid",
+            }),
+          ],
+        },
+      },
+      sessionId: "raid-1",
+    });
+
+    expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
+    expect(resultSurfaceElement.innerHTML).toContain("Battle end-state on the 6x6 shared board.");
+    expect(resultSurfaceElement.innerHTML).toContain('data-result-imprint-cell="25"');
+    expect(resultSurfaceElement.innerHTML).toContain("vanguard");
+    expect(resultSurfaceElement.innerHTML).toContain("14 / 20");
   });
 
   test("result summary reads iterable ranking and raid members for final judgment", () => {

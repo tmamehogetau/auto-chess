@@ -604,6 +604,20 @@ describe("shared-board client", () => {
 
     vi.advanceTimersByTime(110);
 
+    const defeatedUnit = findDescendantByClass(
+      gridElement.children[18],
+      "shared-board-battle-unit",
+    );
+    const defeatedTag = findDescendantByClass(
+      gridElement.children[18],
+      "shared-board-battle-state-tag",
+    );
+
+    expect(defeatedUnit?.className).toContain("shared-board-battle-dead");
+    expect(defeatedTag?.textContent).toBe("Defeated");
+
+    vi.advanceTimersByTime(260);
+
     expect(gridElement.children[18]?.className).toContain("empty");
     expect(findDescendantByClass(gridElement.children[18], "shared-board-battle-unit")).toBeNull();
   });

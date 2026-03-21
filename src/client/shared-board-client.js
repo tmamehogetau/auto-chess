@@ -460,6 +460,9 @@ function renderSharedBoard(state) {
         if (cell?.battleState === "moving") {
           unit.classList.add("shared-board-battle-moving");
         }
+        if (cell?.battleState === "dead") {
+          unit.classList.add("shared-board-battle-dead");
+        }
         if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
           unit.classList.add("shared-board-battle-targeted");
         }
@@ -1008,6 +1011,10 @@ function resolveSharedBattleHpPercent(cell) {
 }
 
 function resolveSharedBattleStateTagCopy(cell) {
+  if (cell?.battleState === "dead") {
+    return "Defeated";
+  }
+
   if (cell?.battleState === "moving") {
     return "Moving";
   }
@@ -1147,8 +1154,9 @@ function applySharedBattleReplayEvent(event) {
       return;
     }
 
-    unit.alive = false;
     unit.state = "dead";
+    unit.currentHp = 0;
+    scheduleSharedBattleDeathRemoval(currentSharedBattleReplay.battleId, unit.battleUnitId);
     return;
   }
 
@@ -1233,6 +1241,24 @@ function scheduleSharedBattleMoveSettle(battleId, battleUnitId, x, y) {
     }
 
     unit.state = "idle";
+    renderSharedBoardState(currentSharedBoardState);
+  }, 220);
+
+  sharedBattleReplayTimeoutIds.push(timeoutId);
+}
+
+function scheduleSharedBattleDeathRemoval(battleId, battleUnitId) {
+  const timeoutId = setTimeout(() => {
+    if (!currentSharedBattleReplay || currentSharedBattleReplay.battleId !== battleId) {
+      return;
+    }
+
+    const unit = currentSharedBattleReplay.units.get(battleUnitId);
+    if (!unit || unit.state !== "dead") {
+      return;
+    }
+
+    unit.alive = false;
     renderSharedBoardState(currentSharedBoardState);
   }, 220);
 

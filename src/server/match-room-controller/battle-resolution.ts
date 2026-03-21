@@ -5,7 +5,7 @@
  */
 
 import type { BattleUnit, BattleResult as SimulatorBattleResult } from "../combat/battle-simulator";
-import type { BoardUnitPlacement } from "../../shared/room-messages";
+import type { BattleTimelineEvent, BoardUnitPlacement } from "../../shared/room-messages";
 import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
@@ -46,6 +46,7 @@ export interface PlayerBattleResult {
   survivors: number;
   opponentSurvivors: number;
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
+  timeline?: BattleTimelineEvent[];
 }
 
 /**
@@ -237,6 +238,7 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
+        timeline: battleResult.timeline,
       };
 
       rightBattleResult = {
@@ -247,6 +249,7 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
+        timeline: battleResult.timeline,
       };
 
       outcome = {
@@ -283,6 +286,7 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
+        timeline: battleResult.timeline,
       };
 
       rightBattleResult = {
@@ -293,6 +297,7 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
+        timeline: battleResult.timeline,
       };
 
       outcome = {
@@ -325,6 +330,7 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
+        timeline: battleResult.timeline,
       };
 
       rightBattleResult = {
@@ -335,6 +341,7 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
+        timeline: battleResult.timeline,
       };
 
       outcome = {

@@ -1,3 +1,5 @@
+import type { BattleTimelineEvent } from "../../shared/room-messages";
+
 /**
  * Shared player state types for MatchRoomController and player-state-sync
  *
@@ -19,6 +21,7 @@ export interface PlayerStatusBattleResult {
   survivors: number;
   opponentSurvivors: number;
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
+  timeline?: BattleTimelineEvent[];
 }
 
 export interface BattleResultSurvivorSnapshot {

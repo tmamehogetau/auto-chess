@@ -51,6 +51,7 @@ export class BattleResultSchema extends Schema {
   declare public survivors: number;
   declare public opponentSurvivors: number;
   declare public survivorSnapshots: ArraySchema<BattleResultSurvivorSchema>;
+  declare public timelineEvents: ArraySchema<string>;
 
   public constructor() {
     super();
@@ -61,6 +62,7 @@ export class BattleResultSchema extends Schema {
     this.survivors = 0;
     this.opponentSurvivors = 0;
     this.survivorSnapshots = new ArraySchema<BattleResultSurvivorSchema>();
+    this.timelineEvents = new ArraySchema<string>();
   }
 }
 
@@ -299,6 +301,7 @@ defineTypes(BattleResultSchema, {
   survivors: "number",
   opponentSurvivors: "number",
   survivorSnapshots: [BattleResultSurvivorSchema],
+  timelineEvents: ["string"],
 });
 
 defineTypes(BattleResultSurvivorSchema, {

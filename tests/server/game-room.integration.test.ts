@@ -280,6 +280,48 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.phase).toBe("Battle");
   });
 
+  test("戦闘結果のtimelineEventsがroom stateへ同期される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    for (const [index, client] of clients.entries()) {
+      client.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 1,
+        boardPlacements: [
+          { cell: index % 2 === 0 ? 0 : 7, unitType: "vanguard" },
+        ],
+      });
+
+      await expect(client.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).resolves.toEqual({
+        accepted: true,
+      });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Settle", 1_000);
+
+    const timelineEvents = serverRoom.state.players.get(clients[0]!.sessionId)?.lastBattleResult.timelineEvents;
+
+    expect(timelineEvents?.length).toBeGreaterThan(0);
+    expect(JSON.parse(timelineEvents?.[0] ?? "{}")).toMatchObject({
+      type: "battleStart",
+    });
+    expect(JSON.parse(timelineEvents?.[timelineEvents.length - 1] ?? "{}")).toMatchObject({
+      type: "battleEnd",
+    });
+  });
+
   test("command_resultはPrepでacceptされBattleではPHASE_MISMATCHになる", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([

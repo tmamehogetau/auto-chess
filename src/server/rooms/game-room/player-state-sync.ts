@@ -11,6 +11,7 @@ import type {
   ControllerPlayerStatus,
   CommandResultPayload,
 } from "../../types/player-state-types";
+import type { BattleTimelineEvent } from "../../../shared/room-messages";
 
 // Re-export types for backward compatibility
 export type {
@@ -51,6 +52,16 @@ function syncBattleResultSurvivorSnapshots(
     nextSnapshot.maxHp = Number(snapshot?.maxHp ?? 0);
     nextSnapshot.combatCell = Number(snapshot?.combatCell ?? -1);
     target.survivorSnapshots.push(nextSnapshot);
+  }
+}
+
+function syncBattleTimelineEvents(
+  target: { timelineEvents: { length: number; pop: () => unknown; push: (value: string) => void } },
+  timeline: BattleTimelineEvent[] | undefined,
+): void {
+  clearArraySchema(target.timelineEvents);
+  for (const event of timeline ?? []) {
+    target.timelineEvents.push(JSON.stringify(event));
   }
 }
 
@@ -170,6 +181,10 @@ export function syncPlayerStateFromController(
       playerState.lastBattleResult,
       controllerStatus.lastBattleResult.survivorSnapshots,
     );
+    syncBattleTimelineEvents(
+      playerState.lastBattleResult,
+      controllerStatus.lastBattleResult.timeline,
+    );
   } else {
     playerState.lastBattleResult.opponentId = "";
     playerState.lastBattleResult.won = false;
@@ -178,6 +193,7 @@ export function syncPlayerStateFromController(
     playerState.lastBattleResult.survivors = 0;
     playerState.lastBattleResult.opponentSurvivors = 0;
     syncBattleResultSurvivorSnapshots(playerState.lastBattleResult, []);
+    syncBattleTimelineEvents(playerState.lastBattleResult, []);
   }
 
   // Active synergies - clear and repopulate
@@ -306,6 +322,10 @@ export function syncPlayerStateFromCommandResult(
       playerState.lastBattleResult,
       cmdResult.lastBattleResult.survivorSnapshots,
     );
+    syncBattleTimelineEvents(
+      playerState.lastBattleResult,
+      cmdResult.lastBattleResult.timeline,
+    );
   } else {
     playerState.lastBattleResult.opponentId = "";
     playerState.lastBattleResult.won = false;
@@ -314,6 +334,7 @@ export function syncPlayerStateFromCommandResult(
     playerState.lastBattleResult.survivors = 0;
     playerState.lastBattleResult.opponentSurvivors = 0;
     syncBattleResultSurvivorSnapshots(playerState.lastBattleResult, []);
+    syncBattleTimelineEvents(playerState.lastBattleResult, []);
   }
 
   // Active synergies - clear and repopulate

@@ -9,6 +9,7 @@ import {
 import type { BattleUnit } from "../../../src/server/combat/battle-simulator";
 import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import type { MatchLogger } from "../../../src/server/match-logger";
+import { createBattleStartEvent } from "../../../src/server/combat/battle-timeline";
 
 // Mock BattleSimulator
 const createMockBattleSimulator = () => ({
@@ -32,6 +33,14 @@ describe("BattleResolutionService", () => {
   ];
   const mockRightPlacements: BoardUnitPlacement[] = [
     { unitType: "ranger", starLevel: 1, cell: 4 },
+  ];
+  const mockTimeline = [
+    createBattleStartEvent({
+      battleId: "battle-1",
+      round: 1,
+      boardConfig: { width: 6, height: 6 },
+      units: [],
+    }),
   ];
 
   const createMockBattleUnit = (id: string, side: "left" | "right"): BattleUnit => ({
@@ -83,6 +92,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
       });
 
       const result = service.resolveMatchup({
@@ -114,6 +124,8 @@ describe("BattleResolutionService", () => {
           combatCell: 0,
         },
       ]);
+      expect(result.leftBattleResult.timeline).toEqual(mockTimeline);
+      expect(result.rightBattleResult.timeline).toEqual(mockTimeline);
     });
 
     it("should resolve matchup with right winner", () => {
@@ -127,6 +139,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 50, right: 100 },
+        timeline: mockTimeline,
       });
 
       const result = service.resolveMatchup({
@@ -160,6 +173,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 50, right: 50 },
+        timeline: mockTimeline,
       });
 
       const result = service.resolveMatchup({
@@ -194,6 +208,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
       });
 
       service.resolveMatchup({
@@ -234,6 +249,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
       });
 
       const serviceWithoutLogger = new BattleResolutionService({
@@ -271,6 +287,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
       });
 
       // Create service without logger (simulating constructor-time capture)
@@ -315,6 +332,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
       });
 
       service.resolveMatchup({
@@ -358,6 +376,7 @@ describe("BattleResolutionService", () => {
         combatLog: [],
         durationMs: 1000,
         damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
       });
 
       const serviceWithSubUnits = new BattleResolutionService({

@@ -7,6 +7,7 @@ import {
   type CommandResultPayload,
   type PlayerStatusBattleResult,
 } from "../../../src/server/rooms/game-room/player-state-sync";
+import { createBattleStartEvent } from "../../../src/server/combat/battle-timeline";
 import {
   PlayerPresenceState,
   MatchRoomState,
@@ -24,6 +25,15 @@ describe("player-state-sync", () => {
     playerState = new PlayerPresenceState();
     roomState = new MatchRoomState();
   });
+
+  const battleTimeline = [
+    createBattleStartEvent({
+      battleId: "battle-1",
+      round: 2,
+      boardConfig: { width: 6, height: 6 },
+      units: [],
+    }),
+  ];
 
   it("should expose default boss preference fields", () => {
     expect(playerState.wantsBoss).toBe(false);
@@ -238,6 +248,7 @@ describe("player-state-sync", () => {
           damageTaken: 12,
           survivors: 1,
           opponentSurvivors: 4,
+          timeline: battleTimeline,
           survivorSnapshots: [
             {
               unitId: "koishi",
@@ -268,6 +279,12 @@ describe("player-state-sync", () => {
       expect(playerState.lastBattleResult.survivorSnapshots.length).toBe(1);
       expect(playerState.lastBattleResult.survivorSnapshots[0]!.displayName).toBe("古明地こいし");
       expect(playerState.lastBattleResult.survivorSnapshots[0]!.hp).toBe(27);
+      expect(playerState.lastBattleResult.timelineEvents.length).toBe(1);
+      expect(JSON.parse(playerState.lastBattleResult.timelineEvents[0]!)).toMatchObject({
+        type: "battleStart",
+        battleId: "battle-1",
+        round: 2,
+      });
     });
 
     it("should clear battle result when not present", () => {
@@ -310,6 +327,7 @@ describe("player-state-sync", () => {
       expect(playerState.lastBattleResult.survivors).toBe(0);
       expect(playerState.lastBattleResult.opponentSurvivors).toBe(0);
       expect(playerState.lastBattleResult.survivorSnapshots.length).toBe(0);
+      expect(playerState.lastBattleResult.timelineEvents.length).toBe(0);
     });
 
     it("should sync active synergies correctly", () => {
@@ -571,6 +589,7 @@ describe("player-state-sync", () => {
           damageTaken: 5,
           survivors: 5,
           opponentSurvivors: 0,
+          timeline: battleTimeline,
         } as PlayerStatusBattleResult,
         activeSynergies: [{ unitType: "ranger", count: 2, tier: 1 }],
       };
@@ -589,6 +608,11 @@ describe("player-state-sync", () => {
       expect(playerState.benchUnits.length).toBe(3);
       expect(playerState.benchDisplayNames[2]).toBe("パチュリー・ノーレッジ");
       expect(playerState.boardUnits.length).toBe(5);
+      expect(playerState.lastBattleResult.timelineEvents.length).toBe(1);
+      expect(JSON.parse(playerState.lastBattleResult.timelineEvents[0]!)).toMatchObject({
+        type: "battleStart",
+        battleId: "battle-1",
+      });
     });
 
     it("should update lastCmdSeq when provided", () => {

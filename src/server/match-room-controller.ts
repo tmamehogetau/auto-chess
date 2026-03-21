@@ -43,6 +43,7 @@ import {
 import type {
   BoardUnitType,
   BoardUnitPlacement,
+  BattleTimelineEvent,
   CommandResult,
   ShopItemOffer,
 } from "../shared/room-messages";
@@ -347,6 +348,7 @@ interface BattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
     displayName: string;

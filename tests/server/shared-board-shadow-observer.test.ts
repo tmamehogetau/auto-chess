@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SharedBoardShadowObserver } from "../../src/server/shared-board-shadow-observer";
+import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 
 function createControllerMock() {
   return {
@@ -15,7 +16,7 @@ function createSharedBoardRoomMock(ownerId = "player-a") {
   return {
     state: {
       cells: new Map([
-        ["7", { unitId: "vanguard-1", ownerId }],
+        [String(combatCellToRaidBoardIndex(0)), { unitId: "vanguard-1", ownerId }],
       ]),
     },
   };
@@ -25,8 +26,8 @@ function createSharedBoardRoomWithExtraUnitMock() {
   return {
     state: {
       cells: new Map([
-        ["7", { unitId: "vanguard-1", ownerId: "player-a" }],
-        ["8", { unitId: "ranger-1", ownerId: "player-a" }],
+        [String(combatCellToRaidBoardIndex(0)), { unitId: "vanguard-1", ownerId: "player-a" }],
+        [String(combatCellToRaidBoardIndex(1)), { unitId: "ranger-1", ownerId: "player-a" }],
       ]),
     },
   };

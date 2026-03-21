@@ -295,6 +295,13 @@ export type BattleTimelineEvent =
 
 export type BattleTimelineEventType = BattleTimelineEvent["type"];
 
+export interface SharedBattleReplayMessage {
+  type: "shared_battle_replay";
+  battleId: string;
+  phase: MatchPhase;
+  timeline: BattleTimelineEvent[];
+}
+
 /**
  * shadow_diffメッセージペイロード
  * SharedBoardとの差分検知結果を配信

@@ -23,6 +23,7 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
  */
 
 const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
+const SHARED_BOARD_BATTLE_REPLAY_MESSAGE = "shared_battle_replay";
 
 /** @type {SharedBoardDOMRefs} */
 let domRefs = {
@@ -71,6 +72,12 @@ let sharedDraggedUnitId = null;
 /** @type {string|null} */
 let selectedSharedUnitId = null;
 
+/** @type {{ battleId: string, boardWidth: number, boardHeight: number, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean }> } | null} */
+let currentSharedBattleReplay = null;
+
+/** @type {ReturnType<typeof setTimeout>[]} */
+let sharedBattleReplayTimeoutIds = [];
+
 /**
  * 共有ボードクライアント初期化
  * @param {SharedBoardDOMRefs} refs DOM参照
@@ -111,6 +118,7 @@ export async function connectSharedBoard(client) {
     sharedBoardSpectatorNoticeShown = false;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
+    clearSharedBattleReplay();
 
     sharedBoardRoom.onMessage("shared_role", (message) => {
       if (message?.isSpectator === true && !sharedBoardSpectatorNoticeShown) {
@@ -139,7 +147,17 @@ export async function connectSharedBoard(client) {
 
     sharedBoardRoom.onStateChange((state) => {
       currentSharedBoardState = state;
+      if (state?.mode === "battle") {
+        sharedDraggedUnitId = null;
+        selectedSharedUnitId = null;
+      } else if (currentSharedBattleReplay) {
+        clearSharedBattleReplay();
+      }
       renderSharedBoardState(state);
+    });
+
+    sharedBoardRoom.onMessage(SHARED_BOARD_BATTLE_REPLAY_MESSAGE, (message) => {
+      startSharedBattleReplay(message);
     });
 
     sharedBoardRoom.onLeave(() => {
@@ -147,6 +165,7 @@ export async function connectSharedBoard(client) {
       currentSharedBoardState = null;
       sharedDraggedUnitId = null;
       selectedSharedUnitId = null;
+      clearSharedBattleReplay();
       renderSharedBoardState(null);
     });
   } catch (error) {
@@ -165,6 +184,7 @@ export function leaveSharedBoardRoom() {
     currentSharedBoardState = null;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
+    clearSharedBattleReplay();
     renderSharedBoardState(null);
     sharedBoardSpectatorNoticeShown = false;
     return;
@@ -175,6 +195,7 @@ export function leaveSharedBoardRoom() {
   currentSharedBoardState = null;
   sharedDraggedUnitId = null;
   selectedSharedUnitId = null;
+  clearSharedBattleReplay();
   sharedBoardSpectatorNoticeShown = false;
   renderSharedBoardState(null);
 
@@ -261,6 +282,11 @@ function updateSharedBoardPlacementGuide(state) {
     return;
   }
 
+  if (isSharedBoardBattleMode(state)) {
+    domRefs.placementGuideElement.textContent = "Watching live shared-board replay. Battle is read-only until the next Prep phase.";
+    return;
+  }
+
   if (isSharedSpectator(state)) {
     domRefs.placementGuideElement.textContent = "Spectator slot: watch the raid board and wait for an active slot before placing units.";
     return;
@@ -302,7 +328,8 @@ function renderSharedBoard(state) {
 
   domRefs.gridElement.innerHTML = "";
 
-  const { boardWidth = 6, boardHeight = 6, cells = {} } = state;
+  const { boardWidth = 6, boardHeight = 6 } = state;
+  const cells = resolveSharedBoardCellsForRender(state);
   const legacyEmbeddedBoard = isLegacyEmbeddedBoard(state);
 
   for (let i = 0; i < boardWidth * boardHeight; i += 1) {
@@ -418,7 +445,9 @@ function renderSharedBoard(state) {
       } else {
         const unitIdLabel = document.createElement("span");
         unitIdLabel.className = "shared-board-unit-id";
-        unitIdLabel.textContent = shortPlayerId(unitId);
+        unitIdLabel.textContent = typeof cell?.displayName === "string" && cell.displayName.length > 0
+          ? cell.displayName
+          : shortPlayerId(unitId);
         unit.append(ownerDot, unitIdLabel);
       }
       cellElement.appendChild(unit);
@@ -468,6 +497,14 @@ function renderSharedCursorList(state) {
  * @returns {string} 色
  */
 function getSharedPlayerColor(state, playerId) {
+  if (playerId === "boss") {
+    return "#FF6B6B";
+  }
+
+  if (playerId === "raid") {
+    return "#4ECDC4";
+  }
+
   const player = mapGet(state?.players, playerId);
   return player?.color ?? "#999999";
 }
@@ -606,6 +643,10 @@ function isValidSharedDropTarget(state, cellIndex) {
   const activeUnitId = sharedDraggedUnitId || selectedSharedUnitId;
 
   if (!sharedBoardRoom || !activeUnitId) {
+    return false;
+  }
+
+  if (isSharedBoardBattleMode(state)) {
     return false;
   }
 
@@ -785,6 +826,11 @@ export function handleSharedCellClick(state, cellIndex) {
     return;
   }
 
+  if (isSharedBoardBattleMode(state)) {
+    deps.showMessage("Battle replay is read-only. Wait for the next Prep phase to move units.", "info");
+    return;
+  }
+
   const cell = mapGet(state?.cells, String(cellIndex));
 
   // 自分のユニットがある場合は選択
@@ -813,6 +859,18 @@ function getOwnSharedBoardOwnerId() {
 }
 
 function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
+  if (isSharedBoardBattleMode(state)) {
+    const unitName = typeof cell?.displayName === "string" && cell.displayName.length > 0
+      ? cell.displayName
+      : typeof cell?.unitId === "string" && cell.unitId.length > 0
+        ? shortPlayerId(cell.unitId)
+        : null;
+
+    return unitName
+      ? `Board cell ${cellIndex}, live battle replay, contains ${unitName}`
+      : `Board cell ${cellIndex}, live battle replay`;
+  }
+
   const laneCopy = isLegacyEmbeddedBoard(state)
     ? (() => {
         const playableLaneZone = resolvePlayableLaneZone(state, cellIndex);
@@ -838,4 +896,153 @@ function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
   }
 
   return `Board cell ${cellIndex}, ${laneCopy}`;
+}
+
+function isSharedBoardBattleMode(state) {
+  return state?.mode === "battle";
+}
+
+function resolveSharedBoardCellsForRender(state) {
+  if (!isSharedBoardBattleMode(state) || !currentSharedBattleReplay || currentSharedBattleReplay.battleId !== state?.battleId) {
+    return state?.cells ?? {};
+  }
+
+  const cells = {};
+
+  for (const unit of currentSharedBattleReplay.units.values()) {
+    if (unit.alive !== true) {
+      continue;
+    }
+
+    const cellIndex = unit.y * currentSharedBattleReplay.boardWidth + unit.x;
+    cells[String(cellIndex)] = {
+      index: cellIndex,
+      unitId: `battle:${unit.battleUnitId}`,
+      ownerId: unit.side,
+      displayName: resolveBattleReplayLabel(unit.battleUnitId),
+      portraitKey: "",
+    };
+  }
+
+  return cells;
+}
+
+function resolveBattleReplayLabel(battleUnitId) {
+  const tokens = typeof battleUnitId === "string" ? battleUnitId.split("-") : [];
+  const unitType = tokens.find((token) => ["vanguard", "ranger", "mage", "assassin"].includes(token));
+  return unitType ?? shortPlayerId(battleUnitId);
+}
+
+function clearSharedBattleReplay() {
+  for (const timeoutId of sharedBattleReplayTimeoutIds) {
+    clearTimeout(timeoutId);
+  }
+
+  sharedBattleReplayTimeoutIds = [];
+  currentSharedBattleReplay = null;
+}
+
+function startSharedBattleReplay(message) {
+  const timeline = Array.isArray(message?.timeline) ? message.timeline : [];
+  const battleStartEvent = timeline.find((event) => event?.type === "battleStart");
+
+  if (!battleStartEvent || typeof message?.battleId !== "string") {
+    clearSharedBattleReplay();
+    renderSharedBoardState(currentSharedBoardState);
+    return;
+  }
+
+  clearSharedBattleReplay();
+
+  const units = new Map();
+  for (const unit of battleStartEvent.units ?? []) {
+    units.set(unit.battleUnitId, {
+      battleUnitId: unit.battleUnitId,
+      side: unit.side,
+      x: unit.x,
+      y: unit.y,
+      currentHp: unit.currentHp,
+      maxHp: unit.maxHp,
+      alive: true,
+    });
+  }
+
+  currentSharedBattleReplay = {
+    battleId: message.battleId,
+    boardWidth: battleStartEvent.boardConfig?.width ?? 6,
+    boardHeight: battleStartEvent.boardConfig?.height ?? 6,
+    units,
+  };
+
+  renderSharedBoardState(currentSharedBoardState);
+
+  for (const event of timeline) {
+    if (!event || event.type === "battleStart") {
+      continue;
+    }
+
+    const delayMs = Number.isInteger(event.atMs) ? event.atMs : 0;
+    const timeoutId = setTimeout(() => {
+      if (!currentSharedBattleReplay || currentSharedBattleReplay.battleId !== message.battleId) {
+        return;
+      }
+
+      applySharedBattleReplayEvent(event);
+      renderSharedBoardState(currentSharedBoardState);
+    }, delayMs);
+
+    sharedBattleReplayTimeoutIds.push(timeoutId);
+  }
+}
+
+function applySharedBattleReplayEvent(event) {
+  if (!currentSharedBattleReplay) {
+    return;
+  }
+
+  if (event.type === "move") {
+    const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
+    if (!unit) {
+      return;
+    }
+
+    unit.x = event.to.x;
+    unit.y = event.to.y;
+    return;
+  }
+
+  if (event.type === "damageApplied") {
+    const unit = currentSharedBattleReplay.units.get(event.targetBattleUnitId);
+    if (!unit) {
+      return;
+    }
+
+    unit.currentHp = event.remainingHp;
+    return;
+  }
+
+  if (event.type === "unitDeath") {
+    const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
+    if (!unit) {
+      return;
+    }
+
+    unit.alive = false;
+    return;
+  }
+
+  if (event.type === "keyframe") {
+    for (const keyframeUnit of event.units ?? []) {
+      const existing = currentSharedBattleReplay.units.get(keyframeUnit.battleUnitId);
+      if (!existing) {
+        continue;
+      }
+
+      existing.x = keyframeUnit.x;
+      existing.y = keyframeUnit.y;
+      existing.currentHp = keyframeUnit.currentHp;
+      existing.maxHp = keyframeUnit.maxHp;
+      existing.alive = keyframeUnit.alive;
+    }
+  }
 }

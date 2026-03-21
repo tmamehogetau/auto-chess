@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi, afterEach } from "vitest";
 
 // @ts-ignore JS client module has no declaration file.
 import { connectSharedBoard, getSelectedSharedUnitId, handleSharedCellClick, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId } from "../../src/client/shared-board-client.js";
@@ -116,9 +116,14 @@ class FakeElement {
 describe("shared-board client", () => {
   beforeEach(() => {
     leaveSharedBoardRoom();
+    vi.useFakeTimers();
     globalThis.document = {
       createElement: () => new FakeElement(),
     } as unknown as Document;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   test("undefined cursor entry を含む shared board state change でも落ちない", async () => {
@@ -317,6 +322,126 @@ describe("shared-board client", () => {
 
     expect(gridElement.children[0]?.className).toContain("zone-boss");
     expect(gridElement.children[35]?.className).toContain("zone-raid");
+  });
+
+  test("shared board enters battle replay watch mode and replays unit movement", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+
+    const room = {
+      sessionId: "raid-player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const handleStateChange = stateChangeHandler as (state: unknown) => void;
+    handleStateChange({
+      mode: "battle",
+      phase: "Battle",
+      battleId: "battle-raid-1",
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        "18": {
+          index: 18,
+          unitId: "battle:raid-vanguard-1",
+          ownerId: "raid",
+          displayName: "raid-vanguard-1",
+        },
+      },
+      cursors: {},
+      players: {
+        "raid-player-1": {
+          isSpectator: false,
+          color: "#4ECDC4",
+        },
+      },
+    });
+
+    const battleReplayHandler = messageHandlers.get("shared_battle_replay");
+    if (!battleReplayHandler) {
+      throw new Error("Expected shared battle replay handler to be registered");
+    }
+
+    battleReplayHandler({
+      battleId: "battle-raid-1",
+      phase: "Battle",
+      timeline: [
+        {
+          type: "battleStart",
+          battleId: "battle-raid-1",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-1",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+          ],
+        },
+        {
+          type: "move",
+          battleId: "battle-raid-1",
+          atMs: 120,
+          battleUnitId: "raid-vanguard-1",
+          from: { x: 0, y: 3 },
+          to: { x: 1, y: 3 },
+        },
+        {
+          type: "battleEnd",
+          battleId: "battle-raid-1",
+          atMs: 400,
+          winner: "raid",
+        },
+      ],
+    });
+
+    expect(placementGuideElement.textContent).toContain("Watching live shared-board replay");
+    expect(gridElement.children).toHaveLength(36);
+    expect(gridElement.children[18]?.className).not.toContain("empty");
+
+    vi.advanceTimersByTime(130);
+
+    expect(gridElement.children[19]?.className).not.toContain("empty");
+    expect(gridElement.children[18]?.className).toContain("empty");
   });
 
   test("shared board marks center 4x2 as playable lane and dims the outer ring", async () => {

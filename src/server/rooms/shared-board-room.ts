@@ -7,7 +7,13 @@ import {
   SharedBoardState,
 } from "../schema/shared-board-state";
 import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../shared/board-geometry";
-import type { BoardUnitPlacement } from "../../shared/room-messages";
+import type {
+  BattleStartEvent,
+  BattleTimelineEvent,
+  BoardUnitPlacement,
+  MatchPhase,
+  SharedBattleReplayMessage,
+} from "../../shared/room-messages";
 import {
   DEFAULT_SHARED_BOARD_CONFIG,
 } from "../../shared/shared-board-config";
@@ -49,6 +55,7 @@ interface PlaceUnitMessage {
 type SharedBoardRejectCode =
   | "INVALID_PAYLOAD"
   | "NOT_ACTIVE_PLAYER"
+  | "PHASE_MISMATCH"
   | "UNIT_NOT_OWNED"
   | "TARGET_LOCKED"
   | "TARGET_OCCUPIED";
@@ -82,6 +89,7 @@ const CLIENT_MESSAGE_TYPES = {
 const SERVER_MESSAGE_TYPES = {
   ROLE: "shared_role",
   ACTION_RESULT: "shared_action_result",
+  BATTLE_REPLAY: "shared_battle_replay",
 } as const;
 
 export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
@@ -109,6 +117,8 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private placementChangeListener: PlacementChangeListener | null = null;
 
+  private latestBattleReplayMessage: SharedBattleReplayMessage | null = null;
+
   public onCreate(options: SharedBoardRoomOptions = {}): void {
     this.maxClients = SharedBoardRoom.MAX_CLIENTS;
 
@@ -117,6 +127,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.lockDurationMs = options.lockDurationMs ?? this.lockDurationMs;
 
     this.state = new SharedBoardState();
+    this.state.mode = "prep";
     this.state.boardWidth = this.boardWidth;
     this.state.boardHeight = this.boardHeight;
     this.state.dummyBossCell = Math.min(2, this.boardWidth * this.boardHeight - 1);
@@ -183,6 +194,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.state.cursors.set(sessionId, cursor);
 
     this.sendRole(client);
+    this.sendBattleReplay(client);
 
     if (!isSpectator) {
       this.activePlayerIds.push(sessionId);
@@ -230,6 +242,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     player.connected = true;
 
     this.sendRole(client);
+    this.sendBattleReplay(client);
 
     const cursor = this.state.cursors.get(client.sessionId);
     if (cursor) {
@@ -483,6 +496,11 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return false;
     }
 
+    if (this.state.mode !== "prep") {
+      this.sendActionResult(client, action, false, "PHASE_MISMATCH");
+      return false;
+    }
+
     return true;
   }
 
@@ -626,6 +644,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     playerId: string,
     placements: BoardUnitPlacement[],
   ): { applied: number; skipped: number } {
+    if (this.state.mode !== "prep") {
+      return { applied: 0, skipped: placements?.length ?? 0 };
+    }
+
     if (!playerId || !Array.isArray(placements)) {
       return { applied: 0, skipped: placements?.length ?? 0 };
     }
@@ -694,6 +716,95 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return { applied, skipped };
   }
 
+  private clearAllBoardTokens(): void {
+    for (const cell of this.state.cells.values()) {
+      cell.unitId = "";
+      cell.ownerId = "";
+      cell.displayName = "";
+      cell.portraitKey = "";
+      cell.lockedBy = "";
+      cell.lockUntilMs = 0;
+    }
+  }
+
+  public setModeFromGame(input: {
+    phase: MatchPhase | string;
+    phaseDeadlineAtMs?: number;
+    mode?: "prep" | "battle";
+  }): void {
+    const nextMode = input.mode ?? (
+      input.phase === "Battle" || input.phase === "Settle" ? "battle" : "prep"
+    );
+    const modeChanged = this.state.mode !== nextMode;
+
+    this.state.mode = nextMode;
+    this.state.phase = input.phase;
+    this.state.phaseDeadlineAtMs = input.phaseDeadlineAtMs ?? 0;
+
+    if (nextMode !== "prep") {
+      return;
+    }
+
+    this.state.battleId = "";
+    this.latestBattleReplayMessage = null;
+
+    if (modeChanged) {
+      this.resetBoardTokens();
+    }
+  }
+
+  public applyBattleReplayFromGame(input: {
+    phase: MatchPhase | string;
+    phaseDeadlineAtMs?: number;
+    battleId: string;
+    timeline: BattleTimelineEvent[];
+  }): { applied: number } {
+    const battleStartEvent = input.timeline.find(
+      (event): event is BattleStartEvent => event.type === "battleStart",
+    );
+
+    this.state.mode = "battle";
+    this.state.phase = input.phase;
+    this.state.phaseDeadlineAtMs = input.phaseDeadlineAtMs ?? 0;
+    this.state.battleId = input.battleId;
+    this.latestBattleReplayMessage = {
+      type: "shared_battle_replay",
+      battleId: input.battleId,
+      phase: input.phase as MatchPhase,
+      timeline: input.timeline,
+    };
+
+    this.clearAllBoardTokens();
+
+    if (!battleStartEvent) {
+      this.sendBattleReplay();
+      return { applied: 0 };
+    }
+
+    let applied = 0;
+
+    for (const unit of battleStartEvent.units) {
+      const cellIndex = unit.y * this.boardWidth + unit.x;
+      const targetCell = this.state.cells.get(String(cellIndex));
+
+      if (!targetCell || !this.isValidCellIndex(cellIndex)) {
+        continue;
+      }
+
+      targetCell.unitId = `battle:${unit.battleUnitId}`;
+      targetCell.ownerId = unit.side;
+      targetCell.displayName = this.buildBattleReplayDisplayName(unit.battleUnitId);
+      targetCell.portraitKey = "";
+      targetCell.lockedBy = "";
+      targetCell.lockUntilMs = 0;
+      applied += 1;
+    }
+
+    this.appendEvent(`battle replay ${input.battleId} phase=${input.phase} units=${applied}`);
+    this.sendBattleReplay();
+    return { applied };
+  }
+
   /**
    * 配置変更イベントを発行
    * @param playerId SharedBoard側プレイヤーID
@@ -754,6 +865,31 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private getActiveColorBySlot(slotIndex: number): string {
     return SharedBoardRoom.ACTIVE_PLAYER_COLORS[slotIndex] ?? SharedBoardRoom.SPECTATOR_COLOR;
+  }
+
+  private sendBattleReplay(client?: Client): void {
+    if (!this.latestBattleReplayMessage) {
+      return;
+    }
+
+    if (client) {
+      client.send(SERVER_MESSAGE_TYPES.BATTLE_REPLAY, this.latestBattleReplayMessage);
+      return;
+    }
+
+    this.broadcast(SERVER_MESSAGE_TYPES.BATTLE_REPLAY, this.latestBattleReplayMessage);
+  }
+
+  private buildBattleReplayDisplayName(battleUnitId: string): string {
+    const tokens = battleUnitId.split("-");
+    const unitType = tokens.find((token) => (
+      token === "vanguard"
+      || token === "ranger"
+      || token === "mage"
+      || token === "assassin"
+    ));
+
+    return unitType ?? battleUnitId;
   }
 
   private appendEvent(message: string): void {

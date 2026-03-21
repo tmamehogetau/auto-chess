@@ -3,7 +3,12 @@ import type { SharedBoardRoom, PlacementChangeListener } from "./rooms/shared-bo
 import type { SharedBoardCellState } from "./schema/shared-board-state";
 import type { MatchRoomController } from "./match-room-controller";
 import { SharedBoardShadowObserver, type ShadowDiffResult } from "./shared-board-shadow-observer";
-import type { ShadowDiffMessage, BoardUnitPlacement } from "../shared/room-messages";
+import type {
+  BattleTimelineEvent,
+  BoardUnitPlacement,
+  SharedBattleReplayMessage,
+  ShadowDiffMessage,
+} from "../shared/room-messages";
 import { raidBoardIndexToCombatCell } from "../shared/board-geometry";
 import {
   BridgeMonitor,
@@ -28,6 +33,12 @@ import {
  */
 interface PlacementBatchSyncTarget extends Room {
   syncPlayersFromController?: (playerIds: string[]) => void;
+}
+
+interface QueuedSharedBoardCellSnapshot {
+  index: number;
+  unitId: string;
+  ownerId: string;
 }
 
 /**
@@ -102,6 +113,8 @@ export class SharedBoardBridge {
   private readonly roomLookupRetryCount = 5;
   private readonly roomLookupRetryDelayMs = 100;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private lastSharedBoardPhase: string | null = null;
+  private lastSharedBattleId: string | null = null;
   
   // 双方向同期用
   private currentVersion = 0;
@@ -109,7 +122,7 @@ export class SharedBoardBridge {
   private readonly maxAppliedOpIds = 1000;
 
   // 配置変更バッチ同期用
-  private readonly pendingPlacementChanges = new Map<string, SharedBoardCellState[]>();
+  private readonly pendingPlacementChanges = new Map<string, QueuedSharedBoardCellSnapshot[]>();
   private placementBatchTimer: NodeJS.Timeout | null = null;
   private readonly placementBatchWindowMs = 25;
   private isFlushingPlacementBatch = false;
@@ -206,6 +219,7 @@ export class SharedBoardBridge {
       this.state = "READY";
       this.hasEverBeenReady = true;
       this.reconnectAttempts = 0;
+      this.syncSharedBoardViewFromController();
 
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
@@ -299,8 +313,8 @@ export class SharedBoardBridge {
       return;
     }
 
-    // 同一プレイヤーは最新状態で上書き
-    this.pendingPlacementChanges.set(playerId, cells);
+    // Colyseus state cell は mutable なので、flush までに再同期で上書きされないよう snapshot 化する。
+    this.pendingPlacementChanges.set(playerId, this.snapshotPlacementCells(cells));
 
     if (this.placementBatchTimer) {
       return;
@@ -360,7 +374,7 @@ export class SharedBoardBridge {
    */
   private async handlePlacementChange(
     playerId: string,
-    cells: SharedBoardCellState[],
+    cells: QueuedSharedBoardCellSnapshot[],
   ): Promise<boolean> {
     if (this.state !== "READY") {
       return false;
@@ -458,7 +472,7 @@ export class SharedBoardBridge {
    * @param cells SharedBoardセル一覧
    * @returns BoardUnitPlacement配列
    */
-  private convertCellsToPlacements(cells: SharedBoardCellState[]): BoardUnitPlacement[] {
+  private convertCellsToPlacements(cells: QueuedSharedBoardCellSnapshot[]): BoardUnitPlacement[] {
     const placements: BoardUnitPlacement[] = [];
 
     for (const cell of cells) {
@@ -486,6 +500,16 @@ export class SharedBoardBridge {
     }
 
     return placements;
+  }
+
+  private snapshotPlacementCells(
+    cells: SharedBoardCellState[],
+  ): QueuedSharedBoardCellSnapshot[] {
+    return cells.map((cell) => ({
+      index: cell.index,
+      unitId: cell.unitId,
+      ownerId: cell.ownerId,
+    }));
   }
 
   private isBoardUnitType(unitType: string): unitType is BoardUnitPlacement["unitType"] {
@@ -528,6 +552,13 @@ export class SharedBoardBridge {
       return;
     }
 
+    this.syncSharedBoardViewFromController();
+
+    const gameState = this.controller.getGameState?.();
+    if (gameState?.phase !== "Prep") {
+      return;
+    }
+
     try {
       const diffResult = this.shadowObserver.observeAndCompare();
       
@@ -541,6 +572,106 @@ export class SharedBoardBridge {
       if (this.state === "READY") {
         this.scheduleReconnect();
       }
+    }
+  }
+
+  private syncSharedBoardViewFromController(): void {
+    if (this.state !== "READY" || !this.sharedBoardRoom) {
+      return;
+    }
+
+    const gameState = this.controller.getGameState?.();
+    if (!gameState) {
+      return;
+    }
+
+    const phase = gameState.phase;
+    const phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
+
+    if (phase === "Battle" || phase === "Settle") {
+      const replayMessage = this.buildSharedBattleReplayMessage(phase);
+
+      if (replayMessage) {
+        if (replayMessage.battleId !== this.lastSharedBattleId) {
+          this.sharedBoardRoom.applyBattleReplayFromGame({
+            phase: replayMessage.phase,
+            phaseDeadlineAtMs,
+            battleId: replayMessage.battleId,
+            timeline: replayMessage.timeline,
+          });
+          this.lastSharedBattleId = replayMessage.battleId;
+        } else if (phase !== this.lastSharedBoardPhase) {
+          this.sharedBoardRoom.setModeFromGame({
+            phase,
+            phaseDeadlineAtMs,
+            mode: "battle",
+          });
+        }
+
+        this.lastSharedBoardPhase = phase;
+        return;
+      }
+    }
+
+    this.sharedBoardRoom.setModeFromGame({
+      phase,
+      phaseDeadlineAtMs,
+      mode: "prep",
+    });
+
+    if (this.lastSharedBoardPhase !== phase || this.lastSharedBattleId !== null) {
+      this.syncAllPrepPlacementsToSharedBoard();
+    }
+
+    this.lastSharedBoardPhase = phase;
+    this.lastSharedBattleId = null;
+  }
+
+  private buildSharedBattleReplayMessage(phase: "Battle" | "Settle"): SharedBattleReplayMessage | null {
+    const candidatePlayerIds = [
+      this.controller.getBossPlayerId?.() ?? null,
+      ...(this.controller.getRaidPlayerIds?.() ?? []),
+      ...(this.controller.getPlayerIds?.() ?? []),
+    ].filter((playerId): playerId is string => typeof playerId === "string" && playerId.length > 0);
+
+    for (const playerId of candidatePlayerIds) {
+      const playerStatus = this.controller.getPlayerStatus?.(playerId);
+      const timeline = playerStatus?.lastBattleResult?.timeline;
+      const battleId = this.resolveBattleIdFromTimeline(timeline);
+
+      if (!battleId || !timeline || timeline.length === 0) {
+        continue;
+      }
+
+      return {
+        type: "shared_battle_replay",
+        battleId,
+        phase,
+        timeline,
+      };
+    }
+
+    return null;
+  }
+
+  private resolveBattleIdFromTimeline(timeline: BattleTimelineEvent[] | undefined): string | null {
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      return null;
+    }
+
+    const firstEvent = timeline.find((event) => typeof event?.battleId === "string");
+    return firstEvent?.battleId ?? null;
+  }
+
+  private syncAllPrepPlacementsToSharedBoard(): void {
+    if (!this.sharedBoardRoom) {
+      return;
+    }
+
+    const playerIds = this.controller.getPlayerIds?.() ?? [];
+    for (const playerId of playerIds) {
+      const placements = this.controller.getBoardPlacementsForPlayer?.(playerId) ?? [];
+      this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
     }
   }
 

@@ -129,6 +129,34 @@ describe("SharedBoardBridge batch sync", () => {
     expect(placements[0]?.unitType).toBe("ranger");
   });
 
+  it("flush前にshared board cellが再同期で書き換わっても、enqueue時点の配置を適用する", async () => {
+    const { bridge, controller } = createBridge();
+
+    const queuedCell = {
+      index: combatCellToRaidBoardIndex(4),
+      unitId: "vanguard-queued",
+      ownerId: "player-a",
+    } as SharedBoardCellState;
+
+    enqueuePlacementChange(bridge, "player-a", [queuedCell]);
+
+    queuedCell.index = combatCellToRaidBoardIndex(0);
+    queuedCell.unitId = "vanguard-resynced";
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledTimes(1);
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledWith(
+      "player-a",
+      expect.arrayContaining([
+        expect.objectContaining({
+          cell: 4,
+          unitType: "vanguard",
+        }),
+      ]),
+    );
+  });
+
   it("古いbaseVersionの同期要求はconflictで拒否される", async () => {
     const { bridge, controller } = createBridge();
 

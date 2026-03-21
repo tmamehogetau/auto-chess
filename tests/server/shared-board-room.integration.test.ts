@@ -9,6 +9,10 @@ import {
   DEFAULT_SHARED_BOARD_CONFIG,
 } from "../../src/shared/shared-board-config";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
+import {
+  createBattleEndEvent,
+  createBattleStartEvent,
+} from "../../src/server/combat/battle-timeline";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -167,6 +171,65 @@ describe("SharedBoardRoom integration", () => {
     ).toBe(true);
     expect(roomInternals.isPlayablePlacementCellIndex(18)).toBe(false);
     expect(roomInternals.isPlayablePlacementCellIndex(1)).toBe(false);
+  });
+
+  test("battle replay mode seeds battle units and rejects board edits", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom, { gamePlayerId: "raid-player-1" });
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    const role = await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE, 5_000);
+    expect(role.isSpectator).toBe(false);
+
+    serverRoom.applyBattleReplayFromGame({
+      phase: "Battle",
+      phaseDeadlineAtMs: Date.now() + 2_000,
+      battleId: "battle-raid-1",
+      timeline: [
+        createBattleStartEvent({
+          battleId: "battle-raid-1",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-1",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+            {
+              battleUnitId: "boss-ranger-1",
+              side: "boss",
+              x: 5,
+              y: 0,
+              currentHp: 50,
+              maxHp: 50,
+            },
+          ],
+        }),
+        createBattleEndEvent({
+          type: "battleEnd",
+          battleId: "battle-raid-1",
+          atMs: 900,
+          winner: "raid",
+        }),
+      ],
+    });
+
+    expect(serverRoom.state.mode).toBe("battle");
+    expect(serverRoom.state.battleId).toBe("battle-raid-1");
+    expect(serverRoom.state.cells.get("18")?.unitId).toContain("battle:");
+    expect(serverRoom.state.cells.get("5")?.unitId).toContain("battle:");
+
+    client.send(CLIENT_MESSAGE_TYPES.RESET);
+    const result = await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT, 5_000);
+    expect(result).toEqual({
+      accepted: false,
+      action: "reset",
+      code: "PHASE_MISMATCH",
+    });
   });
 
   test("最初の4接続がactiveで5人目がspectatorになる", async () => {

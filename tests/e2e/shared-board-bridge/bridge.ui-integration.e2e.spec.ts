@@ -182,6 +182,11 @@ async function placeUnit(
             return;
           }
 
+          await waitForCondition(
+            () => sharedBoardRoom.state.phase === "Prep" && sharedBoardRoom.state.mode === "prep",
+            2_000,
+          );
+
           // 初期メトリクス記録
           const initialMetrics = gameRoomAny.sharedBoardBridge?.getMetrics();
           const initialEventCount = initialMetrics?.totalEvents ?? 0;
@@ -281,6 +286,11 @@ async function placeUnit(
             console.log("Bridge not READY, skipping metrics test");
             return;
           }
+
+          await waitForCondition(
+            () => sharedBoardRoom.state.phase === "Prep" && sharedBoardRoom.state.mode === "prep",
+            2_000,
+          );
 
           // 初期メトリクス記録
           const initialMetrics = gameRoomAny.sharedBoardBridge?.getMetrics();

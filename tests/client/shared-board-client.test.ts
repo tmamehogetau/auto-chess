@@ -739,9 +739,14 @@ describe("shared-board client", () => {
       gridElement.children[5],
       "shared-board-battle-impact-tag",
     );
+    const impactBurst = findDescendantByClass(
+      gridElement.children[5],
+      "shared-board-battle-hit-burst",
+    );
 
     expect(impactedUnit?.className).toContain("shared-board-battle-impacted");
     expect(impactTag?.textContent).toBe("-12");
+    expect(impactBurst).not.toBeNull();
 
     vi.advanceTimersByTime(330);
 
@@ -751,6 +756,154 @@ describe("shared-board client", () => {
     );
     expect(settledUnit?.className).not.toContain("shared-board-battle-impacted");
     expect(findDescendantByClass(gridElement.children[5], "shared-board-battle-impact-tag")).toBeNull();
+    expect(findDescendantByClass(gridElement.children[5], "shared-board-battle-hit-burst")).toBeNull();
+  });
+
+  test("shared board battle replay shows castStart with a caster focus before impact", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+
+    const room = {
+      sessionId: "raid-player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const handleStateChange = stateChangeHandler as (state: unknown) => void;
+    handleStateChange({
+      mode: "battle",
+      phase: "Battle",
+      battleId: "battle-raid-cast-1",
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {},
+      cursors: {},
+      players: {
+        "raid-player-1": {
+          isSpectator: false,
+          color: "#4ECDC4",
+        },
+      },
+    });
+
+    const battleReplayHandler = messageHandlers.get("shared_battle_replay");
+    if (!battleReplayHandler) {
+      throw new Error("Expected shared battle replay handler to be registered");
+    }
+
+    battleReplayHandler({
+      battleId: "battle-raid-cast-1",
+      phase: "Battle",
+      timeline: [
+        {
+          type: "battleStart",
+          battleId: "battle-raid-cast-1",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-mage-cast-1",
+              side: "raid",
+              x: 2,
+              y: 4,
+              currentHp: 28,
+              maxHp: 28,
+            },
+            {
+              battleUnitId: "boss-vanguard-cast-1",
+              side: "boss",
+              x: 2,
+              y: 1,
+              currentHp: 60,
+              maxHp: 60,
+            },
+          ],
+        },
+        {
+          type: "castStart",
+          battleId: "battle-raid-cast-1",
+          atMs: 100,
+          sourceBattleUnitId: "raid-mage-cast-1",
+          targetBattleUnitId: "boss-vanguard-cast-1",
+        },
+        {
+          type: "damageApplied",
+          battleId: "battle-raid-cast-1",
+          atMs: 220,
+          sourceBattleUnitId: "raid-mage-cast-1",
+          targetBattleUnitId: "boss-vanguard-cast-1",
+          amount: 17,
+          remainingHp: 43,
+        },
+      ],
+    });
+
+    vi.advanceTimersByTime(110);
+
+    const caster = findDescendantByClass(
+      gridElement.children[26],
+      "shared-board-battle-unit",
+    );
+    const castTag = findDescendantByClass(
+      gridElement.children[26],
+      "shared-board-battle-state-tag",
+    );
+    const castFocus = findDescendantByClass(
+      gridElement.children[26],
+      "shared-board-battle-cast-focus",
+    );
+    const target = findDescendantByClass(
+      gridElement.children[8],
+      "shared-board-battle-unit",
+    );
+
+    expect(caster?.className).toContain("shared-board-battle-casting");
+    expect(castTag?.textContent).toBe("Casting");
+    expect(castFocus).not.toBeNull();
+    expect(target?.className).toContain("shared-board-battle-targeted");
+
+    vi.advanceTimersByTime(120);
+
+    const settledCaster = findDescendantByClass(
+      gridElement.children[26],
+      "shared-board-battle-unit",
+    );
+    expect(settledCaster?.className).not.toContain("shared-board-battle-casting");
+    expect(findDescendantByClass(gridElement.children[26], "shared-board-battle-cast-focus")).toBeNull();
   });
 
   test("shared board battle replay marks attacker and target during attackStart", async () => {

@@ -460,6 +460,9 @@ function renderSharedBoard(state) {
         if (cell?.battleState === "attacking") {
           unit.classList.add("shared-board-battle-attacking");
         }
+        if (cell?.battleState === "casting") {
+          unit.classList.add("shared-board-battle-casting");
+        }
         if (
           Number.isFinite(cell?.battleAttackLungeX)
           || Number.isFinite(cell?.battleAttackLungeY)
@@ -500,6 +503,12 @@ function renderSharedBoard(state) {
         hpBar.appendChild(hpFill);
         unit.append(hpCopy, hpBar);
 
+        if (cell?.battleState === "casting") {
+          const castFocus = document.createElement("span");
+          castFocus.className = "shared-board-battle-cast-focus";
+          unit.appendChild(castFocus);
+        }
+
         if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "melee") {
           const attackDirection = document.createElement("span");
           attackDirection.className = "shared-board-battle-attack-direction";
@@ -526,6 +535,10 @@ function renderSharedBoard(state) {
 
         const impactTagCopy = resolveSharedBattleImpactTagCopy(cell);
         if (impactTagCopy) {
+          const impactBurst = document.createElement("span");
+          impactBurst.className = "shared-board-battle-hit-burst";
+          unit.appendChild(impactBurst);
+
           const impactTag = document.createElement("span");
           impactTag.className = "shared-board-battle-impact-tag";
           impactTag.textContent = impactTagCopy;
@@ -1067,6 +1080,10 @@ function resolveSharedBattleStateTagCopy(cell) {
     return "Attacking";
   }
 
+  if (cell?.battleState === "casting") {
+    return "Casting";
+  }
+
   if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
     return "Targeted";
   }
@@ -1199,6 +1216,25 @@ function applySharedBattleReplayEvent(event) {
     return;
   }
 
+  if (event.type === "castStart") {
+    clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleMovementGhost(event.sourceBattleUnitId);
+    clearSharedBattleMovementGhost(event.targetBattleUnitId);
+
+    const sourceUnit = currentSharedBattleReplay.units.get(event.sourceBattleUnitId);
+    if (sourceUnit) {
+      sourceUnit.state = "casting";
+      sourceUnit.attackTargetBattleUnitId = event.targetBattleUnitId ?? null;
+    }
+
+    const targetUnit = currentSharedBattleReplay.units.get(event.targetBattleUnitId);
+    if (targetUnit) {
+      targetUnit.targetedByBattleUnitId = event.sourceBattleUnitId;
+    }
+    currentSharedBattleReplay.lastAttackMarkerAtMs = Number.isInteger(event.atMs) ? event.atMs : null;
+    return;
+  }
+
   if (event.type === "move") {
     clearSharedBattleReplayAttackMarkers(event.atMs);
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
@@ -1300,7 +1336,7 @@ function clearSharedBattleReplayAttackMarkers(nextEventAtMs = null) {
   for (const unit of currentSharedBattleReplay.units.values()) {
     unit.attackTargetBattleUnitId = null;
     unit.targetedByBattleUnitId = null;
-    if (unit.state === "attacking") {
+    if (unit.state === "attacking" || unit.state === "casting") {
       unit.state = "idle";
     }
   }

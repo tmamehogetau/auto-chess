@@ -8,6 +8,9 @@ import {
 } from "../schema/shared-board-state";
 import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../shared/board-geometry";
 import type { BoardUnitPlacement } from "../../shared/room-messages";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+} from "../../shared/shared-board-config";
 import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
 
 interface SharedBoardRoomOptions {
@@ -94,9 +97,9 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private static readonly SPECTATOR_COLOR = "#999999";
 
-  private boardWidth = 6;
+  private boardWidth = DEFAULT_SHARED_BOARD_CONFIG.width;
 
-  private boardHeight = 4;
+  private boardHeight = DEFAULT_SHARED_BOARD_CONFIG.height;
 
   private lockDurationMs = SharedBoardRoom.DEFAULT_LOCK_DURATION_MS;
 
@@ -564,7 +567,18 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   }
 
   private isPlayablePlacementCellIndex(cellIndex: number): boolean {
-    return raidBoardIndexToCombatCell(cellIndex) !== null;
+    if (!this.isValidCellIndex(cellIndex)) {
+      return false;
+    }
+
+    if (
+      this.boardWidth === DEFAULT_SHARED_BOARD_CONFIG.width
+      && this.boardHeight === DEFAULT_SHARED_BOARD_CONFIG.height
+    ) {
+      return raidBoardIndexToCombatCell(cellIndex) !== null;
+    }
+
+    return false;
   }
 
   private ownsUnit(playerId: string, unitId: string): boolean {

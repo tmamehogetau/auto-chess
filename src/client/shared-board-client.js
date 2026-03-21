@@ -219,7 +219,7 @@ function renderSharedBoardState(state) {
   if (!state) {
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
-    renderSharedBoard({ boardWidth: 6, boardHeight: 4, cells: {}, cursors: {}, players: {} });
+    renderSharedBoard({ boardWidth: 6, boardHeight: 6, cells: {}, cursors: {}, players: {} });
     updateSharedBoardPlacementGuide(null);
 
     if (domRefs.cursorListElement) {
@@ -273,16 +273,22 @@ function updateSharedBoardPlacementGuide(state) {
   ));
 
   if (!hasOwnUnits) {
-    domRefs.placementGuideElement.textContent = "Buy a unit into your Bench, then place it onto one of the center 4x2 cells. Boss covers the top lane, raid covers the bottom lane.";
+    domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
+      ? "Buy a unit into your Bench, then place it onto one of the center 4x2 cells. Boss covers the top lane, raid covers the bottom lane."
+      : "Buy a unit into your Bench, then place it onto one of the highlighted raid cells. Boss deployment stays reserved for now.";
     return;
   }
 
   if (selectedSharedUnitId || sharedDraggedUnitId) {
-    domRefs.placementGuideElement.textContent = "Blue cells inside the center 4x2 are open for your selected unit. Red cells are blocked or outside the playable lane.";
+    domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
+      ? "Blue cells inside the center 4x2 are open for your selected unit. Red cells are blocked or outside the playable lane."
+      : "Blue highlighted raid cells are open for your selected unit. Red cells are occupied or outside the active raid footprint.";
     return;
   }
 
-  domRefs.placementGuideElement.textContent = "Select or drag one of your units. The center 4x2 is the playable lane: boss on top, raid on bottom.";
+  domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
+    ? "Select or drag one of your units. The center 4x2 is the playable lane: boss on top, raid on bottom."
+    : "Select or drag one of your units. Place it onto the highlighted raid cells in the lower half of the board.";
 }
 
 /**
@@ -296,11 +302,12 @@ function renderSharedBoard(state) {
 
   domRefs.gridElement.innerHTML = "";
 
-  const { boardWidth = 6, boardHeight = 4, cells = {} } = state;
+  const { boardWidth = 6, boardHeight = 6, cells = {} } = state;
+  const legacyEmbeddedBoard = isLegacyEmbeddedBoard(state);
 
   for (let i = 0; i < boardWidth * boardHeight; i += 1) {
     const cell = mapGet(cells, String(i));
-    const playableLaneZone = resolvePlayableLaneZone(state, i);
+    const deploymentZone = resolveDeploymentZone(state, i);
     const unitId = cell?.unitId ?? "";
     const ownerId = cell?.ownerId ?? "";
     const isOwnUnit = Boolean(sharedBoardRoom && ownerId === getOwnSharedBoardOwnerId());
@@ -316,16 +323,26 @@ function renderSharedBoard(state) {
     cellElement.className = "shared-board-cell";
     cellElement.tabIndex = 0;
     cellElement.dataset.cellIndex = String(i);
-    cellElement.dataset.raidRegion = i < boardWidth * 2 ? "boss-top" : "raid-bottom";
-    cellElement.dataset.playableLane = playableLaneZone;
+    cellElement.dataset.raidRegion = deploymentZone === "boss" ? "boss-top" : "raid-bottom";
+    cellElement.dataset.playableLane = legacyEmbeddedBoard ? resolvePlayableLaneZone(state, i) : deploymentZone;
     cellElement.setAttribute("role", "button");
     cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell, state));
-    cellElement.classList.add(i < boardWidth * 2 ? "zone-boss" : "zone-raid");
-    if (playableLaneZone === "outside") {
-      cellElement.classList.add("outside-playable");
+    cellElement.classList.add(deploymentZone === "boss" ? "zone-boss" : "zone-raid");
+    if (legacyEmbeddedBoard) {
+      const playableLaneZone = resolvePlayableLaneZone(state, i);
+      if (playableLaneZone === "outside") {
+        cellElement.classList.add("outside-playable");
+      } else {
+        cellElement.classList.add("playable-lane");
+        cellElement.classList.add(playableLaneZone === "boss" ? "playable-boss-lane" : "playable-raid-lane");
+      }
     } else {
-      cellElement.classList.add("playable-lane");
-      cellElement.classList.add(playableLaneZone === "boss" ? "playable-boss-lane" : "playable-raid-lane");
+      cellElement.classList.add(deploymentZone === "boss" ? "deployment-boss" : "deployment-raid");
+      if (isActiveRaidCombatFootprintCell(state, i)) {
+        cellElement.classList.add("playable-lane", "playable-raid-lane");
+      } else {
+        cellElement.classList.add("outside-playable");
+      }
     }
     cellElement.onclick = () => {
       handleSharedCellClick(state, i);
@@ -613,7 +630,50 @@ function isValidSharedDropTarget(state, cellIndex) {
 }
 
 function isPlayableSharedBoardCell(state, cellIndex) {
-  return sharedBoardIndexToCombatCell(state, cellIndex) !== null;
+  if (!Number.isInteger(cellIndex)) {
+    return false;
+  }
+
+  if (isLegacyEmbeddedBoard(state)) {
+    return sharedBoardIndexToCombatCell(state, cellIndex) !== null;
+  }
+
+  return isActiveRaidCombatFootprintCell(state, cellIndex);
+}
+
+function resolveDeploymentZone(state, cellIndex) {
+  const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+  const boardHeight = Number.isInteger(state?.boardHeight) ? state.boardHeight : 6;
+  const maxIndex = boardWidth * boardHeight - 1;
+
+  if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex > maxIndex) {
+    return "raid";
+  }
+
+  const row = Math.floor(cellIndex / boardWidth);
+  return row < Math.floor(boardHeight / 2) ? "boss" : "raid";
+}
+
+function isLegacyEmbeddedBoard(state) {
+  return Number.isInteger(state?.boardHeight) && state.boardHeight <= 4;
+}
+
+function isActiveRaidCombatFootprintCell(state, cellIndex) {
+  const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+  const boardHeight = Number.isInteger(state?.boardHeight) ? state.boardHeight : 6;
+  const maxIndex = boardWidth * boardHeight - 1;
+
+  if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex > maxIndex) {
+    return false;
+  }
+
+  if (boardWidth !== 6 || boardHeight !== 6) {
+    return false;
+  }
+
+  const x = cellIndex % boardWidth;
+  const y = Math.floor(cellIndex / boardWidth);
+  return x >= 1 && x <= 4 && y >= 3 && y <= 4;
 }
 
 function resolvePlayableLaneZone(state, cellIndex) {
@@ -658,7 +718,9 @@ function sharedBoardIndexToCombatCell(state, boardIndex) {
 
 function buildSharedDropRejectMessage(state, cellIndex) {
   if (!isPlayableSharedBoardCell(state, cellIndex)) {
-    return "That lane is outside the playable combat area. Pick one of the center cells.";
+    return isLegacyEmbeddedBoard(state)
+      ? "That lane is outside the playable combat area. Pick one of the center cells."
+      : "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.";
   }
 
   const cell = mapGet(state?.cells, String(cellIndex));
@@ -666,7 +728,9 @@ function buildSharedDropRejectMessage(state, cellIndex) {
     return "That lane is occupied by another player. Pick an open cell.";
   }
 
-  return "That lane is blocked. Pick an open cell.";
+  return isLegacyEmbeddedBoard(state)
+    ? "That lane is blocked. Pick an open cell."
+    : "That deployment cell is blocked. Pick an open cell.";
 }
 
 function clearSharedDropIndicators(cellElement) {
@@ -749,12 +813,20 @@ function getOwnSharedBoardOwnerId() {
 }
 
 function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
-  const playableLaneZone = resolvePlayableLaneZone(state, cellIndex);
-  const laneCopy = playableLaneZone === "outside"
-    ? "outside the playable lane"
-    : playableLaneZone === "boss"
-      ? "boss playable lane"
-      : "raid playable lane";
+  const laneCopy = isLegacyEmbeddedBoard(state)
+    ? (() => {
+        const playableLaneZone = resolvePlayableLaneZone(state, cellIndex);
+        return playableLaneZone === "outside"
+          ? "outside the playable lane"
+          : playableLaneZone === "boss"
+            ? "boss playable lane"
+            : "raid playable lane";
+      })()
+    : isActiveRaidCombatFootprintCell(state, cellIndex)
+      ? "active raid combat footprint"
+      : resolveDeploymentZone(state, cellIndex) === "boss"
+        ? "boss deployment zone"
+        : "raid staging zone";
   const unitName = typeof cell?.displayName === "string" && cell.displayName.length > 0
     ? cell.displayName
     : typeof cell?.unitId === "string" && cell.unitId.length > 0

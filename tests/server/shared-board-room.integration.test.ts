@@ -5,6 +5,9 @@ import { defineRoom, defineServer } from "colyseus";
 
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
 import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../src/shared/board-geometry";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+} from "../../src/shared/shared-board-config";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
 
 const waitForCondition = async (
@@ -146,6 +149,24 @@ describe("SharedBoardRoom integration", () => {
     }
 
     await testServer.shutdown();
+  });
+
+  test("6x6 board defaults expose raid deployment cells as playable", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const roomInternals = serverRoom as unknown as {
+      isPlayablePlacementCellIndex: (cellIndex: number) => boolean;
+    };
+
+    expect(serverRoom.state.boardWidth).toBe(6);
+    expect(serverRoom.state.boardHeight).toBe(6);
+    expect(serverRoom.state.cells.size).toBe(36);
+    expect(
+      roomInternals.isPlayablePlacementCellIndex(
+        combatCellToRaidBoardIndex(0),
+      ),
+    ).toBe(true);
+    expect(roomInternals.isPlayablePlacementCellIndex(18)).toBe(false);
+    expect(roomInternals.isPlayablePlacementCellIndex(1)).toBe(false);
   });
 
   test("最初の4接続がactiveで5人目がspectatorになる", async () => {

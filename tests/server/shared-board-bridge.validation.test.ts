@@ -6,6 +6,7 @@ import { SharedBoardBridge } from "../../src/server/shared-board-bridge";
 import { BridgeMonitor } from "../../src/server/shared-board-bridge-monitor";
 import type { MatchRoomController } from "../../src/server/match-room-controller";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
+import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 
 interface BatchSyncGameRoom extends Room {
   syncPlayersFromController: (playerIds: string[]) => void;
@@ -96,7 +97,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
 
       enqueuePlacementChange(bridge, "player-a", [
         {
-          index: 7,
+          index: combatCellToRaidBoardIndex(0),
           unitId: "vanguard-1",
           ownerId: "player-a",
         } as SharedBoardCellState,

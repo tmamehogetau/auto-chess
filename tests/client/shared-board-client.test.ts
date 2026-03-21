@@ -258,17 +258,17 @@ describe("shared-board client", () => {
     expect(handler).not.toBeNull();
     handler?.({
       boardWidth: 6,
-      boardHeight: 4,
+      boardHeight: 6,
       cells: {},
       cursors: {},
       players: {},
     });
 
-    expect(gridElement.children).toHaveLength(24);
+    expect(gridElement.children).toHaveLength(36);
     expect(gridElement.children[0]?.dataset.raidRegion).toBe("boss-top");
-    expect(gridElement.children[5]?.dataset.raidRegion).toBe("boss-top");
+    expect(gridElement.children[17]?.dataset.raidRegion).toBe("boss-top");
     expect(gridElement.children[18]?.dataset.raidRegion).toBe("raid-bottom");
-    expect(gridElement.children[23]?.dataset.raidRegion).toBe("raid-bottom");
+    expect(gridElement.children[35]?.dataset.raidRegion).toBe("raid-bottom");
   });
 
   test("shared board cells expose zone classes for visual affordances", async () => {
@@ -309,14 +309,14 @@ describe("shared-board client", () => {
 
     (stateChangeHandler as (state: unknown) => void)({
       boardWidth: 6,
-      boardHeight: 4,
+      boardHeight: 6,
       cells: {},
       cursors: {},
       players: {},
     });
 
     expect(gridElement.children[0]?.className).toContain("zone-boss");
-    expect(gridElement.children[23]?.className).toContain("zone-raid");
+    expect(gridElement.children[35]?.className).toContain("zone-raid");
   });
 
   test("shared board marks center 4x2 as playable lane and dims the outer ring", async () => {
@@ -938,28 +938,28 @@ describe("shared-board client", () => {
 
     applyStateChange({
       boardWidth: 6,
-      boardHeight: 4,
+      boardHeight: 6,
       cells: {
-        7: { unitId: "vanguard-1", ownerId: "player-1" },
-        8: { unitId: "", ownerId: "" },
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+        20: { unitId: "", ownerId: "" },
       },
       cursors: {},
       players: {},
     });
 
-    gridElement.children[7]?.onpointerdown?.();
+    gridElement.children[19]?.onpointerdown?.();
     expect(getSelectedSharedUnitId()).toBe("vanguard-1");
 
     handleSharedCellClick({
       cells: {
-        7: { unitId: "vanguard-1", ownerId: "player-1" },
-        8: { unitId: "", ownerId: "" },
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+        20: { unitId: "", ownerId: "" },
       },
-    }, 8);
+    }, 20);
 
     expect(sendCalls).toContainEqual({
       type: "shared_place_unit",
-      payload: { unitId: "vanguard-1", toCell: 8 },
+      payload: { unitId: "vanguard-1", toCell: 20 },
     });
     expect(getSelectedSharedUnitId()).toBe("vanguard-1");
 
@@ -1049,6 +1049,79 @@ describe("shared-board client", () => {
       type: "error",
     }]);
     expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+  });
+
+  test("shared board 6x6 staging rejects lower-half cells outside the active raid footprint", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+    applyStateChange({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    gridElement.children[19]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    handleSharedCellClick({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+    }, 18);
+
+    expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
+    expect(messages).toEqual([{
+      message: "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.",
+      type: "error",
+    }]);
   });
 
   test("shared board treats sparse cells as valid empty drop targets", async () => {

@@ -11,9 +11,9 @@ export const COMBAT_CELL_COUNT = COMBAT_CELL_MAX_INDEX - COMBAT_CELL_MIN_INDEX +
 export const COMBAT_ROW_SIZE = 4;
 
 export const RAID_BOARD_WIDTH = 6;
-export const RAID_BOARD_HEIGHT = 4;
-export const BOSS_BOARD_WIDTH = 7;
-export const BOSS_BOARD_HEIGHT = 4;
+export const RAID_BOARD_HEIGHT = 6;
+export const BOSS_BOARD_WIDTH = 6;
+export const BOSS_BOARD_HEIGHT = 6;
 export const SHARED_BOARD_WIDTH = DEFAULT_SHARED_BOARD_CONFIG.width;
 export const SHARED_BOARD_HEIGHT = DEFAULT_SHARED_BOARD_CONFIG.height;
 
@@ -28,7 +28,7 @@ const COMBAT_CELL_TO_CANONICAL_COORDINATE: readonly BoardCoordinate[] = [
   { x: 3, y: 1 },
 ];
 
-const RAID_BOARD_EMBED_OFFSET = { x: 1, y: 1 } as const;
+const RAID_BOARD_EMBED_OFFSET = { x: 1, y: 3 } as const;
 const BOSS_BOARD_EMBED_OFFSET = { x: 1, y: 1 } as const;
 
 function assertCombatCellIndex(cellIndex: number): void {

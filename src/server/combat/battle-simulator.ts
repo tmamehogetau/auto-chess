@@ -1,6 +1,19 @@
-import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
+import type {
+  BattleKeyframeUnitState,
+  BattleStartUnitSnapshot,
+  BattleTimelineEvent,
+  BattleTimelineSide,
+  BoardUnitPlacement,
+  BoardUnitType,
+} from "../../shared/room-messages";
 import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
+import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
+import {
+  combatCellToBossBoardIndex,
+  combatCellToRaidBoardIndex,
+  sharedBoardIndexToCoordinate,
+} from "../../shared/board-geometry";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import {
@@ -17,6 +30,15 @@ import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 import { HEROES } from "../../data/heroes";
 import { resolveBattlePlacement } from "../unit-id-resolver";
+import {
+  createAttackStartEvent,
+  createBattleEndEvent,
+  createBattleStartEvent,
+  createDamageAppliedEvent,
+  createKeyframeEvent,
+  createMoveEvent,
+  createUnitDeathEvent,
+} from "./battle-timeline";
 
 /**
  * アクションインターフェース
@@ -70,6 +92,7 @@ export interface BattleResult {
   winner: "left" | "right" | "draw";
   leftSurvivors: BattleUnit[];
   rightSurvivors: BattleUnit[];
+  timeline: BattleTimelineEvent[];
   combatLog: string[]; // デバッグ用
   durationMs: number;
   damageDealt: {
@@ -95,6 +118,60 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
   mage: { hp: 40, attack: 6, attackSpeed: 0.6, range: 2 },
   assassin: { hp: 45, attack: 5, attackSpeed: 1.0, range: 1 },
 };
+
+function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
+  if (unit.isBoss) {
+    return "boss";
+  }
+
+  return unit.id.startsWith("left") ? "raid" : "boss";
+}
+
+function resolveTimelineCoordinate(unit: BattleUnit): { x: number; y: number } {
+  const boardIndex = resolveTimelineSide(unit) === "raid"
+    ? combatCellToRaidBoardIndex(unit.cell)
+    : combatCellToBossBoardIndex(unit.cell);
+  return sharedBoardIndexToCoordinate(boardIndex, DEFAULT_SHARED_BOARD_CONFIG);
+}
+
+function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
+  const coordinate = resolveTimelineCoordinate(unit);
+
+  return {
+    battleUnitId: unit.id,
+    side: resolveTimelineSide(unit),
+    x: coordinate.x,
+    y: coordinate.y,
+    currentHp: unit.hp,
+    maxHp: unit.maxHp,
+  };
+}
+
+function buildBattleKeyframeUnitState(unit: BattleUnit): BattleKeyframeUnitState {
+  const coordinate = resolveTimelineCoordinate(unit);
+
+  return {
+    battleUnitId: unit.id,
+    x: coordinate.x,
+    y: coordinate.y,
+    currentHp: unit.hp,
+    maxHp: unit.maxHp,
+    alive: !unit.isDead,
+    state: unit.isDead ? "dead" : "idle",
+  };
+}
+
+function resolveTimelineWinner(winner: BattleResult["winner"]): "boss" | "raid" | "draw" {
+  if (winner === "left") {
+    return "raid";
+  }
+
+  if (winner === "right") {
+    return "boss";
+  }
+
+  return "draw";
+}
 
 /**
  * BattleUnit を作成するヘルパー関数
@@ -556,6 +633,7 @@ export class BattleSimulator {
           winner: leftUnits.length > 0 ? "left" : rightUnits.length > 0 ? "right" : "draw",
           leftSurvivors: leftUnits.filter(u => !u.isDead),
           rightSurvivors: rightUnits.filter(u => !u.isDead),
+          timeline: [],
           combatLog: isBothEmpty ? ["Draw (all units defeated)"] : ["Battle with empty teams"],
           durationMs: 0,
           damageDealt: {
@@ -567,9 +645,25 @@ export class BattleSimulator {
       }
 
       const combatLog: string[] = [];
+      const battleId = `battle-${Date.now()}`;
+      const timeline: BattleTimelineEvent[] = [];
       combatLog.push("Battle started");
       combatLog.push(`Left units: ${leftUnits.length}`);
       combatLog.push(`Right units: ${rightUnits.length}`);
+      timeline.push(createBattleStartEvent({
+        battleId,
+        round: 0,
+        boardConfig: {
+          width: DEFAULT_SHARED_BOARD_CONFIG.width,
+          height: DEFAULT_SHARED_BOARD_CONFIG.height,
+        },
+        units: [...leftUnits, ...rightUnits].map(buildBattleStartSnapshot),
+      }));
+      timeline.push(createKeyframeEvent({
+        battleId,
+        atMs: 0,
+        units: [...leftUnits, ...rightUnits].map(buildBattleKeyframeUnitState),
+      }));
 
       const leftScarletBossLifestealActive = hasScarletMansionBossLifesteal(leftPlacements);
       const rightScarletBossLifestealActive = hasScarletMansionBossLifesteal(rightPlacements);
@@ -617,6 +711,18 @@ export class BattleSimulator {
       let damageDealtLeft = 0;  // 左チームが与えたダメージ
       let damageDealtRight = 0; // 右チームが与えたダメージ
       let bossDamage = 0;       // ボスが受けたダメージ
+      let nextKeyframeAtMs = 250;
+
+      const appendDueKeyframes = (atMs: number) => {
+        while (atMs >= nextKeyframeAtMs) {
+          timeline.push(createKeyframeEvent({
+            battleId,
+            atMs: nextKeyframeAtMs,
+            units: [...leftUnits, ...rightUnits].map(buildBattleKeyframeUnitState),
+          }));
+          nextKeyframeAtMs += 250;
+        }
+      };
 
       // 全ユニットの初期アクションをキューに追加
       for (const unit of allUnits) {
@@ -666,12 +772,20 @@ export class BattleSimulator {
       }
 
       currentTime = action.actionTime;
+      appendDueKeyframes(currentTime);
 
       if (action.type === "attack") {
         const enemies = action.unit.id.startsWith("left") ? rightUnits : leftUnits;
         const target = findTarget(action.unit, enemies);
 
         if (target) {
+          timeline.push(createAttackStartEvent({
+            type: "attackStart",
+            battleId,
+            atMs: currentTime,
+            sourceBattleUnitId: action.unit.id,
+            targetBattleUnitId: target.id,
+          }));
           // クリティカルヒット判定
           const isCrit = Math.random() < action.unit.critRate;
           const critMultiplier = isCrit ? action.unit.critDamageMultiplier : 1.0;
@@ -695,6 +809,15 @@ export class BattleSimulator {
           }
 
           target.hp -= actualDamage;
+          timeline.push(createDamageAppliedEvent({
+            type: "damageApplied",
+            battleId,
+            atMs: currentTime,
+            sourceBattleUnitId: action.unit.id,
+            targetBattleUnitId: target.id,
+            amount: actualDamage,
+            remainingHp: Math.max(0, target.hp),
+          }));
 
           if ((target.reflectRatio ?? 0) > 0 && actualDamage > 0) {
             const reflectedDamage = Math.max(1, Math.floor(actualDamage * (target.reflectRatio ?? 0)));
@@ -706,6 +829,12 @@ export class BattleSimulator {
             if (action.unit.hp <= 0) {
               action.unit.isDead = true;
               combatLog.push(`${generateUnitName(action.unit)} has been defeated!`);
+              timeline.push(createUnitDeathEvent({
+                type: "unitDeath",
+                battleId,
+                atMs: currentTime,
+                battleUnitId: action.unit.id,
+              }));
             }
           }
 
@@ -761,6 +890,12 @@ export class BattleSimulator {
           if (target.hp <= 0) {
             target.isDead = true;
             combatLog.push(`${generateUnitName(target)} has been defeated!`);
+            timeline.push(createUnitDeathEvent({
+              type: "unitDeath",
+              battleId,
+              atMs: currentTime,
+              battleUnitId: target.id,
+            }));
           }
 
           // 攻撃カウントを増加
@@ -791,7 +926,18 @@ export class BattleSimulator {
         } else {
           const isRaidBattle = leftUnits.some((unit) => unit.isBoss) || rightUnits.some((unit) => unit.isBoss);
           if (flags.enableBossExclusiveShop && isRaidBattle) {
+            const previousCell = action.unit.cell;
             moveUnitBySimpleApproach(action.unit, enemies, combatLog);
+            if (action.unit.cell !== previousCell) {
+              timeline.push(createMoveEvent({
+                type: "move",
+                battleId,
+                atMs: currentTime,
+                battleUnitId: action.unit.id,
+                from: resolveTimelineCoordinate({ ...action.unit, cell: previousCell }),
+                to: resolveTimelineCoordinate(action.unit),
+              }));
+            }
           }
 
           // 攻撃カウントを増加（ターゲットが見つからない場合も）
@@ -876,6 +1022,7 @@ export class BattleSimulator {
       rightUnits, 
       currentTime, 
       maxDurationMs, 
+      timeline,
       combatLog,
       damageDealtLeft, 
       damageDealtRight,
@@ -890,6 +1037,7 @@ export class BattleSimulator {
         winner: "draw",
         leftSurvivors: leftUnits ? leftUnits.filter(u => !u.isDead) : [],
         rightSurvivors: rightUnits ? rightUnits.filter(u => !u.isDead) : [],
+        timeline: [],
         combatLog: ["Battle error occurred"],
         durationMs: 0,
         damageDealt: {
@@ -918,6 +1066,7 @@ export class BattleSimulator {
     rightUnits: BattleUnit[],
     currentTime: number,
     maxDurationMs: number,
+    timeline: BattleTimelineEvent[],
     combatLog: string[],
     damageDealtLeft: number,
     damageDealtRight: number,
@@ -931,6 +1080,15 @@ export class BattleSimulator {
         winner,
         leftSurvivors,
         rightSurvivors,
+        timeline: [
+          ...timeline,
+          createBattleEndEvent({
+            type: "battleEnd",
+            battleId: timeline[0]?.battleId ?? "battle-unknown",
+            atMs: currentTime,
+            winner: resolveTimelineWinner(winner),
+          }),
+        ],
         combatLog,
         durationMs: currentTime,
         damageDealt: {

@@ -64,12 +64,14 @@ describe("raid board ui contract", () => {
     expect(html.includes("boss-victory")).toBe(true);
     expect(html.includes("raid-victory")).toBe(true);
     expect(html.includes("mode-badge")).toBe(true);
-    expect(html.includes("Boss Pressure Zone")).toBe(true);
-    expect(html.includes("Raid Defense Zone")).toBe(true);
+    expect(html.includes("Boss Deployment")).toBe(true);
+    expect(html.includes("Raid Deployment")).toBe(true);
     expect(html.includes("Your unit")).toBe(true);
     expect(html.includes("Ally unit")).toBe(true);
-    expect(html.includes("Open lane")).toBe(true);
-    expect(html.includes("Blocked lane")).toBe(true);
+    expect(html.includes("Active cell")).toBe(true);
+    expect(html.includes("Inactive cell")).toBe(true);
+    expect(html.includes("Open lane")).toBe(false);
+    expect(html.includes("Blocked lane")).toBe(false);
     expect(js.includes("const readableMode = sharedBoardMode === \"half-shared\" ? \"Half Shared\"")).toBe(true);
     expect(js.includes("raidBoardModeBadge.textContent = `Mode: ${readableMode}`")).toBe(true);
     expect(js.includes("buildFinalJudgmentCopy({")).toBe(true);

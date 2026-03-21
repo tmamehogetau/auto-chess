@@ -116,6 +116,19 @@ describe("index.html contract", () => {
     expect(html.includes(".shared-board-section.raid-stage")).toBe(true);
   });
 
+  test("operator shared-board copy is aligned to the 6x6 live battle spec", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes("Shared Battle Board (6 x 6)")).toBe(true);
+    expect(html.includes("Boss deploys on the upper half, raid deploys on the lower half, and both sides can invade freely once Battle starts.")).toBe(true);
+    expect(html.includes("Active cell")).toBe(true);
+    expect(html.includes("Inactive cell")).toBe(true);
+    expect(html.includes("boss lane")).toBe(false);
+    expect(html.includes("raid line")).toBe(false);
+    expect(html.includes("Open lane")).toBe(false);
+    expect(html.includes("Blocked lane")).toBe(false);
+  });
+
   test("operator shell として tester を player.html へ誘導する", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 

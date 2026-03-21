@@ -78,9 +78,9 @@ const ITEM_ICONS = {
 };
 
 const SHARED_BOARD_WIDTH = 6;
-const SHARED_BOARD_HEIGHT = 4;
+const SHARED_BOARD_HEIGHT = 6;
 const SHARED_BOARD_COMBAT_OFFSET_X = 1;
-const SHARED_BOARD_COMBAT_OFFSET_Y = 1;
+const SHARED_BOARD_COMBAT_OFFSET_Y = 3;
 
 // Hero definitions (client-side copy)
 const HEROES = [
@@ -972,7 +972,7 @@ function handleBenchClick(index) {
     selectedBenchIndex = index;
     const slot = benchGrid?.querySelector(`[data-bench-slot="${index}"]`);
     slot?.classList.add("selected");
-    showSelectionMode("Bench unit selected. Click an open cell on the Shared Battle Board to deploy it.");
+    showSelectionMode("Bench unit selected. Click one of the highlighted raid cells on the Shared Battle Board to deploy it.");
     updateActionButtons();
   }
 }
@@ -985,7 +985,7 @@ function deployBenchUnit(benchIndex, cellIndex) {
 
   const combatCell = sharedBoardIndexToCombatCell(cellIndex);
   if (combatCell === null) {
-    showMessage("That shared-board cell is outside the playable combat area. Use one of the center lane cells.", "error");
+    showMessage("That shared-board cell is outside the current raid deployment slice. Use one of the highlighted raid cells.", "error");
     return;
   }
 

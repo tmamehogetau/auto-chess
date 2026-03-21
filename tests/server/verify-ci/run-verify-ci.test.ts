@@ -4,17 +4,26 @@ import { describe, expect, test } from "vitest";
 
 describe("run-verify-ci", () => {
   test("prints ordered elapsed summaries", async () => {
-    const { formatStageSummary } = await import("../../../scripts/run-verify-ci.mjs");
+    const {
+      DEFAULT_VERIFY_CI_STAGES,
+      formatStageSummary,
+    } = await import("../../../scripts/run-verify-ci.mjs");
 
     const output = formatStageSummary([
       { name: "typecheck", elapsedMs: 1200 },
       { name: "client", elapsedMs: 500 },
       { name: "server-parallel", elapsedMs: 10_000 },
+      { name: "e2e-a", elapsedMs: 25_000 },
+      { name: "e2e-b", elapsedMs: 20_000 },
     ]);
 
     expect(output).toContain("typecheck");
     expect(output).toContain("server-parallel");
+    expect(output).toContain("e2e-a");
     expect(output).toContain("elapsed");
+    const stageNames = DEFAULT_VERIFY_CI_STAGES.map((stage: { name: string }) => stage.name);
+    expect(stageNames).toContain("e2e-a");
+    expect(stageNames).toContain("e2e-b");
   });
 
   test("package.json routes verify scripts through the timing runner", async () => {
@@ -25,5 +34,7 @@ describe("run-verify-ci", () => {
 
     expect(packageJson.scripts?.["verify:ci"]).toContain("run-verify-ci.mjs");
     expect(packageJson.scripts?.["verify:quick"]).toContain("test:server:parallel-safe");
+    expect(packageJson.scripts?.["test:e2e:ci"]).toContain("test:e2e:ci:a");
+    expect(packageJson.scripts?.["test:e2e:ci"]).toContain("test:e2e:ci:b");
   });
 });

@@ -21,7 +21,8 @@ export const DEFAULT_VERIFY_CI_STAGES = [
     command: NPM_COMMAND,
     args: ["run", "--silent", "test:server:serial-required"],
   },
-  { name: "e2e", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci"] },
+  { name: "e2e-a", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:a"] },
+  { name: "e2e-b", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:b"] },
 ];
 
 function formatElapsedMs(elapsedMs) {

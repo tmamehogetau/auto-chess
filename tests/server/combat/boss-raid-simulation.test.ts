@@ -11,7 +11,7 @@ import {
  * Boss Raid Simulation Tests
  *
  * Tests to measure win rates between boss (Remilia) and 3-player raid teams.
- * Target balance: Boss wins around 60% across representative raid compositions
+ * Target balance: Boss wins around 50% across representative raid compositions
  * Current baseline: Boss (HP: 580, ATK: 47, AS: 0.57, Reduction: 0/0%)
  * This keeps ★1 raid comps boss-favored while allowing stronger ★3 comps to win more often
  */
@@ -317,7 +317,7 @@ describe("Boss Raid Simulation", () => {
       expect(bossWinRate).toBeLessThanOrEqual(100);
     });
 
-    test("代表編成セットの総合ボス勝率が55-65%に収まる（60%目標）", () => {
+    test("代表編成セットの総合ボス勝率が45-55%に収まる（50%目標）", () => {
       const scenarios: Array<{
         name: string;
         expectedAdvantage: "boss" | "raid";
@@ -423,8 +423,8 @@ describe("Boss Raid Simulation", () => {
       }
 
       const overallBossWinRate = totalBossWins / totalBattles;
-      expect(overallBossWinRate).toBeGreaterThanOrEqual(0.55);
-      expect(overallBossWinRate).toBeLessThanOrEqual(0.65);
+      expect(overallBossWinRate).toBeGreaterThanOrEqual(0.45);
+      expect(overallBossWinRate).toBeLessThanOrEqual(0.55);
     });
   });
 

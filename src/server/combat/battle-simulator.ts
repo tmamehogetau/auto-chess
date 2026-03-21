@@ -13,6 +13,7 @@ import {
   combatCellToBossBoardIndex,
   combatCellToRaidBoardIndex,
   sharedBoardCoordinateToIndex,
+  sharedBoardManhattanDistance,
   sharedBoardIndexToCoordinate,
 } from "../../shared/board-geometry";
 import { getStarCombatMultiplier } from "../star-level-config";
@@ -159,10 +160,81 @@ function resolveBoardIndexForCell(cell: number, side: "left" | "right"): number 
 }
 
 function resolveTimelineCoordinate(unit: BattleUnit): { x: number; y: number } {
+  return resolveCellCoordinate(unit.cell, resolveBattleSide(unit));
+}
+
+function resolveCellCoordinate(cell: number, side: "left" | "right"): { x: number; y: number } {
   return sharedBoardIndexToCoordinate(
-    resolveBoardIndexForCell(unit.cell, resolveBattleSide(unit)),
+    resolveBoardIndexForCell(cell, side),
     DEFAULT_SHARED_BOARD_CONFIG,
   );
+}
+
+function isCoordinateWithinBoard(coordinate: { x: number; y: number }): boolean {
+  return (
+    Number.isInteger(coordinate.x) &&
+    Number.isInteger(coordinate.y) &&
+    coordinate.x >= 0 &&
+    coordinate.y >= 0 &&
+    coordinate.x < DEFAULT_SHARED_BOARD_CONFIG.width &&
+    coordinate.y < DEFAULT_SHARED_BOARD_CONFIG.height
+  );
+}
+
+function coordinateKey(coordinate: { x: number; y: number }): string {
+  return `${coordinate.x},${coordinate.y}`;
+}
+
+function buildApproachCandidates(
+  currentCoordinate: { x: number; y: number },
+  targetCoordinate: { x: number; y: number },
+): Array<{ x: number; y: number }> {
+  const deltaX = targetCoordinate.x - currentCoordinate.x;
+  const deltaY = targetCoordinate.y - currentCoordinate.y;
+  const candidates: Array<{ x: number; y: number }> = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (coordinate: { x: number; y: number }): void => {
+    if (!isCoordinateWithinBoard(coordinate)) {
+      return;
+    }
+
+    const key = coordinateKey(coordinate);
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    candidates.push(coordinate);
+  };
+
+  const horizontalFirst = Math.abs(deltaX) >= Math.abs(deltaY);
+
+  if (horizontalFirst && deltaX !== 0) {
+    pushCandidate({ x: currentCoordinate.x + Math.sign(deltaX), y: currentCoordinate.y });
+  }
+  if (!horizontalFirst && deltaY !== 0) {
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + Math.sign(deltaY) });
+  }
+
+  if (horizontalFirst && deltaY !== 0) {
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + Math.sign(deltaY) });
+  }
+  if (!horizontalFirst && deltaX !== 0) {
+    pushCandidate({ x: currentCoordinate.x + Math.sign(deltaX), y: currentCoordinate.y });
+  }
+
+  if (horizontalFirst) {
+    const preferredVertical = deltaY === 0 ? -1 : Math.sign(deltaY);
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + preferredVertical });
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y - preferredVertical });
+  } else {
+    const preferredHorizontal = deltaX === 0 ? -1 : Math.sign(deltaX);
+    pushCandidate({ x: currentCoordinate.x + preferredHorizontal, y: currentCoordinate.y });
+    pushCandidate({ x: currentCoordinate.x - preferredHorizontal, y: currentCoordinate.y });
+  }
+
+  return candidates;
 }
 
 function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
@@ -323,15 +395,9 @@ export function calculateCellDistance(
     return Math.abs(cell1 - cell2);
   }
 
-  const coordinate1 = sharedBoardIndexToCoordinate(
-    resolveBoardIndexForCell(cell1, side1 ?? "left"),
-    DEFAULT_SHARED_BOARD_CONFIG,
-  );
-  const coordinate2 = sharedBoardIndexToCoordinate(
-    resolveBoardIndexForCell(cell2, side2 ?? "right"),
-    DEFAULT_SHARED_BOARD_CONFIG,
-  );
-  return Math.abs(coordinate1.x - coordinate2.x) + Math.abs(coordinate1.y - coordinate2.y);
+  const coordinate1 = resolveCellCoordinate(cell1, side1 ?? "left");
+  const coordinate2 = resolveCellCoordinate(cell2, side2 ?? "right");
+  return sharedBoardManhattanDistance(coordinate1, coordinate2);
 }
 
 /**
@@ -412,6 +478,7 @@ function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): Ba
 
 function moveUnitBySimpleApproach(
   unit: BattleUnit,
+  allies: BattleUnit[],
   enemies: BattleUnit[],
   combatLog: string[],
 ): boolean {
@@ -428,37 +495,35 @@ function moveUnitBySimpleApproach(
   }
 
   const previousCell = unit.cell;
-  if (isLegacyCombatCell(unit.cell) && isLegacyCombatCell(nearestEnemy.cell)) {
-    if (unit.cell < nearestEnemy.cell) {
-      unit.cell += 1;
-    } else if (unit.cell > nearestEnemy.cell) {
-      unit.cell -= 1;
-    } else {
-      return false;
-    }
-  } else {
-    const currentCoordinate = sharedBoardIndexToCoordinate(
-      resolveBoardIndexForCell(unit.cell, unitSide),
-      DEFAULT_SHARED_BOARD_CONFIG,
-    );
-    const targetCoordinate = sharedBoardIndexToCoordinate(
-      resolveBoardIndexForCell(nearestEnemy.cell, enemySide),
-      DEFAULT_SHARED_BOARD_CONFIG,
-    );
-    const deltaX = targetCoordinate.x - currentCoordinate.x;
-    const deltaY = targetCoordinate.y - currentCoordinate.y;
+  const currentCoordinate = resolveCellCoordinate(unit.cell, unitSide);
+  const targetCoordinate = resolveCellCoordinate(nearestEnemy.cell, enemySide);
+  const occupiedCoordinates = new Set(
+    [...allies, ...enemies]
+      .filter((candidate) => !candidate.isDead && candidate.id !== unit.id)
+      .map((candidate) =>
+        coordinateKey(resolveCellCoordinate(candidate.cell, resolveBattleSide(candidate))),
+      ),
+  );
 
-    const nextCoordinate = { ...currentCoordinate };
-    if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) {
-      nextCoordinate.x += Math.sign(deltaX);
-    } else if (deltaY !== 0) {
-      nextCoordinate.y += Math.sign(deltaY);
-    } else {
-      return false;
-    }
+  const approachCandidates = buildApproachCandidates(currentCoordinate, targetCoordinate).filter(
+    (candidate) => !occupiedCoordinates.has(coordinateKey(candidate)),
+  );
 
-    unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
+  if (approachCandidates.length === 0) {
+    return false;
   }
+
+  const nextCoordinate = approachCandidates.reduce((bestCandidate, candidate) => {
+    if (!bestCandidate) {
+      return candidate;
+    }
+
+    const bestDistance = sharedBoardManhattanDistance(bestCandidate, targetCoordinate);
+    const candidateDistance = sharedBoardManhattanDistance(candidate, targetCoordinate);
+    return candidateDistance < bestDistance ? candidate : bestCandidate;
+  }, approachCandidates[0] as { x: number; y: number });
+
+  unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
 
   const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
@@ -865,6 +930,7 @@ export class BattleSimulator {
 
       if (action.type === "attack") {
         const enemies = action.unit.id.startsWith("left") ? rightUnits : leftUnits;
+        const allies = action.unit.id.startsWith("left") ? leftUnits : rightUnits;
         const target = findTarget(action.unit, enemies);
 
         if (target) {
@@ -1014,7 +1080,7 @@ export class BattleSimulator {
           }
         } else {
           const previousCell = action.unit.cell;
-          moveUnitBySimpleApproach(action.unit, enemies, combatLog);
+          moveUnitBySimpleApproach(action.unit, allies, enemies, combatLog);
           if (action.unit.cell !== previousCell) {
             timeline.push(createMoveEvent({
               type: "move",

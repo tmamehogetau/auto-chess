@@ -2652,7 +2652,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(91);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("後列assassin2体の奇襲で不利マッチアップを逆転できる", () => {
@@ -2692,7 +2692,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(89);
+    expect(controller.getPlayerHp("p4")).toBe(91);
   });
 
   test("後列ranger2体の援護射撃で不利マッチアップを逆転できる", () => {
@@ -2731,8 +2731,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(91);
-    expect(controller.getPlayerHp("p4")).toBe(100);
+    expect(controller.getPlayerHp("p1")).toBe(100);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("set2ではrangerスキル条件が緩くなりset1と勝敗が変わる", () => {

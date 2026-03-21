@@ -495,6 +495,21 @@ describe("battle-simulator", () => {
       expect(calculateCellDistance(3, 4, "left", "left")).toBe(1);
       expect(calculateCellDistance(3, 4, "left", "right")).toBe(1);
     });
+
+    test("shared-board index は 6x6 Manhattan 距離で計算される", () => {
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
+        ),
+      ).toBe(6);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
+          sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
+        ),
+      ).toBe(3);
+    });
   });
 
   describe("findTarget", () => {
@@ -788,6 +803,38 @@ describe("battle-simulator", () => {
       });
     });
 
+    test("6x6 shared-board cells では occupied cell を避けて detour する", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 4 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const detourMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      expect(detourMove).toMatchObject({
+        type: "move",
+        from: { x: 0, y: 4 },
+        to: { x: 0, y: 3 },
+      });
+    });
+
     test("単一の対決で正しく戦闘が進行する", () => {
       const simulator = new BattleSimulator();
 
@@ -861,22 +908,22 @@ describe("battle-simulator", () => {
         winner: "left",
         durationMs: 10_000,
         damageDealt: {
-          left: 19,
-          right: 16,
+          left: 35,
+          right: 14,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 64, cell: combatCellToRaidBoardIndex(2) },
+          { id: "left-vanguard-0", hp: 66, cell: 14 },
           { id: "left-ranger-1", hp: 30, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 66, cell: combatCellToBossBoardIndex(6) },
-          { id: "right-ranger-1", hp: 25, cell: combatCellToBossBoardIndex(6) },
+          { id: "right-vanguard-0", hp: 69, cell: 8 },
+          { id: "right-ranger-1", hp: 6, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
         combatLogEnd: [
-          "Right Ranger (cell 15) attacks Left Vanguard (cell 21) for 1 damage (64/80)",
-          "Left Vanguard (cell 21) attacks Right Vanguard (cell 15) for 1 damage (66/80)",
-          "Battle ended: Left wins (HP: 94 vs 91)",
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 1 damage (66/80)",
+          "Left Vanguard (cell 14) attacks Right Vanguard (cell 8) for 1 damage (69/80)",
+          "Battle ended: Left wins (HP: 96 vs 75)",
         ],
       });
     });
@@ -1422,14 +1469,14 @@ describe("battle-simulator", () => {
       );
 
       expect(result1.winner).toBe("left");
-      expect(result1.damageDealt).toEqual({ left: 19, right: 16 });
+      expect(result1.damageDealt).toEqual({ left: 35, right: 14 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 64, cell: combatCellToRaidBoardIndex(2) },
+        { id: "left-vanguard-0", hp: 66, cell: 14 },
         { id: "left-ranger-1", hp: 30, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 66, cell: combatCellToBossBoardIndex(6) },
-        { id: "right-ranger-1", hp: 25, cell: combatCellToBossBoardIndex(6) },
+        { id: "right-vanguard-0", hp: 69, cell: 8 },
+        { id: "right-ranger-1", hp: 6, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);
     });

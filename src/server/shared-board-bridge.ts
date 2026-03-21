@@ -8,7 +8,6 @@ import type {
   SharedBattleReplayMessage,
   ShadowDiffMessage,
 } from "../shared/room-messages";
-import { raidBoardIndexToCombatCell } from "../shared/board-geometry";
 import {
   BridgeMonitor,
   DEFAULT_DASHBOARD_WINDOW_MS,
@@ -487,12 +486,6 @@ export class SharedBoardBridge {
         continue;
       }
 
-      // shared_board index (0-23 for 6x4) → combat cell (0-7)
-      const combatCell = raidBoardIndexToCombatCell(cell.index);
-      if (combatCell === null) {
-        continue;
-      }
-
       // unitIdからunitTypeを抽出（例: "vanguard-1" → "vanguard"）
       const unitType = this.extractUnitTypeFromId(cell.unitId);
       if (!this.isBoardUnitType(unitType)) {
@@ -500,7 +493,7 @@ export class SharedBoardBridge {
       }
 
       placements.push({
-        cell: combatCell,
+        cell: cell.index,
         unitType,
         starLevel: 1,
       });

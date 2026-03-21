@@ -1,10 +1,7 @@
 import type { BoardUnitPlacement } from "../../shared/room-messages";
 import type { ItemType } from "../../shared/types";
 import { normalizeBoardPlacements } from "../combat/unit-effects";
-import {
-  COMBAT_CELL_MAX_INDEX,
-  COMBAT_CELL_MIN_INDEX,
-} from "../../shared/board-geometry";
+import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 
@@ -20,6 +17,8 @@ const MAX_INVENTORY_SIZE = 9;
 const MAX_ITEMS_PER_UNIT = 3;
 const ITEM_SHOP_SIZE = 5;
 const TOUHOU_COST_TIERS: readonly [1, 2, 3, 4, 5] = [1, 2, 3, 4, 5];
+const SHARED_BOARD_MIN_INDEX = 0;
+const SHARED_BOARD_MAX_INDEX = DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height - 1;
 
 export interface ShopOffer {
   unitType: string;
@@ -262,8 +261,8 @@ function validatePayload(
       !Number.isInteger(benchIndex) ||
       benchIndex < 0 ||
       !Number.isInteger(cell) ||
-      cell < COMBAT_CELL_MIN_INDEX ||
-      cell > COMBAT_CELL_MAX_INDEX
+      cell < SHARED_BOARD_MIN_INDEX ||
+      cell > SHARED_BOARD_MAX_INDEX
     ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
@@ -279,8 +278,8 @@ function validatePayload(
   if (payload.boardToBenchCell !== undefined) {
     if (
       !Number.isInteger(payload.boardToBenchCell.cell) ||
-      payload.boardToBenchCell.cell < COMBAT_CELL_MIN_INDEX ||
-      payload.boardToBenchCell.cell > COMBAT_CELL_MAX_INDEX
+      payload.boardToBenchCell.cell < SHARED_BOARD_MIN_INDEX ||
+      payload.boardToBenchCell.cell > SHARED_BOARD_MAX_INDEX
     ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
@@ -290,8 +289,8 @@ function validatePayload(
   if (payload.boardSellIndex !== undefined) {
     if (
       !Number.isInteger(payload.boardSellIndex) ||
-      payload.boardSellIndex < COMBAT_CELL_MIN_INDEX ||
-      payload.boardSellIndex > COMBAT_CELL_MAX_INDEX
+      payload.boardSellIndex < SHARED_BOARD_MIN_INDEX ||
+      payload.boardSellIndex > SHARED_BOARD_MAX_INDEX
     ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }

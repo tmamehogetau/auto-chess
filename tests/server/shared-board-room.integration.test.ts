@@ -155,7 +155,7 @@ describe("SharedBoardRoom integration", () => {
     await testServer.shutdown();
   });
 
-  test("6x6 board defaults expose raid deployment cells as playable", async () => {
+  test("6x6 board defaults expose the full raid lower half as playable", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const roomInternals = serverRoom as unknown as {
       isPlayablePlacementCellIndex: (cellIndex: number) => boolean;
@@ -169,7 +169,7 @@ describe("SharedBoardRoom integration", () => {
         combatCellToRaidBoardIndex(0),
       ),
     ).toBe(true);
-    expect(roomInternals.isPlayablePlacementCellIndex(18)).toBe(false);
+    expect(roomInternals.isPlayablePlacementCellIndex(18)).toBe(true);
     expect(roomInternals.isPlayablePlacementCellIndex(1)).toBe(false);
   });
 

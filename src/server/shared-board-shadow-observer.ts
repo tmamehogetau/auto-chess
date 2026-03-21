@@ -3,9 +3,6 @@ import type { SharedBoardRoom } from "./rooms/shared-board-room";
 import type { MatchRoomController } from "./match-room-controller";
 import {
   combatCellToRaidBoardIndex,
-  raidBoardIndexToCombatCell,
-  COMBAT_CELL_MIN_INDEX,
-  COMBAT_CELL_MAX_INDEX,
   RAID_BOARD_WIDTH,
   RAID_BOARD_HEIGHT,
 } from "../shared/board-geometry";
@@ -55,6 +52,22 @@ export class SharedBoardShadowObserver {
 
   constructor(controller: MatchRoomController) {
     this.controller = controller;
+  }
+
+  private resolveSharedBoardIndex(cell: number): number | null {
+    if (!Number.isInteger(cell)) {
+      return null;
+    }
+
+    if (cell >= 0 && cell <= 7) {
+      return combatCellToRaidBoardIndex(cell);
+    }
+
+    if (cell >= 0 && cell < this.sharedCellCount) {
+      return cell;
+    }
+
+    return null;
   }
 
   /**
@@ -129,13 +142,20 @@ export class SharedBoardShadowObserver {
 
         // shared_board側の対応セルを検証
         for (const placement of gamePlacements) {
-          const combatCell = placement.cell;
-          const sharedIndex = combatCellToRaidBoardIndex(combatCell);
+          const sharedIndex = this.resolveSharedBoardIndex(placement.cell);
+          if (sharedIndex === null) {
+            mismatches.push({
+              combatCell: placement.cell,
+              gameUnitType: placement.unitType,
+              sharedUnitType: null,
+            });
+            continue;
+          }
           const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
           if (!sharedCell) {
             mismatches.push({
-              combatCell,
+              combatCell: sharedIndex,
               gameUnitType: placement.unitType,
               sharedUnitType: null,
             });
@@ -149,7 +169,7 @@ export class SharedBoardShadowObserver {
 
           if (!hasMatchingUnit) {
             mismatches.push({
-              combatCell,
+              combatCell: sharedIndex,
               gameUnitType: placement.unitType,
               sharedUnitType: sharedCell.unitId ? "occupied_by_other" : null,
             });
@@ -158,21 +178,17 @@ export class SharedBoardShadowObserver {
 
         // shared_board側に余分なユニットがないか確認（逆方向チェック）
         for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
-          const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
-          if (combatCellOpt === null) continue;
-
-          const combatCell = combatCellOpt;
           const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
           if (!sharedCell?.unitId || sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)) continue;
           if (sharedCell.ownerId !== playerId) continue;
 
           // game側に対応する配置があるか
-          const hasGamePlacement = gamePlacements.some((p) => p.cell === combatCell);
+          const hasGamePlacement = gamePlacements.some((p) => this.resolveSharedBoardIndex(p.cell) === sharedIndex);
 
           if (!hasGamePlacement) {
             mismatches.push({
-              combatCell,
+              combatCell: sharedIndex,
               gameUnitType: null,
               sharedUnitType: "exists_in_shared_only",
             });
@@ -229,7 +245,15 @@ export class SharedBoardShadowObserver {
       const mismatches: ShadowDiffResult["mismatchedCells"] = [];
 
       for (const placement of gamePlacements) {
-        const sharedIndex = combatCellToRaidBoardIndex(placement.cell);
+        const sharedIndex = this.resolveSharedBoardIndex(placement.cell);
+        if (sharedIndex === null) {
+          mismatches.push({
+            combatCell: placement.cell,
+            gameUnitType: placement.unitType,
+            sharedUnitType: null,
+          });
+          continue;
+        }
         const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
         const hasMatchingUnit = sharedCell?.unitId
@@ -246,20 +270,18 @@ export class SharedBoardShadowObserver {
       }
 
       for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
-        const combatCellOpt = raidBoardIndexToCombatCell(sharedIndex);
-        if (combatCellOpt === null) continue;
-
-        const combatCell = combatCellOpt;
         const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
         if (!sharedCell?.unitId || sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)) continue;
         if (sharedCell.ownerId !== playerId) continue;
 
-        const hasGamePlacement = gamePlacements.some((placement) => placement.cell === combatCell);
+        const hasGamePlacement = gamePlacements.some(
+          (placement) => this.resolveSharedBoardIndex(placement.cell) === sharedIndex,
+        );
 
         if (!hasGamePlacement) {
           mismatches.push({
-            combatCell,
+            combatCell: sharedIndex,
             gameUnitType: null,
             sharedUnitType: "exists_in_shared_only",
           });

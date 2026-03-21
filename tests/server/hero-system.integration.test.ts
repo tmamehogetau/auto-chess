@@ -221,6 +221,72 @@ describe("Hero System Integration Tests", () => {
       });
     });
 
+    it("shared battle replay keeps normal raid units on their 6x6 shared-board placements", async () => {
+      await withFlags({
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      }, async () => {
+        const raidController = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          createdAtMs,
+          {
+            readyAutoStartMs: 0,
+            prepDurationMs: 45_000,
+            battleDurationMs: 40_000,
+            settleDurationMs: 5_000,
+            eliminationDurationMs: 2_000,
+          },
+        );
+
+        expect(raidController.startWithResolvedRoles(createdAtMs, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([
+            ["p2", "remilia"],
+          ]),
+        })).toBe(true);
+
+        const extendedRaidCell = sharedBoardCoordinateToIndex({ x: 0, y: 4 });
+        const extendedBossCell = sharedBoardCoordinateToIndex({ x: 5, y: 1 });
+
+        expect(
+          raidController.applyPrepPlacementForPlayer("p1", [
+            { cell: extendedRaidCell, unitType: "ranger" },
+          ]),
+        ).toMatchObject({ success: true });
+        expect(
+          raidController.applyPrepPlacementForPlayer("p2", [
+            { cell: extendedBossCell, unitType: "vanguard" },
+          ]),
+        ).toMatchObject({ success: true });
+
+        raidController.advanceByTime(createdAtMs + 45_001);
+        raidController.advanceByTime(createdAtMs + 85_002);
+
+        const replay = raidController.getSharedBattleReplay("Settle");
+        const battleStart = replay?.timeline.find((event) => event.type === "battleStart");
+
+        expect(battleStart?.type).toBe("battleStart");
+        expect(battleStart?.units).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            battleUnitId: "right-ranger-0",
+            x: 0,
+            y: 4,
+          }),
+          expect.objectContaining({
+            battleUnitId: "left-vanguard-0",
+            x: 5,
+            y: 1,
+          }),
+        ]));
+      });
+    });
+
     it("enableTouhouFactions=false のとき Touhou faction synergy は player status に出さない", async () => {
       await withFlags({
         ...FLAG_CONFIGURATIONS.ALL_DISABLED,

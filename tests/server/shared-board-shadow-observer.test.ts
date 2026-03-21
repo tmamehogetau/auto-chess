@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SharedBoardShadowObserver } from "../../src/server/shared-board-shadow-observer";
 import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
+import { sharedBoardCoordinateToIndex } from "../../src/shared/shared-board-config";
 
 function createControllerMock() {
+  const sharedCellIndex = combatCellToRaidBoardIndex(0);
   return {
     getPlayerIds: vi.fn(() => ["player-a"]),
     getBoardPlacementsForPlayer: vi.fn(() => [
-      { cell: 0, unitType: "vanguard", starLevel: 1 },
+      { cell: sharedCellIndex, unitType: "vanguard", starLevel: 1 },
     ]),
   };
 }
@@ -41,6 +43,27 @@ function createBrokenSharedBoardRoomMock() {
           throw new Error("shadow read failed");
         },
       },
+    },
+  };
+}
+
+function createExtendedFootprintControllerMock() {
+  const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 0, y: 4 });
+  return {
+    getPlayerIds: vi.fn(() => ["player-a"]),
+    getBoardPlacementsForPlayer: vi.fn(() => [
+      { cell: sharedCellIndex, unitType: "vanguard", starLevel: 1 },
+    ]),
+  };
+}
+
+function createExtendedFootprintSharedBoardRoomMock(ownerId = "player-a") {
+  const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 0, y: 4 });
+  return {
+    state: {
+      cells: new Map([
+        [String(sharedCellIndex), { unitId: "vanguard-extended", ownerId }],
+      ]),
     },
   };
 }
@@ -100,7 +123,7 @@ describe("SharedBoardShadowObserver", () => {
     expect(result.mismatchCount).toBe(1);
     expect(result.mismatchedCells).toEqual([
       {
-        combatCell: 1,
+        combatCell: combatCellToRaidBoardIndex(1),
         gameUnitType: null,
         sharedUnitType: "exists_in_shared_only",
       },
@@ -123,5 +146,17 @@ describe("SharedBoardShadowObserver", () => {
     expect(thirdResult.status).toBe("degraded");
     expect(thirdResult.lastError).toBe("shadow read failed");
     expect(observer.getLastDiffResult()).toEqual(thirdResult);
+  });
+
+  it("observePlayer accepts shared-board placements outside the old raid footprint", () => {
+    const controller = createExtendedFootprintControllerMock();
+    const observer = new SharedBoardShadowObserver(controller as never);
+
+    observer.attachSharedBoard(createExtendedFootprintSharedBoardRoomMock() as never);
+
+    const result = observer.observePlayer("player-a");
+
+    expect(result.status).toBe("ok");
+    expect(result.mismatchCount).toBe(0);
   });
 });

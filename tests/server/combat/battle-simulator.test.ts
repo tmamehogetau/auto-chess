@@ -456,6 +456,11 @@ describe("battle-simulator", () => {
       expect(calculateCellDistance(2, 7, "left", "right")).toBe(5);
       expect(calculateCellDistance(2, 4, "left", "right")).toBe(2);
     });
+
+    test("legacy combat cells は side 指定があっても隣接距離を保つ", () => {
+      expect(calculateCellDistance(3, 4, "left", "left")).toBe(1);
+      expect(calculateCellDistance(3, 4, "left", "right")).toBe(1);
+    });
   });
 
   describe("findTarget", () => {
@@ -721,6 +726,34 @@ describe("battle-simulator", () => {
   });
 
   describe("BattleSimulator", () => {
+    test("6x6 shared-board cells では move event が board coordinate の1歩移動になる", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 24, unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 11, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const firstMove = result.timeline.find((event) => event.type === "move");
+      expect(firstMove).toMatchObject({
+        type: "move",
+        from: { x: 0, y: 4 },
+        to: { x: 1, y: 4 },
+      });
+    });
+
     test("単一の対決で正しく戦闘が進行する", () => {
       const simulator = new BattleSimulator();
 

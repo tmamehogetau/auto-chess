@@ -72,3 +72,48 @@ test("simulateBattle emits move, attack, damage, death, and keyframe events in o
   expect(result.timeline?.at(0)?.type).toBe("battleStart");
   expect(result.timeline?.at(-1)?.type).toBe("battleEnd");
 });
+
+test("simulateBattle keeps full 6x6 shared-board coordinates in battleStart snapshots", () => {
+  const flags = { ...DEFAULT_FLAGS, enableBossExclusiveShop: true };
+  const simulator = new BattleSimulator();
+
+  const leftPlacements: BoardUnitPlacement[] = [{
+    cell: 11,
+    unitType: "vanguard",
+  }];
+  const rightPlacements: BoardUnitPlacement[] = [{
+    cell: 24,
+    unitType: "ranger",
+  }];
+
+  const leftUnits = [createBattleUnit(leftPlacements[0]!, "left", 0, true, flags)];
+  const rightUnits = [createBattleUnit(rightPlacements[0]!, "right", 0, false, flags)];
+
+  const result = simulator.simulateBattle(
+    leftUnits,
+    rightUnits,
+    leftPlacements,
+    rightPlacements,
+    3_000,
+    null,
+    null,
+    null,
+    flags,
+  );
+
+  const battleStart = result.timeline.find((event) => event.type === "battleStart");
+
+  expect(battleStart?.type).toBe("battleStart");
+  expect(battleStart?.units).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      battleUnitId: "left-vanguard-0",
+      x: 5,
+      y: 1,
+    }),
+    expect.objectContaining({
+      battleUnitId: "right-ranger-0",
+      x: 0,
+      y: 4,
+    }),
+  ]));
+});

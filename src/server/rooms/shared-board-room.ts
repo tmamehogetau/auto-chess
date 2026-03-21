@@ -6,7 +6,7 @@ import {
   SharedBoardPlayerState,
   SharedBoardState,
 } from "../schema/shared-board-state";
-import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../shared/board-geometry";
+import { combatCellToRaidBoardIndex } from "../../shared/board-geometry";
 import type {
   BattleStartEvent,
   BattleTimelineEvent,
@@ -16,6 +16,8 @@ import type {
 } from "../../shared/room-messages";
 import {
   DEFAULT_SHARED_BOARD_CONFIG,
+  getDeploymentZoneForRow,
+  sharedBoardIndexToCoordinate,
 } from "../../shared/shared-board-config";
 import {
   resolveSharedBoardHeroPresentation,
@@ -596,14 +598,24 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return false;
     }
 
-    if (
-      this.boardWidth === DEFAULT_SHARED_BOARD_CONFIG.width
-      && this.boardHeight === DEFAULT_SHARED_BOARD_CONFIG.height
-    ) {
-      return raidBoardIndexToCombatCell(cellIndex) !== null;
+    const coordinate = sharedBoardIndexToCoordinate(cellIndex, {
+      ...DEFAULT_SHARED_BOARD_CONFIG,
+      width: this.boardWidth,
+      height: this.boardHeight,
+    });
+    return getDeploymentZoneForRow(DEFAULT_SHARED_BOARD_CONFIG, coordinate.y) === "raid";
+  }
+
+  private resolvePlacementCellIndex(cellIndex: number): number | null {
+    if (!Number.isInteger(cellIndex)) {
+      return null;
     }
 
-    return false;
+    if (cellIndex >= 0 && cellIndex <= 7) {
+      return combatCellToRaidBoardIndex(cellIndex);
+    }
+
+    return this.isPlayablePlacementCellIndex(cellIndex) ? cellIndex : null;
   }
 
   private isHeroPlacementCellIndex(cellIndex: number): boolean {
@@ -675,12 +687,12 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
         continue;
       }
 
-      try {
-        const sharedCellIndex = combatCellToRaidBoardIndex(placement.cell);
-        desiredCells.set(sharedCellIndex, placement);
-      } catch {
+      const resolvedCellIndex = this.resolvePlacementCellIndex(placement.cell);
+      if (resolvedCellIndex === null) {
         continue;
       }
+
+      desiredCells.set(resolvedCellIndex, placement);
     }
 
     const desiredIndexes = new Set<number>(desiredCells.keys());

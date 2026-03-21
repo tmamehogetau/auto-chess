@@ -1159,6 +1159,9 @@ describe("shared-board client", () => {
     );
 
     expect(attackerAtStrike?.className).toContain("shared-board-battle-attacking");
+    expect(attackerAtStrike?.className).toContain("shared-board-battle-lunging");
+    expect(attackerAtStrike?.style["--shared-board-attack-lunge-x"]).toBe("10px");
+    expect(attackerAtStrike?.style["--shared-board-attack-lunge-y"]).toBe("0px");
     expect(directionLine?.style["--shared-board-attack-angle"]).toBe("0deg");
     expect(directionLine?.style["--shared-board-attack-length"]).toBe("26px");
 

@@ -460,6 +460,14 @@ function renderSharedBoard(state) {
         if (cell?.battleState === "attacking") {
           unit.classList.add("shared-board-battle-attacking");
         }
+        if (
+          Number.isFinite(cell?.battleAttackLungeX)
+          || Number.isFinite(cell?.battleAttackLungeY)
+        ) {
+          unit.classList.add("shared-board-battle-lunging");
+          unit.style["--shared-board-attack-lunge-x"] = `${cell.battleAttackLungeX ?? 0}px`;
+          unit.style["--shared-board-attack-lunge-y"] = `${cell.battleAttackLungeY ?? 0}px`;
+        }
         if (cell?.battleState === "moving") {
           unit.classList.add("shared-board-battle-moving");
         }
@@ -998,6 +1006,8 @@ function resolveSharedBoardCellsForRender(state) {
       battleGhostHidden: sharedBattleMovementGhosts.has(unit.battleUnitId),
       battleAttackDirectionAngleDeg: attackDirection?.angleDeg ?? null,
       battleAttackDirectionLengthPx: attackDirection?.lengthPx ?? null,
+      battleAttackLungeX: attackDirection?.lungeX ?? null,
+      battleAttackLungeY: attackDirection?.lungeY ?? null,
     };
   }
 
@@ -1084,6 +1094,8 @@ function resolveSharedBattleAttackDirection(unit) {
   return {
     angleDeg: Math.round((Math.atan2(deltaY, deltaX) * 180) / Math.PI),
     lengthPx: Math.max(18, Math.min(30, 14 + Math.max(Math.abs(deltaX), Math.abs(deltaY)) * 6)),
+    lungeX: deltaX === 0 ? 0 : Math.sign(deltaX) * 10,
+    lungeY: deltaY === 0 ? 0 : Math.sign(deltaY) * 10,
   };
 }
 

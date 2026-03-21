@@ -458,11 +458,15 @@ export class BattleResolutionService {
   createHeroBattleUnit(
     heroId: string | undefined,
     playerId: string,
+    boardCellIndex?: number,
   ): BattleUnit | null {
     if (!heroId) return null;
 
     const hero = HEROES.find((h) => h.id === heroId);
     if (!hero) return null;
+    const resolvedBoardCellIndex = (
+      typeof boardCellIndex === "number" && Number.isInteger(boardCellIndex)
+    ) ? boardCellIndex : 8;
 
     return {
       id: `hero-${playerId}`,
@@ -473,7 +477,7 @@ export class BattleResolutionService {
       attackPower: hero.attack,
       attackSpeed: 0.5,
       attackRange: 1,
-      cell: 8,
+      cell: resolvedBoardCellIndex,
       isDead: false,
       attackCount: 0,
       defense: 0,

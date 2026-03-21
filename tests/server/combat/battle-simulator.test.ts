@@ -451,6 +451,11 @@ describe("battle-simulator", () => {
     test("同じセルの距離は0", () => {
       expect(calculateCellDistance(3, 3)).toBe(0);
     });
+
+    test("legacy combat cells は side 指定があっても従来距離を維持する", () => {
+      expect(calculateCellDistance(2, 7, "left", "right")).toBe(5);
+      expect(calculateCellDistance(2, 4, "left", "right")).toBe(2);
+    });
   });
 
   describe("findTarget", () => {

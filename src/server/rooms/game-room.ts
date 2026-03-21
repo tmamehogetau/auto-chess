@@ -42,6 +42,7 @@ import {
   isUnitEffectSetId,
   type UnitEffectSetId,
 } from "../combat/unit-effect-definitions";
+import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 
 interface GameRoomOptions {
   readyAutoStartMs?: number;
@@ -51,6 +52,8 @@ interface GameRoomOptions {
   eliminationDurationMs?: number;
   selectionTimeoutMs?: number;
   setId?: UnitEffectSetId;
+  sharedBoardRoomId?: string;
+  forcedFeatureFlags?: FeatureFlags;
 }
 
 export class GameRoom extends Room<{ state: MatchRoomState }> {
@@ -74,9 +77,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private selectionTimeoutMs = GameRoom.DEFAULT_SELECTION_TIMEOUT_MS;
 
+  private featureFlags: FeatureFlags = { ...DEFAULT_FLAGS };
+
   private controller: MatchRoomController | null = null;
 
   private sharedBoardBridge: SharedBoardBridge | null = null;
+  private sharedBoardRoomId: string | undefined;
 
   private matchLogger: MatchLogger | null = null;
 
@@ -105,12 +111,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       options.eliminationDurationMs ?? this.eliminationDurationMs;
     this.selectionTimeoutMs = options.selectionTimeoutMs ?? this.selectionTimeoutMs;
     this.setId = rawSetId ?? this.setId;
+    this.sharedBoardRoomId = options.sharedBoardRoomId;
     this.state.setId = this.setId;
 
     // Load feature flags
+    const forcedFeatureFlags = options.forcedFeatureFlags;
     const flagService = FeatureFlagService.getInstance();
-    flagService.validateFlagConfiguration();
-    const flags = flagService.getFlags();
+    if (!forcedFeatureFlags) {
+      flagService.validateFlagConfiguration();
+    }
+    const flags = forcedFeatureFlags ?? flagService.getFlags();
+    this.featureFlags = { ...flags };
     this.state.featureFlagsEnableHeroSystem = flags.enableHeroSystem;
     this.state.featureFlagsEnableSharedPool =
       flags.enableSharedPool || flags.enablePerUnitSharedPool;
@@ -204,9 +215,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         settleDurationMs: this.settleDurationMs,
         eliminationDurationMs: this.eliminationDurationMs,
         setId: this.setId,
-        featureFlags: {
-          enablePhaseExpansion: this.state.featureFlagsEnablePhaseExpansion,
-        },
+        featureFlags: this.featureFlags,
       },
     );
     this.lobbyReadyDeadlineAtMs = createdAtMs + this.readyAutoStartMs;
@@ -227,6 +236,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         this,
         this.controller,
         true,
+        this.sharedBoardRoomId,
       );
     }
   }
@@ -849,14 +859,28 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.roundIndex = this.controller.roundIndex;
     this.state.setId = this.setId;
 
-    // スペルカード関連の同期
-    const flagService = FeatureFlagService.getInstance();
-    this.state.featureFlagsEnableSubUnitSystem = flagService.isFeatureEnabled(
-      "enableSubUnitSystem",
-    );
-    this.state.featureFlagsEnableSpellCard = flagService.isFeatureEnabled('enableSpellCard');
-    this.state.featureFlagsEnableRumorInfluence = flagService.isFeatureEnabled('enableRumorInfluence');
-    this.state.featureFlagsEnableBossExclusiveShop = flagService.isFeatureEnabled('enableBossExclusiveShop');
+    // Keep room state tied to the onCreate snapshot so test helpers and reconnects
+    // do not re-read mutated process-wide feature flag state mid-match.
+    this.state.featureFlagsEnableHeroSystem = this.featureFlags.enableHeroSystem;
+    this.state.featureFlagsEnableSharedPool =
+      this.featureFlags.enableSharedPool || this.featureFlags.enablePerUnitSharedPool;
+    this.state.featureFlagsEnablePhaseExpansion =
+      this.featureFlags.enablePhaseExpansion;
+    this.state.featureFlagsEnableSubUnitSystem =
+      this.featureFlags.enableSubUnitSystem;
+    this.state.featureFlagsEnableSpellCard = this.featureFlags.enableSpellCard;
+    this.state.featureFlagsEnableRumorInfluence =
+      this.featureFlags.enableRumorInfluence;
+    this.state.featureFlagsEnableBossExclusiveShop =
+      this.featureFlags.enableBossExclusiveShop;
+    this.state.featureFlagsEnableSharedBoardShadow =
+      this.featureFlags.enableSharedBoardShadow;
+    this.state.featureFlagsEnableTouhouRoster =
+      this.featureFlags.enableTouhouRoster;
+    this.state.featureFlagsEnableTouhouFactions =
+      this.featureFlags.enableTouhouFactions;
+    this.state.featureFlagsEnablePerUnitSharedPool =
+      this.featureFlags.enablePerUnitSharedPool;
     const declaredSpell = this.controller.getDeclaredSpell();
     this.state.declaredSpellId = declaredSpell?.id ?? "";
     this.state.usedSpellIds.splice(0, this.state.usedSpellIds.length);
@@ -977,7 +1001,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     if (this.matchLogger && this.controller) {
       const ranking = this.controller.rankingTopToBottom;
       const winner = ranking.length > 0 ? (ranking[0] ?? null) : null;
-      const flags = FeatureFlagService.getInstance().getFlags();
+      const flags = this.featureFlags;
 
       const featureFlags = {
         enableHeroSystem: flags.enableHeroSystem,

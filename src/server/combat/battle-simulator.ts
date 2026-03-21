@@ -12,6 +12,7 @@ import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import {
   combatCellToBossBoardIndex,
   combatCellToRaidBoardIndex,
+  sharedBoardCoordinateToIndex,
   sharedBoardIndexToCoordinate,
 } from "../../shared/board-geometry";
 import { getStarCombatMultiplier } from "../star-level-config";
@@ -120,18 +121,48 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
 };
 
 function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
+  return resolveBattleSide(unit) === "left" ? "raid" : "boss";
+}
+
+function resolveBattleSide(unit: BattleUnit): "left" | "right" {
   if (unit.isBoss) {
-    return "boss";
+    return "right";
   }
 
-  return unit.id.startsWith("left") ? "raid" : "boss";
+  if (unit.id.startsWith("left") || unit.id.startsWith("hero-")) {
+    return "left";
+  }
+
+  return "right";
+}
+
+function isLegacyCombatCell(cell: number): boolean {
+  return Number.isInteger(cell) && cell >= 0 && cell <= 7;
+}
+
+function resolveBoardIndexForCell(cell: number, side: "left" | "right"): number {
+  if (!Number.isInteger(cell)) {
+    throw new Error("battle board cell index must be an integer");
+  }
+
+  if (isLegacyCombatCell(cell)) {
+    return side === "left"
+      ? combatCellToRaidBoardIndex(cell)
+      : combatCellToBossBoardIndex(cell);
+  }
+
+  if (cell >= 0 && cell < DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
+    return cell;
+  }
+
+  throw new Error("battle board cell index out of range");
 }
 
 function resolveTimelineCoordinate(unit: BattleUnit): { x: number; y: number } {
-  const boardIndex = resolveTimelineSide(unit) === "raid"
-    ? combatCellToRaidBoardIndex(unit.cell)
-    : combatCellToBossBoardIndex(unit.cell);
-  return sharedBoardIndexToCoordinate(boardIndex, DEFAULT_SHARED_BOARD_CONFIG);
+  return sharedBoardIndexToCoordinate(
+    resolveBoardIndexForCell(unit.cell, resolveBattleSide(unit)),
+    DEFAULT_SHARED_BOARD_CONFIG,
+  );
 }
 
 function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
@@ -282,8 +313,25 @@ export function createBattleUnit(
  * セル間の距離を計算
  * ボード上の2つのセル間の距離（絶対値の差）を計算
  */
-export function calculateCellDistance(cell1: number, cell2: number): number {
-  return Math.abs(cell1 - cell2);
+export function calculateCellDistance(
+  cell1: number,
+  cell2: number,
+  side1?: "left" | "right",
+  side2?: "left" | "right",
+): number {
+  if (isLegacyCombatCell(cell1) && isLegacyCombatCell(cell2)) {
+    return Math.abs(cell1 - cell2);
+  }
+
+  const coordinate1 = sharedBoardIndexToCoordinate(
+    resolveBoardIndexForCell(cell1, side1 ?? "left"),
+    DEFAULT_SHARED_BOARD_CONFIG,
+  );
+  const coordinate2 = sharedBoardIndexToCoordinate(
+    resolveBoardIndexForCell(cell2, side2 ?? "right"),
+    DEFAULT_SHARED_BOARD_CONFIG,
+  );
+  return Math.abs(coordinate1.x - coordinate2.x) + Math.abs(coordinate1.y - coordinate2.y);
 }
 
 /**
@@ -321,7 +369,12 @@ export function findTarget(attacker: BattleUnit, enemies: BattleUnit[]): BattleU
   let minDistance = Infinity;
 
   for (const enemy of livingEnemies) {
-    const distance = calculateCellDistance(attacker.cell, enemy.cell);
+    const distance = calculateCellDistance(
+      attacker.cell,
+      enemy.cell,
+      resolveBattleSide(attacker),
+      resolveBattleSide(enemy),
+    );
 
     if (distance <= attacker.attackRange && distance < minDistance) {
       minDistance = distance;
@@ -342,7 +395,12 @@ function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): Ba
   let minDistance = Infinity;
 
   for (const enemy of livingEnemies) {
-    const distance = calculateCellDistance(attacker.cell, enemy.cell);
+    const distance = calculateCellDistance(
+      attacker.cell,
+      enemy.cell,
+      resolveBattleSide(attacker),
+      resolveBattleSide(enemy),
+    );
     if (distance < minDistance) {
       minDistance = distance;
       closestTarget = enemy;
@@ -362,14 +420,45 @@ function moveUnitBySimpleApproach(
     return false;
   }
 
-  const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell);
+  const unitSide = resolveBattleSide(unit);
+  const enemySide = resolveBattleSide(nearestEnemy);
+  const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell, unitSide, enemySide);
   if (currentDistance <= unit.attackRange) {
     return false;
   }
 
   const previousCell = unit.cell;
-  const step = unit.cell < nearestEnemy.cell ? 1 : -1;
-  unit.cell += step;
+  if (isLegacyCombatCell(unit.cell) && isLegacyCombatCell(nearestEnemy.cell)) {
+    if (unit.cell < nearestEnemy.cell) {
+      unit.cell += 1;
+    } else if (unit.cell > nearestEnemy.cell) {
+      unit.cell -= 1;
+    } else {
+      return false;
+    }
+  } else {
+    const currentCoordinate = sharedBoardIndexToCoordinate(
+      resolveBoardIndexForCell(unit.cell, unitSide),
+      DEFAULT_SHARED_BOARD_CONFIG,
+    );
+    const targetCoordinate = sharedBoardIndexToCoordinate(
+      resolveBoardIndexForCell(nearestEnemy.cell, enemySide),
+      DEFAULT_SHARED_BOARD_CONFIG,
+    );
+    const deltaX = targetCoordinate.x - currentCoordinate.x;
+    const deltaY = targetCoordinate.y - currentCoordinate.y;
+
+    const nextCoordinate = { ...currentCoordinate };
+    if (Math.abs(deltaX) >= Math.abs(deltaY) && deltaX !== 0) {
+      nextCoordinate.x += Math.sign(deltaX);
+    } else if (deltaY !== 0) {
+      nextCoordinate.y += Math.sign(deltaY);
+    } else {
+      return false;
+    }
+
+    unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
+  }
 
   const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);

@@ -17,7 +17,10 @@ import type {
 import {
   DEFAULT_SHARED_BOARD_CONFIG,
 } from "../../shared/shared-board-config";
-import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
+import {
+  resolveSharedBoardHeroPresentation,
+  resolveSharedBoardUnitPresentation,
+} from "../shared-board-unit-presentation";
 
 interface SharedBoardRoomOptions {
   boardWidth?: number;
@@ -382,10 +385,14 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return;
     }
 
+    const isHeroUnit = this.isHeroUnitId(payload.unitId);
+
     if (
       !this.isValidCellIndex(payload.toCell) ||
       payload.toCell === this.state.dummyBossCell ||
-      !this.isPlayablePlacementCellIndex(payload.toCell)
+      !(isHeroUnit
+        ? this.isHeroPlacementCellIndex(payload.toCell)
+        : this.isPlayablePlacementCellIndex(payload.toCell))
     ) {
       this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
       return;
@@ -599,6 +606,15 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return false;
   }
 
+  private isHeroPlacementCellIndex(cellIndex: number): boolean {
+    if (!this.isValidCellIndex(cellIndex)) {
+      return false;
+    }
+
+    const row = Math.floor(cellIndex / this.boardWidth);
+    return row >= Math.floor(this.boardHeight / 2);
+  }
+
   private ownsUnit(playerId: string, unitId: string): boolean {
     const ownerId = this.resolveOwnerId(playerId);
 
@@ -672,15 +688,11 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     for (const cell of this.state.cells.values()) {
       if (
         cell.ownerId === playerId
+        && !this.isHeroUnitId(cell.unitId)
         && cell.index !== this.state.dummyBossCell
         && !desiredIndexes.has(cell.index)
       ) {
-        cell.unitId = "";
-        cell.ownerId = "";
-        cell.displayName = "";
-        cell.portraitKey = "";
-        cell.lockedBy = "";
-        cell.lockUntilMs = 0;
+        this.clearBoardCell(cell);
       }
     }
 
@@ -696,6 +708,11 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       }
 
       if (targetCell.ownerId !== "" && targetCell.ownerId !== playerId) {
+        skipped += 1;
+        continue;
+      }
+
+      if (this.isHeroUnitId(targetCell.unitId)) {
         skipped += 1;
         continue;
       }
@@ -716,14 +733,57 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return { applied, skipped };
   }
 
+  public applyHeroPlacementFromGame(input: {
+    playerId: string;
+    heroId: string;
+    cellIndex: number | null;
+  }): { applied: number; skipped: number } {
+    if (this.state.mode !== "prep") {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    if (!input.playerId || !input.heroId) {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    const heroUnitId = this.buildHeroUnitId(input.playerId);
+
+    for (const cell of this.state.cells.values()) {
+      if (cell.unitId === heroUnitId) {
+        this.clearBoardCell(cell);
+      }
+    }
+
+    if (input.cellIndex === null) {
+      return { applied: 0, skipped: 0 };
+    }
+
+    const targetCell = this.state.cells.get(String(input.cellIndex));
+    if (
+      !targetCell
+      || targetCell.index === this.state.dummyBossCell
+      || (targetCell.ownerId !== "" && targetCell.ownerId !== input.playerId)
+      || (!this.isHeroUnitId(targetCell.unitId) && targetCell.unitId !== "")
+    ) {
+      return { applied: 0, skipped: 1 };
+    }
+
+    const presentation = resolveSharedBoardHeroPresentation(input.heroId);
+    targetCell.unitId = heroUnitId;
+    targetCell.ownerId = input.playerId;
+    targetCell.displayName = presentation?.displayName ?? input.heroId;
+    targetCell.portraitKey = presentation?.portraitKey ?? "";
+    targetCell.lockedBy = "";
+    targetCell.lockUntilMs = 0;
+
+    this.appendEvent(`hero sync ${input.playerId.slice(0, 8)} cell=${input.cellIndex}`);
+
+    return { applied: 1, skipped: 0 };
+  }
+
   private clearAllBoardTokens(): void {
     for (const cell of this.state.cells.values()) {
-      cell.unitId = "";
-      cell.ownerId = "";
-      cell.displayName = "";
-      cell.portraitKey = "";
-      cell.lockedBy = "";
-      cell.lockUntilMs = 0;
+      this.clearBoardCell(cell);
     }
   }
 
@@ -890,6 +950,23 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     ));
 
     return unitType ?? battleUnitId;
+  }
+
+  private clearBoardCell(cell: SharedBoardCellState): void {
+    cell.unitId = "";
+    cell.ownerId = "";
+    cell.displayName = "";
+    cell.portraitKey = "";
+    cell.lockedBy = "";
+    cell.lockUntilMs = 0;
+  }
+
+  private buildHeroUnitId(playerId: string): string {
+    return `hero:${playerId}`;
+  }
+
+  private isHeroUnitId(unitId: string): boolean {
+    return unitId.startsWith("hero:");
   }
 
   private appendEvent(message: string): void {

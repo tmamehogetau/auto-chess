@@ -35,6 +35,8 @@ export interface ShadowDiffResult {
  * Feature Flag制御下で動作し、game本体には影響を与えない
  */
 export class SharedBoardShadowObserver {
+  private static readonly HERO_UNIT_PREFIX = "hero:";
+
   private readonly controller: MatchRoomController;
 
   private sharedBoardRoom: SharedBoardRoom | null = null;
@@ -141,7 +143,9 @@ export class SharedBoardShadowObserver {
           }
 
           // ユニット存在確認（ownerIdが一致するか）
-          const hasMatchingUnit = sharedCell.unitId && sharedCell.ownerId === playerId;
+          const hasMatchingUnit = sharedCell.unitId
+            && sharedCell.ownerId === playerId
+            && !sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX);
 
           if (!hasMatchingUnit) {
             mismatches.push({
@@ -160,7 +164,7 @@ export class SharedBoardShadowObserver {
           const combatCell = combatCellOpt;
           const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
-          if (!sharedCell?.unitId) continue;
+          if (!sharedCell?.unitId || sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)) continue;
           if (sharedCell.ownerId !== playerId) continue;
 
           // game側に対応する配置があるか
@@ -228,7 +232,9 @@ export class SharedBoardShadowObserver {
         const sharedIndex = combatCellToRaidBoardIndex(placement.cell);
         const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
-        const hasMatchingUnit = sharedCell?.unitId && sharedCell.ownerId === playerId;
+        const hasMatchingUnit = sharedCell?.unitId
+          && sharedCell.ownerId === playerId
+          && !sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX);
 
         if (!hasMatchingUnit) {
           mismatches.push({
@@ -246,7 +252,7 @@ export class SharedBoardShadowObserver {
         const combatCell = combatCellOpt;
         const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
-        if (!sharedCell?.unitId) continue;
+        if (!sharedCell?.unitId || sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)) continue;
         if (sharedCell.ownerId !== playerId) continue;
 
         const hasGamePlacement = gamePlacements.some((placement) => placement.cell === combatCell);

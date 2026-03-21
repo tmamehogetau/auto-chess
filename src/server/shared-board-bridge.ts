@@ -68,6 +68,8 @@ export interface SyncOperationRequest {
   playerId: string;
   /** 配置データ */
   placements: BoardUnitPlacement[];
+  /** 主人公セル */
+  heroCellIndex?: number | null;
 }
 
 /**
@@ -387,6 +389,7 @@ export class SharedBoardBridge {
     try {
       // SharedBoardセルをBoardUnitPlacementに変換
       const placements = this.convertCellsToPlacements(cells);
+      const heroCellIndex = this.extractHeroCellIndex(playerId, cells);
 
       // 同期リクエスト作成
       const request: SyncOperationRequest = {
@@ -397,6 +400,7 @@ export class SharedBoardBridge {
         actorId: playerId,
         playerId,
         placements,
+        ...(heroCellIndex !== undefined ? { heroCellIndex } : {}),
       };
 
       // 配置を適用
@@ -479,6 +483,10 @@ export class SharedBoardBridge {
         continue;
       }
 
+      if (this.isHeroUnitId(cell.unitId)) {
+        continue;
+      }
+
       // shared_board index (0-23 for 6x4) → combat cell (0-7)
       const combatCell = raidBoardIndexToCombatCell(cell.index);
       if (combatCell === null) {
@@ -499,6 +507,21 @@ export class SharedBoardBridge {
     }
 
     return placements;
+  }
+
+  private extractHeroCellIndex(
+    playerId: string,
+    cells: QueuedSharedBoardCellSnapshot[],
+  ): number | null | undefined {
+    const heroUnitId = `hero:${playerId}`;
+
+    for (const cell of cells) {
+      if (cell.unitId === heroUnitId) {
+        return cell.index;
+      }
+    }
+
+    return undefined;
   }
 
   private snapshotPlacementCells(
@@ -574,7 +597,11 @@ export class SharedBoardBridge {
     }
   }
 
-  private syncSharedBoardViewFromController(): void {
+  private isHeroUnitId(unitId: string): boolean {
+    return unitId.startsWith("hero:");
+  }
+
+  private syncSharedBoardViewFromController(forcePrepSync = false): void {
     if (this.state !== "READY" || !this.sharedBoardRoom) {
       return;
     }
@@ -618,7 +645,7 @@ export class SharedBoardBridge {
       mode: "prep",
     });
 
-    if (this.lastSharedBoardPhase !== phase || this.lastSharedBattleId !== null) {
+    if (forcePrepSync || this.lastSharedBoardPhase !== phase || this.lastSharedBattleId !== null) {
       this.syncAllPrepPlacementsToSharedBoard();
     }
 
@@ -635,6 +662,14 @@ export class SharedBoardBridge {
     for (const playerId of playerIds) {
       const placements = this.controller.getBoardPlacementsForPlayer?.(playerId) ?? [];
       this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
+
+      const heroId = this.controller.getSelectedHero?.(playerId) ?? "";
+      const heroCellIndex = this.controller.getHeroPlacementForPlayer?.(playerId) ?? null;
+      this.sharedBoardRoom.applyHeroPlacementFromGame({
+        playerId,
+        heroId,
+        cellIndex: heroCellIndex,
+      });
     }
   }
 
@@ -815,6 +850,22 @@ export class SharedBoardBridge {
         return {
           ...failureResult,
         };
+      }
+
+      if (request.heroCellIndex !== undefined && request.heroCellIndex !== null) {
+        const heroResult = this.controller.applyHeroPlacementForPlayer(
+          request.playerId,
+          request.heroCellIndex,
+        );
+
+        if (!heroResult.success) {
+          return {
+            success: false,
+            code: heroResult.code === "PHASE_MISMATCH" ? "invalid_phase" : "forbidden",
+            currentVersion: this.currentVersion,
+            ...(heroResult.error !== undefined ? { error: heroResult.error } : {}),
+          };
+        }
       }
 
       // バージョンインクリメント

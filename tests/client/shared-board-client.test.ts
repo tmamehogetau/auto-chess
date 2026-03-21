@@ -2272,6 +2272,74 @@ describe("shared-board client", () => {
     }]);
   });
 
+  test("shared board lets hero units move anywhere in the lower raid half", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const state = {
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        30: { unitId: "hero:player-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    };
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+    applyStateChange(state);
+
+    gridElement.children[30]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("hero:player-1");
+
+    handleSharedCellClick(state, 24);
+
+    expect(sendCalls).toContainEqual({
+      type: "shared_place_unit",
+      payload: { unitId: "hero:player-1", toCell: 24 },
+    });
+    expect(messages).toEqual([]);
+  });
+
   test("shared board treats sparse cells as valid empty drop targets", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();

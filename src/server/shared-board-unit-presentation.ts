@@ -1,3 +1,4 @@
+import { HEROES } from "../data/heroes";
 import { getScarletMansionUnitById } from "../data/scarlet-mansion-units";
 import { getTouhouUnitById } from "../data/touhou-units";
 import type { BoardUnitType } from "../shared/room-messages";
@@ -71,4 +72,22 @@ export function resolveSharedBoardUnitPresentation(
   }
 
   return null;
+}
+
+export function resolveSharedBoardHeroPresentation(
+  heroId: string | undefined,
+): SharedBoardUnitPresentation | null {
+  if (typeof heroId !== "string" || heroId.length === 0) {
+    return null;
+  }
+
+  const hero = HEROES.find((candidate) => candidate.id === heroId);
+  if (!hero) {
+    return null;
+  }
+
+  return {
+    displayName: hero.name,
+    portraitKey: PORTRAIT_KEY_BY_UNIT_ID[heroId] ?? PORTRAIT_KEY_BY_UNIT_TYPE[hero.synergyBonusType],
+  };
 }

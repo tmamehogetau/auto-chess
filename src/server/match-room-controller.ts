@@ -117,6 +117,7 @@ import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
 } from "../shared/board-geometry";
+import { DEFAULT_SHARED_BOARD_CONFIG, sharedBoardCoordinateToIndex } from "../shared/shared-board-config";
 
 function shouldEmitVerboseBattleLogs(): boolean {
   return process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true";
@@ -129,9 +130,7 @@ interface MatchRoomControllerOptions {
   settleDurationMs: number;
   eliminationDurationMs: number;
   setId?: UnitEffectSetId;
-  featureFlags?: {
-    enablePhaseExpansion?: boolean;
-  };
+  featureFlags?: Partial<FeatureFlags>;
 }
 
 
@@ -400,6 +399,7 @@ export class MatchRoomController {
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
   private readonly selectedHeroByPlayer: Map<string, string>;
+  private readonly heroPlacementByPlayer: Map<string, number>;
 
   private readonly selectedBossByPlayer: Map<string, string>;
 
@@ -522,6 +522,7 @@ export class MatchRoomController {
     this.kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
+    this.heroPlacementByPlayer = new Map<string, number>();
     this.selectedBossByPlayer = new Map<string, string>();
     this.wantsBossByPlayer = new Map<string, boolean>();
     this.roleByPlayer = new Map<string, "unassigned" | "raid" | "boss">();
@@ -543,17 +544,21 @@ export class MatchRoomController {
     this.currentRoundPairings = [];
     this.eliminatedFromBottom = [];
     this.setId = options.setId ?? DEFAULT_UNIT_EFFECT_SET_ID;
+    const resolvedFeatureFlags: FeatureFlags = {
+      ...FeatureFlagService.getInstance().getFlags(),
+      ...options.featureFlags,
+    };
     this.featureFlags = {
-      enablePhaseExpansion: options.featureFlags?.enablePhaseExpansion ?? false,
+      enablePhaseExpansion: resolvedFeatureFlags.enablePhaseExpansion,
     };
 
-    // Store roster flags for runtime use
-    this.rosterFlags = FeatureFlagService.getInstance().getFlags();
+    // Store a room-local snapshot for the full match lifetime.
+    this.rosterFlags = resolvedFeatureFlags;
 
     // Feature Flagに基づいて共有プールを初期化
     this.enableSharedPool =
-      FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool')
-      || this.rosterFlags.enablePerUnitSharedPool;
+      resolvedFeatureFlags.enableSharedPool
+      || resolvedFeatureFlags.enablePerUnitSharedPool;
     this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
 
     validateRosterAvailability(this.rosterFlags);
@@ -610,13 +615,14 @@ export class MatchRoomController {
       this.itemShopOffersByPlayer.set(playerId, []);
       this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
+      this.heroPlacementByPlayer.set(playerId, -1);
       this.selectedBossByPlayer.set(playerId, "");
       this.wantsBossByPlayer.set(playerId, false);
       this.roleByPlayer.set(playerId, "unassigned");
     }
 
     // Feature Flagに基づいてサブユニットシステムを初期化
-    this.enableSubUnitSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableSubUnitSystem');
+    this.enableSubUnitSystem = resolvedFeatureFlags.enableSubUnitSystem;
     this.subUnitAssistConfigByType = this.enableSubUnitSystem
       ? resolveSubUnitAssistConfigByType()
       : new Map<BoardUnitType, SubUnitConfig>();
@@ -635,14 +641,14 @@ export class MatchRoomController {
     this.battleResolutionService = new BattleResolutionService(battleResolutionDeps);
 
     // Feature Flagに基づいてスペルカードを初期化
-    this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
+    this.enableSpellCard = resolvedFeatureFlags.enableSpellCard;
     this.spellCardHandler = new SpellCardHandler({
       enableSpellCard: this.enableSpellCard,
       matchLogger: this.matchLogger,
     });
 
     // Feature Flagに基づいて噂勢力を初期化
-    this.enableRumorInfluence = FeatureFlagService.getInstance().isFeatureEnabled('enableRumorInfluence');
+    this.enableRumorInfluence = resolvedFeatureFlags.enableRumorInfluence;
     this.rumorInfluenceEligibleByPlayer = new Map<string, boolean>();
 
     // 噂勢力 eligibility を全プレイヤーで初期化
@@ -650,10 +656,10 @@ export class MatchRoomController {
       this.rumorInfluenceEligibleByPlayer.set(playerId, false);
     }
 
-    this.enableHeroSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableHeroSystem');
+    this.enableHeroSystem = resolvedFeatureFlags.enableHeroSystem;
 
     // Feature Flagに基づいてボス専用ショップを初期化
-    this.enableBossExclusiveShop = FeatureFlagService.getInstance().isFeatureEnabled('enableBossExclusiveShop');
+    this.enableBossExclusiveShop = resolvedFeatureFlags.enableBossExclusiveShop;
     this.bossShopOffersByPlayer = new Map<string, ShopOffer[]>();
   }
 
@@ -813,6 +819,47 @@ export class MatchRoomController {
   public getSelectedHero(playerId: string): string {
     this.ensureKnownPlayer(playerId);
     return this.selectedHeroByPlayer.get(playerId) ?? "";
+  }
+
+  public getHeroPlacementForPlayer(playerId: string): number | null {
+    this.ensureKnownPlayer(playerId);
+    const placement = this.heroPlacementByPlayer.get(playerId) ?? -1;
+    return Number.isInteger(placement) && placement >= 0 ? placement : null;
+  }
+
+  public applyHeroPlacementForPlayer(
+    playerId: string,
+    cellIndex: number,
+  ): { success: boolean; code: string; error?: string } {
+    try {
+      this.ensureKnownPlayer(playerId);
+
+      if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
+        return { success: false, code: "PHASE_MISMATCH", error: "Not in Prep phase" };
+      }
+
+      if (!this.selectedHeroByPlayer.get(playerId)) {
+        return { success: false, code: "INVALID_PAYLOAD", error: "Hero not selected" };
+      }
+
+      if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
+        return { success: false, code: "INVALID_CELL", error: "Hero cell out of range" };
+      }
+
+      const row = Math.floor(cellIndex / DEFAULT_SHARED_BOARD_CONFIG.width);
+      if (row < Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+        return { success: false, code: "INVALID_CELL", error: "Hero must stay in raid deployment rows" };
+      }
+
+      this.heroPlacementByPlayer.set(playerId, cellIndex);
+      return { success: true, code: "SUCCESS" };
+    } catch (error) {
+      return {
+        success: false,
+        code: "ERROR",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   public startIfReady(nowMs: number, connectedPlayerIds: string[] = this.playerIds): boolean {
@@ -2028,6 +2075,7 @@ export class MatchRoomController {
     this.itemShopOffersByPlayer.delete(playerId);
     this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
     this.selectedHeroByPlayer.delete(playerId);
+    this.heroPlacementByPlayer.delete(playerId);
     this.selectedBossByPlayer.delete(playerId);
     this.wantsBossByPlayer.delete(playerId);
     this.roleByPlayer.delete(playerId);
@@ -2066,6 +2114,7 @@ export class MatchRoomController {
     }
 
     this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
+    this.ensureInitialHeroPlacements(activePlayerIds);
 
     this.initializeShopsForPrep();
     this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
@@ -2632,7 +2681,11 @@ export class MatchRoomController {
 
     for (const heroPlayerId of playerIds) {
       const heroId = this.selectedHeroByPlayer.get(heroPlayerId);
-      const heroBattleUnit = this.battleResolutionService.createHeroBattleUnit(heroId, heroPlayerId);
+      const heroBattleUnit = this.battleResolutionService.createHeroBattleUnit(
+        heroId,
+        heroPlayerId,
+        this.getHeroPlacementForPlayer(heroPlayerId) ?? undefined,
+      );
       if (heroBattleUnit) {
         battleUnits.push(heroBattleUnit);
       }
@@ -2729,6 +2782,35 @@ export class MatchRoomController {
     if (shouldEmitVerboseBattleLogs()) {
       // eslint-disable-next-line no-console
       console.log(JSON.stringify(resultTraceLog));
+    }
+  }
+
+  private ensureInitialHeroPlacements(activePlayerIds: string[]): void {
+    const state = this.ensureStarted();
+    const defaultColumns = [0, 2, 4, 1, 3, 5];
+    const raidPlayerIds = state.bossPlayerId
+      ? state.raidPlayerIds
+      : activePlayerIds.filter((playerId) => (this.selectedHeroByPlayer.get(playerId) ?? "").length > 0);
+
+    let nextColumnIndex = 0;
+    for (const playerId of raidPlayerIds) {
+      const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+      if (!selectedHeroId) {
+        this.heroPlacementByPlayer.set(playerId, -1);
+        continue;
+      }
+
+      const existingPlacement = this.heroPlacementByPlayer.get(playerId) ?? -1;
+      if (Number.isInteger(existingPlacement) && existingPlacement >= 0) {
+        continue;
+      }
+
+      const targetColumn = defaultColumns[nextColumnIndex] ?? (nextColumnIndex % DEFAULT_SHARED_BOARD_CONFIG.width);
+      nextColumnIndex += 1;
+      this.heroPlacementByPlayer.set(playerId, sharedBoardCoordinateToIndex({
+        x: targetColumn,
+        y: DEFAULT_SHARED_BOARD_CONFIG.height - 1,
+      }));
     }
   }
 

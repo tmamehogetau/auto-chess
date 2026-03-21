@@ -747,7 +747,7 @@ function isValidSharedDropTarget(state, cellIndex) {
     return false;
   }
 
-  if (!isPlayableSharedBoardCell(state, cellIndex)) {
+  if (!isPlayableSharedBoardCell(state, cellIndex, activeUnitId)) {
     return false;
   }
 
@@ -767,13 +767,17 @@ function isValidSharedDropTarget(state, cellIndex) {
   return cell.ownerId === getOwnSharedBoardOwnerId();
 }
 
-function isPlayableSharedBoardCell(state, cellIndex) {
+function isPlayableSharedBoardCell(state, cellIndex, activeUnitId = null) {
   if (!Number.isInteger(cellIndex)) {
     return false;
   }
 
   if (isLegacyEmbeddedBoard(state)) {
     return sharedBoardIndexToCombatCell(state, cellIndex) !== null;
+  }
+
+  if (isHeroSharedUnitId(activeUnitId)) {
+    return isRaidDeploymentCell(state, cellIndex);
   }
 
   return isActiveRaidCombatFootprintCell(state, cellIndex);
@@ -812,6 +816,22 @@ function isActiveRaidCombatFootprintCell(state, cellIndex) {
   const x = cellIndex % boardWidth;
   const y = Math.floor(cellIndex / boardWidth);
   return x >= 1 && x <= 4 && y >= 3 && y <= 4;
+}
+
+function isRaidDeploymentCell(state, cellIndex) {
+  const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+  const boardHeight = Number.isInteger(state?.boardHeight) ? state.boardHeight : 6;
+  const maxIndex = boardWidth * boardHeight - 1;
+
+  if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex > maxIndex) {
+    return false;
+  }
+
+  return Math.floor(cellIndex / boardWidth) >= Math.floor(boardHeight / 2);
+}
+
+function isHeroSharedUnitId(unitId) {
+  return typeof unitId === "string" && unitId.startsWith("hero:");
 }
 
 function resolvePlayableLaneZone(state, cellIndex) {
@@ -855,10 +875,14 @@ function sharedBoardIndexToCombatCell(state, boardIndex) {
 }
 
 function buildSharedDropRejectMessage(state, cellIndex) {
-  if (!isPlayableSharedBoardCell(state, cellIndex)) {
+  const activeUnitId = sharedDraggedUnitId || selectedSharedUnitId;
+
+  if (!isPlayableSharedBoardCell(state, cellIndex, activeUnitId)) {
     return isLegacyEmbeddedBoard(state)
       ? "That lane is outside the playable combat area. Pick one of the center cells."
-      : "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.";
+      : isHeroSharedUnitId(activeUnitId)
+        ? "Hero units can move anywhere in the lower raid half. Pick an open cell there."
+        : "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.";
   }
 
   const cell = mapGet(state?.cells, String(cellIndex));

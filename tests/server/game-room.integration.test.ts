@@ -280,7 +280,7 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.phase).toBe("Battle");
   });
 
-  test("戦闘結果のtimelineEventsがroom stateへ同期される", async () => {
+  test("戦闘結果のtimelineEndStateがroom stateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([
       testServer.connectTo(serverRoom),
@@ -311,14 +311,15 @@ describe("GameRoom integration", () => {
 
     await waitForCondition(() => serverRoom.state.phase === "Settle", 1_000);
 
-    const timelineEvents = serverRoom.state.players.get(clients[0]!.sessionId)?.lastBattleResult.timelineEvents;
+    const timelineEndState = serverRoom.state.players.get(clients[0]!.sessionId)?.lastBattleResult.timelineEndState;
 
-    expect(timelineEvents?.length).toBeGreaterThan(0);
-    expect(JSON.parse(timelineEvents?.[0] ?? "{}")).toMatchObject({
-      type: "battleStart",
-    });
-    expect(JSON.parse(timelineEvents?.[timelineEvents.length - 1] ?? "{}")).toMatchObject({
-      type: "battleEnd",
+    expect(timelineEndState?.length).toBeGreaterThan(0);
+    expect(timelineEndState?.[0]).toMatchObject({
+      battleUnitId: expect.any(String),
+      x: expect.any(Number),
+      y: expect.any(Number),
+      currentHp: expect.any(Number),
+      maxHp: expect.any(Number),
     });
   });
 

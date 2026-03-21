@@ -21,7 +21,19 @@ export interface PlayerStatusBattleResult {
   survivors: number;
   opponentSurvivors: number;
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
+  timelineEndState?: BattleTimelineEndStateUnit[];
   timeline?: BattleTimelineEvent[];
+}
+
+export interface BattleTimelineEndStateUnit {
+  battleUnitId: string;
+  side: "boss" | "raid";
+  x: number;
+  y: number;
+  currentHp: number;
+  maxHp: number;
+  displayName?: string;
+  unitType?: string;
 }
 
 export interface BattleResultSurvivorSnapshot {

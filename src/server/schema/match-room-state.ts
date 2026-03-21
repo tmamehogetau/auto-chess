@@ -51,7 +51,7 @@ export class BattleResultSchema extends Schema {
   declare public survivors: number;
   declare public opponentSurvivors: number;
   declare public survivorSnapshots: ArraySchema<BattleResultSurvivorSchema>;
-  declare public timelineEvents: ArraySchema<string>;
+  declare public timelineEndState: ArraySchema<BattleTimelineEndStateUnitSchema>;
 
   public constructor() {
     super();
@@ -62,7 +62,7 @@ export class BattleResultSchema extends Schema {
     this.survivors = 0;
     this.opponentSurvivors = 0;
     this.survivorSnapshots = new ArraySchema<BattleResultSurvivorSchema>();
-    this.timelineEvents = new ArraySchema<string>();
+    this.timelineEndState = new ArraySchema<BattleTimelineEndStateUnitSchema>();
   }
 }
 
@@ -82,6 +82,29 @@ export class BattleResultSurvivorSchema extends Schema {
     this.hp = 0;
     this.maxHp = 0;
     this.combatCell = -1;
+  }
+}
+
+export class BattleTimelineEndStateUnitSchema extends Schema {
+  declare public battleUnitId: string;
+  declare public side: "boss" | "raid";
+  declare public x: number;
+  declare public y: number;
+  declare public currentHp: number;
+  declare public maxHp: number;
+  declare public displayName: string;
+  declare public unitType: string;
+
+  public constructor() {
+    super();
+    this.battleUnitId = "";
+    this.side = "raid";
+    this.x = 0;
+    this.y = 0;
+    this.currentHp = 0;
+    this.maxHp = 0;
+    this.displayName = "";
+    this.unitType = "";
   }
 }
 
@@ -301,7 +324,7 @@ defineTypes(BattleResultSchema, {
   survivors: "number",
   opponentSurvivors: "number",
   survivorSnapshots: [BattleResultSurvivorSchema],
-  timelineEvents: ["string"],
+  timelineEndState: [BattleTimelineEndStateUnitSchema],
 });
 
 defineTypes(BattleResultSurvivorSchema, {

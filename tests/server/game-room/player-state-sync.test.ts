@@ -31,7 +31,16 @@ describe("player-state-sync", () => {
       battleId: "battle-1",
       round: 2,
       boardConfig: { width: 6, height: 6 },
-      units: [],
+      units: [
+        {
+          battleUnitId: "koishi",
+          side: "raid",
+          x: 1,
+          y: 4,
+          currentHp: 27,
+          maxHp: 60,
+        },
+      ],
     }),
   ];
 
@@ -279,11 +288,85 @@ describe("player-state-sync", () => {
       expect(playerState.lastBattleResult.survivorSnapshots.length).toBe(1);
       expect(playerState.lastBattleResult.survivorSnapshots[0]!.displayName).toBe("古明地こいし");
       expect(playerState.lastBattleResult.survivorSnapshots[0]!.hp).toBe(27);
-      expect(playerState.lastBattleResult.timelineEvents.length).toBe(1);
-      expect(JSON.parse(playerState.lastBattleResult.timelineEvents[0]!)).toMatchObject({
-        type: "battleStart",
-        battleId: "battle-1",
-        round: 2,
+      expect(playerState.lastBattleResult.timelineEndState.length).toBe(1);
+      expect(playerState.lastBattleResult.timelineEndState[0]).toMatchObject({
+        battleUnitId: "koishi",
+        side: "raid",
+        x: 1,
+        y: 4,
+        currentHp: 27,
+        maxHp: 60,
+      });
+    });
+
+    it("should prefer compact timeline end-state when upstream already provides it", () => {
+      const controllerStatus: ControllerPlayerStatus = {
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnitCount: 4,
+        gold: 20,
+        xp: 0,
+        level: 1,
+        shopOffers: [],
+        shopLocked: false,
+        benchUnits: [],
+        benchDisplayNames: [],
+        boardUnits: [],
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        itemInventory: [],
+        itemShopOffers: [],
+        bossShopOffers: [],
+        lastBattleResult: {
+          opponentId: "opponent-123",
+          won: false,
+          damageDealt: 5,
+          damageTaken: 12,
+          survivors: 1,
+          opponentSurvivors: 4,
+          timelineEndState: [
+            {
+              battleUnitId: "compact-koishi",
+              side: "raid",
+              x: 2,
+              y: 5,
+              currentHp: 31,
+              maxHp: 60,
+              displayName: "古明地こいし",
+              unitType: "assassin",
+            },
+          ],
+          survivorSnapshots: [
+            {
+              unitId: "compact-koishi",
+              displayName: "古明地こいし",
+              unitType: "assassin",
+              hp: 31,
+              maxHp: 60,
+              combatCell: 22,
+            },
+          ],
+        } as PlayerStatusBattleResult,
+        activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "unassigned",
+        selectedHeroId: "",
+        isRumorEligible: false,
+      };
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.lastBattleResult.timelineEndState.length).toBe(1);
+      expect(playerState.lastBattleResult.timelineEndState[0]).toMatchObject({
+        battleUnitId: "compact-koishi",
+        side: "raid",
+        x: 2,
+        y: 5,
+        currentHp: 31,
+        maxHp: 60,
+        displayName: "古明地こいし",
+        unitType: "assassin",
       });
     });
 
@@ -327,7 +410,7 @@ describe("player-state-sync", () => {
       expect(playerState.lastBattleResult.survivors).toBe(0);
       expect(playerState.lastBattleResult.opponentSurvivors).toBe(0);
       expect(playerState.lastBattleResult.survivorSnapshots.length).toBe(0);
-      expect(playerState.lastBattleResult.timelineEvents.length).toBe(0);
+      expect(playerState.lastBattleResult.timelineEndState.length).toBe(0);
     });
 
     it("should sync active synergies correctly", () => {
@@ -608,10 +691,79 @@ describe("player-state-sync", () => {
       expect(playerState.benchUnits.length).toBe(3);
       expect(playerState.benchDisplayNames[2]).toBe("パチュリー・ノーレッジ");
       expect(playerState.boardUnits.length).toBe(5);
-      expect(playerState.lastBattleResult.timelineEvents.length).toBe(1);
-      expect(JSON.parse(playerState.lastBattleResult.timelineEvents[0]!)).toMatchObject({
-        type: "battleStart",
-        battleId: "battle-1",
+      expect(playerState.lastBattleResult.timelineEndState.length).toBe(1);
+      expect(playerState.lastBattleResult.timelineEndState[0]).toMatchObject({
+        battleUnitId: "koishi",
+        side: "raid",
+        x: 1,
+        y: 4,
+      });
+    });
+
+    it("should keep compact timeline end-state from command results", () => {
+      const cmdResult = {
+        boardUnitCount: 5,
+        gold: 30,
+        xp: 8,
+        level: 3,
+        shopLocked: false,
+        ownedUnits: {
+          vanguard: 3,
+          ranger: 2,
+          mage: 1,
+          assassin: 0,
+        },
+        shopOffers: [],
+        benchUnits: [],
+        benchDisplayNames: [],
+        boardUnits: [],
+        itemShopOffers: [],
+        itemInventory: [],
+        lastBattleResult: {
+          opponentId: "p2",
+          won: true,
+          damageDealt: 20,
+          damageTaken: 5,
+          survivors: 1,
+          opponentSurvivors: 0,
+          timelineEndState: [
+            {
+              battleUnitId: "compact-sakuya",
+              side: "raid",
+              x: 4,
+              y: 4,
+              currentHp: 22,
+              maxHp: 35,
+              displayName: "十六夜咲夜",
+              unitType: "assassin",
+            },
+          ],
+          survivorSnapshots: [
+            {
+              unitId: "compact-sakuya",
+              displayName: "十六夜咲夜",
+              unitType: "assassin",
+              hp: 22,
+              maxHp: 35,
+              combatCell: 28,
+            },
+          ],
+        } as PlayerStatusBattleResult,
+        activeSynergies: [{ unitType: "ranger", count: 2, tier: 1 }],
+      };
+
+      syncPlayerStateFromCommandResult(playerState, cmdResult, 42);
+
+      expect(playerState.lastBattleResult.timelineEndState.length).toBe(1);
+      expect(playerState.lastBattleResult.timelineEndState[0]).toMatchObject({
+        battleUnitId: "compact-sakuya",
+        side: "raid",
+        x: 4,
+        y: 4,
+        currentHp: 22,
+        maxHp: 35,
+        displayName: "十六夜咲夜",
+        unitType: "assassin",
       });
     });
 

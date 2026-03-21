@@ -232,10 +232,12 @@ export function renderPlayerResultSummary({
   const caption = buildRoundSummaryCaption({ ranking, sessionId });
   const tip = buildRoundSummaryTip({ ranking, sessionId });
   const survivorSnapshots = toRenderableArray(battleResult?.survivorSnapshots);
+  const timelineEndState = toRenderableArray(battleResult?.timelineEndState);
   const timelineEvents = parseBattleTimelineEvents(battleResult?.timelineEvents);
   const survivorMarkup = buildSurvivorSnapshotMarkup(survivorSnapshots);
   const imprintMarkup = buildSharedBoardImprintMarkup({
     survivorSnapshots,
+    timelineEndState,
     timelineEvents,
   });
 
@@ -359,8 +361,8 @@ function buildSurvivorSnapshotMarkup(survivorSnapshots) {
   `;
 }
 
-function buildSharedBoardImprintMarkup({ survivorSnapshots, timelineEvents }) {
-  const imprintState = resolveResultImprintState({ survivorSnapshots, timelineEvents });
+function buildSharedBoardImprintMarkup({ survivorSnapshots, timelineEndState, timelineEvents }) {
+  const imprintState = resolveResultImprintState({ survivorSnapshots, timelineEndState, timelineEvents });
 
   if (!imprintState) {
     return `
@@ -430,7 +432,12 @@ function buildSharedBoardImprintMarkup({ survivorSnapshots, timelineEvents }) {
   `;
 }
 
-function resolveResultImprintState({ survivorSnapshots, timelineEvents }) {
+function resolveResultImprintState({ survivorSnapshots, timelineEndState, timelineEvents }) {
+  const compactEndState = resolveCompactTimelineEndState(timelineEndState);
+  if (compactEndState) {
+    return compactEndState;
+  }
+
   const timelineState = resolveTimelineEndState(timelineEvents, survivorSnapshots);
   if (timelineState) {
     return timelineState;
@@ -448,6 +455,49 @@ function resolveResultImprintState({ survivorSnapshots, timelineEvents }) {
     }
 
     snapshotByBoardCellIndex.set(boardCellIndex, snapshot);
+  }
+
+  return {
+    boardWidth: RESULT_IMPRINT_BOARD_WIDTH,
+    boardHeight: RESULT_IMPRINT_BOARD_HEIGHT,
+    snapshotByBoardCellIndex,
+  };
+}
+
+function resolveCompactTimelineEndState(timelineEndState) {
+  if (!Array.isArray(timelineEndState) || timelineEndState.length === 0) {
+    return null;
+  }
+
+  const snapshotByBoardCellIndex = new Map();
+
+  for (const unit of timelineEndState) {
+    const x = Number(unit?.x);
+    const y = Number(unit?.y);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) {
+      continue;
+    }
+
+    const boardCellIndex = y * RESULT_IMPRINT_BOARD_WIDTH + x;
+    if (boardCellIndex < 0 || boardCellIndex >= RESULT_IMPRINT_BOARD_WIDTH * RESULT_IMPRINT_BOARD_HEIGHT) {
+      continue;
+    }
+
+    snapshotByBoardCellIndex.set(boardCellIndex, {
+      hp: Math.max(0, Math.round(Number(unit?.currentHp) || 0)),
+      maxHp: Math.max(0, Math.round(Number(unit?.maxHp) || 0)),
+      displayName: typeof unit?.displayName === "string" && unit.displayName.length > 0
+        ? unit.displayName
+        : resolveBattleTimelineUnitLabel(unit?.battleUnitId),
+      unitType: typeof unit?.unitType === "string" && unit.unitType.length > 0
+        ? unit.unitType
+        : resolveBattleTimelineUnitLabel(unit?.battleUnitId),
+      side: unit?.side === "boss" ? "boss" : "raid",
+    });
+  }
+
+  if (snapshotByBoardCellIndex.size === 0) {
+    return null;
   }
 
   return {

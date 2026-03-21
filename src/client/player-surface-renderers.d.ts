@@ -100,6 +100,25 @@ export function renderPlayerResultSummary(input: {
       damageTaken?: number;
       survivors?: number;
       opponentSurvivors?: number;
+      timelineEndState?: Array<{
+        battleUnitId?: string;
+        side?: "boss" | "raid";
+        x?: number;
+        y?: number;
+        currentHp?: number;
+        maxHp?: number;
+        displayName?: string;
+        unitType?: string;
+      }> | Iterable<{
+        battleUnitId?: string;
+        side?: "boss" | "raid";
+        x?: number;
+        y?: number;
+        currentHp?: number;
+        maxHp?: number;
+        displayName?: string;
+        unitType?: string;
+      }>;
       timelineEvents?: Array<string | Record<string, unknown>> | Iterable<string | Record<string, unknown>>;
       survivorSnapshots?: Array<{
         unitId?: string;

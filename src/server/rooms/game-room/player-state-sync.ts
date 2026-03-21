@@ -1,5 +1,6 @@
 import {
   BattleResultSurvivorSchema,
+  BattleTimelineEndStateUnitSchema,
   PlayerPresenceState,
   ShopOfferState,
   ShopItemOfferState,
@@ -8,6 +9,7 @@ import {
 import type { BoardUnitType, ItemType } from "../../../shared/types";
 import type {
   BattleResultSurvivorSnapshot,
+  BattleTimelineEndStateUnit,
   ControllerPlayerStatus,
   CommandResultPayload,
 } from "../../types/player-state-types";
@@ -55,14 +57,162 @@ function syncBattleResultSurvivorSnapshots(
   }
 }
 
-function syncBattleTimelineEvents(
-  target: { timelineEvents: { length: number; pop: () => unknown; push: (value: string) => void } },
+function syncBattleTimelineEndState(
+  target: { timelineEndState: { length: number; pop: () => unknown; push: (value: BattleTimelineEndStateUnitSchema) => void } },
+  timelineEndState: BattleTimelineEndStateUnit[] | undefined,
   timeline: BattleTimelineEvent[] | undefined,
+  survivorSnapshots: BattleResultSurvivorSnapshot[] | undefined,
 ): void {
-  clearArraySchema(target.timelineEvents);
-  for (const event of timeline ?? []) {
-    target.timelineEvents.push(JSON.stringify(event));
+  clearArraySchema(target.timelineEndState);
+  const sourceUnits = normalizeBattleTimelineEndState(timelineEndState, timeline, survivorSnapshots);
+  for (const unit of sourceUnits) {
+    const nextUnit = new BattleTimelineEndStateUnitSchema();
+    nextUnit.battleUnitId = unit.battleUnitId;
+    nextUnit.side = unit.side;
+    nextUnit.x = unit.x;
+    nextUnit.y = unit.y;
+    nextUnit.currentHp = unit.currentHp;
+    nextUnit.maxHp = unit.maxHp;
+    nextUnit.displayName = unit.displayName ?? "";
+    nextUnit.unitType = unit.unitType ?? "";
+    target.timelineEndState.push(nextUnit);
   }
+}
+
+function normalizeBattleTimelineEndState(
+  timelineEndState: BattleTimelineEndStateUnit[] | undefined,
+  timeline: BattleTimelineEvent[] | undefined,
+  survivorSnapshots: BattleResultSurvivorSnapshot[] | undefined,
+): BattleTimelineEndStateUnit[] {
+  if (Array.isArray(timelineEndState) && timelineEndState.length > 0) {
+    return timelineEndState
+      .filter((unit): unit is BattleTimelineEndStateUnit => typeof unit?.battleUnitId === "string" && unit.battleUnitId.length > 0)
+      .map((unit) => ({
+        battleUnitId: unit.battleUnitId,
+        side: unit.side === "boss" ? "boss" : "raid",
+        x: Number.isInteger(unit.x) ? unit.x : 0,
+        y: Number.isInteger(unit.y) ? unit.y : 0,
+        currentHp: Math.max(0, Math.round(Number(unit.currentHp) || 0)),
+        maxHp: Math.max(0, Math.round(Number(unit.maxHp) || 0)),
+        displayName: unit.displayName ?? "",
+        unitType: unit.unitType ?? "",
+      }));
+  }
+
+  return deriveBattleTimelineEndState(timeline, survivorSnapshots);
+}
+
+function deriveBattleTimelineEndState(
+  timeline: BattleTimelineEvent[] | undefined,
+  survivorSnapshots: BattleResultSurvivorSnapshot[] | undefined,
+): BattleTimelineEndStateUnit[] {
+  if (!Array.isArray(timeline) || timeline.length === 0) {
+    return [];
+  }
+
+  const battleStartEvent = timeline.find((event) => event?.type === "battleStart");
+  if (!battleStartEvent) {
+    return [];
+  }
+
+  const unitsById = new Map<string, {
+    battleUnitId: string;
+    side: "boss" | "raid";
+    x: number;
+    y: number;
+    currentHp: number;
+    maxHp: number;
+    alive: boolean;
+  }>();
+  const survivorsByUnitId = new Map((survivorSnapshots ?? []).map((snapshot) => [snapshot.unitId, snapshot]));
+
+  for (const unit of battleStartEvent.units ?? []) {
+    if (typeof unit?.battleUnitId !== "string" || unit.battleUnitId.length === 0) {
+      continue;
+    }
+
+    unitsById.set(unit.battleUnitId, {
+      battleUnitId: unit.battleUnitId,
+      side: unit.side === "boss" ? "boss" : "raid",
+      x: Number.isInteger(unit.x) ? unit.x : 0,
+      y: Number.isInteger(unit.y) ? unit.y : 0,
+      currentHp: Math.max(0, Math.round(Number(unit.currentHp) || 0)),
+      maxHp: Math.max(0, Math.round(Number(unit.maxHp) || 0)),
+      alive: true,
+    });
+  }
+
+  for (const event of timeline) {
+    if (!event || event.type === "battleStart" || event.type === "battleEnd" || event.type === "attackStart") {
+      continue;
+    }
+
+    if (event.type === "move") {
+      const unit = unitsById.get(event.battleUnitId);
+      if (!unit) {
+        continue;
+      }
+
+      unit.x = Number.isInteger(event.to?.x) ? event.to.x : unit.x;
+      unit.y = Number.isInteger(event.to?.y) ? event.to.y : unit.y;
+      continue;
+    }
+
+    if (event.type === "damageApplied") {
+      const unit = unitsById.get(event.targetBattleUnitId);
+      if (!unit) {
+        continue;
+      }
+
+      unit.currentHp = Math.max(0, Math.round(Number(event.remainingHp) || 0));
+      if (unit.currentHp <= 0) {
+        unit.alive = false;
+      }
+      continue;
+    }
+
+    if (event.type === "unitDeath") {
+      const unit = unitsById.get(event.battleUnitId);
+      if (!unit) {
+        continue;
+      }
+
+      unit.alive = false;
+      unit.currentHp = 0;
+      continue;
+    }
+
+    if (event.type === "keyframe") {
+      for (const keyframeUnit of event.units ?? []) {
+        const unit = unitsById.get(keyframeUnit?.battleUnitId);
+        if (!unit) {
+          continue;
+        }
+
+        unit.x = Number.isInteger(keyframeUnit.x) ? keyframeUnit.x : unit.x;
+        unit.y = Number.isInteger(keyframeUnit.y) ? keyframeUnit.y : unit.y;
+        unit.currentHp = Math.max(0, Math.round(Number(keyframeUnit.currentHp) || 0));
+        unit.maxHp = Math.max(unit.currentHp, Math.round(Number(keyframeUnit.maxHp) || 0));
+        unit.alive = keyframeUnit.alive === true;
+      }
+    }
+  }
+
+  return [...unitsById.values()]
+    .filter((unit) => unit.alive === true)
+    .map((unit) => {
+      const survivorSnapshot = survivorsByUnitId.get(unit.battleUnitId);
+      return {
+        battleUnitId: unit.battleUnitId,
+        side: unit.side,
+        x: unit.x,
+        y: unit.y,
+        currentHp: survivorSnapshot?.hp ?? unit.currentHp,
+        maxHp: survivorSnapshot?.maxHp ?? unit.maxHp,
+        displayName: survivorSnapshot?.displayName ?? "",
+        unitType: survivorSnapshot?.unitType ?? "",
+      };
+    });
 }
 
 /**
@@ -181,9 +331,11 @@ export function syncPlayerStateFromController(
       playerState.lastBattleResult,
       controllerStatus.lastBattleResult.survivorSnapshots,
     );
-    syncBattleTimelineEvents(
+    syncBattleTimelineEndState(
       playerState.lastBattleResult,
+      controllerStatus.lastBattleResult.timelineEndState,
       controllerStatus.lastBattleResult.timeline,
+      controllerStatus.lastBattleResult.survivorSnapshots,
     );
   } else {
     playerState.lastBattleResult.opponentId = "";
@@ -193,7 +345,7 @@ export function syncPlayerStateFromController(
     playerState.lastBattleResult.survivors = 0;
     playerState.lastBattleResult.opponentSurvivors = 0;
     syncBattleResultSurvivorSnapshots(playerState.lastBattleResult, []);
-    syncBattleTimelineEvents(playerState.lastBattleResult, []);
+    syncBattleTimelineEndState(playerState.lastBattleResult, [], [], []);
   }
 
   // Active synergies - clear and repopulate
@@ -322,9 +474,11 @@ export function syncPlayerStateFromCommandResult(
       playerState.lastBattleResult,
       cmdResult.lastBattleResult.survivorSnapshots,
     );
-    syncBattleTimelineEvents(
+    syncBattleTimelineEndState(
       playerState.lastBattleResult,
+      cmdResult.lastBattleResult.timelineEndState,
       cmdResult.lastBattleResult.timeline,
+      cmdResult.lastBattleResult.survivorSnapshots,
     );
   } else {
     playerState.lastBattleResult.opponentId = "";
@@ -334,7 +488,7 @@ export function syncPlayerStateFromCommandResult(
     playerState.lastBattleResult.survivors = 0;
     playerState.lastBattleResult.opponentSurvivors = 0;
     syncBattleResultSurvivorSnapshots(playerState.lastBattleResult, []);
-    syncBattleTimelineEvents(playerState.lastBattleResult, []);
+    syncBattleTimelineEndState(playerState.lastBattleResult, [], [], []);
   }
 
   // Active synergies - clear and repopulate

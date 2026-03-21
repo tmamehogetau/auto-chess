@@ -355,6 +355,46 @@ describe("player surface renderers", () => {
     expect(resultSurfaceElement.innerHTML).toContain("14 / 20");
   });
 
+  test("result summary prefers compact timeline end-state when present", () => {
+    const resultSurfaceElement = new FakeElement();
+
+    renderPlayerResultSummary({
+      resultSurfaceElement: resultSurfaceElement as unknown as HTMLElement,
+      state: {
+        phase: "Settle",
+        roundIndex: 3,
+        players: {},
+      },
+      player: {
+        lastBattleResult: {
+          won: true,
+          damageDealt: 21,
+          damageTaken: 6,
+          survivors: 1,
+          opponentSurvivors: 0,
+          timelineEndState: [
+            {
+              battleUnitId: "raid-vanguard-1",
+              side: "raid",
+              x: 1,
+              y: 4,
+              currentHp: 14,
+              maxHp: 20,
+              displayName: "前衛",
+              unitType: "vanguard",
+            },
+          ],
+        },
+      },
+      sessionId: "raid-1",
+    });
+
+    expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
+    expect(resultSurfaceElement.innerHTML).toContain('data-result-imprint-cell="25"');
+    expect(resultSurfaceElement.innerHTML).toContain("前衛");
+    expect(resultSurfaceElement.innerHTML).toContain("14 / 20");
+  });
+
   test("result summary reads iterable ranking and raid members for final judgment", () => {
     const resultSurfaceElement = new FakeElement();
 

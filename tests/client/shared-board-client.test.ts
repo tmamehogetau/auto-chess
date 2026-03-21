@@ -717,6 +717,160 @@ describe("shared-board client", () => {
     expect(targetTag?.textContent).toBe("Targeted");
   });
 
+  test("shared board keeps attack markers through same-tick damage and clears them on the next replay tick", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+
+    const room = {
+      sessionId: "raid-player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const handleStateChange = stateChangeHandler as (state: unknown) => void;
+    handleStateChange({
+      mode: "battle",
+      phase: "Battle",
+      battleId: "battle-raid-4",
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {},
+      cursors: {},
+      players: {
+        "raid-player-1": {
+          isSpectator: false,
+          color: "#4ECDC4",
+        },
+      },
+    });
+
+    const battleReplayHandler = messageHandlers.get("shared_battle_replay");
+    if (!battleReplayHandler) {
+      throw new Error("Expected shared battle replay handler to be registered");
+    }
+
+    battleReplayHandler({
+      battleId: "battle-raid-4",
+      phase: "Battle",
+      timeline: [
+        {
+          type: "battleStart",
+          battleId: "battle-raid-4",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-4",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+            {
+              battleUnitId: "boss-ranger-4",
+              side: "boss",
+              x: 5,
+              y: 0,
+              currentHp: 30,
+              maxHp: 30,
+            },
+          ],
+        },
+        {
+          type: "attackStart",
+          battleId: "battle-raid-4",
+          atMs: 100,
+          sourceBattleUnitId: "raid-vanguard-4",
+          targetBattleUnitId: "boss-ranger-4",
+        },
+        {
+          type: "damageApplied",
+          battleId: "battle-raid-4",
+          atMs: 100,
+          sourceBattleUnitId: "raid-vanguard-4",
+          targetBattleUnitId: "boss-ranger-4",
+          amount: 12,
+          remainingHp: 18,
+        },
+        {
+          type: "move",
+          battleId: "battle-raid-4",
+          atMs: 200,
+          battleUnitId: "raid-vanguard-4",
+          to: { x: 1, y: 3 },
+        },
+      ],
+    });
+
+    vi.advanceTimersByTime(110);
+
+    const attackerAtImpact = findDescendantByClass(
+      gridElement.children[18],
+      "shared-board-battle-unit",
+    );
+    const targetAtImpact = findDescendantByClass(
+      gridElement.children[5],
+      "shared-board-battle-unit",
+    );
+    const targetHpFillAtImpact = findDescendantByClass(
+      gridElement.children[5],
+      "shared-board-battle-hp-bar-fill",
+    );
+
+    expect(attackerAtImpact?.className).toContain("shared-board-battle-attacking");
+    expect(targetAtImpact?.className).toContain("shared-board-battle-targeted");
+    expect(targetHpFillAtImpact?.style.width).toBe("60%");
+
+    vi.advanceTimersByTime(110);
+
+    expect(findDescendantByClass(gridElement.children[18], "shared-board-battle-unit")).toBeNull();
+    const movedUnit = findDescendantByClass(
+      gridElement.children[19],
+      "shared-board-battle-unit",
+    );
+    expect(movedUnit?.className).not.toContain("shared-board-battle-attacking");
+    const oldTargetUnit = findDescendantByClass(
+      gridElement.children[5],
+      "shared-board-battle-unit",
+    );
+    expect(oldTargetUnit?.className).not.toContain("shared-board-battle-targeted");
+  });
+
   test("shared board marks center 4x2 as playable lane and dims the outer ring", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();

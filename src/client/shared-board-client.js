@@ -72,7 +72,7 @@ let sharedDraggedUnitId = null;
 /** @type {string|null} */
 let selectedSharedUnitId = null;
 
-/** @type {{ battleId: string, boardWidth: number, boardHeight: number, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null }> } | null} */
+/** @type {{ battleId: string, boardWidth: number, boardHeight: number, lastAttackMarkerAtMs: number | null, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null }> } | null} */
 let currentSharedBattleReplay = null;
 
 /** @type {ReturnType<typeof setTimeout>[]} */
@@ -1036,6 +1036,7 @@ function startSharedBattleReplay(message) {
     battleId: message.battleId,
     boardWidth: battleStartEvent.boardConfig?.width ?? 6,
     boardHeight: battleStartEvent.boardConfig?.height ?? 6,
+    lastAttackMarkerAtMs: null,
     units,
   };
 
@@ -1078,11 +1079,12 @@ function applySharedBattleReplayEvent(event) {
     if (targetUnit) {
       targetUnit.targetedByBattleUnitId = event.sourceBattleUnitId;
     }
+    currentSharedBattleReplay.lastAttackMarkerAtMs = Number.isInteger(event.atMs) ? event.atMs : null;
     return;
   }
 
   if (event.type === "move") {
-    clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleReplayAttackMarkers(event.atMs);
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
     if (!unit) {
       return;
@@ -1095,7 +1097,7 @@ function applySharedBattleReplayEvent(event) {
   }
 
   if (event.type === "damageApplied") {
-    clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleReplayAttackMarkers(event.atMs);
     const unit = currentSharedBattleReplay.units.get(event.targetBattleUnitId);
     if (!unit) {
       return;
@@ -1107,7 +1109,7 @@ function applySharedBattleReplayEvent(event) {
   }
 
   if (event.type === "unitDeath") {
-    clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleReplayAttackMarkers(event.atMs);
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
     if (!unit) {
       return;
@@ -1119,7 +1121,7 @@ function applySharedBattleReplayEvent(event) {
   }
 
   if (event.type === "keyframe") {
-    clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleReplayAttackMarkers(event.atMs);
     for (const keyframeUnit of event.units ?? []) {
       const existing = currentSharedBattleReplay.units.get(keyframeUnit.battleUnitId);
       if (!existing) {
@@ -1137,12 +1139,20 @@ function applySharedBattleReplayEvent(event) {
   }
 
   if (event.type === "battleEnd") {
-    clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleReplayAttackMarkers(event.atMs);
   }
 }
 
-function clearSharedBattleReplayAttackMarkers() {
+function clearSharedBattleReplayAttackMarkers(nextEventAtMs = null) {
   if (!currentSharedBattleReplay) {
+    return;
+  }
+
+  if (
+    currentSharedBattleReplay.lastAttackMarkerAtMs !== null &&
+    Number.isInteger(nextEventAtMs) &&
+    nextEventAtMs <= currentSharedBattleReplay.lastAttackMarkerAtMs
+  ) {
     return;
   }
 
@@ -1153,4 +1163,6 @@ function clearSharedBattleReplayAttackMarkers() {
       unit.state = "idle";
     }
   }
+
+  currentSharedBattleReplay.lastAttackMarkerAtMs = null;
 }

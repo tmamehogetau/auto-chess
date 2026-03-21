@@ -1,4 +1,8 @@
 import type { BoardUnitType } from "../../shared/room-messages";
+import {
+  sharedBoardIndexToCoordinate,
+  sharedBoardManhattanDistance,
+} from "../../shared/board-geometry";
 import type { BattleUnit } from "./battle-simulator";
 
 export interface SkillEffect {
@@ -28,6 +32,13 @@ function calculateUltimateDamage(caster: BattleUnit, baseDamage: number, target?
   }
 
   return Math.floor(damage);
+}
+
+function calculateSharedBoardDistance(leftCell: number, rightCell: number): number {
+  return sharedBoardManhattanDistance(
+    sharedBoardIndexToCoordinate(leftCell),
+    sharedBoardIndexToCoordinate(rightCell),
+  );
 }
 
 export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
@@ -198,7 +209,7 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
       const radius = 2;
       const affectedEnemies: BattleUnit[] = [];
       for (const enemy of livingEnemies) {
-        const distance = Math.abs(enemy.cell - centerCell);
+        const distance = calculateSharedBoardDistance(enemy.cell, centerCell);
         if (distance <= radius) {
           if (enemy.debuffImmunityCategories?.includes('crowd_control')) {
             continue;

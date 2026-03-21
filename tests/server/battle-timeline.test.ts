@@ -2,6 +2,11 @@ import { expect, test } from "vitest";
 
 import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
 import type { BoardUnitPlacement } from "../../src/shared/room-messages";
+import {
+  combatCellToBossBoardIndex,
+  combatCellToRaidBoardIndex,
+  sharedBoardIndexToCoordinate,
+} from "../../src/shared/board-geometry";
 import { BattleSimulator, createBattleUnit } from "../../src/server/combat/battle-simulator";
 import {
   createBattleStartEvent,
@@ -114,6 +119,53 @@ test("simulateBattle keeps full 6x6 shared-board coordinates in battleStart snap
       battleUnitId: "right-ranger-0",
       x: 0,
       y: 4,
+    }),
+  ]));
+});
+
+test("simulateBattle normalizes legacy combat cells into shared-board battleStart coordinates", () => {
+  const flags = { ...DEFAULT_FLAGS, enableBossExclusiveShop: true };
+  const simulator = new BattleSimulator();
+
+  const leftPlacements: BoardUnitPlacement[] = [{
+    cell: 0,
+    unitType: "vanguard",
+  }];
+  const rightPlacements: BoardUnitPlacement[] = [{
+    cell: 7,
+    unitType: "ranger",
+  }];
+
+  const leftUnits = [createBattleUnit(leftPlacements[0]!, "left", 0, false, flags)];
+  const rightUnits = [createBattleUnit(rightPlacements[0]!, "right", 0, false, flags)];
+
+  const result = simulator.simulateBattle(
+    leftUnits,
+    rightUnits,
+    leftPlacements,
+    rightPlacements,
+    3_000,
+    null,
+    null,
+    null,
+    flags,
+  );
+
+  const battleStart = result.timeline.find((event) => event.type === "battleStart");
+  const leftCoordinate = sharedBoardIndexToCoordinate(combatCellToRaidBoardIndex(0));
+  const rightCoordinate = sharedBoardIndexToCoordinate(combatCellToBossBoardIndex(7));
+
+  expect(battleStart?.type).toBe("battleStart");
+  expect(battleStart?.units).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      battleUnitId: "left-vanguard-0",
+      x: leftCoordinate.x,
+      y: leftCoordinate.y,
+    }),
+    expect.objectContaining({
+      battleUnitId: "right-ranger-0",
+      x: rightCoordinate.x,
+      y: rightCoordinate.y,
     }),
   ]));
 });

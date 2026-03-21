@@ -65,7 +65,7 @@ export interface BattleUnit {
   attackPower: number;
   attackSpeed: number; // 1秒あたりの攻撃回数（0.5 = 2秒に1回攻撃）
   attackRange: number; // 1 = 近接, 2+ = 遠距離
-  cell: number; // 0-7 のボード位置
+  cell: number; // shared-board index on the 6x6 battle field
   isDead: boolean;
   isBoss?: boolean; // ボスフラグ（ボス戦時のみ）
   attackCount: number; // スキルトリガー用の攻撃回数トラッキング
@@ -290,7 +290,7 @@ export function createBattleUnit(
     attackPower: finalAttack,
     attackSpeed: finalAttackSpeed,
     attackRange: finalRange,
-    cell,
+    cell: resolveBoardIndexForCell(cell, side),
     isDead: false,
     isBoss,
     attackCount: 0,
@@ -1013,20 +1013,17 @@ export class BattleSimulator {
             });
           }
         } else {
-          const isRaidBattle = leftUnits.some((unit) => unit.isBoss) || rightUnits.some((unit) => unit.isBoss);
-          if (flags.enableBossExclusiveShop && isRaidBattle) {
-            const previousCell = action.unit.cell;
-            moveUnitBySimpleApproach(action.unit, enemies, combatLog);
-            if (action.unit.cell !== previousCell) {
-              timeline.push(createMoveEvent({
-                type: "move",
-                battleId,
-                atMs: currentTime,
-                battleUnitId: action.unit.id,
-                from: resolveTimelineCoordinate({ ...action.unit, cell: previousCell }),
-                to: resolveTimelineCoordinate(action.unit),
-              }));
-            }
+          const previousCell = action.unit.cell;
+          moveUnitBySimpleApproach(action.unit, enemies, combatLog);
+          if (action.unit.cell !== previousCell) {
+            timeline.push(createMoveEvent({
+              type: "move",
+              battleId,
+              atMs: currentTime,
+              battleUnitId: action.unit.id,
+              from: resolveTimelineCoordinate({ ...action.unit, cell: previousCell }),
+              to: resolveTimelineCoordinate(action.unit),
+            }));
           }
 
           // 攻撃カウントを増加（ターゲットが見つからない場合も）

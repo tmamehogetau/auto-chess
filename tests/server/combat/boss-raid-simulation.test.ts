@@ -177,7 +177,7 @@ describe("Boss Raid Simulation", () => {
       ).toBe(true);
     });
 
-    test("simple approach movement does not run in non-raid battles even when boss shop flag is on", () => {
+    test("simple approach movement also runs in non-raid battles", () => {
       const leftUnits = [
         createBattleUnit(
           { cell: 0, unitType: "vanguard", starLevel: 1 },
@@ -211,7 +211,7 @@ describe("Boss Raid Simulation", () => {
 
       expect(
         battleResult.combatLog.some((entry) => entry.includes("moves")),
-      ).toBe(false);
+      ).toBe(true);
     });
   });
 

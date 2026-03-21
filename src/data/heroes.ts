@@ -1,4 +1,8 @@
 import type { BattleUnit } from "../server/combat/battle-simulator";
+import {
+  sharedBoardIndexToCoordinate,
+  sharedBoardManhattanDistance,
+} from "../shared/board-geometry";
 import type { BoardUnitType } from "../shared/types";
 
 export interface Hero {
@@ -98,7 +102,10 @@ export const HEROES: Hero[] = [
         // 周囲（同セル〜隣接）の味方に小防御バフ
         for (const ally of allies) {
           if (!ally.isDead && ally !== caster) {
-            const distance = Math.abs(ally.cell - caster.cell);
+            const distance = sharedBoardManhattanDistance(
+              sharedBoardIndexToCoordinate(ally.cell),
+              sharedBoardIndexToCoordinate(caster.cell),
+            );
             if (distance <= 1) {
               ally.buffModifiers.defenseMultiplier *= 1.15;
             }

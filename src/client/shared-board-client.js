@@ -72,7 +72,7 @@ let sharedDraggedUnitId = null;
 /** @type {string|null} */
 let selectedSharedUnitId = null;
 
-/** @type {{ battleId: string, boardWidth: number, boardHeight: number, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string }> } | null} */
+/** @type {{ battleId: string, boardWidth: number, boardHeight: number, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null }> } | null} */
 let currentSharedBattleReplay = null;
 
 /** @type {ReturnType<typeof setTimeout>[]} */
@@ -454,6 +454,12 @@ function renderSharedBoard(state) {
       if (isSharedBoardBattleMode(state) && Number.isFinite(Number(cell?.maxHp))) {
         unit.classList.add("shared-board-battle-unit");
         unit.classList.add(cell?.ownerId === "boss" ? "shared-board-battle-boss" : "shared-board-battle-raid");
+        if (cell?.battleState === "attacking") {
+          unit.classList.add("shared-board-battle-attacking");
+        }
+        if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
+          unit.classList.add("shared-board-battle-targeted");
+        }
 
         const hpCopy = document.createElement("span");
         hpCopy.className = "shared-board-battle-hp-copy";
@@ -470,6 +476,14 @@ function renderSharedBoard(state) {
 
         hpBar.appendChild(hpFill);
         unit.append(hpCopy, hpBar);
+
+        const battleStateTagCopy = resolveSharedBattleStateTagCopy(cell);
+        if (battleStateTagCopy) {
+          const stateTag = document.createElement("span");
+          stateTag.className = "shared-board-battle-state-tag";
+          stateTag.textContent = battleStateTagCopy;
+          unit.appendChild(stateTag);
+        }
       }
       cellElement.appendChild(unit);
     } else {
@@ -945,6 +959,7 @@ function resolveSharedBoardCellsForRender(state) {
       currentHp: unit.currentHp,
       maxHp: unit.maxHp,
       battleState: unit.state,
+      battleTargetedByBattleUnitId: unit.targetedByBattleUnitId,
     };
   }
 
@@ -977,6 +992,18 @@ function resolveSharedBattleHpPercent(cell) {
   return Math.max(0, Math.min(100, (currentHp / maxHp) * 100));
 }
 
+function resolveSharedBattleStateTagCopy(cell) {
+  if (cell?.battleState === "attacking") {
+    return "Attacking";
+  }
+
+  if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
+    return "Targeted";
+  }
+
+  return "";
+}
+
 function startSharedBattleReplay(message) {
   const timeline = Array.isArray(message?.timeline) ? message.timeline : [];
   const battleStartEvent = timeline.find((event) => event?.type === "battleStart");
@@ -1000,6 +1027,8 @@ function startSharedBattleReplay(message) {
       maxHp: unit.maxHp,
       alive: true,
       state: "idle",
+      attackTargetBattleUnitId: null,
+      targetedByBattleUnitId: null,
     });
   }
 
@@ -1036,7 +1065,24 @@ function applySharedBattleReplayEvent(event) {
     return;
   }
 
+  if (event.type === "attackStart") {
+    clearSharedBattleReplayAttackMarkers();
+
+    const sourceUnit = currentSharedBattleReplay.units.get(event.sourceBattleUnitId);
+    if (sourceUnit) {
+      sourceUnit.state = "attacking";
+      sourceUnit.attackTargetBattleUnitId = event.targetBattleUnitId;
+    }
+
+    const targetUnit = currentSharedBattleReplay.units.get(event.targetBattleUnitId);
+    if (targetUnit) {
+      targetUnit.targetedByBattleUnitId = event.sourceBattleUnitId;
+    }
+    return;
+  }
+
   if (event.type === "move") {
+    clearSharedBattleReplayAttackMarkers();
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
     if (!unit) {
       return;
@@ -1049,17 +1095,19 @@ function applySharedBattleReplayEvent(event) {
   }
 
   if (event.type === "damageApplied") {
+    clearSharedBattleReplayAttackMarkers();
     const unit = currentSharedBattleReplay.units.get(event.targetBattleUnitId);
     if (!unit) {
       return;
     }
 
     unit.currentHp = event.remainingHp;
-    unit.state = unit.currentHp > 0 ? "attacking" : "dead";
+    unit.state = unit.currentHp > 0 ? "idle" : "dead";
     return;
   }
 
   if (event.type === "unitDeath") {
+    clearSharedBattleReplayAttackMarkers();
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
     if (!unit) {
       return;
@@ -1071,6 +1119,7 @@ function applySharedBattleReplayEvent(event) {
   }
 
   if (event.type === "keyframe") {
+    clearSharedBattleReplayAttackMarkers();
     for (const keyframeUnit of event.units ?? []) {
       const existing = currentSharedBattleReplay.units.get(keyframeUnit.battleUnitId);
       if (!existing) {
@@ -1083,6 +1132,25 @@ function applySharedBattleReplayEvent(event) {
       existing.maxHp = keyframeUnit.maxHp;
       existing.alive = keyframeUnit.alive;
       existing.state = keyframeUnit.state;
+    }
+    return;
+  }
+
+  if (event.type === "battleEnd") {
+    clearSharedBattleReplayAttackMarkers();
+  }
+}
+
+function clearSharedBattleReplayAttackMarkers() {
+  if (!currentSharedBattleReplay) {
+    return;
+  }
+
+  for (const unit of currentSharedBattleReplay.units.values()) {
+    unit.attackTargetBattleUnitId = null;
+    unit.targetedByBattleUnitId = null;
+    if (unit.state === "attacking") {
+      unit.state = "idle";
     }
   }
 }

@@ -500,12 +500,20 @@ function renderSharedBoard(state) {
         hpBar.appendChild(hpFill);
         unit.append(hpCopy, hpBar);
 
-        if (Number.isFinite(cell?.battleAttackDirectionAngleDeg)) {
+        if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "melee") {
           const attackDirection = document.createElement("span");
           attackDirection.className = "shared-board-battle-attack-direction";
           attackDirection.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
           attackDirection.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
           unit.appendChild(attackDirection);
+        }
+
+        if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "ranged") {
+          const tracer = document.createElement("span");
+          tracer.className = "shared-board-battle-projectile-tracer";
+          tracer.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
+          tracer.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
+          unit.appendChild(tracer);
         }
 
         const battleStateTagCopy = resolveSharedBattleStateTagCopy(cell);
@@ -1006,6 +1014,7 @@ function resolveSharedBoardCellsForRender(state) {
       battleGhostHidden: sharedBattleMovementGhosts.has(unit.battleUnitId),
       battleAttackDirectionAngleDeg: attackDirection?.angleDeg ?? null,
       battleAttackDirectionLengthPx: attackDirection?.lengthPx ?? null,
+      battleAttackPresentation: attackDirection?.presentation ?? null,
       battleAttackLungeX: attackDirection?.lungeX ?? null,
       battleAttackLungeY: attackDirection?.lungeY ?? null,
     };
@@ -1015,9 +1024,13 @@ function resolveSharedBoardCellsForRender(state) {
 }
 
 function resolveBattleReplayLabel(battleUnitId) {
-  const tokens = typeof battleUnitId === "string" ? battleUnitId.split("-") : [];
-  const unitType = tokens.find((token) => ["vanguard", "ranger", "mage", "assassin"].includes(token));
+  const unitType = resolveBattleReplayArchetype(battleUnitId);
   return unitType ?? shortPlayerId(battleUnitId);
+}
+
+function resolveBattleReplayArchetype(battleUnitId) {
+  const tokens = typeof battleUnitId === "string" ? battleUnitId.split("-") : [];
+  return tokens.find((token) => ["vanguard", "ranger", "mage", "assassin"].includes(token)) ?? null;
 }
 
 function clearSharedBattleReplay() {
@@ -1091,11 +1104,16 @@ function resolveSharedBattleAttackDirection(unit) {
     return null;
   }
 
+  const archetype = resolveBattleReplayArchetype(unit.battleUnitId);
+  const isRanged = archetype === "ranger" || archetype === "mage";
+  const attackLengthPx = 14 + Math.max(Math.abs(deltaX), Math.abs(deltaY)) * 6;
+
   return {
+    presentation: isRanged ? "ranged" : "melee",
     angleDeg: Math.round((Math.atan2(deltaY, deltaX) * 180) / Math.PI),
-    lengthPx: Math.max(18, Math.min(30, 14 + Math.max(Math.abs(deltaX), Math.abs(deltaY)) * 6)),
-    lungeX: deltaX === 0 ? 0 : Math.sign(deltaX) * 10,
-    lungeY: deltaY === 0 ? 0 : Math.sign(deltaY) * 10,
+    lengthPx: Math.max(18, Math.min(isRanged ? 36 : 30, attackLengthPx)),
+    lungeX: isRanged ? null : (deltaX === 0 ? 0 : Math.sign(deltaX) * 10),
+    lungeY: isRanged ? null : (deltaY === 0 ? 0 : Math.sign(deltaY) * 10),
   };
 }
 

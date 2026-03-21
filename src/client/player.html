@@ -471,6 +471,31 @@
         transform: translateY(-50%);
       }
 
+      .shared-board-battle-projectile-tracer {
+        position: absolute;
+        left: 50%;
+        top: 20px;
+        width: var(--shared-board-attack-length, 18px);
+        height: 2px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(122, 214, 255, 0.15) 0%, rgba(122, 214, 255, 0.95) 100%);
+        box-shadow: 0 0 12px rgba(122, 214, 255, 0.3);
+        transform-origin: left center;
+        transform: rotate(var(--shared-board-attack-angle, 0deg));
+      }
+
+      .shared-board-battle-projectile-tracer::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: #9ee7ff;
+        transform: translateY(-50%);
+      }
+
       .shared-board-battle-overlay {
         position: absolute;
         inset: 0;

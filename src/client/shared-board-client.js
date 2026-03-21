@@ -78,6 +78,9 @@ let currentSharedBattleReplay = null;
 /** @type {ReturnType<typeof setTimeout>[]} */
 let sharedBattleReplayTimeoutIds = [];
 
+/** @type {Map<string, { battleUnitId: string, side: string, displayName: string, currentHp: number, maxHp: number, fromX: number, fromY: number, toX: number, toY: number }>} */
+let sharedBattleMovementGhosts = new Map();
+
 /**
  * 共有ボードクライアント初期化
  * @param {SharedBoardDOMRefs} refs DOM参照
@@ -463,6 +466,9 @@ function renderSharedBoard(state) {
         if (cell?.battleState === "dead") {
           unit.classList.add("shared-board-battle-dead");
         }
+        if (cell?.battleGhostHidden === true) {
+          unit.classList.add("shared-board-battle-moving-anchor");
+        }
         if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
           unit.classList.add("shared-board-battle-targeted");
         }
@@ -508,6 +514,8 @@ function renderSharedBoard(state) {
     }
     domRefs.gridElement.appendChild(cellElement);
   }
+
+  renderSharedBattleMovementGhostOverlay(state);
 }
 
 /**
@@ -978,6 +986,7 @@ function resolveSharedBoardCellsForRender(state) {
       battleState: unit.state,
       battleTargetedByBattleUnitId: unit.targetedByBattleUnitId,
       battleImpactAmount: unit.impactAmount,
+      battleGhostHidden: sharedBattleMovementGhosts.has(unit.battleUnitId),
     };
   }
 
@@ -997,6 +1006,7 @@ function clearSharedBattleReplay() {
 
   sharedBattleReplayTimeoutIds = [];
   currentSharedBattleReplay = null;
+  sharedBattleMovementGhosts = new Map();
 }
 
 function resolveSharedBattleHpPercent(cell) {
@@ -1104,6 +1114,8 @@ function applySharedBattleReplayEvent(event) {
 
   if (event.type === "attackStart") {
     clearSharedBattleReplayAttackMarkers();
+    clearSharedBattleMovementGhost(event.sourceBattleUnitId);
+    clearSharedBattleMovementGhost(event.targetBattleUnitId);
 
     const sourceUnit = currentSharedBattleReplay.units.get(event.sourceBattleUnitId);
     if (sourceUnit) {
@@ -1122,12 +1134,28 @@ function applySharedBattleReplayEvent(event) {
   if (event.type === "move") {
     clearSharedBattleReplayAttackMarkers(event.atMs);
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
-    if (!unit) {
+    if (!unit || !event.to) {
       return;
     }
 
-    unit.x = event.to.x;
-    unit.y = event.to.y;
+    const fromX = Number.isInteger(event.from?.x) ? event.from.x : unit.x;
+    const fromY = Number.isInteger(event.from?.y) ? event.from.y : unit.y;
+    const toX = event.to.x;
+    const toY = event.to.y;
+
+    sharedBattleMovementGhosts.set(event.battleUnitId, {
+      battleUnitId: unit.battleUnitId,
+      side: unit.side,
+      displayName: resolveBattleReplayLabel(unit.battleUnitId),
+      currentHp: unit.currentHp,
+      maxHp: unit.maxHp,
+      fromX,
+      fromY,
+      toX,
+      toY,
+    });
+    unit.x = toX;
+    unit.y = toY;
     unit.state = "moving";
     scheduleSharedBattleMoveSettle(currentSharedBattleReplay.battleId, unit.battleUnitId, unit.x, unit.y);
     return;
@@ -1135,6 +1163,8 @@ function applySharedBattleReplayEvent(event) {
 
   if (event.type === "damageApplied") {
     clearSharedBattleReplayAttackMarkers(event.atMs);
+    clearSharedBattleMovementGhost(event.sourceBattleUnitId);
+    clearSharedBattleMovementGhost(event.targetBattleUnitId);
     const unit = currentSharedBattleReplay.units.get(event.targetBattleUnitId);
     if (!unit) {
       return;
@@ -1149,6 +1179,7 @@ function applySharedBattleReplayEvent(event) {
 
   if (event.type === "unitDeath") {
     clearSharedBattleReplayAttackMarkers(event.atMs);
+    clearSharedBattleMovementGhost(event.battleUnitId);
     const unit = currentSharedBattleReplay.units.get(event.battleUnitId);
     if (!unit) {
       return;
@@ -1162,6 +1193,7 @@ function applySharedBattleReplayEvent(event) {
 
   if (event.type === "keyframe") {
     clearSharedBattleReplayAttackMarkers(event.atMs);
+    clearSharedBattleMovementGhost();
     for (const keyframeUnit of event.units ?? []) {
       const existing = currentSharedBattleReplay.units.get(keyframeUnit.battleUnitId);
       if (!existing) {
@@ -1180,6 +1212,7 @@ function applySharedBattleReplayEvent(event) {
 
   if (event.type === "battleEnd") {
     clearSharedBattleReplayAttackMarkers(event.atMs);
+    clearSharedBattleMovementGhost();
   }
 }
 
@@ -1240,6 +1273,7 @@ function scheduleSharedBattleMoveSettle(battleId, battleUnitId, x, y) {
       return;
     }
 
+    clearSharedBattleMovementGhost(battleUnitId);
     unit.state = "idle";
     renderSharedBoardState(currentSharedBoardState);
   }, 220);
@@ -1263,4 +1297,85 @@ function scheduleSharedBattleDeathRemoval(battleId, battleUnitId) {
   }, 220);
 
   sharedBattleReplayTimeoutIds.push(timeoutId);
+}
+
+function clearSharedBattleMovementGhost(battleUnitId = null) {
+  if (typeof battleUnitId === "string") {
+    sharedBattleMovementGhosts.delete(battleUnitId);
+    return;
+  }
+
+  sharedBattleMovementGhosts.clear();
+}
+
+function renderSharedBattleMovementGhostOverlay(state) {
+  if (
+    !domRefs.gridElement
+    || !isSharedBoardBattleMode(state)
+    || sharedBattleMovementGhosts.size === 0
+  ) {
+    return;
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "shared-board-battle-overlay";
+  overlay.style.gridTemplateColumns = `repeat(${resolveSharedBattleBoardWidth(state)}, minmax(0, 1fr))`;
+
+  for (const ghost of sharedBattleMovementGhosts.values()) {
+    const ghostElement = document.createElement("div");
+    ghostElement.className = "shared-board-battle-ghost";
+    ghostElement.style.gridColumn = String(ghost.toX + 1);
+    ghostElement.style.gridRow = String(ghost.toY + 1);
+    ghostElement.style["--shared-board-ghost-from-x"] = resolveSharedBattleGhostOffset(ghost.fromX - ghost.toX);
+    ghostElement.style["--shared-board-ghost-from-y"] = resolveSharedBattleGhostOffset(ghost.fromY - ghost.toY);
+    ghostElement.appendChild(buildSharedBattleMovementGhostUnit(state, ghost));
+    overlay.appendChild(ghostElement);
+  }
+
+  domRefs.gridElement.appendChild(overlay);
+}
+
+function resolveSharedBattleBoardWidth(state) {
+  if (Number.isInteger(currentSharedBattleReplay?.boardWidth)) {
+    return currentSharedBattleReplay.boardWidth;
+  }
+
+  return Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+}
+
+function resolveSharedBattleGhostOffset(delta) {
+  return `calc(${delta} * (100% + var(--shared-board-gap, 8px)))`;
+}
+
+function buildSharedBattleMovementGhostUnit(state, ghost) {
+  const unit = document.createElement("div");
+  unit.className = "shared-board-unit shared-board-battle-unit shared-board-battle-moving shared-board-battle-ghost-unit";
+  unit.classList.add(ghost.side === "boss" ? "shared-board-battle-boss" : "shared-board-battle-raid");
+
+  const ownerDot = document.createElement("span");
+  ownerDot.className = "shared-board-owner";
+  ownerDot.style.backgroundColor = getSharedPlayerColor(state, ghost.side);
+
+  const unitIdLabel = document.createElement("span");
+  unitIdLabel.className = "shared-board-unit-id";
+  unitIdLabel.textContent = ghost.displayName;
+
+  const hpCopy = document.createElement("span");
+  hpCopy.className = "shared-board-battle-hp-copy";
+  hpCopy.textContent = `${ghost.currentHp} / ${ghost.maxHp}`;
+
+  const hpBar = document.createElement("div");
+  hpBar.className = "shared-board-battle-hp-bar";
+
+  const hpFill = document.createElement("div");
+  hpFill.className = "shared-board-battle-hp-bar-fill";
+  hpFill.style.width = `${resolveSharedBattleHpPercent(ghost)}%`;
+  hpBar.appendChild(hpFill);
+
+  const stateTag = document.createElement("span");
+  stateTag.className = "shared-board-battle-state-tag";
+  stateTag.textContent = "Moving";
+
+  unit.append(ownerDot, unitIdLabel, hpCopy, hpBar, stateTag);
+  return unit;
 }

@@ -468,11 +468,19 @@ describe("shared-board client", () => {
       gridElement.children[19],
       "shared-board-battle-state-tag",
     );
+    const movementGhost = findDescendantByClass(
+      gridElement as unknown as FakeElement,
+      "shared-board-battle-ghost",
+    );
 
     expect(gridElement.children[19]?.className).not.toContain("empty");
     expect(gridElement.children[18]?.className).toContain("empty");
     expect(movedUnit?.className).toContain("shared-board-battle-moving");
     expect(movingTag?.textContent).toBe("Moving");
+    expect(movementGhost?.style.gridColumn).toBe("2");
+    expect(movementGhost?.style.gridRow).toBe("4");
+    expect(movementGhost?.style["--shared-board-ghost-from-x"]).toBe("calc(-1 * (100% + var(--shared-board-gap, 8px)))");
+    expect(movementGhost?.style["--shared-board-ghost-from-y"]).toBe("calc(0 * (100% + var(--shared-board-gap, 8px)))");
 
     vi.advanceTimersByTime(240);
 
@@ -482,6 +490,7 @@ describe("shared-board client", () => {
     );
     expect(settledUnit?.className).not.toContain("shared-board-battle-moving");
     expect(findDescendantByClass(gridElement.children[19], "shared-board-battle-state-tag")).toBeNull();
+    expect(findDescendantByClass(gridElement as unknown as FakeElement, "shared-board-battle-ghost")).toBeNull();
   });
 
   test("shared board battle replay updates HP bars and removes dead units", async () => {

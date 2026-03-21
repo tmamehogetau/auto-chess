@@ -200,6 +200,101 @@ export interface PlayerMatchStatus {
   }[];
 }
 
+export type BattleTimelineSide = "boss" | "raid";
+
+export type BattleTimelineWinner = BattleTimelineSide | "draw";
+
+export interface BattleTimelineBoardConfig {
+  width: number;
+  height: number;
+}
+
+export interface BattleStartUnitSnapshot {
+  battleUnitId: string;
+  side: BattleTimelineSide;
+  x: number;
+  y: number;
+  currentHp: number;
+  maxHp: number;
+}
+
+export interface BattleKeyframeUnitState {
+  battleUnitId: string;
+  x: number;
+  y: number;
+  currentHp: number;
+  maxHp: number;
+  alive: boolean;
+  state: "idle" | "moving" | "attacking" | "dead";
+}
+
+export interface BattleStartEvent {
+  type: "battleStart";
+  battleId: string;
+  round: number;
+  boardConfig: BattleTimelineBoardConfig;
+  units: BattleStartUnitSnapshot[];
+}
+
+export interface MoveEvent {
+  type: "move";
+  battleId: string;
+  atMs: number;
+  battleUnitId: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}
+
+export interface AttackStartEvent {
+  type: "attackStart";
+  battleId: string;
+  atMs: number;
+  sourceBattleUnitId: string;
+  targetBattleUnitId: string;
+}
+
+export interface DamageAppliedEvent {
+  type: "damageApplied";
+  battleId: string;
+  atMs: number;
+  sourceBattleUnitId: string;
+  targetBattleUnitId: string;
+  amount: number;
+  remainingHp: number;
+}
+
+export interface UnitDeathEvent {
+  type: "unitDeath";
+  battleId: string;
+  atMs: number;
+  battleUnitId: string;
+}
+
+export interface KeyframeEvent {
+  type: "keyframe";
+  battleId: string;
+  atMs: number;
+  units: BattleKeyframeUnitState[];
+}
+
+export interface BattleEndEvent {
+  type: "battleEnd";
+  battleId: string;
+  atMs: number;
+  winner: BattleTimelineWinner;
+}
+
+export type BattleTimelineEvent =
+  | BattleStartEvent
+  | MoveEvent
+  | AttackStartEvent
+  | DamageAppliedEvent
+  | UnitDeathEvent
+  | KeyframeEvent
+  | BattleEndEvent;
+
+export type BattleTimelineEventType = BattleTimelineEvent["type"];
+
 /**
  * shadow_diffメッセージペイロード
  * SharedBoardとの差分検知結果を配信

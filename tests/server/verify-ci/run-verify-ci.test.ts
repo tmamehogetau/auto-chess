@@ -37,4 +37,24 @@ describe("run-verify-ci", () => {
     expect(packageJson.scripts?.["test:e2e:ci"]).toContain("test:e2e:ci:a");
     expect(packageJson.scripts?.["test:e2e:ci"]).toContain("test:e2e:ci:b");
   });
+
+  test("can resolve a filtered stage list from VERIFY_CI_STAGES", async () => {
+    const {
+      resolveRequestedStages,
+    } = await import("../../../scripts/run-verify-ci.mjs");
+
+    const stageNames = resolveRequestedStages("typecheck,e2e-a").map((stage: { name: string }) => stage.name);
+
+    expect(stageNames).toEqual(["typecheck", "e2e-a"]);
+  });
+
+  test("workflow fans out verify:ci with VERIFY_CI_STAGES", async () => {
+    const workflowPath = path.resolve(process.cwd(), ".github", "workflows", "ci.yml");
+    const workflow = await readFile(workflowPath, "utf8");
+
+    expect(workflow).toContain("VERIFY_CI_STAGES");
+    expect(workflow).toContain("npm run verify:ci");
+    expect(workflow).toContain("e2e-a");
+    expect(workflow).toContain("e2e-b");
+  });
 });

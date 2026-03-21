@@ -39,6 +39,29 @@ export function formatStageSummary(stageResults) {
   return lines.join("\n");
 }
 
+export function resolveRequestedStages(requestedStageNames, stages = DEFAULT_VERIFY_CI_STAGES) {
+  if (!requestedStageNames) {
+    return stages;
+  }
+
+  const requestedNames = requestedStageNames
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+
+  if (requestedNames.length === 0) {
+    return stages;
+  }
+
+  const stageMap = new Map(stages.map((stage) => [stage.name, stage]));
+  const unknownStage = requestedNames.find((name) => !stageMap.has(name));
+  if (unknownStage) {
+    throw new Error(`unknown verify:ci stage: ${unknownStage}`);
+  }
+
+  return requestedNames.map((name) => stageMap.get(name));
+}
+
 function quoteWindowsArg(arg) {
   if (!/[\s"]/u.test(arg)) {
     return arg;
@@ -105,7 +128,8 @@ export async function runVerifyCi(stages = DEFAULT_VERIFY_CI_STAGES, repoRoot = 
 }
 
 async function main() {
-  const result = await runVerifyCi();
+  const selectedStages = resolveRequestedStages(process.env.VERIFY_CI_STAGES);
+  const result = await runVerifyCi(selectedStages);
   console.log(formatStageSummary(result.stageResults));
 
   if (!result.ok) {

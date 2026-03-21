@@ -1,6 +1,7 @@
 import { HEROES } from "../data/heroes";
 import { getScarletMansionUnitById } from "../data/scarlet-mansion-units";
 import { getTouhouUnitById } from "../data/touhou-units";
+import { BOSS_CHARACTERS } from "../shared/boss-characters";
 import type { BoardUnitType } from "../shared/room-messages";
 import type { UnitId } from "../shared/types";
 
@@ -89,5 +90,23 @@ export function resolveSharedBoardHeroPresentation(
   return {
     displayName: hero.name,
     portraitKey: PORTRAIT_KEY_BY_UNIT_ID[heroId] ?? PORTRAIT_KEY_BY_UNIT_TYPE[hero.synergyBonusType],
+  };
+}
+
+export function resolveSharedBoardBossPresentation(
+  bossId: string | undefined,
+): SharedBoardUnitPresentation | null {
+  if (typeof bossId !== "string" || bossId.length === 0) {
+    return null;
+  }
+
+  const boss = BOSS_CHARACTERS.find((candidate) => candidate.id === bossId);
+  if (!boss) {
+    return null;
+  }
+
+  return {
+    displayName: boss.displayName,
+    portraitKey: boss.portraitKey,
   };
 }

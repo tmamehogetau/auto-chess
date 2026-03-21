@@ -1884,6 +1884,79 @@ describe("GameRoom integration", () => {
     }, 1_000);
   });
 
+  test("shared board boss move updates boss placement from its fixed top-row cell", async () => {
+    const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer, {
+      prepDurationMs: 4_000,
+      battleDurationMs: 4_000,
+      settleDurationMs: 1_000,
+      eliminationDurationMs: 1_000,
+      sharedBoardRoomId: sharedBoardRoom.roomId,
+    }, {
+      enableSharedBoardShadow: true,
+    });
+
+    const bossPlayerId = clients[1]!.sessionId;
+    const targetBossCell = sharedBoardCoordinateToIndex({ x: 4, y: 2 });
+    const roomInternals = serverRoom as unknown as {
+      controller?: {
+        getBossPlacementForPlayer: (playerId: string) => number | null;
+      };
+      sharedBoardBridge?: {
+        getState: () => string;
+        syncSharedBoardViewFromController?: (forcePrepSync?: boolean) => void;
+      };
+    };
+
+    await resolveBossRoleSelectionToPrep(serverRoom, clients, 1_000);
+
+    await waitForCondition(
+      () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
+      1_000,
+    );
+    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
+
+    await waitForCondition(
+      () => (roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) ?? -1) >= 0,
+      1_000,
+    );
+
+    const initialBossCell = roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId);
+    if (typeof initialBossCell !== "number") {
+      throw new Error("Expected boss placement to be available");
+    }
+
+    await waitForCondition(() => {
+      const cell = sharedBoardRoom.state.cells.get(String(initialBossCell));
+      return cell?.ownerId === bossPlayerId && cell.unitId === `boss:${bossPlayerId}`;
+    }, 1_000);
+
+    const sharedClient = await testServer.connectTo(sharedBoardRoom, {
+      gamePlayerId: bossPlayerId,
+    });
+
+    sharedClient.send("shared_place_unit", {
+      unitId: `boss:${bossPlayerId}`,
+      toCell: targetBossCell,
+    });
+
+    const placeResult = await sharedClient.waitForMessage("shared_action_result");
+    expect(placeResult).toEqual({
+      accepted: true,
+      action: "place_unit",
+    });
+
+    await waitForCondition(() => {
+      const targetCell = sharedBoardRoom.state.cells.get(String(targetBossCell));
+      const sourceCell = sharedBoardRoom.state.cells.get(String(initialBossCell));
+      return (
+        roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) === targetBossCell
+        && targetCell?.unitId === `boss:${bossPlayerId}`
+        && sourceCell?.unitId === ""
+      );
+    }, 1_000);
+  });
+
   test("boardToBenchCellで盤面ユニットをbenchへ戻すとstateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([

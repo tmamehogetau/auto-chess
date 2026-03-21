@@ -7,6 +7,7 @@ import {
   createBattleEndEvent,
   createBattleStartEvent,
 } from "../../src/server/combat/battle-timeline";
+import { encodeSharedBoardBattleCellIndex } from "../../src/shared/board-geometry";
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const controllerOptions = {
@@ -334,7 +335,7 @@ describe("MatchRoomController", () => {
           expect([firstCall?.leftPlacements.length, firstCall?.rightPlacements.length].sort()).toEqual([1, 3]);
           expect(firstCall?.leftPlacements.concat(firstCall.rightPlacements)).toEqual(
             expect.arrayContaining([
-              expect.objectContaining({ cell: 0, unitType: "vanguard" }),
+              expect.objectContaining({ cell: encodeSharedBoardBattleCellIndex(0), unitType: "vanguard" }),
               expect.objectContaining({ cell: 4, unitType: "ranger" }),
               expect.objectContaining({ cell: 5, unitType: "mage" }),
               expect.objectContaining({ cell: 6, unitType: "assassin" }),
@@ -2848,6 +2849,45 @@ describe("MatchRoomController", () => {
     });
 
     expect(result).toEqual({ accepted: false, code: "DUPLICATE_CELL" });
+  });
+
+  test("applyBossPlacementForPlayerは通常ユニット配置済みセルを拒否する", async () => {
+    await withFlags({
+      ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+      enableBossExclusiveShop: true,
+      enableHeroSystem: true,
+    }, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      expect(controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3", "p4"], {
+        bossPlayerId: "p2",
+        selectedHeroByPlayer: new Map([
+          ["p1", "reimu"],
+          ["p3", "marisa"],
+          ["p4", "okina"],
+        ]),
+        selectedBossByPlayer: new Map([
+          ["p2", "remilia"],
+        ]),
+      })).toBe(true);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+      };
+      internals.boardPlacementsByPlayer.set("p2", [
+        { cell: 2, unitType: "vanguard" },
+      ]);
+
+      expect(controller.applyBossPlacementForPlayer("p2", 2)).toEqual({
+        success: false,
+        code: "INVALID_CELL",
+        error: "Boss cell already occupied by board unit",
+      });
+    });
   });
 
   test("ゴースト対戦で敗北側にダメージが適用される", () => {

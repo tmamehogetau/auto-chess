@@ -116,6 +116,7 @@ import { resolveBattlePlacements, resolveSharedPoolCost } from "./unit-id-resolv
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
+  encodeSharedBoardBattleCellIndex,
 } from "../shared/board-geometry";
 import { DEFAULT_SHARED_BOARD_CONFIG, sharedBoardCoordinateToIndex } from "../shared/shared-board-config";
 
@@ -402,6 +403,7 @@ export class MatchRoomController {
   private readonly heroPlacementByPlayer: Map<string, number>;
 
   private readonly selectedBossByPlayer: Map<string, string>;
+  private readonly bossPlacementByPlayer: Map<string, number>;
 
   private readonly wantsBossByPlayer: Map<string, boolean>;
 
@@ -524,6 +526,7 @@ export class MatchRoomController {
     this.selectedHeroByPlayer = new Map<string, string>();
     this.heroPlacementByPlayer = new Map<string, number>();
     this.selectedBossByPlayer = new Map<string, string>();
+    this.bossPlacementByPlayer = new Map<string, number>();
     this.wantsBossByPlayer = new Map<string, boolean>();
     this.roleByPlayer = new Map<string, "unassigned" | "raid" | "boss">();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
@@ -617,6 +620,7 @@ export class MatchRoomController {
       this.selectedHeroByPlayer.set(playerId, "");
       this.heroPlacementByPlayer.set(playerId, -1);
       this.selectedBossByPlayer.set(playerId, "");
+      this.bossPlacementByPlayer.set(playerId, -1);
       this.wantsBossByPlayer.set(playerId, false);
       this.roleByPlayer.set(playerId, "unassigned");
     }
@@ -821,9 +825,20 @@ export class MatchRoomController {
     return this.selectedHeroByPlayer.get(playerId) ?? "";
   }
 
+  public getSelectedBoss(playerId: string): string {
+    this.ensureKnownPlayer(playerId);
+    return this.selectedBossByPlayer.get(playerId) ?? "";
+  }
+
   public getHeroPlacementForPlayer(playerId: string): number | null {
     this.ensureKnownPlayer(playerId);
     const placement = this.heroPlacementByPlayer.get(playerId) ?? -1;
+    return Number.isInteger(placement) && placement >= 0 ? placement : null;
+  }
+
+  public getBossPlacementForPlayer(playerId: string): number | null {
+    this.ensureKnownPlayer(playerId);
+    const placement = this.bossPlacementByPlayer.get(playerId) ?? -1;
     return Number.isInteger(placement) && placement >= 0 ? placement : null;
   }
 
@@ -851,7 +866,50 @@ export class MatchRoomController {
         return { success: false, code: "INVALID_CELL", error: "Hero must stay in raid deployment rows" };
       }
 
+      if (this.isBoardCellOccupiedByStandardPlacement(cellIndex)) {
+        return { success: false, code: "INVALID_CELL", error: "Hero cell already occupied by board unit" };
+      }
+
       this.heroPlacementByPlayer.set(playerId, cellIndex);
+      return { success: true, code: "SUCCESS" };
+    } catch (error) {
+      return {
+        success: false,
+        code: "ERROR",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  public applyBossPlacementForPlayer(
+    playerId: string,
+    cellIndex: number,
+  ): { success: boolean; code: string; error?: string } {
+    try {
+      this.ensureKnownPlayer(playerId);
+
+      if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
+        return { success: false, code: "PHASE_MISMATCH", error: "Not in Prep phase" };
+      }
+
+      if (!this.selectedBossByPlayer.get(playerId)) {
+        return { success: false, code: "INVALID_PAYLOAD", error: "Boss not selected" };
+      }
+
+      if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
+        return { success: false, code: "INVALID_CELL", error: "Boss cell out of range" };
+      }
+
+      const row = Math.floor(cellIndex / DEFAULT_SHARED_BOARD_CONFIG.width);
+      if (row >= Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+        return { success: false, code: "INVALID_CELL", error: "Boss must stay in boss deployment rows" };
+      }
+
+      if (this.isBoardCellOccupiedByStandardPlacement(cellIndex)) {
+        return { success: false, code: "INVALID_CELL", error: "Boss cell already occupied by board unit" };
+      }
+
+      this.bossPlacementByPlayer.set(playerId, cellIndex);
       return { success: true, code: "SUCCESS" };
     } catch (error) {
       return {
@@ -924,6 +982,7 @@ export class MatchRoomController {
       this.wantsBossByPlayer.set(playerId, isBossPlayer);
       this.roleByPlayer.set(playerId, isBossPlayer ? "boss" : "raid");
       this.selectedBossByPlayer.set(playerId, isBossPlayer ? bossId : "");
+      this.bossPlacementByPlayer.set(playerId, -1);
       this.selectedHeroByPlayer.set(
         playerId,
         isBossPlayer || !this.enableHeroSystem
@@ -940,6 +999,7 @@ export class MatchRoomController {
       this.wantsBossByPlayer.set(playerId, false);
       this.roleByPlayer.set(playerId, "unassigned");
       this.selectedBossByPlayer.set(playerId, "");
+      this.bossPlacementByPlayer.set(playerId, -1);
       this.selectedHeroByPlayer.set(playerId, "");
     }
 
@@ -1456,6 +1516,7 @@ export class MatchRoomController {
       },
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
       getRosterFlags: () => this.rosterFlags,
+      getReservedBoardCells: () => this.getReservedSpecialBoardCells(),
     };
   }
 
@@ -2077,6 +2138,7 @@ export class MatchRoomController {
     this.selectedHeroByPlayer.delete(playerId);
     this.heroPlacementByPlayer.delete(playerId);
     this.selectedBossByPlayer.delete(playerId);
+    this.bossPlacementByPlayer.delete(playerId);
     this.wantsBossByPlayer.delete(playerId);
     this.roleByPlayer.delete(playerId);
     this.battleResultsByPlayer.delete(playerId);
@@ -2115,6 +2177,7 @@ export class MatchRoomController {
 
     this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
     this.ensureInitialHeroPlacements(activePlayerIds);
+    this.ensureInitialBossPlacements(activePlayerIds);
 
     this.initializeShopsForPrep();
     this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
@@ -2275,7 +2338,10 @@ export class MatchRoomController {
     }
 
     const bossPlacements = (this.battleInputSnapshotByPlayer.get(bossPlayerId) ?? []).map(
-      (placement) => ({ ...placement }),
+      (placement) => ({
+        ...placement,
+        cell: encodeSharedBoardBattleCellIndex(placement.cell),
+      }),
     );
     const raidPlacements = raidPlayerIds.flatMap((playerId) =>
       (this.battleInputSnapshotByPlayer.get(playerId) ?? []).map((placement) => ({ ...placement })),
@@ -2659,7 +2725,11 @@ export class MatchRoomController {
       buildSpellModifiers: (playerIds) => this.buildSideSpellModifiers(playerIds),
       applySpellModifiers: (battleUnits, modifiers) =>
         this.battleResolutionService.applySpellModifiers(battleUnits, modifiers),
-      appendHeroBattleUnits: (playerIds, battleUnits) => this.appendHeroBattleUnits(playerIds, battleUnits),
+      appendHeroBattleUnits: (playerIds, battleUnits) => {
+        const heroIds = this.appendHeroBattleUnits(playerIds, battleUnits);
+        this.appendBossBattleUnits(playerIds, battleUnits);
+        return heroIds;
+      },
       buildHeroSynergyBonusTypes: (playerIds) => this.buildSideHeroSynergyBonusTypes(playerIds),
     });
 
@@ -2692,6 +2762,22 @@ export class MatchRoomController {
     }
 
     return heroIds;
+  }
+
+  private appendBossBattleUnits(playerIds: string[], battleUnits: BattleUnit[]): void {
+    for (const bossPlayerId of playerIds) {
+      const bossId = this.selectedBossByPlayer.get(bossPlayerId);
+      const bossBattleUnit = this.battleResolutionService.createBossBattleUnit(
+        bossId,
+        bossPlayerId,
+        this.getBossPlacementForPlayer(bossPlayerId) !== null
+          ? encodeSharedBoardBattleCellIndex(this.getBossPlacementForPlayer(bossPlayerId) ?? 0)
+          : undefined,
+      );
+      if (bossBattleUnit) {
+        battleUnits.push(bossBattleUnit);
+      }
+    }
   }
 
   private logBattleInputTrace(params: {
@@ -2812,6 +2898,56 @@ export class MatchRoomController {
         y: DEFAULT_SHARED_BOARD_CONFIG.height - 1,
       }));
     }
+  }
+
+  private ensureInitialBossPlacements(activePlayerIds: string[]): void {
+    const state = this.ensureStarted();
+    const bossPlayerId = state.bossPlayerId;
+
+    if (!bossPlayerId || !activePlayerIds.includes(bossPlayerId)) {
+      return;
+    }
+
+    const selectedBossId = this.selectedBossByPlayer.get(bossPlayerId) ?? "";
+    if (!selectedBossId) {
+      this.bossPlacementByPlayer.set(bossPlayerId, -1);
+      return;
+    }
+
+    const existingPlacement = this.bossPlacementByPlayer.get(bossPlayerId) ?? -1;
+    if (Number.isInteger(existingPlacement) && existingPlacement >= 0) {
+      return;
+    }
+
+    this.bossPlacementByPlayer.set(bossPlayerId, sharedBoardCoordinateToIndex({ x: 2, y: 0 }));
+  }
+
+  private getReservedSpecialBoardCells(): number[] {
+    const reserved = new Set<number>();
+
+    for (const placement of this.heroPlacementByPlayer.values()) {
+      if (Number.isInteger(placement) && placement >= 0) {
+        reserved.add(placement);
+      }
+    }
+
+    for (const placement of this.bossPlacementByPlayer.values()) {
+      if (Number.isInteger(placement) && placement >= 0) {
+        reserved.add(placement);
+      }
+    }
+
+    return Array.from(reserved);
+  }
+
+  private isBoardCellOccupiedByStandardPlacement(cellIndex: number): boolean {
+    for (const placements of this.boardPlacementsByPlayer.values()) {
+      if (placements.some((placement) => placement.cell === cellIndex)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private resolveUnitCount(playerId: string): number {

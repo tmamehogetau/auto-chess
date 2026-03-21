@@ -69,6 +69,8 @@ export interface SyncOperationRequest {
   placements: BoardUnitPlacement[];
   /** 主人公セル */
   heroCellIndex?: number | null;
+  /** ボスセル */
+  bossCellIndex?: number | null;
 }
 
 /**
@@ -389,6 +391,7 @@ export class SharedBoardBridge {
       // SharedBoardセルをBoardUnitPlacementに変換
       const placements = this.convertCellsToPlacements(cells);
       const heroCellIndex = this.extractHeroCellIndex(playerId, cells);
+      const bossCellIndex = this.extractBossCellIndex(playerId, cells);
 
       // 同期リクエスト作成
       const request: SyncOperationRequest = {
@@ -400,6 +403,7 @@ export class SharedBoardBridge {
         playerId,
         placements,
         ...(heroCellIndex !== undefined ? { heroCellIndex } : {}),
+        ...(bossCellIndex !== undefined ? { bossCellIndex } : {}),
       };
 
       // 配置を適用
@@ -482,7 +486,7 @@ export class SharedBoardBridge {
         continue;
       }
 
-      if (this.isHeroUnitId(cell.unitId)) {
+      if (this.isSpecialUnitId(cell.unitId)) {
         continue;
       }
 
@@ -510,6 +514,21 @@ export class SharedBoardBridge {
 
     for (const cell of cells) {
       if (cell.unitId === heroUnitId) {
+        return cell.index;
+      }
+    }
+
+    return undefined;
+  }
+
+  private extractBossCellIndex(
+    playerId: string,
+    cells: QueuedSharedBoardCellSnapshot[],
+  ): number | null | undefined {
+    const bossUnitId = `boss:${playerId}`;
+
+    for (const cell of cells) {
+      if (cell.unitId === bossUnitId) {
         return cell.index;
       }
     }
@@ -594,6 +613,14 @@ export class SharedBoardBridge {
     return unitId.startsWith("hero:");
   }
 
+  private isBossUnitId(unitId: string): boolean {
+    return unitId.startsWith("boss:");
+  }
+
+  private isSpecialUnitId(unitId: string): boolean {
+    return this.isHeroUnitId(unitId) || this.isBossUnitId(unitId);
+  }
+
   private syncSharedBoardViewFromController(forcePrepSync = false): void {
     if (this.state !== "READY" || !this.sharedBoardRoom) {
       return;
@@ -662,6 +689,14 @@ export class SharedBoardBridge {
         playerId,
         heroId,
         cellIndex: heroCellIndex,
+      });
+
+      const bossId = this.controller.getSelectedBoss?.(playerId) ?? "";
+      const bossCellIndex = this.controller.getBossPlacementForPlayer?.(playerId) ?? null;
+      this.sharedBoardRoom.applyBossPlacementFromGame({
+        playerId,
+        bossId,
+        cellIndex: bossCellIndex,
       });
     }
   }
@@ -857,6 +892,22 @@ export class SharedBoardBridge {
             code: heroResult.code === "PHASE_MISMATCH" ? "invalid_phase" : "forbidden",
             currentVersion: this.currentVersion,
             ...(heroResult.error !== undefined ? { error: heroResult.error } : {}),
+          };
+        }
+      }
+
+      if (request.bossCellIndex !== undefined && request.bossCellIndex !== null) {
+        const bossResult = this.controller.applyBossPlacementForPlayer(
+          request.playerId,
+          request.bossCellIndex,
+        );
+
+        if (!bossResult.success) {
+          return {
+            success: false,
+            code: bossResult.code === "PHASE_MISMATCH" ? "invalid_phase" : "forbidden",
+            currentVersion: this.currentVersion,
+            ...(bossResult.error !== undefined ? { error: bossResult.error } : {}),
           };
         }
       }

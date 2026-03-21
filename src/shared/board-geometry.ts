@@ -16,6 +16,7 @@ export const BOSS_BOARD_WIDTH = 6;
 export const BOSS_BOARD_HEIGHT = 6;
 export const SHARED_BOARD_WIDTH = DEFAULT_SHARED_BOARD_CONFIG.width;
 export const SHARED_BOARD_HEIGHT = DEFAULT_SHARED_BOARD_CONFIG.height;
+export const SHARED_BOARD_BATTLE_CELL_ENCODING_BASE = 100;
 
 const COMBAT_CELL_TO_CANONICAL_COORDINATE: readonly BoardCoordinate[] = [
   { x: 0, y: 0 },
@@ -94,6 +95,27 @@ export function sharedBoardManhattanDistance(
   right: BoardCoordinate,
 ): number {
   return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+
+export function encodeSharedBoardBattleCellIndex(sharedBoardIndex: number): number {
+  const coordinate = sharedBoardIndexToCoordinate(sharedBoardIndex);
+  return SHARED_BOARD_BATTLE_CELL_ENCODING_BASE + sharedBoardCoordinateToIndex(coordinate);
+}
+
+export function isEncodedSharedBoardBattleCellIndex(cellIndex: number): boolean {
+  return (
+    Number.isInteger(cellIndex)
+    && cellIndex >= SHARED_BOARD_BATTLE_CELL_ENCODING_BASE
+    && cellIndex < SHARED_BOARD_BATTLE_CELL_ENCODING_BASE + SHARED_BOARD_WIDTH * SHARED_BOARD_HEIGHT
+  );
+}
+
+export function decodeSharedBoardBattleCellIndex(cellIndex: number): number {
+  if (!isEncodedSharedBoardBattleCellIndex(cellIndex)) {
+    throw new Error("shared-board battle cell index is not encoded");
+  }
+
+  return cellIndex - SHARED_BOARD_BATTLE_CELL_ENCODING_BASE;
 }
 
 export function combatCellToCanonicalCoordinate(cellIndex: number): BoardCoordinate {

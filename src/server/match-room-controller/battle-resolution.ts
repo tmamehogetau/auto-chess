@@ -19,9 +19,10 @@ export interface SpellCombatModifiers {
   defenseMultiplier: number;
   attackSpeedMultiplier: number;
 }
-import type { SubUnitConfig } from "../../shared/types";
+import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import type { BoardUnitType } from "../../shared/room-messages";
 import { HEROES } from "../../data/heroes";
+import { BOSS_CHARACTERS } from "../../shared/boss-characters";
 import { buildLoserDamage } from "./damage-calculator";
 
 /**
@@ -485,6 +486,48 @@ export class BattleResolutionService {
       critDamageMultiplier: 1.5,
       physicalReduction: undefined,
       magicReduction: undefined,
+      buffModifiers: {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      },
+    };
+  }
+
+  createBossBattleUnit(
+    bossId: string | undefined,
+    playerId: string,
+    boardCellIndex?: number,
+  ): BattleUnit | null {
+    if (!bossId) return null;
+
+    const boss = BOSS_CHARACTERS.find((candidate) => candidate.id === bossId);
+    if (!boss) return null;
+
+    const resolvedBoardCellIndex = (
+      typeof boardCellIndex === "number" && Number.isInteger(boardCellIndex)
+    ) ? boardCellIndex : 2;
+    const bossStats = getMvpPhase1Boss();
+
+    return {
+      id: `boss-${playerId}`,
+      sourceUnitId: boss.id,
+      type: "vanguard" as BoardUnitType,
+      starLevel: 1,
+      hp: bossStats.hp,
+      maxHp: bossStats.hp,
+      attackPower: bossStats.attack,
+      attackSpeed: bossStats.attackSpeed,
+      attackRange: bossStats.range,
+      cell: resolvedBoardCellIndex,
+      isDead: false,
+      isBoss: true,
+      attackCount: 0,
+      defense: 0,
+      critRate: 0,
+      critDamageMultiplier: 1.5,
+      physicalReduction: bossStats.physicalReduction,
+      magicReduction: bossStats.magicReduction,
       buffModifiers: {
         attackMultiplier: 1,
         defenseMultiplier: 1,

@@ -221,6 +221,133 @@ describe("Hero System Integration Tests", () => {
       });
     });
 
+    it("raid role start auto-places the selected boss onto the fixed top-row cell", async () => {
+      await withFlags({
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      }, async () => {
+        const raidController = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          createdAtMs,
+          {
+            readyAutoStartMs: 0,
+            prepDurationMs: 45_000,
+            battleDurationMs: 40_000,
+            settleDurationMs: 5_000,
+            eliminationDurationMs: 2_000,
+          },
+        );
+
+        const started = raidController.startWithResolvedRoles(createdAtMs, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([
+            ["p2", "remilia"],
+          ]),
+        });
+
+        expect(started).toBe(true);
+        expect(raidController.getBossPlacementForPlayer("p2")).toBe(
+          sharedBoardCoordinateToIndex({ x: 2, y: 0 }),
+        );
+      });
+    });
+
+    it("shared battle replay starts the boss unit from its fixed shared-board placement", async () => {
+      await withFlags({
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      }, async () => {
+        const raidController = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          createdAtMs,
+          {
+            readyAutoStartMs: 0,
+            prepDurationMs: 45_000,
+            battleDurationMs: 40_000,
+            settleDurationMs: 5_000,
+            eliminationDurationMs: 2_000,
+          },
+        );
+
+        expect(raidController.startWithResolvedRoles(createdAtMs, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([
+            ["p2", "remilia"],
+          ]),
+        })).toBe(true);
+
+        expect(raidController.applyPrepPlacementForPlayer("p1", [{ cell: 4, unitType: "ranger" }])).toMatchObject({ success: true });
+        expect(raidController.applyPrepPlacementForPlayer("p2", [{ cell: 10, unitType: "vanguard" }])).toMatchObject({ success: true });
+
+        raidController.advanceByTime(createdAtMs + 45_001);
+        raidController.advanceByTime(createdAtMs + 85_002);
+
+        const replay = raidController.getSharedBattleReplay("Settle");
+        const battleStart = replay?.timeline.find((event) => event.type === "battleStart");
+
+        expect(battleStart?.type).toBe("battleStart");
+        expect(battleStart?.units).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            battleUnitId: "boss-p2",
+            x: 2,
+            y: 0,
+          }),
+        ]));
+      });
+    });
+
+    it("rejects normal board placements onto the reserved boss cell", async () => {
+      await withFlags({
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      }, async () => {
+        const raidController = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          createdAtMs,
+          {
+            readyAutoStartMs: 0,
+            prepDurationMs: 45_000,
+            battleDurationMs: 40_000,
+            settleDurationMs: 5_000,
+            eliminationDurationMs: 2_000,
+          },
+        );
+
+        expect(raidController.startWithResolvedRoles(createdAtMs, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([
+            ["p2", "remilia"],
+          ]),
+        })).toBe(true);
+
+        const result = raidController.submitPrepCommand("p2", 1, createdAtMs + 1_000, {
+          boardPlacements: [
+            { cell: sharedBoardCoordinateToIndex({ x: 2, y: 0 }), unitType: "vanguard" },
+          ],
+        });
+
+        expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      });
+    });
+
     it("shared battle replay keeps normal raid units on their 6x6 shared-board placements", async () => {
       await withFlags({
         ...FLAG_CONFIGURATIONS.ALL_DISABLED,

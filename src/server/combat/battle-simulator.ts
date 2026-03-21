@@ -12,6 +12,8 @@ import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import {
   combatCellToBossBoardIndex,
   combatCellToRaidBoardIndex,
+  decodeSharedBoardBattleCellIndex,
+  isEncodedSharedBoardBattleCellIndex,
   sharedBoardCoordinateToIndex,
   sharedBoardManhattanDistance,
   sharedBoardIndexToCoordinate,
@@ -144,6 +146,10 @@ function isLegacyCombatCell(cell: number): boolean {
 function resolveBoardIndexForCell(cell: number, side: "left" | "right"): number {
   if (!Number.isInteger(cell)) {
     throw new Error("battle board cell index must be an integer");
+  }
+
+  if (isEncodedSharedBoardBattleCellIndex(cell)) {
+    return decodeSharedBoardBattleCellIndex(cell);
   }
 
   if (isLegacyCombatCell(cell)) {

@@ -867,6 +867,19 @@ describe("PrepCommandValidator", () => {
 
       expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
     });
+
+    test("benchToBoardCell into reserved hero or boss cell returns INVALID_PAYLOAD", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue([{ unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 }]),
+        getReservedBoardCells: vi.fn().mockReturnValue([2]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        benchToBoardCell: { benchIndex: 0, cell: 2 },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
   });
 
   describe("boardPlacements Validation", () => {
@@ -917,6 +930,20 @@ describe("PrepCommandValidator", () => {
       }, deps);
 
       expect(result).toBeNull();
+    });
+
+    test("boardPlacements using reserved hero or boss cells returns INVALID_PAYLOAD", () => {
+      const deps = createDependencies({
+        getReservedBoardCells: vi.fn().mockReturnValue([2, 30]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardPlacements: [
+          { cell: 2, unitType: "vanguard" },
+        ],
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
   });
 });

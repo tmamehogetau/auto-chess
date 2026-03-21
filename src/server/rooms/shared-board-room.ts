@@ -20,6 +20,7 @@ import {
   sharedBoardIndexToCoordinate,
 } from "../../shared/shared-board-config";
 import {
+  resolveSharedBoardBossPresentation,
   resolveSharedBoardHeroPresentation,
   resolveSharedBoardUnitPresentation,
 } from "../shared-board-unit-presentation";
@@ -388,13 +389,14 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }
 
     const isHeroUnit = this.isHeroUnitId(payload.unitId);
+    const isBossUnit = this.isBossUnitId(payload.unitId);
 
     if (
       !this.isValidCellIndex(payload.toCell) ||
-      payload.toCell === this.state.dummyBossCell ||
-      !(isHeroUnit
+      !((isBossUnit && this.isBossPlacementCellIndex(payload.toCell))
+        || (isHeroUnit
         ? this.isHeroPlacementCellIndex(payload.toCell)
-        : this.isPlayablePlacementCellIndex(payload.toCell))
+        : this.isPlayablePlacementCellIndex(payload.toCell)))
     ) {
       this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
       return;
@@ -627,6 +629,15 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return row >= Math.floor(this.boardHeight / 2);
   }
 
+  private isBossPlacementCellIndex(cellIndex: number): boolean {
+    if (!this.isValidCellIndex(cellIndex)) {
+      return false;
+    }
+
+    const row = Math.floor(cellIndex / this.boardWidth);
+    return row < Math.floor(this.boardHeight / 2);
+  }
+
   private ownsUnit(playerId: string, unitId: string): boolean {
     const ownerId = this.resolveOwnerId(playerId);
 
@@ -700,8 +711,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     for (const cell of this.state.cells.values()) {
       if (
         cell.ownerId === playerId
-        && !this.isHeroUnitId(cell.unitId)
-        && cell.index !== this.state.dummyBossCell
+        && !this.isSpecialUnitId(cell.unitId)
         && !desiredIndexes.has(cell.index)
       ) {
         this.clearBoardCell(cell);
@@ -714,17 +724,17 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     for (const [cellIndex, placement] of desiredCells.entries()) {
       const targetCell = this.state.cells.get(String(cellIndex));
 
-      if (!targetCell || targetCell.index === this.state.dummyBossCell) {
+      if (!targetCell) {
         skipped += 1;
         continue;
       }
 
-      if (targetCell.ownerId !== "" && targetCell.ownerId !== playerId) {
+      if (!this.isDummyBossPlaceholder(targetCell) && targetCell.ownerId !== "" && targetCell.ownerId !== playerId) {
         skipped += 1;
         continue;
       }
 
-      if (this.isHeroUnitId(targetCell.unitId)) {
+      if (this.isSpecialUnitId(targetCell.unitId)) {
         skipped += 1;
         continue;
       }
@@ -773,9 +783,8 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     const targetCell = this.state.cells.get(String(input.cellIndex));
     if (
       !targetCell
-      || targetCell.index === this.state.dummyBossCell
-      || (targetCell.ownerId !== "" && targetCell.ownerId !== input.playerId)
-      || (!this.isHeroUnitId(targetCell.unitId) && targetCell.unitId !== "")
+      || (!this.isDummyBossPlaceholder(targetCell) && targetCell.ownerId !== "" && targetCell.ownerId !== input.playerId)
+      || (!this.isHeroUnitId(targetCell.unitId) && !this.isDummyBossPlaceholder(targetCell) && targetCell.unitId !== "")
     ) {
       return { applied: 0, skipped: 1 };
     }
@@ -789,6 +798,55 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     targetCell.lockUntilMs = 0;
 
     this.appendEvent(`hero sync ${input.playerId.slice(0, 8)} cell=${input.cellIndex}`);
+
+    return { applied: 1, skipped: 0 };
+  }
+
+  public applyBossPlacementFromGame(input: {
+    playerId: string;
+    bossId: string;
+    cellIndex: number | null;
+  }): { applied: number; skipped: number } {
+    if (this.state.mode !== "prep") {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    if (!input.playerId || !input.bossId) {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    const bossUnitId = this.buildBossUnitId(input.playerId);
+
+    for (const cell of this.state.cells.values()) {
+      if (cell.unitId === bossUnitId || this.isDummyBossPlaceholder(cell)) {
+        this.clearBoardCell(cell);
+      }
+    }
+
+    if (input.cellIndex === null) {
+      this.restoreDummyBossPlaceholder();
+      return { applied: 0, skipped: 0 };
+    }
+
+    const targetCell = this.state.cells.get(String(input.cellIndex));
+    if (
+      !targetCell
+      || (!this.isDummyBossPlaceholder(targetCell) && targetCell.ownerId !== "" && targetCell.ownerId !== input.playerId)
+      || (!this.isBossUnitId(targetCell.unitId) && !this.isDummyBossPlaceholder(targetCell) && targetCell.unitId !== "")
+    ) {
+      this.restoreDummyBossPlaceholder();
+      return { applied: 0, skipped: 1 };
+    }
+
+    const presentation = resolveSharedBoardBossPresentation(input.bossId);
+    targetCell.unitId = bossUnitId;
+    targetCell.ownerId = input.playerId;
+    targetCell.displayName = presentation?.displayName ?? input.bossId;
+    targetCell.portraitKey = presentation?.portraitKey ?? "";
+    targetCell.lockedBy = "";
+    targetCell.lockUntilMs = 0;
+
+    this.appendEvent(`boss sync ${input.playerId.slice(0, 8)} cell=${input.cellIndex}`);
 
     return { applied: 1, skipped: 0 };
   }
@@ -977,8 +1035,34 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return `hero:${playerId}`;
   }
 
+  private buildBossUnitId(playerId: string): string {
+    return `boss:${playerId}`;
+  }
+
   private isHeroUnitId(unitId: string): boolean {
     return unitId.startsWith("hero:");
+  }
+
+  private isBossUnitId(unitId: string): boolean {
+    return unitId.startsWith("boss:");
+  }
+
+  private isSpecialUnitId(unitId: string): boolean {
+    return this.isHeroUnitId(unitId) || this.isBossUnitId(unitId);
+  }
+
+  private isDummyBossPlaceholder(cell: SharedBoardCellState): boolean {
+    return cell.index === this.state.dummyBossCell && cell.unitId === "dummy-boss";
+  }
+
+  private restoreDummyBossPlaceholder(): void {
+    const bossCell = this.state.cells.get(String(this.state.dummyBossCell));
+    if (!bossCell || bossCell.unitId !== "") {
+      return;
+    }
+
+    bossCell.unitId = "dummy-boss";
+    bossCell.ownerId = "boss";
   }
 
   private appendEvent(message: string): void {

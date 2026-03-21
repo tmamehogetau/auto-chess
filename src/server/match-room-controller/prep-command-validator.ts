@@ -92,6 +92,7 @@ export interface ValidationDependencies {
   isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
   getRosterFlags: () => FeatureFlags;
+  getReservedBoardCells?: (playerId: string) => number[];
 }
 
 export interface ValidationContext {
@@ -441,6 +442,8 @@ function validatePreconditions(
   deps: ValidationDependencies,
   internalResult?: ValidationInternalResult,
 ): import("../../shared/room-messages").CommandResult | null {
+  const reservedBoardCells = new Set(deps.getReservedBoardCells?.(playerId) ?? []);
+
   // benchToBoardCell preconditions
   if (payload.benchToBoardCell !== undefined) {
     const benchUnits = deps.getBenchUnits(playerId);
@@ -459,7 +462,7 @@ function validatePreconditions(
       (placement) => placement.cell === payload.benchToBoardCell?.cell,
     );
 
-    if (duplicatedCell) {
+    if (duplicatedCell || reservedBoardCells.has(payload.benchToBoardCell.cell)) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
@@ -498,6 +501,16 @@ function validatePreconditions(
 
     if (benchUnits.length >= MAX_BENCH_SIZE) {
       return { accepted: false, code: "BENCH_FULL" };
+    }
+  }
+
+  if (payload.boardPlacements !== undefined) {
+    const conflictsWithReservedCell = payload.boardPlacements.some((placement) =>
+      reservedBoardCells.has(placement.cell),
+    );
+
+    if (conflictsWithReservedCell) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
 

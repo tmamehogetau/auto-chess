@@ -780,6 +780,10 @@ function isPlayableSharedBoardCell(state, cellIndex, activeUnitId = null) {
     return isRaidDeploymentCell(state, cellIndex);
   }
 
+  if (isBossSharedUnitId(activeUnitId)) {
+    return isBossDeploymentCell(state, cellIndex);
+  }
+
   return isActiveRaidCombatFootprintCell(state, cellIndex);
 }
 
@@ -830,8 +834,24 @@ function isRaidDeploymentCell(state, cellIndex) {
   return Math.floor(cellIndex / boardWidth) >= Math.floor(boardHeight / 2);
 }
 
+function isBossDeploymentCell(state, cellIndex) {
+  const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+  const boardHeight = Number.isInteger(state?.boardHeight) ? state.boardHeight : 6;
+  const maxIndex = boardWidth * boardHeight - 1;
+
+  if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex > maxIndex) {
+    return false;
+  }
+
+  return Math.floor(cellIndex / boardWidth) < Math.floor(boardHeight / 2);
+}
+
 function isHeroSharedUnitId(unitId) {
   return typeof unitId === "string" && unitId.startsWith("hero:");
+}
+
+function isBossSharedUnitId(unitId) {
+  return typeof unitId === "string" && unitId.startsWith("boss:");
 }
 
 function resolvePlayableLaneZone(state, cellIndex) {

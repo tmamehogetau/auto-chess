@@ -457,6 +457,9 @@ function renderSharedBoard(state) {
         if (cell?.battleState === "attacking") {
           unit.classList.add("shared-board-battle-attacking");
         }
+        if (cell?.battleState === "moving") {
+          unit.classList.add("shared-board-battle-moving");
+        }
         if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
           unit.classList.add("shared-board-battle-targeted");
         }
@@ -1005,6 +1008,10 @@ function resolveSharedBattleHpPercent(cell) {
 }
 
 function resolveSharedBattleStateTagCopy(cell) {
+  if (cell?.battleState === "moving") {
+    return "Moving";
+  }
+
   if (cell?.battleState === "attacking") {
     return "Attacking";
   }
@@ -1115,6 +1122,7 @@ function applySharedBattleReplayEvent(event) {
     unit.x = event.to.x;
     unit.y = event.to.y;
     unit.state = "moving";
+    scheduleSharedBattleMoveSettle(currentSharedBattleReplay.battleId, unit.battleUnitId, unit.x, unit.y);
     return;
   }
 
@@ -1205,6 +1213,28 @@ function scheduleSharedBattleImpactClear(battleId, battleUnitId) {
     unit.impactAmount = null;
     renderSharedBoardState(currentSharedBoardState);
   }, 320);
+
+  sharedBattleReplayTimeoutIds.push(timeoutId);
+}
+
+function scheduleSharedBattleMoveSettle(battleId, battleUnitId, x, y) {
+  const timeoutId = setTimeout(() => {
+    if (!currentSharedBattleReplay || currentSharedBattleReplay.battleId !== battleId) {
+      return;
+    }
+
+    const unit = currentSharedBattleReplay.units.get(battleUnitId);
+    if (!unit || unit.state !== "moving") {
+      return;
+    }
+
+    if (unit.x !== x || unit.y !== y) {
+      return;
+    }
+
+    unit.state = "idle";
+    renderSharedBoardState(currentSharedBoardState);
+  }, 220);
 
   sharedBattleReplayTimeoutIds.push(timeoutId);
 }

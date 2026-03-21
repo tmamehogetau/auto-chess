@@ -460,8 +460,28 @@ describe("shared-board client", () => {
 
     vi.advanceTimersByTime(130);
 
+    const movedUnit = findDescendantByClass(
+      gridElement.children[19],
+      "shared-board-battle-unit",
+    );
+    const movingTag = findDescendantByClass(
+      gridElement.children[19],
+      "shared-board-battle-state-tag",
+    );
+
     expect(gridElement.children[19]?.className).not.toContain("empty");
     expect(gridElement.children[18]?.className).toContain("empty");
+    expect(movedUnit?.className).toContain("shared-board-battle-moving");
+    expect(movingTag?.textContent).toBe("Moving");
+
+    vi.advanceTimersByTime(240);
+
+    const settledUnit = findDescendantByClass(
+      gridElement.children[19],
+      "shared-board-battle-unit",
+    );
+    expect(settledUnit?.className).not.toContain("shared-board-battle-moving");
+    expect(findDescendantByClass(gridElement.children[19], "shared-board-battle-state-tag")).toBeNull();
   });
 
   test("shared board battle replay updates HP bars and removes dead units", async () => {

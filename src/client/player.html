@@ -354,6 +354,7 @@
       .shared-board-battle-unit {
         width: 100%;
         gap: 3px;
+        position: relative;
       }
 
       .shared-board-battle-unit.shared-board-battle-boss {
@@ -436,6 +437,31 @@
         font-size: 10px;
         font-weight: 700;
         letter-spacing: 0.02em;
+      }
+
+      .shared-board-battle-attack-direction {
+        position: absolute;
+        left: 50%;
+        top: 18px;
+        width: var(--shared-board-attack-length, 18px);
+        height: 3px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(255, 209, 102, 0.22) 0%, rgba(255, 209, 102, 0.92) 100%);
+        box-shadow: 0 0 12px rgba(255, 209, 102, 0.22);
+        transform-origin: left center;
+        transform: rotate(var(--shared-board-attack-angle, 0deg));
+      }
+
+      .shared-board-battle-attack-direction::after {
+        content: "";
+        position: absolute;
+        right: -2px;
+        top: 50%;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #ffd166;
+        transform: translateY(-50%);
       }
 
       .shared-board-battle-overlay {

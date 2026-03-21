@@ -492,6 +492,14 @@ function renderSharedBoard(state) {
         hpBar.appendChild(hpFill);
         unit.append(hpCopy, hpBar);
 
+        if (Number.isFinite(cell?.battleAttackDirectionAngleDeg)) {
+          const attackDirection = document.createElement("span");
+          attackDirection.className = "shared-board-battle-attack-direction";
+          attackDirection.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
+          attackDirection.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
+          unit.appendChild(attackDirection);
+        }
+
         const battleStateTagCopy = resolveSharedBattleStateTagCopy(cell);
         if (battleStateTagCopy) {
           const stateTag = document.createElement("span");
@@ -975,6 +983,7 @@ function resolveSharedBoardCellsForRender(state) {
     }
 
     const cellIndex = unit.y * currentSharedBattleReplay.boardWidth + unit.x;
+    const attackDirection = resolveSharedBattleAttackDirection(unit);
     cells[String(cellIndex)] = {
       index: cellIndex,
       unitId: `battle:${unit.battleUnitId}`,
@@ -987,6 +996,8 @@ function resolveSharedBoardCellsForRender(state) {
       battleTargetedByBattleUnitId: unit.targetedByBattleUnitId,
       battleImpactAmount: unit.impactAmount,
       battleGhostHidden: sharedBattleMovementGhosts.has(unit.battleUnitId),
+      battleAttackDirectionAngleDeg: attackDirection?.angleDeg ?? null,
+      battleAttackDirectionLengthPx: attackDirection?.lengthPx ?? null,
     };
   }
 
@@ -1047,6 +1058,33 @@ function resolveSharedBattleImpactTagCopy(cell) {
   }
 
   return `-${Math.round(amount)}`;
+}
+
+function resolveSharedBattleAttackDirection(unit) {
+  if (
+    unit?.state !== "attacking"
+    || typeof unit?.attackTargetBattleUnitId !== "string"
+    || unit.attackTargetBattleUnitId.length === 0
+    || !currentSharedBattleReplay
+  ) {
+    return null;
+  }
+
+  const targetUnit = currentSharedBattleReplay.units.get(unit.attackTargetBattleUnitId);
+  if (!targetUnit || targetUnit.alive !== true) {
+    return null;
+  }
+
+  const deltaX = targetUnit.x - unit.x;
+  const deltaY = targetUnit.y - unit.y;
+  if (deltaX === 0 && deltaY === 0) {
+    return null;
+  }
+
+  return {
+    angleDeg: Math.round((Math.atan2(deltaY, deltaX) * 180) / Math.PI),
+    lengthPx: Math.max(18, Math.min(30, 14 + Math.max(Math.abs(deltaX), Math.abs(deltaY)) * 6)),
+  };
 }
 
 function startSharedBattleReplay(message) {

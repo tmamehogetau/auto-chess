@@ -2,7 +2,11 @@ import { describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { MatchLogger } from "../../src/server/match-logger";
-import type { BoardUnitPlacement } from "../../src/shared/room-messages";
+import type { BattleTimelineEvent, BoardUnitPlacement } from "../../src/shared/room-messages";
+import {
+  createBattleEndEvent,
+  createBattleStartEvent,
+} from "../../src/server/combat/battle-timeline";
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const controllerOptions = {
@@ -158,6 +162,68 @@ describe("MatchRoomController", () => {
         mage: 0,
         assassin: 0,
       },
+    });
+  });
+
+  test("shared board replay 用の battle timeline を専用 accessor で返す", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
+      opponentId: string;
+      won: boolean;
+      damageDealt: number;
+      damageTaken: number;
+      survivors: number;
+      opponentSurvivors: number;
+      timeline?: BattleTimelineEvent[];
+    }>;
+
+    battleResultsByPlayer.set("p1", {
+      opponentId: "p4",
+      won: true,
+      damageDealt: 12,
+      damageTaken: 4,
+      survivors: 1,
+      opponentSurvivors: 0,
+      timeline: [
+        createBattleStartEvent({
+          battleId: "battle-shared-1",
+          round: 1,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-1",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+          ],
+        }),
+        createBattleEndEvent({
+          type: "battleEnd",
+          battleId: "battle-shared-1",
+          atMs: 700,
+          winner: "raid",
+        }),
+      ],
+    });
+
+    expect(controller.getSharedBattleReplay("Battle")).toMatchObject({
+      type: "shared_battle_replay",
+      battleId: "battle-shared-1",
+      phase: "Battle",
     });
   });
 

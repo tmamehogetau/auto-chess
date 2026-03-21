@@ -4,7 +4,6 @@ import type { SharedBoardCellState } from "./schema/shared-board-state";
 import type { MatchRoomController } from "./match-room-controller";
 import { SharedBoardShadowObserver, type ShadowDiffResult } from "./shared-board-shadow-observer";
 import type {
-  BattleTimelineEvent,
   BoardUnitPlacement,
   SharedBattleReplayMessage,
   ShadowDiffMessage,
@@ -589,7 +588,7 @@ export class SharedBoardBridge {
     const phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
 
     if (phase === "Battle" || phase === "Settle") {
-      const replayMessage = this.buildSharedBattleReplayMessage(phase);
+      const replayMessage = this.controller.getSharedBattleReplay(phase);
 
       if (replayMessage) {
         if (replayMessage.battleId !== this.lastSharedBattleId) {
@@ -625,42 +624,6 @@ export class SharedBoardBridge {
 
     this.lastSharedBoardPhase = phase;
     this.lastSharedBattleId = null;
-  }
-
-  private buildSharedBattleReplayMessage(phase: "Battle" | "Settle"): SharedBattleReplayMessage | null {
-    const candidatePlayerIds = [
-      this.controller.getBossPlayerId?.() ?? null,
-      ...(this.controller.getRaidPlayerIds?.() ?? []),
-      ...(this.controller.getPlayerIds?.() ?? []),
-    ].filter((playerId): playerId is string => typeof playerId === "string" && playerId.length > 0);
-
-    for (const playerId of candidatePlayerIds) {
-      const playerStatus = this.controller.getPlayerStatus?.(playerId);
-      const timeline = playerStatus?.lastBattleResult?.timeline;
-      const battleId = this.resolveBattleIdFromTimeline(timeline);
-
-      if (!battleId || !timeline || timeline.length === 0) {
-        continue;
-      }
-
-      return {
-        type: "shared_battle_replay",
-        battleId,
-        phase,
-        timeline,
-      };
-    }
-
-    return null;
-  }
-
-  private resolveBattleIdFromTimeline(timeline: BattleTimelineEvent[] | undefined): string | null {
-    if (!Array.isArray(timeline) || timeline.length === 0) {
-      return null;
-    }
-
-    const firstEvent = timeline.find((event) => typeof event?.battleId === "string");
-    return firstEvent?.battleId ?? null;
   }
 
   private syncAllPrepPlacementsToSharedBoard(): void {

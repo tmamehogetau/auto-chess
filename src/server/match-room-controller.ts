@@ -45,6 +45,7 @@ import type {
   BoardUnitPlacement,
   BattleTimelineEvent,
   CommandResult,
+  SharedBattleReplayMessage,
   ShopItemOffer,
 } from "../shared/room-messages";
 import { MatchLogger } from "./match-logger";
@@ -1130,6 +1131,33 @@ export class MatchRoomController {
     return baseStatus;
   }
 
+  public getSharedBattleReplay(phase: "Battle" | "Settle"): SharedBattleReplayMessage | null {
+    const state = this.ensureStarted();
+    const candidatePlayerIds = [
+      state.bossPlayerId,
+      ...state.raidPlayerIds,
+      ...this.playerIds,
+    ].filter((playerId): playerId is string => typeof playerId === "string" && playerId.length > 0);
+
+    for (const playerId of candidatePlayerIds) {
+      const timeline = this.battleResultsByPlayer.get(playerId)?.timeline;
+      const battleId = this.resolveBattleIdFromTimeline(timeline);
+
+      if (!battleId || !timeline || timeline.length === 0) {
+        continue;
+      }
+
+      return {
+        type: "shared_battle_replay",
+        battleId,
+        phase,
+        timeline,
+      };
+    }
+
+    return null;
+  }
+
   public getPhaseProgress(): {
     targetHp: number;
     damageDealt: number;
@@ -1144,6 +1172,15 @@ export class MatchRoomController {
       result: this.phaseResult,
       completionRate: this.phaseCompletionRate,
     };
+  }
+
+  private resolveBattleIdFromTimeline(timeline: BattleTimelineEvent[] | undefined): string | null {
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      return null;
+    }
+
+    const firstEvent = timeline.find((event) => typeof event?.battleId === "string");
+    return firstEvent?.battleId ?? null;
   }
 
   public setPendingRoundDamage(damageByPlayer: RoundDamageByPlayer): void {

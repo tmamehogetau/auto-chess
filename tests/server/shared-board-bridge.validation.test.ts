@@ -22,6 +22,7 @@ type MockedController = {
   getBoardPlacementsForPlayer: ReturnType<typeof vi.fn>;
   getPlayerIds: ReturnType<typeof vi.fn>;
   getBossPlayerId: ReturnType<typeof vi.fn>;
+  getSharedBattleReplay: ReturnType<typeof vi.fn>;
   getPlayerStatus: ReturnType<typeof vi.fn>;
 };
 
@@ -79,6 +80,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       getBoardPlacementsForPlayer: vi.fn(() => []),
       getPlayerIds: vi.fn(() => ["player-a"]),
       getBossPlayerId: vi.fn(() => null),
+      getSharedBattleReplay: vi.fn(() => null),
       getPlayerStatus: vi.fn(() => ({})),
     };
 
@@ -172,39 +174,33 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       const setModeFromGame = vi.fn();
 
       controller.getGameState.mockReturnValue({ phase: "Battle", roundIndex: 3 });
-      controller.getBossPlayerId.mockReturnValue("boss-player");
-      controller.getPlayerStatus.mockImplementation((playerId: string) => {
-        if (playerId !== "boss-player") {
-          return {};
-        }
-
-        return {
-          lastBattleResult: {
-            timeline: [
-              createBattleStartEvent({
-                battleId: "battle-raid-1",
-                round: 3,
-                boardConfig: { width: 6, height: 6 },
-                units: [
-                  {
-                    battleUnitId: "raid-vanguard-1",
-                    side: "raid",
-                    x: 0,
-                    y: 3,
-                    currentHp: 40,
-                    maxHp: 40,
-                  },
-                ],
-              }),
-              createBattleEndEvent({
-                type: "battleEnd",
-                battleId: "battle-raid-1",
-                atMs: 600,
-                winner: "raid",
-              }),
+      controller.getSharedBattleReplay.mockReturnValue({
+        type: "shared_battle_replay",
+        battleId: "battle-raid-1",
+        phase: "Battle",
+        timeline: [
+          createBattleStartEvent({
+            battleId: "battle-raid-1",
+            round: 3,
+            boardConfig: { width: 6, height: 6 },
+            units: [
+              {
+                battleUnitId: "raid-vanguard-1",
+                side: "raid",
+                x: 0,
+                y: 3,
+                currentHp: 40,
+                maxHp: 40,
+              },
             ],
-          },
-        };
+          }),
+          createBattleEndEvent({
+            type: "battleEnd",
+            battleId: "battle-raid-1",
+            atMs: 600,
+            winner: "raid",
+          }),
+        ],
       });
 
       Reflect.set(bridge, "sharedBoardRoom", {
@@ -223,6 +219,8 @@ describe("SharedBoardBridge validation (T1-2)", () => {
 
       syncSharedBoardViewFromController.call(bridge);
 
+      expect(controller.getSharedBattleReplay).toHaveBeenCalledWith("Battle");
+      expect(controller.getPlayerStatus).not.toHaveBeenCalled();
       expect(applyBattleReplayFromGame).toHaveBeenCalledWith(
         expect.objectContaining({
           battleId: "battle-raid-1",

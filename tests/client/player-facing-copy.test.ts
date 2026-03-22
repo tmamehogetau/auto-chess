@@ -152,7 +152,7 @@ describe("player-facing copy", () => {
       bossPlayerId: "boss-1",
       raidPlayerIds: ["p1", "p2", "p3"],
       roundIndex: 1,
-    })).toBe("Round 2: read the result and fix one weak lane");
+    })).toBe("Round 2: read the result and fix one weak position");
   });
 
   test("battle result copy は defeat で次の改善につながる文を返す", () => {

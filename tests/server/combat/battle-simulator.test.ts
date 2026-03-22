@@ -897,6 +897,40 @@ describe("battle-simulator", () => {
       });
     });
 
+    test("6x6 shared-board cells では一度離れる遠回りでも有効な path を選ぶ", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const rerouteMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      expect(rerouteMove).toMatchObject({
+        type: "move",
+        from: { x: 1, y: 4 },
+        to: { x: 0, y: 4 },
+      });
+    });
+
     test("単一の対決で正しく戦闘が進行する", () => {
       const simulator = new BattleSimulator();
 

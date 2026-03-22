@@ -1631,7 +1631,7 @@ describe("shared-board client", () => {
     expect(gridElement.children[13]?.className).not.toContain("occupied-ally");
   });
 
-  test("shared board placement guide explains move state and highlights open and blocked lanes", async () => {
+  test("shared board placement guide explains move state and highlights open and blocked combat cells", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
     const placementGuideElement = new FakeElement();

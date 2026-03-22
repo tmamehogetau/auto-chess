@@ -225,7 +225,7 @@ export function renderPlayerResultSummary({
     : {
       title: "Battle result pending",
       subtitle: "戦闘結果の到着待ちです。",
-      hint: "結果が出たら、次に直す lane を 1 つ決めます。",
+      hint: "結果が出たら、次に直す weak position を 1 つ決めます。",
     };
   const caption = buildRoundSummaryCaption({ ranking, sessionId });
   const tip = buildRoundSummaryTip({ ranking, sessionId });

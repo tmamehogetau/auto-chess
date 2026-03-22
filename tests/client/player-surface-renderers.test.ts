@@ -223,7 +223,7 @@ describe("player surface renderers", () => {
     });
 
     expect(resultSurfaceElement.innerHTML).toContain("Boss held this phase");
-    expect(resultSurfaceElement.innerHTML).toContain("Round 3: read the result and fix one weak lane");
+    expect(resultSurfaceElement.innerHTML).toContain("Round 3: read the result and fix one weak position");
     expect(resultSurfaceElement.innerHTML).toContain("💀 DEFEAT");
     expect(resultSurfaceElement.innerHTML).toContain("trailed by 14 damage");
     expect(resultSurfaceElement.innerHTML).toContain("Surviving Units");

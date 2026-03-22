@@ -133,7 +133,7 @@ export async function connectSharedBoard(client) {
       if (message?.accepted === true && message.action === "place_unit") {
         selectedSharedUnitId = null;
         renderSharedBoardState(currentSharedBoardState);
-        deps.showMessage("Shared board move applied. Keep covering open lanes before you press Ready.", "success");
+        deps.showMessage("Shared board move applied. Keep covering open space before you press Ready.", "success");
       }
 
       if (message?.accepted === false) {

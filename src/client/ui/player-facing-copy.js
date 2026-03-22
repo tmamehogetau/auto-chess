@@ -228,7 +228,7 @@ export function buildFinalJudgmentCopy({
   }
 
   if (safePhase === "Settle") {
-    return `Round ${roundNumber}: read the result and fix one weak lane`;
+    return `Round ${roundNumber}: read the result and fix one weak position`;
   }
 
   return `Round ${roundNumber}: next judgment pending`;
@@ -248,7 +248,7 @@ export function buildBattleResultCopy({ isVictory, battleResult }) {
         ? "Perfect hold. Keep this formation and push the boss even faster next round."
         : damageDealt < damageTaken
           ? "You won, but the trade was rough. Add a sturdier front line before the next push."
-          : "You won the trade. Protect the weak lane and turn this lead into boss damage next round.",
+          : "You won the trade. Protect the weak spot and turn this lead into boss damage next round.",
       damageDealt,
       damageTaken,
     };
@@ -279,7 +279,7 @@ export function buildRoundSummaryCaption({ ranking, sessionId }) {
   const topEntry = ranking[0];
 
   if (topEntry?.playerId === sessionId) {
-    return "You led the damage this round. Cover weak lanes before the next fight.";
+    return "You led the damage this round. Help cover the weakest positions before the next fight.";
   }
 
   return `${shortPlayerId(topEntry?.playerId)} led the damage. Check whether your side needs more front line or focus fire.`;
@@ -287,20 +287,20 @@ export function buildRoundSummaryCaption({ ranking, sessionId }) {
 
 export function buildRoundSummaryTip({ ranking, sessionId }) {
   if (!Array.isArray(ranking) || ranking.length === 0) {
-    return "Watch the next fight and note which lane breaks first.";
+    return "Watch the next fight and note which position collapses first.";
   }
 
   const topEntry = ranking[0];
   const ownEntry = ranking.find((entry) => entry?.playerId === sessionId) ?? null;
 
   if (topEntry?.playerId === sessionId) {
-    return "You are carrying damage. Ask allies to cover open lanes and keep your carry safe.";
+    return "You are carrying damage. Ask allies to cover open space and keep your carry safe.";
   }
 
   if (ownEntry && Number.isFinite(ownEntry.damageDealt) && Number.isFinite(topEntry?.damageDealt)) {
     const damageGap = Math.max(0, topEntry.damageDealt - ownEntry.damageDealt);
     if (damageGap >= 10) {
-      return `You trailed by ${damageGap} damage. Try a stronger carry lane or cleaner focus fire next round.`;
+      return `You trailed by ${damageGap} damage. Try a stronger carry position or cleaner focus fire next round.`;
     }
   }
 

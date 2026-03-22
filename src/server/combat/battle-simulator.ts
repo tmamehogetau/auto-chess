@@ -222,7 +222,50 @@ function buildApproachCandidates(
     pushCandidate({ x: currentCoordinate.x - preferredHorizontal, y: currentCoordinate.y });
   }
 
+  pushCandidate({ x: currentCoordinate.x + 1, y: currentCoordinate.y });
+  pushCandidate({ x: currentCoordinate.x - 1, y: currentCoordinate.y });
+  pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + 1 });
+  pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y - 1 });
+
   return candidates;
+}
+
+function findShortestApproachStep(
+  currentCoordinate: { x: number; y: number },
+  targetCoordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+  attackRange: number,
+): { x: number; y: number } | null {
+  const queue: Array<{
+    coordinate: { x: number; y: number };
+    firstStep: { x: number; y: number } | null;
+  }> = [{ coordinate: currentCoordinate, firstStep: null }];
+  const visited = new Set<string>([coordinateKey(currentCoordinate)]);
+
+  while (queue.length > 0) {
+    const currentNode = queue.shift();
+    if (!currentNode) {
+      break;
+    }
+
+    const neighbors = buildApproachCandidates(currentNode.coordinate, targetCoordinate);
+    for (const neighbor of neighbors) {
+      const neighborKey = coordinateKey(neighbor);
+      if (visited.has(neighborKey) || occupiedCoordinates.has(neighborKey)) {
+        continue;
+      }
+
+      const firstStep = currentNode.firstStep ?? neighbor;
+      if (sharedBoardManhattanDistance(neighbor, targetCoordinate) <= attackRange) {
+        return firstStep;
+      }
+
+      visited.add(neighborKey);
+      queue.push({ coordinate: neighbor, firstStep });
+    }
+  }
+
+  return null;
 }
 
 function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
@@ -488,24 +531,15 @@ function moveUnitBySimpleApproach(
         coordinateKey(resolveCellCoordinate(candidate.cell, resolveBattleSide(candidate))),
       ),
   );
-
-  const approachCandidates = buildApproachCandidates(currentCoordinate, targetCoordinate).filter(
-    (candidate) => !occupiedCoordinates.has(coordinateKey(candidate)),
+  const nextCoordinate = findShortestApproachStep(
+    currentCoordinate,
+    targetCoordinate,
+    occupiedCoordinates,
+    unit.attackRange,
   );
-
-  if (approachCandidates.length === 0) {
+  if (!nextCoordinate) {
     return false;
   }
-
-  const nextCoordinate = approachCandidates.reduce((bestCandidate, candidate) => {
-    if (!bestCandidate) {
-      return candidate;
-    }
-
-    const bestDistance = sharedBoardManhattanDistance(bestCandidate, targetCoordinate);
-    const candidateDistance = sharedBoardManhattanDistance(candidate, targetCoordinate);
-    return candidateDistance < bestDistance ? candidate : bestCandidate;
-  }, approachCandidates[0] as { x: number; y: number });
 
   unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
 

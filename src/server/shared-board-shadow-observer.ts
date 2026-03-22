@@ -15,7 +15,7 @@ export interface ShadowDiffResult {
   mismatchCount: number;
   /** 不整合セル一覧（最大10件） */
   mismatchedCells: Array<{
-    combatCell: number;
+    sharedBoardCellIndex: number;
     gameUnitType: string | null;
     sharedUnitType: string | null;
   }>;
@@ -138,7 +138,7 @@ export class SharedBoardShadowObserver {
           const sharedIndex = this.resolveSharedBoardIndex(placement.cell);
           if (sharedIndex === null) {
             mismatches.push({
-              combatCell: placement.cell,
+              sharedBoardCellIndex: placement.cell,
               gameUnitType: placement.unitType,
               sharedUnitType: null,
             });
@@ -148,7 +148,7 @@ export class SharedBoardShadowObserver {
 
           if (!sharedCell) {
             mismatches.push({
-              combatCell: sharedIndex,
+              sharedBoardCellIndex: sharedIndex,
               gameUnitType: placement.unitType,
               sharedUnitType: null,
             });
@@ -162,7 +162,7 @@ export class SharedBoardShadowObserver {
 
           if (!hasMatchingUnit) {
             mismatches.push({
-              combatCell: sharedIndex,
+              sharedBoardCellIndex: sharedIndex,
               gameUnitType: placement.unitType,
               sharedUnitType: sharedCell.unitId ? "occupied_by_other" : null,
             });
@@ -181,7 +181,7 @@ export class SharedBoardShadowObserver {
 
           if (!hasGamePlacement) {
             mismatches.push({
-              combatCell: sharedIndex,
+              sharedBoardCellIndex: sharedIndex,
               gameUnitType: null,
               sharedUnitType: "exists_in_shared_only",
             });
@@ -241,7 +241,7 @@ export class SharedBoardShadowObserver {
         const sharedIndex = this.resolveSharedBoardIndex(placement.cell);
         if (sharedIndex === null) {
           mismatches.push({
-            combatCell: placement.cell,
+            sharedBoardCellIndex: placement.cell,
             gameUnitType: placement.unitType,
             sharedUnitType: null,
           });
@@ -255,7 +255,7 @@ export class SharedBoardShadowObserver {
 
         if (!hasMatchingUnit) {
           mismatches.push({
-            combatCell: placement.cell,
+            sharedBoardCellIndex: placement.cell,
             gameUnitType: placement.unitType,
             sharedUnitType: sharedCell?.unitId ? "occupied_by_other" : null,
           });
@@ -274,7 +274,7 @@ export class SharedBoardShadowObserver {
 
         if (!hasGamePlacement) {
           mismatches.push({
-            combatCell: sharedIndex,
+            sharedBoardCellIndex: sharedIndex,
             gameUnitType: null,
             sharedUnitType: "exists_in_shared_only",
           });

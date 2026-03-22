@@ -315,7 +315,7 @@ export interface ShadowDiffMessage {
   status: "ok" | "mismatch" | "degraded" | "unavailable";
   mismatchCount: number;
   mismatchedCells: Array<{
-    combatCell: number;
+    sharedBoardCellIndex: number;
     gameUnitType: string | null;
     sharedUnitType: string | null;
   }>;

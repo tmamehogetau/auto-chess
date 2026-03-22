@@ -125,7 +125,7 @@ describe("SharedBoardShadowObserver", () => {
     expect(result.mismatchCount).toBe(1);
     expect(result.mismatchedCells).toEqual([
       {
-        combatCell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }),
+        sharedBoardCellIndex: sharedBoardCoordinateToIndex({ x: 2, y: 3 }),
         gameUnitType: null,
         sharedUnitType: "exists_in_shared_only",
       },
@@ -184,12 +184,12 @@ describe("SharedBoardShadowObserver", () => {
     expect(result.mismatchCount).toBe(2);
     expect(result.mismatchedCells).toEqual([
       {
-        combatCell: 0,
+        sharedBoardCellIndex: 0,
         gameUnitType: "vanguard",
         sharedUnitType: null,
       },
       {
-        combatCell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }),
+        sharedBoardCellIndex: sharedBoardCoordinateToIndex({ x: 1, y: 3 }),
         gameUnitType: null,
         sharedUnitType: "exists_in_shared_only",
       },

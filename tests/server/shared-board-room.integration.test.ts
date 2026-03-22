@@ -52,18 +52,17 @@ const sendConcurrently = async (
 const seedSharedBoardUnit = (
   serverRoom: SharedBoardRoom,
   playerId: string,
-  combatCell: number,
+  cellIndex: number,
   unitType: "vanguard" | "ranger" | "mage" | "assassin" = "vanguard",
 ): { unitId: string; cellIndex: number } => {
-  const result = serverRoom.applyPlacementsFromGame(playerId, [{ cell: combatCell, unitType }]);
+  const result = serverRoom.applyPlacementsFromGame(playerId, [{ cell: cellIndex, unitType }]);
 
   expect(result).toEqual({ applied: 1, skipped: 0 });
 
-  const cellIndex = combatCellToRaidBoardIndex(combatCell);
   const targetCell = serverRoom.state.cells.get(String(cellIndex));
 
   if (!targetCell || targetCell.unitId === "") {
-    throw new Error(`Expected seeded unit for ${playerId} at combat cell ${combatCell}`);
+    throw new Error(`Expected seeded unit for ${playerId} at shared cell ${cellIndex}`);
   }
 
   return {
@@ -466,7 +465,11 @@ describe("SharedBoardRoom integration", () => {
       throw new Error("Expected first player to exist");
     }
 
-    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0).unitId;
+    const firstUnitId = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      combatCellToRaidBoardIndex(0),
+    ).unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, {
       unitId: firstUnitId,
@@ -517,8 +520,17 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined && secondPlayer !== undefined;
     }, 1_000);
 
-    const { cellIndex: firstCellIndex } = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0);
-    const { unitId: secondUnitId } = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger");
+    const { cellIndex: firstCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      combatCellToRaidBoardIndex(0),
+    );
+    const { unitId: secondUnitId } = seedSharedBoardUnit(
+      serverRoom,
+      secondClient.sessionId,
+      combatCellToRaidBoardIndex(1),
+      "ranger",
+    );
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -546,7 +558,7 @@ describe("SharedBoardRoom integration", () => {
       return player !== undefined;
     }, 1_000);
 
-    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, 0).unitId;
+    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, combatCellToRaidBoardIndex(0)).unitId;
 
     client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId,
@@ -588,7 +600,7 @@ describe("SharedBoardRoom integration", () => {
       return player !== undefined;
     }, 1_000);
 
-    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, 0).unitId;
+    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, combatCellToRaidBoardIndex(0)).unitId;
 
     client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId,
@@ -629,7 +641,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex]);
 
@@ -642,7 +654,7 @@ describe("SharedBoardRoom integration", () => {
       await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
     expect(placeResult).toEqual({ accepted: true, action: "place_unit" });
 
-    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, combatCellToRaidBoardIndex(1), "ranger").unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -683,7 +695,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex]);
 
@@ -694,7 +706,7 @@ describe("SharedBoardRoom integration", () => {
 
     await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
 
-    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, combatCellToRaidBoardIndex(1), "ranger").unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -771,7 +783,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstSourceCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const cellAIndex = findFirstEmptyCellIndex(serverRoom, [firstSourceCellIndex]);
     const cellBIndex = findFirstEmptyCellIndex(serverRoom, [firstSourceCellIndex, cellAIndex]);
@@ -784,7 +796,7 @@ describe("SharedBoardRoom integration", () => {
 
     await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
 
-    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, combatCellToRaidBoardIndex(1), "ranger").unitId;
 
     // P2がAへ即時配置でTARGET_LOCKED
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
@@ -873,12 +885,12 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const { unitId: secondUnitId, cellIndex: secondCellIndex } = seedSharedBoardUnit(
       serverRoom,
       secondClient.sessionId,
-      1,
+      combatCellToRaidBoardIndex(1),
       "ranger",
     );
     const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex, secondCellIndex]);
@@ -961,7 +973,7 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined;
     }, 1_000);
 
-    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0).unitId;
+    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, combatCellToRaidBoardIndex(0)).unitId;
 
     const firstResultPromise = firstClient.waitForMessage(
       SERVER_MESSAGE_TYPES.ACTION_RESULT,
@@ -1010,7 +1022,7 @@ describe("SharedBoardRoom integration", () => {
     const targetCellIndex = combatCellToRaidBoardIndex(0);
     const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
       {
-        cell: 0,
+        cell: targetCellIndex,
         unitType: "vanguard",
       },
     ]);
@@ -1033,7 +1045,7 @@ describe("SharedBoardRoom integration", () => {
     const targetCellIndex = combatCellToRaidBoardIndex(0);
     const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
       {
-        cell: 0,
+        cell: targetCellIndex,
         unitType: "assassin",
         unitId: "koishi",
       },
@@ -1063,7 +1075,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId, cellIndex: sourceCellIndex } = seedSharedBoardUnit(
       serverRoom,
       mappedGamePlayerId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const targetCellIndex = findFirstEmptyCellIndex(serverRoom, [sourceCellIndex]);
 

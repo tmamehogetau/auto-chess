@@ -1,11 +1,7 @@
 import type { BoardUnitPlacement } from "../shared/room-messages";
 import type { SharedBoardRoom } from "./rooms/shared-board-room";
 import type { MatchRoomController } from "./match-room-controller";
-import {
-  combatCellToRaidBoardIndex,
-  RAID_BOARD_WIDTH,
-  RAID_BOARD_HEIGHT,
-} from "../shared/board-geometry";
+import { RAID_BOARD_WIDTH, RAID_BOARD_HEIGHT } from "../shared/board-geometry";
 
 /**
  * SharedBoardとのshadow比較結果
@@ -33,6 +29,7 @@ export interface ShadowDiffResult {
  */
 export class SharedBoardShadowObserver {
   private static readonly HERO_UNIT_PREFIX = "hero:";
+  private static readonly BOSS_UNIT_PREFIX = "boss:";
 
   private readonly controller: MatchRoomController;
 
@@ -57,10 +54,6 @@ export class SharedBoardShadowObserver {
   private resolveSharedBoardIndex(cell: number): number | null {
     if (!Number.isInteger(cell)) {
       return null;
-    }
-
-    if (cell >= 0 && cell <= 7) {
-      return combatCellToRaidBoardIndex(cell);
     }
 
     if (cell >= 0 && cell < this.sharedCellCount) {
@@ -165,7 +158,7 @@ export class SharedBoardShadowObserver {
           // ユニット存在確認（ownerIdが一致するか）
           const hasMatchingUnit = sharedCell.unitId
             && sharedCell.ownerId === playerId
-            && !sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX);
+            && !this.isSpecialUnitId(sharedCell.unitId);
 
           if (!hasMatchingUnit) {
             mismatches.push({
@@ -180,7 +173,7 @@ export class SharedBoardShadowObserver {
         for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
           const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
-          if (!sharedCell?.unitId || sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)) continue;
+          if (!sharedCell?.unitId || this.isSpecialUnitId(sharedCell.unitId)) continue;
           if (sharedCell.ownerId !== playerId) continue;
 
           // game側に対応する配置があるか
@@ -258,7 +251,7 @@ export class SharedBoardShadowObserver {
 
         const hasMatchingUnit = sharedCell?.unitId
           && sharedCell.ownerId === playerId
-          && !sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX);
+          && !this.isSpecialUnitId(sharedCell.unitId);
 
         if (!hasMatchingUnit) {
           mismatches.push({
@@ -272,7 +265,7 @@ export class SharedBoardShadowObserver {
       for (let sharedIndex = 0; sharedIndex < this.sharedCellCount; sharedIndex++) {
         const sharedCell = this.sharedBoardRoom.state.cells.get(String(sharedIndex));
 
-        if (!sharedCell?.unitId || sharedCell.unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)) continue;
+        if (!sharedCell?.unitId || this.isSpecialUnitId(sharedCell.unitId)) continue;
         if (sharedCell.ownerId !== playerId) continue;
 
         const hasGamePlacement = gamePlacements.some(
@@ -312,5 +305,10 @@ export class SharedBoardShadowObserver {
       this.lastDiffResult = result;
       return result;
     }
+  }
+
+  private isSpecialUnitId(unitId: string): boolean {
+    return unitId.startsWith(SharedBoardShadowObserver.HERO_UNIT_PREFIX)
+      || unitId.startsWith(SharedBoardShadowObserver.BOSS_UNIT_PREFIX);
   }
 }

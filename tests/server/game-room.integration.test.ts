@@ -806,7 +806,7 @@ describe("GameRoom integration", () => {
         cmdSeq: 2,
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 4,
+          cell: targetRaidCell,
         },
       });
       expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
@@ -894,7 +894,7 @@ describe("GameRoom integration", () => {
         cmdSeq: 2,
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 1,
+          cell: targetBossCell,
         },
       });
       expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({

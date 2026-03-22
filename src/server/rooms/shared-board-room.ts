@@ -6,7 +6,6 @@ import {
   SharedBoardPlayerState,
   SharedBoardState,
 } from "../schema/shared-board-state";
-import { combatCellToRaidBoardIndex } from "../../shared/board-geometry";
 import type {
   BattleStartEvent,
   BattleTimelineEvent,
@@ -611,10 +610,6 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   private resolvePlacementCellIndex(cellIndex: number): number | null {
     if (!Number.isInteger(cellIndex)) {
       return null;
-    }
-
-    if (cellIndex >= 0 && cellIndex <= 7) {
-      return combatCellToRaidBoardIndex(cellIndex);
     }
 
     return this.isPlayablePlacementCellIndex(cellIndex) ? cellIndex : null;

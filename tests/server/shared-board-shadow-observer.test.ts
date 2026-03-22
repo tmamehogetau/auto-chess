@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SharedBoardShadowObserver } from "../../src/server/shared-board-shadow-observer";
-import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 import { sharedBoardCoordinateToIndex } from "../../src/shared/shared-board-config";
 
 function createControllerMock() {
-  const sharedCellIndex = combatCellToRaidBoardIndex(0);
+  const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 1, y: 3 });
   return {
     getPlayerIds: vi.fn(() => ["player-a"]),
     getBoardPlacementsForPlayer: vi.fn(() => [
@@ -15,21 +14,24 @@ function createControllerMock() {
 }
 
 function createSharedBoardRoomMock(ownerId = "player-a") {
+  const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 1, y: 3 });
   return {
     state: {
       cells: new Map([
-        [String(combatCellToRaidBoardIndex(0)), { unitId: "vanguard-1", ownerId }],
+        [String(sharedCellIndex), { unitId: "vanguard-1", ownerId }],
       ]),
     },
   };
 }
 
 function createSharedBoardRoomWithExtraUnitMock() {
+  const leftCellIndex = sharedBoardCoordinateToIndex({ x: 1, y: 3 });
+  const extraCellIndex = sharedBoardCoordinateToIndex({ x: 2, y: 3 });
   return {
     state: {
       cells: new Map([
-        [String(combatCellToRaidBoardIndex(0)), { unitId: "vanguard-1", ownerId: "player-a" }],
-        [String(combatCellToRaidBoardIndex(1)), { unitId: "ranger-1", ownerId: "player-a" }],
+        [String(leftCellIndex), { unitId: "vanguard-1", ownerId: "player-a" }],
+        [String(extraCellIndex), { unitId: "ranger-1", ownerId: "player-a" }],
       ]),
     },
   };
@@ -123,7 +125,7 @@ describe("SharedBoardShadowObserver", () => {
     expect(result.mismatchCount).toBe(1);
     expect(result.mismatchedCells).toEqual([
       {
-        combatCell: combatCellToRaidBoardIndex(1),
+        combatCell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }),
         gameUnitType: null,
         sharedUnitType: "exists_in_shared_only",
       },
@@ -153,6 +155,60 @@ describe("SharedBoardShadowObserver", () => {
     const observer = new SharedBoardShadowObserver(controller as never);
 
     observer.attachSharedBoard(createExtendedFootprintSharedBoardRoomMock() as never);
+
+    const result = observer.observePlayer("player-a");
+
+    expect(result.status).toBe("ok");
+    expect(result.mismatchCount).toBe(0);
+  });
+
+  it("observePlayer no longer auto-converts legacy combat cells into shared-board indexes", () => {
+    const observer = new SharedBoardShadowObserver({
+      getPlayerIds: vi.fn(() => ["player-a"]),
+      getBoardPlacementsForPlayer: vi.fn(() => [
+        { cell: 0, unitType: "vanguard", starLevel: 1 },
+      ]),
+    } as never);
+
+    observer.attachSharedBoard({
+      state: {
+        cells: new Map([
+          [String(sharedBoardCoordinateToIndex({ x: 1, y: 3 })), { unitId: "vanguard-1", ownerId: "player-a" }],
+        ]),
+      },
+    } as never);
+
+    const result = observer.observePlayer("player-a");
+
+    expect(result.status).toBe("mismatch");
+    expect(result.mismatchCount).toBe(2);
+    expect(result.mismatchedCells).toEqual([
+      {
+        combatCell: 0,
+        gameUnitType: "vanguard",
+        sharedUnitType: null,
+      },
+      {
+        combatCell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }),
+        gameUnitType: null,
+        sharedUnitType: "exists_in_shared_only",
+      },
+    ]);
+  });
+
+  it("observePlayer ignores boss tokens when checking shared-only mismatches", () => {
+    const controller = createControllerMock();
+    const observer = new SharedBoardShadowObserver(controller as never);
+    const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 2, y: 0 });
+
+    observer.attachSharedBoard({
+      state: {
+        cells: new Map([
+          [String(sharedBoardCoordinateToIndex({ x: 1, y: 3 })), { unitId: "vanguard-1", ownerId: "player-a" }],
+          [String(sharedCellIndex), { unitId: "boss:player-b", ownerId: "player-b" }],
+        ]),
+      },
+    } as never);
 
     const result = observer.observePlayer("player-a");
 

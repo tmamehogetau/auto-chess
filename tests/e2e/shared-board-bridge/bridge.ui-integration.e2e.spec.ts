@@ -86,19 +86,18 @@ async function joinAsActivePlayer(
   function seedOwnedUnit(
     sharedBoardRoom: SharedBoardRoom,
     ownerId: string,
-    combatCell: number,
+    cellIndex: number,
   ): { unitId: string; sharedCellIndex: number } {
     const result = sharedBoardRoom.applyPlacementsFromGame(ownerId, [
       {
-        cell: combatCell,
+        cell: cellIndex,
         unitType: "vanguard",
       },
     ]);
 
     expect(result).toEqual({ applied: 1, skipped: 0 });
 
-    const sharedCellIndex = combatCellToRaidBoardIndex(combatCell);
-    const targetCell = sharedBoardRoom.state.cells.get(String(sharedCellIndex));
+    const targetCell = sharedBoardRoom.state.cells.get(String(cellIndex));
 
     if (!targetCell?.unitId) {
       throw new Error(`No owned unit found for player ${ownerId}`);
@@ -106,7 +105,7 @@ async function joinAsActivePlayer(
 
     return {
       unitId: targetCell.unitId,
-      sharedCellIndex,
+      sharedCellIndex: cellIndex,
     };
   }
 
@@ -194,7 +193,11 @@ async function placeUnit(
           // 4. Action: 1人目のプレイヤーをSharedBoardRoomに接続
           const targetPlayerId = gameClients[0]!.sessionId;
           const sbClient = await joinAsActivePlayer(sharedBoardRoom, targetPlayerId);
-          const { unitId: ownedUnitId } = seedOwnedUnit(sharedBoardRoom, targetPlayerId, 0);
+          const { unitId: ownedUnitId } = seedOwnedUnit(
+            sharedBoardRoom,
+            targetPlayerId,
+            combatCellToRaidBoardIndex(0),
+          );
           const targetSharedCell = combatCellToRaidBoardIndex(1);
 
           // ユニットを選択
@@ -299,7 +302,11 @@ async function placeUnit(
           // 4. Action: プレイヤーをSharedBoardRoomに接続して操作
           const targetPlayerId = gameClients[0]!.sessionId;
           const sbClient = await joinAsActivePlayer(sharedBoardRoom, targetPlayerId);
-          const { unitId: ownedUnitId } = seedOwnedUnit(sharedBoardRoom, targetPlayerId, 0);
+          const { unitId: ownedUnitId } = seedOwnedUnit(
+            sharedBoardRoom,
+            targetPlayerId,
+            combatCellToRaidBoardIndex(0),
+          );
           const targetSharedCell = combatCellToRaidBoardIndex(1);
 
           sbClient.send("shared_select_unit", { unitId: ownedUnitId });

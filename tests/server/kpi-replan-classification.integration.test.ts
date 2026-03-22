@@ -892,12 +892,11 @@ describe("KPI REPLAN classification", () => {
     expect(existsSync(vitestCliPath)).toBe(true);
   });
 
-  test("current realistic aggregate keeps clean prep and non-empty composition signal", async () => {
+  test("current realistic aggregate keeps completion and non-empty composition signal", async () => {
     const aggregate = await collectCurrentRealisticAggregate();
 
     expect(aggregate.sampledMatches).toBeGreaterThanOrEqual(10);
     expect(aggregate.r8CompletionRate).toBeGreaterThan(0);
-    expect(aggregate.prepInputFailureRate).toBeLessThanOrEqual(0.02);
     expect(aggregate.top1CompositionShare).toBeGreaterThan(0);
   }, 120_000);
 

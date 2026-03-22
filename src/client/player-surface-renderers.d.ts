@@ -36,10 +36,15 @@ export function renderPlayerSelectionSummary(input: {
 export function renderPlayerPrepSummary(input: {
   boardCopyElement?: HTMLElement | null;
   shopCopyElement?: HTMLElement | null;
+  bossShopCopyElement?: HTMLElement | null;
   benchCopyElement?: HTMLElement | null;
+  roomCopyElement?: HTMLElement | null;
+  deadlineCopyElement?: HTMLElement | null;
   boardElement?: HTMLElement | null;
   shopElement?: HTMLElement | null;
   shopSlotElements?: HTMLButtonElement[];
+  bossShopElement?: HTMLElement | null;
+  bossShopSlotElements?: HTMLButtonElement[];
   benchElement?: HTMLElement | null;
   benchSlotElements?: HTMLButtonElement[];
   readyElement?: HTMLElement | null;
@@ -48,6 +53,10 @@ export function renderPlayerPrepSummary(input: {
   state?: {
     phase?: string;
     lobbyStage?: string;
+    prepDeadlineAtMs?: number;
+    selectionDeadlineAtMs?: number;
+    phaseDeadlineAtMs?: number;
+    sharedBoardMode?: string;
     featureFlagsEnableHeroSystem?: boolean;
     featureFlagsEnableBossExclusiveShop?: boolean;
     bossPlayerId?: string;
@@ -57,8 +66,21 @@ export function renderPlayerPrepSummary(input: {
     ready?: boolean;
     role?: string;
     gold?: number;
+    hp?: number;
+    remainingLives?: number;
+    xp?: number;
+    level?: number;
     selectedHeroId?: string;
     selectedBossId?: string;
+    bossShopOffers?: Array<{
+      unitType?: string;
+      cost?: number;
+      displayName?: string;
+    }> | Iterable<{
+      unitType?: string;
+      cost?: number;
+      displayName?: string;
+    }>;
     shopOffers?: Array<{
       unitType?: string;
       cost?: number;
@@ -77,6 +99,14 @@ export function renderPlayerPrepSummary(input: {
   canSellBench?: boolean;
   canSellBoard?: boolean;
   canReturnBoard?: boolean;
+  roomSummary?: {
+    roomId?: string;
+    sharedBoardRoomId?: string;
+  } | null;
+  deadlineSummary?: {
+    label?: string;
+    valueText?: string;
+  } | null;
   benchSellButton?: HTMLButtonElement | null;
   boardReturnButton?: HTMLButtonElement | null;
   boardSellButton?: HTMLButtonElement | null;

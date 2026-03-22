@@ -84,10 +84,15 @@ export function renderPlayerSelectionSummary({
 export function renderPlayerPrepSummary({
   boardCopyElement,
   shopCopyElement,
+  bossShopCopyElement,
   benchCopyElement,
+  roomCopyElement,
+  deadlineCopyElement,
   boardElement,
   shopElement,
   shopSlotElements = [],
+  bossShopElement,
+  bossShopSlotElements = [],
   benchElement,
   benchSlotElements = [],
   readyElement,
@@ -101,23 +106,38 @@ export function renderPlayerPrepSummary({
   canSellBench = false,
   canSellBoard = false,
   canReturnBoard = false,
+  roomSummary = null,
+  deadlineSummary = null,
   benchSellButton,
   boardReturnButton,
   boardSellButton,
   sharedBoardConnected = false,
 }) {
+  const isBossPlayer = state?.bossPlayerId === sessionId || player?.role === "boss";
+  const bossRoleSelectionEnabled = state?.featureFlagsEnableBossExclusiveShop === true;
+
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
-    boardCopyElement.textContent = selectedBenchIndex === null
-      ? "共有ボードは 6x6 です。bench を選んで、下側の highlighted raid cells へ配置します。置いた unit は選んで再配置や売却ができます。"
-      : `Bench ${selectedBenchIndex + 1} を選択中です。highlighted raid cells をクリックして配置するか、Sell で売却します。`;
+    if (selectedBenchIndex === null) {
+      boardCopyElement.textContent = isBossPlayer
+        ? "共有ボードは 6x6 です。boss は上半分から布陣し、ボス駒は常設のまま位置調整できます。"
+        : "共有ボードは 6x6 です。raid は下半分から布陣し、主人公は常設のまま位置調整できます。";
+    } else {
+      boardCopyElement.textContent = isBossPlayer
+        ? `Bench ${selectedBenchIndex + 1} を選択中です。上側の配置可能セルをクリックして配置するか、Sell で売却します。`
+        : `Bench ${selectedBenchIndex + 1} を選択中です。下側の配置可能セルをクリックして配置するか、Sell で売却します。`;
+    }
   }
 
   const offers = toRenderableArray(player?.shopOffers);
+  const gold = Number(player?.gold ?? 0);
+  const level = Math.max(1, Math.round(Number(player?.level ?? 1) || 1));
+  const xp = Math.max(0, Math.round(Number(player?.xp ?? 0) || 0));
+  const hp = Math.max(0, Math.round(Number(player?.hp ?? 0) || 0));
+  const remainingLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
   if (shopCopyElement instanceof HTMLElement) {
-    const gold = Number(player?.gold ?? 0);
     shopCopyElement.textContent = offers.length > 0
-      ? `所持 ${gold}G。shop を押して bench へ購入します。`
-      : `所持 ${gold}G。shop offer の更新待ちです。`;
+      ? `所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
+      : `所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
   }
 
   shopSlotElements.forEach((button, index) => {
@@ -135,6 +155,63 @@ export function renderPlayerPrepSummary({
     button.classList.toggle("selected", false);
     button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "❓"} ${displayName} / ${cost}G` : `Shop ${index + 1}`;
   });
+
+  const bossShopOffers = toRenderableArray(player?.bossShopOffers);
+  if (bossShopElement instanceof HTMLElement) {
+    bossShopElement.hidden = !bossRoleSelectionEnabled;
+  }
+  if (bossShopCopyElement instanceof HTMLElement) {
+    if (!bossRoleSelectionEnabled) {
+      bossShopCopyElement.textContent = "Boss shop はこのルールセットでは無効です。";
+    } else if (!isBossPlayer) {
+      bossShopCopyElement.textContent = "Boss shop は boss role のみ利用できます。";
+    } else if (bossShopOffers.length === 0) {
+      bossShopCopyElement.textContent = "Boss shop offer の更新待ちです。";
+    } else {
+      const firstOffer = bossShopOffers[0];
+      const firstCost = Math.max(0, Math.round(Number(firstOffer?.cost) || 0));
+      bossShopCopyElement.textContent = `Boss shop / ${bossShopOffers.length} offers。先頭 ${firstCost}G、boss 専用ユニットを直接 bench へ追加します。`;
+    }
+  }
+
+  bossShopSlotElements.forEach((button, index) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const offer = bossShopOffers[index];
+    const unitType = offer?.unitType ?? null;
+    const cost = Number(offer?.cost ?? 0);
+    const displayName = typeof offer?.displayName === "string" && offer.displayName.length > 0
+      ? offer.displayName
+      : unitType;
+    button.disabled = !offer || currentPhase !== "Prep" || !isBossPlayer;
+    button.classList.toggle("selected", false);
+    button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "👑"} ${displayName} / ${cost}G` : `Boss ${index + 1}`;
+  });
+
+  if (roomCopyElement instanceof HTMLElement) {
+    const roomId = typeof roomSummary?.roomId === "string" && roomSummary.roomId.length > 0
+      ? roomSummary.roomId
+      : "default";
+    const sharedBoardRoomId = typeof roomSummary?.sharedBoardRoomId === "string" && roomSummary.sharedBoardRoomId.length > 0
+      ? roomSummary.sharedBoardRoomId
+      : "unbound";
+    const sharedBoardMode = typeof state?.sharedBoardMode === "string" && state.sharedBoardMode.length > 0
+      ? state.sharedBoardMode
+      : "local";
+    roomCopyElement.textContent = `Room ${roomId} / Shared board ${sharedBoardRoomId} / Mode ${sharedBoardMode}`;
+  }
+
+  if (deadlineCopyElement instanceof HTMLElement) {
+    const label = typeof deadlineSummary?.label === "string" && deadlineSummary.label.length > 0
+      ? deadlineSummary.label
+      : "Deadline";
+    const valueText = typeof deadlineSummary?.valueText === "string" && deadlineSummary.valueText.length > 0
+      ? deadlineSummary.valueText
+      : "pending";
+    deadlineCopyElement.textContent = `${label}: ${valueText}`;
+  }
 
   const benchUnits = toRenderableArray(player?.benchUnits);
   const benchDisplayNames = toRenderableArray(player?.benchDisplayNames);

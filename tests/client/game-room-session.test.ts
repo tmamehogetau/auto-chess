@@ -103,4 +103,62 @@ describe("game-room session", () => {
     expect(session.getConnectionState()).toBe("idle");
     expect(connectionStates).toEqual(["idle", "connecting", "connected", "disconnecting", "idle"]);
   });
+
+  test("room code があれば joinById で接続する", async () => {
+    const joinCalls: Array<{ mode: string; roomName?: string; roomId?: string; roomOptions?: Record<string, unknown> }> = [];
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async joinOrCreate(roomName: string, roomOptions?: Record<string, unknown>) {
+            joinCalls.push(roomOptions
+              ? { mode: "joinOrCreate", roomName, roomOptions }
+              : { mode: "joinOrCreate", roomName });
+            return {
+              leave: async () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              roomId: "fallback-room",
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+
+          public async joinById(roomId: string, roomOptions?: Record<string, unknown>) {
+            joinCalls.push(roomOptions
+              ? { mode: "joinById", roomId, roomOptions }
+              : { mode: "joinById", roomId });
+            return {
+              leave: async () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              roomId,
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+        },
+      }),
+    });
+
+    await session.connect({
+      roomId: "room-123",
+      roomOptions: {
+        setId: "set2",
+      },
+    });
+
+    expect(joinCalls).toEqual([
+      {
+        mode: "joinById",
+        roomId: "room-123",
+        roomOptions: {
+          setId: "set2",
+        },
+      },
+    ]);
+  });
 });

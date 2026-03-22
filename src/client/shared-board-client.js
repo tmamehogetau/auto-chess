@@ -16,6 +16,7 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
  * @typedef {Object} SharedBoardDependencies
  * @property {object|null} client Colyseus Client
  * @property {string} gamePlayerId ゲームプレイヤーID
+ * @property {string} sharedBoardRoomId 共有ボード room id
  * @property {(message: string, type: string) => void} onLog ログ追加関数
  * @property {(message: string, type: string) => void} showMessage メッセージ表示関数
  * @property {() => boolean} isTouhouRosterEnabled 東方ロスター有効判定
@@ -36,6 +37,7 @@ let domRefs = {
 let deps = {
   client: null,
   gamePlayerId: "",
+  sharedBoardRoomId: "",
   onLog: () => {},
   showMessage: () => {},
   isTouhouRosterEnabled: () => false,
@@ -98,14 +100,38 @@ export function setSharedBoardGamePlayerId(gamePlayerId) {
   };
 }
 
+export function setSharedBoardRoomId(sharedBoardRoomId) {
+  deps = {
+    ...deps,
+    sharedBoardRoomId: typeof sharedBoardRoomId === "string" ? sharedBoardRoomId : "",
+  };
+}
+
 /**
  * 共有ボードルームに接続
  * @param {object} client Colyseus Client
  * @returns {Promise<void>}
  */
-export async function connectSharedBoard(client) {
-  if (!client || sharedBoardRoom) {
+export async function connectSharedBoard(client, options = {}) {
+  const requestedRoomId = typeof options.roomId === "string" && options.roomId.length > 0
+    ? options.roomId
+    : typeof deps.sharedBoardRoomId === "string" && deps.sharedBoardRoomId.length > 0
+      ? deps.sharedBoardRoomId
+      : DEFAULT_SHARED_BOARD_ROOM_NAME;
+
+  if (
+    sharedBoardRoom
+    && (sharedBoardRoom.roomId === requestedRoomId || sharedBoardRoom.roomName === requestedRoomId)
+  ) {
     return;
+  }
+
+  if (!client) {
+    return;
+  }
+
+  if (sharedBoardRoom) {
+    leaveSharedBoardRoom();
   }
 
   try {
@@ -113,8 +139,15 @@ export async function connectSharedBoard(client) {
       ? { gamePlayerId: deps.gamePlayerId }
       : undefined;
 
-    sharedBoardRoom = await client.joinOrCreate(
-      DEFAULT_SHARED_BOARD_ROOM_NAME,
+    const joinOrCreate = typeof deps.joinOrCreate === "function"
+      ? deps.joinOrCreate
+      : client.joinOrCreate?.bind(client);
+    if (typeof joinOrCreate !== "function") {
+      throw new Error("shared-board join function unavailable");
+    }
+
+    sharedBoardRoom = await joinOrCreate(
+      requestedRoomId,
       sharedBoardJoinOptions,
     );
     currentSharedBoardState = null;

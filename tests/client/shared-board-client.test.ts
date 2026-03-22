@@ -296,6 +296,49 @@ describe("shared-board client", () => {
     expect(gridElement.children[35]?.dataset.raidRegion).toBe("raid-bottom");
   });
 
+  test("dedicated sharedBoardRoomId があればその room に join する", async () => {
+    const gridElement = new FakeElement();
+    const joinCalls: Array<{ roomName: string; options: unknown }> = [];
+
+    const room = {
+      roomId: "shared-room-123",
+      sessionId: "player-1",
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (_handler: (state: unknown) => void) => {},
+    };
+
+    const client = {
+      joinOrCreate: async (roomName: string, options?: unknown) => {
+        joinCalls.push({ roomName, options });
+        return room;
+      },
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async (roomName: string, options?: unknown) => {
+          joinCalls.push({ roomName, options });
+          return room;
+        },
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object, { roomId: "shared-room-123" });
+
+    expect(joinCalls).toEqual([
+      {
+        roomName: "shared-room-123",
+        options: { gamePlayerId: "player-1" },
+      },
+    ]);
+  });
+
   test("shared board cells expose zone classes for visual affordances", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();

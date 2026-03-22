@@ -113,6 +113,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.setId = rawSetId ?? this.setId;
     this.sharedBoardRoomId = options.sharedBoardRoomId;
     this.state.setId = this.setId;
+    this.state.sharedBoardRoomId = this.sharedBoardRoomId ?? "";
 
     // Load feature flags
     const forcedFeatureFlags = options.forcedFeatureFlags;
@@ -958,6 +959,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       phase: this.state.phase as RoundStateMessage["phase"],
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
+      sharedBoardRoomId: this.state.sharedBoardRoomId,
       lobbyStage: this.state.lobbyStage,
       selectionDeadlineAtMs: this.state.selectionDeadlineAtMs,
       ranking: Array.from(this.state.ranking),

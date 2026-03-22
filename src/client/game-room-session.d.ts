@@ -18,7 +18,17 @@ export const SERVER_MESSAGE_TYPES: {
 
 export type GameRoomSdkModule = {
   Client: new (endpoint: string) => {
+    joinById?: (roomId: string, roomOptions?: Record<string, unknown>) => Promise<{
+      roomId?: string;
+      sessionId?: string;
+      state?: unknown;
+      onStateChange: (listener: (state: unknown) => void) => void;
+      onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+      send?: (type: string, payload?: unknown) => void;
+      leave?: (consented?: boolean) => Promise<void>;
+    }>;
     joinOrCreate: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<{
+      roomId?: string;
       sessionId?: string;
       state?: unknown;
       onStateChange: (listener: (state: unknown) => void) => void;
@@ -35,8 +45,13 @@ export type GameRoomSessionOptions = {
   loadSdk?: () => Promise<GameRoomSdkModule>;
 };
 
+export type GameRoomConnectOptions = {
+  roomId?: string;
+  roomOptions?: Record<string, unknown>;
+};
+
 export type GameRoomSession = {
-  connect: (roomOptions?: Record<string, unknown>) => Promise<unknown>;
+  connect: (connectOptions?: Record<string, unknown> | GameRoomConnectOptions) => Promise<unknown>;
   disconnect: (consented?: boolean) => Promise<void>;
   onConnectionState: (listener: (state: string) => void) => () => void;
   onMessage: (type: string, listener: (payload: unknown) => void) => () => void;
@@ -45,6 +60,7 @@ export type GameRoomSession = {
   getClient: () => unknown;
   getConnectionState: () => string;
   getRoom: () => {
+    roomId?: string;
     sessionId?: string;
   } | null;
   getState: () => unknown;

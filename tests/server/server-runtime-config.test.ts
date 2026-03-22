@@ -123,4 +123,18 @@ describe("runtime shared_board server config", () => {
 
     expect(sharedBoardRoom.state.cells.get(String(raidCell))?.ownerId).toBe(ownerClient.sessionId);
   });
+
+  test("game room exposes dedicated sharedBoardRoomId through room state and round_state", async () => {
+    const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const gameRoom = await testServer.createRoom<GameRoom>("game", {
+      sharedBoardRoomId: sharedBoardRoom.roomId,
+    });
+    const roomInternals = gameRoom as unknown as {
+      createRoundStateMessage: () => Record<string, unknown>;
+    };
+    const latestRoundState = roomInternals.createRoundStateMessage();
+
+    expect(gameRoom.state.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(latestRoundState?.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+  });
 });

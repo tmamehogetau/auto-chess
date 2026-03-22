@@ -58,7 +58,7 @@ export function createGameRoomSession(options = {}) {
     }
   }
 
-  async function connect(roomOptions = {}) {
+  async function connect(connectOptions = {}) {
     if (room) {
       return room;
     }
@@ -69,7 +69,15 @@ export function createGameRoomSession(options = {}) {
     try {
       const sdk = await loadSdk();
       client = new sdk.Client(endpoint);
-      room = await client.joinOrCreate(roomName, roomOptions);
+      const { roomId, roomOptions } = normalizeConnectOptions(connectOptions);
+      if (typeof roomId === "string" && roomId.length > 0) {
+        if (typeof client.joinById !== "function") {
+          throw new Error("joinById not available");
+        }
+        room = await client.joinById(roomId, roomOptions);
+      } else {
+        room = await client.joinOrCreate(roomName, roomOptions);
+      }
       connectionState = "connected";
       notifyConnection();
 
@@ -171,6 +179,30 @@ export function createGameRoomSession(options = {}) {
     getConnectionState: () => connectionState,
     getRoom: () => room,
     getState: () => state,
+  };
+}
+
+function normalizeConnectOptions(connectOptions) {
+  if (!connectOptions || typeof connectOptions !== "object" || Array.isArray(connectOptions)) {
+    return { roomId: "", roomOptions: {} };
+  }
+
+  const hasStructuredFields = Object.prototype.hasOwnProperty.call(connectOptions, "roomId")
+    || Object.prototype.hasOwnProperty.call(connectOptions, "roomOptions");
+
+  if (!hasStructuredFields) {
+    return {
+      roomId: "",
+      roomOptions: connectOptions,
+    };
+  }
+
+  return {
+    roomId: typeof connectOptions.roomId === "string" ? connectOptions.roomId.trim() : "",
+    roomOptions:
+      connectOptions.roomOptions && typeof connectOptions.roomOptions === "object"
+        ? connectOptions.roomOptions
+        : {},
   };
 }
 

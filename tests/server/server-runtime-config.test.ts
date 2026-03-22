@@ -123,4 +123,15 @@ describe("runtime shared_board server config", () => {
 
     expect(sharedBoardRoom.state.cells.get(String(raidCell))?.ownerId).toBe(ownerClient.sessionId);
   });
+
+  test("dedicated game room exposes its sharedBoardRoomId through state and round_state", async () => {
+    const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const gameRoom = await testServer.createRoom<GameRoom>("game", {
+      sharedBoardRoomId: sharedBoardRoom.roomId,
+    });
+    const client = await testServer.connectTo(gameRoom);
+
+    expect(gameRoom.state.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(client.sessionId.length).toBeGreaterThan(0);
+  });
 });

@@ -46,6 +46,7 @@ import {
   getSharedBoardState,
   getSelectedSharedUnitId,
   setSharedBoardGamePlayerId,
+  setSharedBoardRoomId,
   sendSharedCursorMove,
   sendSharedDragState,
   sendSharedPlaceUnit,
@@ -215,6 +216,8 @@ function getSpellSetForRound(roundIndex) {
 // Legacy form elements (kept for compatibility)
 const endpointInput = document.querySelector("[data-endpoint-input]");
 const roomInput = document.querySelector("[data-room-input]");
+const roomCodeInput = document.querySelector("[data-room-code-input]");
+const roomCodeOutput = document.querySelector("[data-room-code-output]");
 const setIdSelect = document.querySelector("[data-setid-select]");
 const autoFillInput = document.querySelector("[data-autofill-input]");
 const connectButton = document.querySelector("[data-connect-button]");
@@ -537,11 +540,12 @@ async function connect() {
   }
 
   if (activeRoom && !isRoomConnectionOpen(activeRoom)) {
-    activeRoom = null;
-    sessionId = null;
-    currentPhase = null;
-    leaveSharedBoardRoom();
-    gameContainer?.classList.remove("connected");
+      activeRoom = null;
+      sessionId = null;
+      currentPhase = null;
+      leaveSharedBoardRoom();
+      updateRoomCodeDisplay("");
+      gameContainer?.classList.remove("connected");
     syncButtonAvailability();
   }
 
@@ -555,24 +559,50 @@ async function connect() {
   updateEntryFlowStatus(null, null);
 
   try {
-    const { endpoint, roomName, setId } = readConfig();
+    const { endpoint, roomName, roomCode, setId } = readConfig();
     const { Client } = await withTimeout(
       import("https://esm.sh/@colyseus/sdk@0.17.34"),
       8_000,
       "Colyseus SDK load",
     );
     const client = new Client(endpoint);
-    const roomOptions = setId ? { setId } : undefined;
-    const room = await withTimeout(
-      client.joinOrCreate(roomName, roomOptions),
-      8_000,
-      "Room connection",
-    );
+    const roomOptions = setId ? { setId } : {};
+    const roomCodeValue = roomCode.trim();
+    let sharedBoardSeedRoom = null;
+    let room;
+
+    if (roomCodeValue.length > 0) {
+      room = await withTimeout(
+        client.joinById(roomCodeValue),
+        8_000,
+        "Room connection",
+      );
+    } else {
+      sharedBoardSeedRoom = await withTimeout(
+        client.create("shared_board"),
+        8_000,
+        "Shared board room creation",
+      );
+      room = await withTimeout(
+        client.create(roomName, {
+          ...roomOptions,
+          sharedBoardRoomId: sharedBoardSeedRoom.roomId,
+        }),
+        8_000,
+        "Room connection",
+      );
+    }
 
     activeRoom = room;
     sessionId = room.sessionId;
     currentPhase = readPhase(room.state?.phase);
+    const resolvedSharedBoardRoomId =
+      room.state?.sharedBoardRoomId
+      || sharedBoardSeedRoom?.roomId
+      || "";
     setSharedBoardGamePlayerId(room.sessionId);
+    setSharedBoardRoomId(resolvedSharedBoardRoomId);
+    updateRoomCodeDisplay(room.roomId ?? roomCodeValue);
     lastShownSummaryRound = -1;
     hideRoundSummary();
     lastShownBattleRound = -1;
@@ -595,6 +625,9 @@ async function connect() {
     // State change handler
     room.onStateChange((state) => {
       currentGameState = state;
+      if (typeof state?.sharedBoardRoomId === "string" && state.sharedBoardRoomId.length > 0) {
+        setSharedBoardRoomId(state.sharedBoardRoomId);
+      }
       updateGameUI(state);
       currentPhase = readPhase(state?.phase);
       syncButtonAvailability();
@@ -604,6 +637,9 @@ async function connect() {
     // Round state messages
     room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
       currentPhase = readPhase(message?.phase);
+      if (typeof message?.sharedBoardRoomId === "string" && message.sharedBoardRoomId.length > 0) {
+        setSharedBoardRoomId(message.sharedBoardRoomId);
+      }
       updatePhaseDisplay(currentPhase);
       if (typeof message?.roundIndex === "number") {
         roundDisplay.textContent = message.roundIndex + 1;
@@ -629,9 +665,9 @@ async function connect() {
       handleAdminResponse(response);
     });
 
-    await connectSharedBoard(client);
+    await connectSharedBoard(client, sharedBoardSeedRoom ? { existingRoom: sharedBoardSeedRoom } : undefined);
 
-    await connectAutoFillRooms(client, roomName, roomOptions);
+    await connectAutoFillRooms(client, roomName, roomOptions, room.roomId ?? roomCodeValue);
 
     startMonitorPolling();
     requestAdminMonitorSnapshot();
@@ -697,6 +733,7 @@ async function leave() {
   activeRoom = null;
   sessionId = null;
   currentPhase = null;
+  updateRoomCodeDisplay("");
   latestPhaseHpProgress = null;
   renderPhaseHpProgress(null);
   lastShownSummaryRound = -1;
@@ -755,6 +792,7 @@ function disconnectRoomsForPageExit() {
   lastShownBattleRound = -1;
 
   leaveSharedBoardRoom();
+  updateRoomCodeDisplay("");
 
   for (const room of leavingRooms) {
     releaseRoomOnPageExit(room);
@@ -2216,6 +2254,12 @@ function initializeDefaults() {
     roomInput.value = params.get("roomName") ?? DEFAULT_ROOM_NAME;
   }
 
+  if (roomCodeInput) {
+    roomCodeInput.value = params.get("roomId") ?? "";
+  }
+
+  updateRoomCodeDisplay("");
+
   if (setIdSelect) {
     const setId = normalizeSetId(params.get("setId"));
     setIdSelect.value = setId ?? "";
@@ -2237,19 +2281,29 @@ function initializeDefaults() {
 function readConfig() {
   const endpointValue = endpointInput?.value?.trim();
   const roomValue = roomInput?.value?.trim();
+  const roomCode = roomCodeInput?.value?.trim() ?? "";
   const selectedSetId = setIdSelect?.value?.trim() ?? "";
   const autoFillBots = parseAutoFillBots(autoFillInput?.value ?? "0");
 
   autoConfig.autoFillBots = autoFillBots;
 
-  return {
-    endpoint:
-      endpointValue ||
-      `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:2567`,
-    roomName: roomValue || DEFAULT_ROOM_NAME,
-    setId: normalizeSetId(selectedSetId),
-    autoFillBots,
-  };
+    return {
+      endpoint:
+        endpointValue ||
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:2567`,
+      roomName: roomValue || DEFAULT_ROOM_NAME,
+      roomCode,
+      setId: normalizeSetId(selectedSetId),
+      autoFillBots,
+    };
+}
+
+function updateRoomCodeDisplay(roomCode) {
+  if (!roomCodeOutput) {
+    return;
+  }
+
+  roomCodeOutput.textContent = roomCode && roomCode.length > 0 ? roomCode : "-";
 }
 
 function normalizeSetId(value) {
@@ -2270,6 +2324,7 @@ function syncButtonAvailability() {
     currentPhase = null;
     latestPhaseHpProgress = null;
     leaveSharedBoardRoom();
+    updateRoomCodeDisplay("");
     renderPhaseHpProgress(null);
     gameContainer?.classList.remove("connected");
   }
@@ -2429,7 +2484,7 @@ function showPlayerDamagePopup(amount) {
 }
 
 // Auto-fill functions
-async function connectAutoFillRooms(client, roomName, roomOptions) {
+async function connectAutoFillRooms(client, roomName, roomOptions, roomCode = "") {
   const nextAutoFillBots = autoConfig.autoFillBots;
   const joinedHelperRooms = [];
 
@@ -2439,7 +2494,9 @@ async function connectAutoFillRooms(client, roomName, roomOptions) {
 
   for (let index = 0; index < nextAutoFillBots; index += 1) {
     try {
-      const helperRoom = await client.joinOrCreate(roomName, roomOptions);
+      const helperRoom = roomCode
+        ? await client.joinById(roomCode)
+        : await client.joinOrCreate(roomName, roomOptions);
       joinedHelperRooms.push(helperRoom);
       autoFillRooms.push(helperRoom);
     } catch (error) {

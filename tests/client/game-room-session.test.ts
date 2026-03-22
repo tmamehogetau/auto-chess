@@ -103,4 +103,75 @@ describe("game-room session", () => {
     expect(session.getConnectionState()).toBe("idle");
     expect(connectionStates).toEqual(["idle", "connecting", "connected", "disconnecting", "idle"]);
   });
+
+  test("roomId が渡された connect は joinById を使う", async () => {
+    const calls: string[] = [];
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async joinById(roomId: string) {
+            calls.push(`joinById:${roomId}`);
+            return {
+              roomId,
+              leave: async () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+
+          public async joinOrCreate(): Promise<never> {
+            throw new Error("joinOrCreate should not be used");
+          }
+        },
+      }),
+    });
+
+    await session.connect({ roomId: "room-abc" });
+
+    expect(calls).toEqual(["joinById:room-abc"]);
+  });
+
+  test("create mode の connect は create を使う", async () => {
+    const calls: Array<{ method: string; roomName: string; options: Record<string, unknown> | undefined }> = [];
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async create(roomName: string, options?: Record<string, unknown>) {
+            calls.push({ method: "create", roomName, options });
+            return {
+              roomId: "created-room",
+              leave: async () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+
+          public async joinOrCreate(): Promise<never> {
+            throw new Error("joinOrCreate should not be used");
+          }
+        },
+      }),
+    });
+
+    await session.connect({
+      mode: "create",
+      roomOptions: { setId: "set2" },
+    });
+
+    expect(calls).toEqual([
+      { method: "create", roomName: "game", options: { setId: "set2" } },
+    ]);
+  });
 });

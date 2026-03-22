@@ -18,6 +18,30 @@ export const SERVER_MESSAGE_TYPES = {
   ADMIN_RESPONSE: "admin_response",
 };
 
+function normalizeConnectOptions(rawOptions) {
+  if (!rawOptions || typeof rawOptions !== "object") {
+    return { mode: "joinOrCreate", roomId: "", roomOptions: {} };
+  }
+
+  const candidate = rawOptions;
+  const hasStructuredKeys = "mode" in candidate || "roomId" in candidate || "roomOptions" in candidate;
+  if (!hasStructuredKeys) {
+    return {
+      mode: "joinOrCreate",
+      roomId: "",
+      roomOptions: candidate,
+    };
+  }
+
+  return {
+    mode: candidate.mode === "create" ? "create" : "joinOrCreate",
+    roomId: typeof candidate.roomId === "string" ? candidate.roomId.trim() : "",
+    roomOptions: candidate.roomOptions && typeof candidate.roomOptions === "object"
+      ? candidate.roomOptions
+      : {},
+  };
+}
+
 export function createGameRoomSession(options = {}) {
   const endpoint = typeof options.endpoint === "string" && options.endpoint.length > 0
     ? options.endpoint
@@ -58,10 +82,12 @@ export function createGameRoomSession(options = {}) {
     }
   }
 
-  async function connect(roomOptions = {}) {
+  async function connect(rawOptions = {}) {
     if (room) {
       return room;
     }
+
+    const connectOptions = normalizeConnectOptions(rawOptions);
 
     connectionState = "connecting";
     notifyConnection();
@@ -69,7 +95,13 @@ export function createGameRoomSession(options = {}) {
     try {
       const sdk = await loadSdk();
       client = new sdk.Client(endpoint);
-      room = await client.joinOrCreate(roomName, roomOptions);
+      if (connectOptions.roomId.length > 0) {
+        room = await client.joinById(connectOptions.roomId, connectOptions.roomOptions);
+      } else if (connectOptions.mode === "create") {
+        room = await client.create(roomName, connectOptions.roomOptions);
+      } else {
+        room = await client.joinOrCreate(roomName, connectOptions.roomOptions);
+      }
       connectionState = "connected";
       notifyConnection();
 

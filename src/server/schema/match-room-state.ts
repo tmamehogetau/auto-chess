@@ -223,6 +223,8 @@ export class MatchRoomState extends Schema {
 
   declare public phaseDeadlineAtMs: number;
 
+  declare public sharedBoardRoomId: string;
+
   declare public selectionDeadlineAtMs: number;
 
   declare public prepDeadlineAtMs: number;
@@ -275,6 +277,7 @@ export class MatchRoomState extends Schema {
     this.setId = "set1";
     this.lobbyStage = "preference";
     this.phaseDeadlineAtMs = 0;
+    this.sharedBoardRoomId = "";
     this.selectionDeadlineAtMs = 0;
     this.prepDeadlineAtMs = 0;
     this.roundIndex = 0;
@@ -379,6 +382,7 @@ defineTypes(MatchRoomState, {
   setId: "string",
   lobbyStage: "string",
   phaseDeadlineAtMs: "number",
+  sharedBoardRoomId: "string",
   selectionDeadlineAtMs: "number",
   prepDeadlineAtMs: "number",
   roundIndex: "number",

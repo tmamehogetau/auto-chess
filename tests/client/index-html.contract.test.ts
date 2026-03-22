@@ -12,6 +12,8 @@ describe("index.html contract", () => {
     const requiredAttributes = [
       "data-endpoint-input",
       "data-room-input",
+      "data-room-code-input",
+      "data-room-code-output",
       "data-setid-select",
       "data-autofill-input",
       "data-connect-button",

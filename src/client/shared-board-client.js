@@ -24,6 +24,7 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
 
 const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 const SHARED_BOARD_BATTLE_REPLAY_MESSAGE = "shared_battle_replay";
+let currentSharedBoardRoomId = "";
 
 /** @type {SharedBoardDOMRefs} */
 let domRefs = {
@@ -98,12 +99,18 @@ export function setSharedBoardGamePlayerId(gamePlayerId) {
   };
 }
 
+export function setSharedBoardRoomId(sharedBoardRoomId) {
+  currentSharedBoardRoomId = typeof sharedBoardRoomId === "string"
+    ? sharedBoardRoomId.trim()
+    : "";
+}
+
 /**
  * 共有ボードルームに接続
  * @param {object} client Colyseus Client
  * @returns {Promise<void>}
  */
-export async function connectSharedBoard(client) {
+export async function connectSharedBoard(client, options = {}) {
   if (!client || sharedBoardRoom) {
     return;
   }
@@ -113,23 +120,40 @@ export async function connectSharedBoard(client) {
       ? { gamePlayerId: deps.gamePlayerId }
       : undefined;
 
-    sharedBoardRoom = await client.joinOrCreate(
-      DEFAULT_SHARED_BOARD_ROOM_NAME,
-      sharedBoardJoinOptions,
-    );
+    const existingRoom = options?.existingRoom ?? null;
+    if (existingRoom) {
+      sharedBoardRoom = existingRoom;
+    } else if (currentSharedBoardRoomId.length > 0 && typeof client.joinById === "function") {
+      sharedBoardRoom = await client.joinById(currentSharedBoardRoomId, sharedBoardJoinOptions);
+    } else {
+      sharedBoardRoom = await client.joinOrCreate(
+        DEFAULT_SHARED_BOARD_ROOM_NAME,
+        sharedBoardJoinOptions,
+      );
+    }
     currentSharedBoardState = null;
     sharedBoardSpectatorNoticeShown = false;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
     clearSharedBattleReplay();
 
-    sharedBoardRoom.onMessage("shared_role", (message) => {
+    bindSharedBoardRoomListeners(sharedBoardRoom);
+  } catch (error) {
+    currentSharedBoardState = null;
+    renderSharedBoardState(null);
+    const message = error instanceof Error ? error.message : String(error);
+    deps.onLog(`Shared board unavailable: ${message}`, "info");
+  }
+}
+
+function bindSharedBoardRoomListeners(room) {
+  room.onMessage("shared_role", (message) => {
       if (message?.isSpectator === true && !sharedBoardSpectatorNoticeShown) {
         deps.onLog("Shared board role: spectator", "info");
       }
     });
 
-    sharedBoardRoom.onMessage("shared_action_result", (message) => {
+    room.onMessage("shared_action_result", (message) => {
       if (message?.accepted === true && message.action === "place_unit") {
         selectedSharedUnitId = null;
         renderSharedBoardState(currentSharedBoardState);
@@ -148,7 +172,7 @@ export async function connectSharedBoard(client) {
       }
     });
 
-    sharedBoardRoom.onStateChange((state) => {
+    room.onStateChange((state) => {
       currentSharedBoardState = state;
       if (state?.mode === "battle") {
         sharedDraggedUnitId = null;
@@ -159,11 +183,11 @@ export async function connectSharedBoard(client) {
       renderSharedBoardState(state);
     });
 
-    sharedBoardRoom.onMessage(SHARED_BOARD_BATTLE_REPLAY_MESSAGE, (message) => {
+    room.onMessage(SHARED_BOARD_BATTLE_REPLAY_MESSAGE, (message) => {
       startSharedBattleReplay(message);
     });
 
-    sharedBoardRoom.onLeave(() => {
+    room.onLeave(() => {
       sharedBoardRoom = null;
       currentSharedBoardState = null;
       sharedDraggedUnitId = null;
@@ -171,12 +195,6 @@ export async function connectSharedBoard(client) {
       clearSharedBattleReplay();
       renderSharedBoardState(null);
     });
-  } catch (error) {
-    currentSharedBoardState = null;
-    renderSharedBoardState(null);
-    const message = error instanceof Error ? error.message : String(error);
-    deps.onLog(`Shared board unavailable: ${message}`, "info");
-  }
 }
 
 /**

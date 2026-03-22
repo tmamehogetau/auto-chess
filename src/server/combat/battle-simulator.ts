@@ -10,8 +10,6 @@ import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import {
-  decodeSharedBoardBattleCellIndex,
-  isEncodedSharedBoardBattleCellIndex,
   sharedBoardCoordinateToIndex,
   sharedBoardManhattanDistance,
   sharedBoardIndexToCoordinate,
@@ -137,13 +135,9 @@ function resolveBattleSide(unit: BattleUnit): "left" | "right" {
   return "right";
 }
 
-function resolveBoardIndexForCell(cell: number, side: "left" | "right"): number {
+function resolveBoardIndexForCell(cell: number): number {
   if (!Number.isInteger(cell)) {
     throw new Error("battle board cell index must be an integer");
-  }
-
-  if (isEncodedSharedBoardBattleCellIndex(cell)) {
-    return decodeSharedBoardBattleCellIndex(cell);
   }
 
   if (cell >= 0 && cell < DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
@@ -159,7 +153,7 @@ function resolveTimelineCoordinate(unit: BattleUnit): { x: number; y: number } {
 
 function resolveCellCoordinate(cell: number, side: "left" | "right"): { x: number; y: number } {
   return sharedBoardIndexToCoordinate(
-    resolveBoardIndexForCell(cell, side),
+    resolveBoardIndexForCell(cell),
     DEFAULT_SHARED_BOARD_CONFIG,
   );
 }
@@ -356,7 +350,7 @@ export function createBattleUnit(
     attackPower: finalAttack,
     attackSpeed: finalAttackSpeed,
     attackRange: finalRange,
-    cell: resolveBoardIndexForCell(cell, side),
+    cell: resolveBoardIndexForCell(cell),
     isDead: false,
     isBoss,
     attackCount: 0,

@@ -116,7 +116,6 @@ import { resolveBattlePlacements, resolveSharedPoolCost } from "./unit-id-resolv
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
-  encodeSharedBoardBattleCellIndex,
 } from "../shared/board-geometry";
 import { DEFAULT_SHARED_BOARD_CONFIG, sharedBoardCoordinateToIndex } from "../shared/shared-board-config";
 
@@ -2340,7 +2339,6 @@ export class MatchRoomController {
     const bossPlacements = (this.battleInputSnapshotByPlayer.get(bossPlayerId) ?? []).map(
       (placement) => ({
         ...placement,
-        cell: encodeSharedBoardBattleCellIndex(placement.cell),
       }),
     );
     const raidPlacements = raidPlayerIds.flatMap((playerId) =>
@@ -2770,9 +2768,7 @@ export class MatchRoomController {
       const bossBattleUnit = this.battleResolutionService.createBossBattleUnit(
         bossId,
         bossPlayerId,
-        this.getBossPlacementForPlayer(bossPlayerId) !== null
-          ? encodeSharedBoardBattleCellIndex(this.getBossPlacementForPlayer(bossPlayerId) ?? 0)
-          : undefined,
+        this.getBossPlacementForPlayer(bossPlayerId) ?? undefined,
       );
       if (bossBattleUnit) {
         battleUnits.push(bossBattleUnit);

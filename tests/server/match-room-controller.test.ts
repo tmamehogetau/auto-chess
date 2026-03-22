@@ -9,7 +9,6 @@ import {
 } from "../../src/server/combat/battle-timeline";
 import {
   combatCellToRaidBoardIndex,
-  encodeSharedBoardBattleCellIndex,
 } from "../../src/shared/board-geometry";
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
@@ -338,7 +337,7 @@ describe("MatchRoomController", () => {
           expect([firstCall?.leftPlacements.length, firstCall?.rightPlacements.length].sort()).toEqual([1, 3]);
           expect(firstCall?.leftPlacements.concat(firstCall.rightPlacements)).toEqual(
             expect.arrayContaining([
-              expect.objectContaining({ cell: encodeSharedBoardBattleCellIndex(0), unitType: "vanguard" }),
+              expect.objectContaining({ cell: 0, unitType: "vanguard" }),
               expect.objectContaining({ cell: 4, unitType: "ranger" }),
               expect.objectContaining({ cell: 5, unitType: "mage" }),
               expect.objectContaining({ cell: 6, unitType: "assassin" }),

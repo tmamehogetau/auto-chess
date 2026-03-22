@@ -773,7 +773,7 @@ function isPlayableSharedBoardCell(state, cellIndex, activeUnitId = null) {
   }
 
   if (isLegacyEmbeddedBoard(state)) {
-    return sharedBoardIndexToCombatCell(state, cellIndex) !== null;
+    return sharedBoardIndexToInnerAreaIndex(state, cellIndex) !== null;
   }
 
   if (isHeroSharedUnitId(activeUnitId)) {
@@ -855,18 +855,18 @@ function isBossSharedUnitId(unitId) {
 }
 
 function resolvePlayableLaneZone(state, cellIndex) {
-  const combatCell = sharedBoardIndexToCombatCell(state, cellIndex);
+  const innerAreaIndex = sharedBoardIndexToInnerAreaIndex(state, cellIndex);
 
-  if (combatCell === null) {
+  if (innerAreaIndex === null) {
     return "outside";
   }
 
   const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
-  const combatWidth = boardWidth - 2;
-  return combatCell < combatWidth ? "boss" : "raid";
+  const innerAreaWidth = boardWidth - 2;
+  return innerAreaIndex < innerAreaWidth ? "boss" : "raid";
 }
 
-function sharedBoardIndexToCombatCell(state, boardIndex) {
+function sharedBoardIndexToInnerAreaIndex(state, boardIndex) {
   const boardWidth = Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
   const boardHeight = Number.isInteger(state?.boardHeight) ? state.boardHeight : 4;
   const maxIndex = boardWidth * boardHeight - 1;
@@ -877,21 +877,21 @@ function sharedBoardIndexToCombatCell(state, boardIndex) {
 
   const x = boardIndex % boardWidth;
   const y = Math.floor(boardIndex / boardWidth);
-  const combatX = x - 1;
-  const combatY = y - 1;
-  const combatWidth = boardWidth - 2;
-  const combatHeight = boardHeight - 2;
+  const innerAreaX = x - 1;
+  const innerAreaY = y - 1;
+  const innerAreaWidth = boardWidth - 2;
+  const innerAreaHeight = boardHeight - 2;
 
   if (
-    combatX < 0 ||
-    combatY < 0 ||
-    combatX >= combatWidth ||
-    combatY >= combatHeight
+    innerAreaX < 0 ||
+    innerAreaY < 0 ||
+    innerAreaX >= innerAreaWidth ||
+    innerAreaY >= innerAreaHeight
   ) {
     return null;
   }
 
-  return combatY * combatWidth + combatX;
+  return innerAreaY * innerAreaWidth + innerAreaX;
 }
 
 function buildSharedDropRejectMessage(state, cellIndex) {

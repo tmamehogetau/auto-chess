@@ -174,4 +174,49 @@ describe("game-room session", () => {
       { method: "create", roomName: "game", options: { setId: "set2" } },
     ]);
   });
+
+  test("structured connect options は top-level extras を roomOptions へ引き継ぐ", async () => {
+    const calls: Array<{ roomId: string; options: Record<string, unknown> | undefined }> = [];
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async joinById(roomId: string, options?: Record<string, unknown>) {
+            calls.push({ roomId, options });
+            return {
+              roomId,
+              leave: async () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+
+          public async joinOrCreate(): Promise<never> {
+            throw new Error("joinOrCreate should not be used");
+          }
+        },
+      }),
+    });
+
+    await session.connect({
+      roomId: "room-abc",
+      setId: "set2",
+      roomOptions: { sharedBoardRoomId: "shared-1" },
+    });
+
+    expect(calls).toEqual([
+      {
+        roomId: "room-abc",
+        options: {
+          setId: "set2",
+          sharedBoardRoomId: "shared-1",
+        },
+      },
+    ]);
+  });
 });

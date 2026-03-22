@@ -33,12 +33,20 @@ function normalizeConnectOptions(rawOptions) {
     };
   }
 
+  const topLevelRoomOptions = { ...candidate };
+  delete topLevelRoomOptions.mode;
+  delete topLevelRoomOptions.roomId;
+  delete topLevelRoomOptions.roomOptions;
+
   return {
     mode: candidate.mode === "create" ? "create" : "joinOrCreate",
     roomId: typeof candidate.roomId === "string" ? candidate.roomId.trim() : "",
-    roomOptions: candidate.roomOptions && typeof candidate.roomOptions === "object"
-      ? candidate.roomOptions
-      : {},
+    roomOptions: {
+      ...topLevelRoomOptions,
+      ...(candidate.roomOptions && typeof candidate.roomOptions === "object"
+        ? candidate.roomOptions
+        : {}),
+    },
   };
 }
 

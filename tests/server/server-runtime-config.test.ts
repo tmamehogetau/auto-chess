@@ -129,9 +129,27 @@ describe("runtime shared_board server config", () => {
     const gameRoom = await testServer.createRoom<GameRoom>("game", {
       sharedBoardRoomId: sharedBoardRoom.roomId,
     });
-    const client = await testServer.connectTo(gameRoom);
+    const clients = await Promise.all([
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+    }
+
+    const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+    for (const client of clients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    const roundState = await roundStatePromise;
 
     expect(gameRoom.state.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
-    expect(client.sessionId.length).toBeGreaterThan(0);
+    expect(roundState.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(clients[0]?.sessionId.length).toBeGreaterThan(0);
   });
 });

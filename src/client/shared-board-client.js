@@ -100,9 +100,12 @@ export function setSharedBoardGamePlayerId(gamePlayerId) {
 }
 
 export function setSharedBoardRoomId(sharedBoardRoomId) {
-  currentSharedBoardRoomId = typeof sharedBoardRoomId === "string"
-    ? sharedBoardRoomId.trim()
-    : "";
+  if (typeof sharedBoardRoomId === "string") {
+    currentSharedBoardRoomId = sharedBoardRoomId.trim();
+    return;
+  }
+
+  currentSharedBoardRoomId = "";
 }
 
 /**
@@ -202,6 +205,7 @@ function bindSharedBoardRoomListeners(room) {
  */
 export function leaveSharedBoardRoom() {
   if (!sharedBoardRoom) {
+    currentSharedBoardRoomId = "";
     currentSharedBoardState = null;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
@@ -213,6 +217,7 @@ export function leaveSharedBoardRoom() {
 
   const roomToLeave = sharedBoardRoom;
   sharedBoardRoom = null;
+  currentSharedBoardRoomId = "";
   currentSharedBoardState = null;
   sharedDraggedUnitId = null;
   selectedSharedUnitId = null;

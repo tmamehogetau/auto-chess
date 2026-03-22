@@ -136,6 +136,7 @@ function findDescendantByClass(root: FakeElement | undefined, className: string)
 describe("shared-board client", () => {
   beforeEach(() => {
     leaveSharedBoardRoom();
+    setSharedBoardRoomId("");
     vi.useFakeTimers();
     globalThis.document = {
       createElement: () => new FakeElement(),

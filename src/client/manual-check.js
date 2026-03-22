@@ -679,6 +679,7 @@ async function connect() {
       activeRoom = null;
       sessionId = null;
       currentPhase = null;
+      updateRoomCodeDisplay("");
       leaveSharedBoardRoom();
       latestPhaseHpProgress = null;
       renderPhaseHpProgress(null);

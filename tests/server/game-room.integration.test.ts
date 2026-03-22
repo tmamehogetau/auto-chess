@@ -1949,11 +1949,17 @@ describe("GameRoom integration", () => {
     });
     roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
+    await waitForCondition(
+      () => roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) === targetBossCell,
+      SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
+    );
+
     await waitForCondition(() => {
+      roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
       const targetCell = sharedBoardRoom.state.cells.get(String(targetBossCell));
       const sourceCell = sharedBoardRoom.state.cells.get(String(initialBossCell));
       return (
-        roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) === targetBossCell
+        targetCell?.ownerId === bossPlayerId
         && targetCell?.unitId === `boss:${bossPlayerId}`
         && sourceCell?.unitId === ""
       );

@@ -303,20 +303,20 @@ function updateSharedBoardPlacementGuide(state) {
 
   if (!hasOwnUnits) {
     domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
-      ? "Buy a unit into your Bench, then place it onto one of the center 4x2 cells. Boss covers the top lane, raid covers the bottom lane."
+      ? "Buy a unit into your Bench, then place it onto one of the center 4x2 combat cells. Boss uses the upper row, raid uses the lower row."
       : "Buy a unit into your Bench, then place it onto one of the highlighted raid cells. Boss deployment stays reserved for now.";
     return;
   }
 
   if (selectedSharedUnitId || sharedDraggedUnitId) {
     domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
-      ? "Blue cells inside the center 4x2 are open for your selected unit. Red cells are blocked or outside the playable lane."
+      ? "Blue cells inside the center 4x2 combat area are open for your selected unit. Red cells are blocked or outside that area."
       : "Blue highlighted raid cells are open for your selected unit. Red cells are occupied or outside the active raid footprint.";
     return;
   }
 
   domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
-    ? "Select or drag one of your units. The center 4x2 is the playable lane: boss on top, raid on bottom."
+    ? "Select or drag one of your units. The center 4x2 combat area keeps boss on top and raid on bottom."
     : "Select or drag one of your units. Place it onto the highlighted raid cells in the lower half of the board.";
 }
 
@@ -354,24 +354,24 @@ function renderSharedBoard(state) {
     cellElement.tabIndex = 0;
     cellElement.dataset.cellIndex = String(i);
     cellElement.dataset.raidRegion = deploymentZone === "boss" ? "boss-top" : "raid-bottom";
-    cellElement.dataset.playableLane = legacyEmbeddedBoard ? resolvePlayableLaneZone(state, i) : deploymentZone;
+    cellElement.dataset.legacyInnerAreaZone = legacyEmbeddedBoard ? resolveLegacyInnerAreaZone(state, i) : deploymentZone;
     cellElement.setAttribute("role", "button");
     cellElement.setAttribute("aria-label", buildSharedBoardCellAriaLabel(i, cell, state));
     cellElement.classList.add(deploymentZone === "boss" ? "zone-boss" : "zone-raid");
     if (legacyEmbeddedBoard) {
-      const playableLaneZone = resolvePlayableLaneZone(state, i);
-      if (playableLaneZone === "outside") {
-        cellElement.classList.add("outside-playable");
+      const legacyInnerAreaZone = resolveLegacyInnerAreaZone(state, i);
+      if (legacyInnerAreaZone === "outside") {
+        cellElement.classList.add("outside-combat-area");
       } else {
-        cellElement.classList.add("playable-lane");
-        cellElement.classList.add(playableLaneZone === "boss" ? "playable-boss-lane" : "playable-raid-lane");
+        cellElement.classList.add("active-combat-area");
+        cellElement.classList.add(legacyInnerAreaZone === "boss" ? "active-boss-area" : "active-raid-area");
       }
     } else {
       cellElement.classList.add(deploymentZone === "boss" ? "deployment-boss" : "deployment-raid");
       if (isActiveRaidCombatFootprintCell(state, i)) {
-        cellElement.classList.add("playable-lane", "playable-raid-lane");
+        cellElement.classList.add("active-combat-area", "active-raid-area");
       } else {
-        cellElement.classList.add("outside-playable");
+        cellElement.classList.add("outside-combat-area");
       }
     }
     cellElement.onclick = () => {
@@ -854,7 +854,7 @@ function isBossSharedUnitId(unitId) {
   return typeof unitId === "string" && unitId.startsWith("boss:");
 }
 
-function resolvePlayableLaneZone(state, cellIndex) {
+function resolveLegacyInnerAreaZone(state, cellIndex) {
   const innerAreaIndex = sharedBoardIndexToInnerAreaIndex(state, cellIndex);
 
   if (innerAreaIndex === null) {
@@ -899,7 +899,7 @@ function buildSharedDropRejectMessage(state, cellIndex) {
 
   if (!isPlayableSharedBoardCell(state, cellIndex, activeUnitId)) {
     return isLegacyEmbeddedBoard(state)
-      ? "That lane is outside the playable combat area. Pick one of the center cells."
+      ? "That cell is outside the center combat area. Pick one of the center cells."
       : isHeroSharedUnitId(activeUnitId)
         ? "Hero units can move anywhere in the lower raid half. Pick an open cell there."
         : "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.";
@@ -907,11 +907,11 @@ function buildSharedDropRejectMessage(state, cellIndex) {
 
   const cell = mapGet(state?.cells, String(cellIndex));
   if (cell?.unitId && cell.ownerId !== getOwnSharedBoardOwnerId()) {
-    return "That lane is occupied by another player. Pick an open cell.";
+    return "That cell is occupied by another player. Pick an open cell.";
   }
 
   return isLegacyEmbeddedBoard(state)
-    ? "That lane is blocked. Pick an open cell."
+    ? "That cell is blocked. Pick an open cell."
     : "That deployment cell is blocked. Pick an open cell.";
 }
 
@@ -1012,14 +1012,14 @@ function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
       : `Board cell ${cellIndex}, live battle replay`;
   }
 
-  const laneCopy = isLegacyEmbeddedBoard(state)
+  const zoneCopy = isLegacyEmbeddedBoard(state)
     ? (() => {
-        const playableLaneZone = resolvePlayableLaneZone(state, cellIndex);
-        return playableLaneZone === "outside"
-          ? "outside the playable lane"
-          : playableLaneZone === "boss"
-            ? "boss playable lane"
-            : "raid playable lane";
+        const legacyInnerAreaZone = resolveLegacyInnerAreaZone(state, cellIndex);
+        return legacyInnerAreaZone === "outside"
+          ? "outside the center combat area"
+          : legacyInnerAreaZone === "boss"
+            ? "upper combat row"
+            : "lower combat row";
       })()
     : isActiveRaidCombatFootprintCell(state, cellIndex)
       ? "active raid combat footprint"
@@ -1033,10 +1033,10 @@ function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
       : null;
 
   if (unitName) {
-    return `Board cell ${cellIndex}, ${laneCopy}, contains ${unitName}`;
+    return `Board cell ${cellIndex}, ${zoneCopy}, contains ${unitName}`;
   }
 
-  return `Board cell ${cellIndex}, ${laneCopy}`;
+  return `Board cell ${cellIndex}, ${zoneCopy}`;
 }
 
 function isSharedBoardBattleMode(state) {

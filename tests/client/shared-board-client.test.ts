@@ -1467,7 +1467,7 @@ describe("shared-board client", () => {
     expect(findDescendantByClass(gridElement.children[25], "shared-board-battle-projectile-tracer")).toBeNull();
   });
 
-  test("shared board marks center 4x2 as playable lane and dims the outer ring", async () => {
+  test("shared board marks the center 4x2 combat area and dims the outer ring", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
     const placementGuideElement = new FakeElement();
@@ -1518,12 +1518,12 @@ describe("shared-board client", () => {
       },
     });
 
-    expect(gridElement.children[0]?.className).toContain("outside-playable");
-    expect(gridElement.children[7]?.className).toContain("playable-lane");
-    expect(gridElement.children[7]?.className).toContain("playable-boss-lane");
-    expect(gridElement.children[13]?.className).toContain("playable-lane");
-    expect(gridElement.children[13]?.className).toContain("playable-raid-lane");
-    expect(placementGuideElement.textContent).toContain("center 4x2");
+    expect(gridElement.children[0]?.className).toContain("outside-combat-area");
+    expect(gridElement.children[7]?.className).toContain("active-combat-area");
+    expect(gridElement.children[7]?.className).toContain("active-boss-area");
+    expect(gridElement.children[13]?.className).toContain("active-combat-area");
+    expect(gridElement.children[13]?.className).toContain("active-raid-area");
+    expect(placementGuideElement.textContent).toContain("center 4x2 combat cells");
   });
 
   test("shared board cells distinguish own units and ally units for readability", async () => {
@@ -1686,11 +1686,11 @@ describe("shared-board client", () => {
       },
     });
 
-    expect(placementGuideElement.textContent).toContain("center 4x2");
+    expect(placementGuideElement.textContent).toContain("center 4x2 combat area");
 
     gridElement.children[7]?.onpointerdown?.();
 
-    expect(placementGuideElement.textContent).toContain("center 4x2");
+    expect(placementGuideElement.textContent).toContain("center 4x2 combat area");
     expect(gridElement.children[7]?.className).toContain("selected");
     expect(gridElement.children[8]?.className).toContain("drop-target");
     expect(gridElement.children[9]?.className).toContain("blocked-target");
@@ -2031,7 +2031,7 @@ describe("shared-board client", () => {
 
     expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
     expect(messages).toEqual([{
-      message: "That lane is occupied by another player. Pick an open cell.",
+      message: "That cell is occupied by another player. Pick an open cell.",
       type: "error",
     }]);
     expect(invalidTargetCell?.dataset.dropInvalid).toBeUndefined();
@@ -2193,7 +2193,7 @@ describe("shared-board client", () => {
 
     expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
     expect(messages).toEqual([{
-      message: "That lane is outside the playable combat area. Pick one of the center cells.",
+      message: "That cell is outside the center combat area. Pick one of the center cells.",
       type: "error",
     }]);
     expect(getSelectedSharedUnitId()).toBe("vanguard-1");
@@ -2518,7 +2518,7 @@ describe("shared-board client", () => {
     expect(firstCell?.tabIndex).toBe(0);
     expect(firstCell?.getAttribute("role")).toBe("button");
     expect(firstCell?.ariaLabel).toBe(
-      "Board cell 0, outside the playable lane",
+      "Board cell 0, outside the center combat area",
     );
     expect(typeof firstCell?.onkeydown).toBe("function");
   });

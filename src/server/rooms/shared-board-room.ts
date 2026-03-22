@@ -6,9 +6,23 @@ import {
   SharedBoardPlayerState,
   SharedBoardState,
 } from "../schema/shared-board-state";
-import { combatCellToRaidBoardIndex } from "../../shared/board-geometry";
-import type { BoardUnitPlacement } from "../../shared/room-messages";
-import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
+import type {
+  BattleStartEvent,
+  BattleTimelineEvent,
+  BoardUnitPlacement,
+  MatchPhase,
+  SharedBattleReplayMessage,
+} from "../../shared/room-messages";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+  getDeploymentZoneForRow,
+  sharedBoardIndexToCoordinate,
+} from "../../shared/shared-board-config";
+import {
+  resolveSharedBoardBossPresentation,
+  resolveSharedBoardHeroPresentation,
+  resolveSharedBoardUnitPresentation,
+} from "../shared-board-unit-presentation";
 
 interface SharedBoardRoomOptions {
   boardWidth?: number;
@@ -46,6 +60,7 @@ interface PlaceUnitMessage {
 type SharedBoardRejectCode =
   | "INVALID_PAYLOAD"
   | "NOT_ACTIVE_PLAYER"
+  | "PHASE_MISMATCH"
   | "UNIT_NOT_OWNED"
   | "TARGET_LOCKED"
   | "TARGET_OCCUPIED";
@@ -79,6 +94,7 @@ const CLIENT_MESSAGE_TYPES = {
 const SERVER_MESSAGE_TYPES = {
   ROLE: "shared_role",
   ACTION_RESULT: "shared_action_result",
+  BATTLE_REPLAY: "shared_battle_replay",
 } as const;
 
 export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
@@ -94,9 +110,9 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private static readonly SPECTATOR_COLOR = "#999999";
 
-  private boardWidth = 6;
+  private boardWidth = DEFAULT_SHARED_BOARD_CONFIG.width;
 
-  private boardHeight = 4;
+  private boardHeight = DEFAULT_SHARED_BOARD_CONFIG.height;
 
   private lockDurationMs = SharedBoardRoom.DEFAULT_LOCK_DURATION_MS;
 
@@ -106,6 +122,8 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private placementChangeListener: PlacementChangeListener | null = null;
 
+  private latestBattleReplayMessage: SharedBattleReplayMessage | null = null;
+
   public onCreate(options: SharedBoardRoomOptions = {}): void {
     this.maxClients = SharedBoardRoom.MAX_CLIENTS;
 
@@ -114,6 +132,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.lockDurationMs = options.lockDurationMs ?? this.lockDurationMs;
 
     this.state = new SharedBoardState();
+    this.state.mode = "prep";
     this.state.boardWidth = this.boardWidth;
     this.state.boardHeight = this.boardHeight;
     this.state.dummyBossCell = Math.min(2, this.boardWidth * this.boardHeight - 1);
@@ -180,6 +199,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.state.cursors.set(sessionId, cursor);
 
     this.sendRole(client);
+    this.sendBattleReplay(client);
 
     if (!isSpectator) {
       this.activePlayerIds.push(sessionId);
@@ -227,6 +247,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     player.connected = true;
 
     this.sendRole(client);
+    this.sendBattleReplay(client);
 
     const cursor = this.state.cursors.get(client.sessionId);
     if (cursor) {
@@ -366,7 +387,16 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return;
     }
 
-    if (!this.isValidCellIndex(payload.toCell) || payload.toCell === this.state.dummyBossCell) {
+    const isHeroUnit = this.isHeroUnitId(payload.unitId);
+    const isBossUnit = this.isBossUnitId(payload.unitId);
+
+    if (
+      !this.isValidCellIndex(payload.toCell) ||
+      !((isBossUnit && this.isBossPlacementCellIndex(payload.toCell))
+        || (isHeroUnit
+        ? this.isHeroPlacementCellIndex(payload.toCell)
+        : this.isPlayablePlacementCellIndex(payload.toCell)))
+    ) {
       this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
       return;
     }
@@ -476,6 +506,11 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return false;
     }
 
+    if (this.state.mode !== "prep") {
+      this.sendActionResult(client, action, false, "PHASE_MISMATCH");
+      return false;
+    }
+
     return true;
   }
 
@@ -559,6 +594,45 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return cellIndex >= 0 && cellIndex < this.boardWidth * this.boardHeight;
   }
 
+  private isPlayablePlacementCellIndex(cellIndex: number): boolean {
+    if (!this.isValidCellIndex(cellIndex)) {
+      return false;
+    }
+
+    const coordinate = sharedBoardIndexToCoordinate(cellIndex, {
+      ...DEFAULT_SHARED_BOARD_CONFIG,
+      width: this.boardWidth,
+      height: this.boardHeight,
+    });
+    return getDeploymentZoneForRow(DEFAULT_SHARED_BOARD_CONFIG, coordinate.y) === "raid";
+  }
+
+  private resolvePlacementCellIndex(cellIndex: number): number | null {
+    if (!Number.isInteger(cellIndex)) {
+      return null;
+    }
+
+    return this.isPlayablePlacementCellIndex(cellIndex) ? cellIndex : null;
+  }
+
+  private isHeroPlacementCellIndex(cellIndex: number): boolean {
+    if (!this.isValidCellIndex(cellIndex)) {
+      return false;
+    }
+
+    const row = Math.floor(cellIndex / this.boardWidth);
+    return row >= Math.floor(this.boardHeight / 2);
+  }
+
+  private isBossPlacementCellIndex(cellIndex: number): boolean {
+    if (!this.isValidCellIndex(cellIndex)) {
+      return false;
+    }
+
+    const row = Math.floor(cellIndex / this.boardWidth);
+    return row < Math.floor(this.boardHeight / 2);
+  }
+
   private ownsUnit(playerId: string, unitId: string): boolean {
     const ownerId = this.resolveOwnerId(playerId);
 
@@ -604,6 +678,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     playerId: string,
     placements: BoardUnitPlacement[],
   ): { applied: number; skipped: number } {
+    if (this.state.mode !== "prep") {
+      return { applied: 0, skipped: placements?.length ?? 0 };
+    }
+
     if (!playerId || !Array.isArray(placements)) {
       return { applied: 0, skipped: placements?.length ?? 0 };
     }
@@ -615,12 +693,12 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
         continue;
       }
 
-      try {
-        const sharedCellIndex = combatCellToRaidBoardIndex(placement.cell);
-        desiredCells.set(sharedCellIndex, placement);
-      } catch {
+      const resolvedCellIndex = this.resolvePlacementCellIndex(placement.cell);
+      if (resolvedCellIndex === null) {
         continue;
       }
+
+      desiredCells.set(resolvedCellIndex, placement);
     }
 
     const desiredIndexes = new Set<number>(desiredCells.keys());
@@ -628,15 +706,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     for (const cell of this.state.cells.values()) {
       if (
         cell.ownerId === playerId
-        && cell.index !== this.state.dummyBossCell
+        && !this.isSpecialUnitId(cell.unitId)
         && !desiredIndexes.has(cell.index)
       ) {
-        cell.unitId = "";
-        cell.ownerId = "";
-        cell.displayName = "";
-        cell.portraitKey = "";
-        cell.lockedBy = "";
-        cell.lockUntilMs = 0;
+        this.clearBoardCell(cell);
       }
     }
 
@@ -646,12 +719,17 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     for (const [cellIndex, placement] of desiredCells.entries()) {
       const targetCell = this.state.cells.get(String(cellIndex));
 
-      if (!targetCell || targetCell.index === this.state.dummyBossCell) {
+      if (!targetCell) {
         skipped += 1;
         continue;
       }
 
-      if (targetCell.ownerId !== "" && targetCell.ownerId !== playerId) {
+      if (!this.isDummyBossPlaceholder(targetCell) && targetCell.ownerId !== "" && targetCell.ownerId !== playerId) {
+        skipped += 1;
+        continue;
+      }
+
+      if (this.isSpecialUnitId(targetCell.unitId)) {
         skipped += 1;
         continue;
       }
@@ -670,6 +748,186 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     this.appendEvent(`bridge sync ${playerId.slice(0, 8)} applied=${applied} skipped=${skipped}`);
 
     return { applied, skipped };
+  }
+
+  public applyHeroPlacementFromGame(input: {
+    playerId: string;
+    heroId: string;
+    cellIndex: number | null;
+  }): { applied: number; skipped: number } {
+    if (this.state.mode !== "prep") {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    if (!input.playerId || !input.heroId) {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    const heroUnitId = this.buildHeroUnitId(input.playerId);
+
+    for (const cell of this.state.cells.values()) {
+      if (cell.unitId === heroUnitId) {
+        this.clearBoardCell(cell);
+      }
+    }
+
+    if (input.cellIndex === null) {
+      return { applied: 0, skipped: 0 };
+    }
+
+    const targetCell = this.state.cells.get(String(input.cellIndex));
+    if (
+      !targetCell
+      || (!this.isDummyBossPlaceholder(targetCell) && targetCell.ownerId !== "" && targetCell.ownerId !== input.playerId)
+      || (!this.isHeroUnitId(targetCell.unitId) && !this.isDummyBossPlaceholder(targetCell) && targetCell.unitId !== "")
+    ) {
+      return { applied: 0, skipped: 1 };
+    }
+
+    const presentation = resolveSharedBoardHeroPresentation(input.heroId);
+    targetCell.unitId = heroUnitId;
+    targetCell.ownerId = input.playerId;
+    targetCell.displayName = presentation?.displayName ?? input.heroId;
+    targetCell.portraitKey = presentation?.portraitKey ?? "";
+    targetCell.lockedBy = "";
+    targetCell.lockUntilMs = 0;
+
+    this.appendEvent(`hero sync ${input.playerId.slice(0, 8)} cell=${input.cellIndex}`);
+
+    return { applied: 1, skipped: 0 };
+  }
+
+  public applyBossPlacementFromGame(input: {
+    playerId: string;
+    bossId: string;
+    cellIndex: number | null;
+  }): { applied: number; skipped: number } {
+    if (this.state.mode !== "prep") {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    if (!input.playerId || !input.bossId) {
+      return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
+    }
+
+    const bossUnitId = this.buildBossUnitId(input.playerId);
+
+    for (const cell of this.state.cells.values()) {
+      if (cell.unitId === bossUnitId || this.isDummyBossPlaceholder(cell)) {
+        this.clearBoardCell(cell);
+      }
+    }
+
+    if (input.cellIndex === null) {
+      this.restoreDummyBossPlaceholder();
+      return { applied: 0, skipped: 0 };
+    }
+
+    const targetCell = this.state.cells.get(String(input.cellIndex));
+    if (
+      !targetCell
+      || (!this.isDummyBossPlaceholder(targetCell) && targetCell.ownerId !== "" && targetCell.ownerId !== input.playerId)
+      || (!this.isBossUnitId(targetCell.unitId) && !this.isDummyBossPlaceholder(targetCell) && targetCell.unitId !== "")
+    ) {
+      this.restoreDummyBossPlaceholder();
+      return { applied: 0, skipped: 1 };
+    }
+
+    const presentation = resolveSharedBoardBossPresentation(input.bossId);
+    targetCell.unitId = bossUnitId;
+    targetCell.ownerId = input.playerId;
+    targetCell.displayName = presentation?.displayName ?? input.bossId;
+    targetCell.portraitKey = presentation?.portraitKey ?? "";
+    targetCell.lockedBy = "";
+    targetCell.lockUntilMs = 0;
+
+    this.appendEvent(`boss sync ${input.playerId.slice(0, 8)} cell=${input.cellIndex}`);
+
+    return { applied: 1, skipped: 0 };
+  }
+
+  private clearAllBoardTokens(): void {
+    for (const cell of this.state.cells.values()) {
+      this.clearBoardCell(cell);
+    }
+  }
+
+  public setModeFromGame(input: {
+    phase: MatchPhase | string;
+    phaseDeadlineAtMs?: number;
+    mode?: "prep" | "battle";
+  }): void {
+    const nextMode = input.mode ?? (
+      input.phase === "Battle" || input.phase === "Settle" ? "battle" : "prep"
+    );
+    const modeChanged = this.state.mode !== nextMode;
+
+    this.state.mode = nextMode;
+    this.state.phase = input.phase;
+    this.state.phaseDeadlineAtMs = input.phaseDeadlineAtMs ?? 0;
+
+    if (nextMode !== "prep") {
+      return;
+    }
+
+    this.state.battleId = "";
+    this.latestBattleReplayMessage = null;
+
+    if (modeChanged) {
+      this.resetBoardTokens();
+    }
+  }
+
+  public applyBattleReplayFromGame(input: {
+    phase: MatchPhase | string;
+    phaseDeadlineAtMs?: number;
+    battleId: string;
+    timeline: BattleTimelineEvent[];
+  }): { applied: number } {
+    const battleStartEvent = input.timeline.find(
+      (event): event is BattleStartEvent => event.type === "battleStart",
+    );
+
+    this.state.mode = "battle";
+    this.state.phase = input.phase;
+    this.state.phaseDeadlineAtMs = input.phaseDeadlineAtMs ?? 0;
+    this.state.battleId = input.battleId;
+    this.latestBattleReplayMessage = {
+      type: "shared_battle_replay",
+      battleId: input.battleId,
+      phase: input.phase as MatchPhase,
+      timeline: input.timeline,
+    };
+
+    this.clearAllBoardTokens();
+
+    if (!battleStartEvent) {
+      this.sendBattleReplay();
+      return { applied: 0 };
+    }
+
+    let applied = 0;
+
+    for (const unit of battleStartEvent.units) {
+      const cellIndex = unit.y * this.boardWidth + unit.x;
+      const targetCell = this.state.cells.get(String(cellIndex));
+
+      if (!targetCell || !this.isValidCellIndex(cellIndex)) {
+        continue;
+      }
+
+      targetCell.unitId = `battle:${unit.battleUnitId}`;
+      targetCell.ownerId = unit.side;
+      targetCell.displayName = this.buildBattleReplayDisplayName(unit.battleUnitId);
+      targetCell.portraitKey = "";
+      targetCell.lockedBy = "";
+      targetCell.lockUntilMs = 0;
+      applied += 1;
+    }
+
+    this.appendEvent(`battle replay ${input.battleId} phase=${input.phase} units=${applied}`);
+    this.sendBattleReplay();
+    return { applied };
   }
 
   /**
@@ -732,6 +990,74 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private getActiveColorBySlot(slotIndex: number): string {
     return SharedBoardRoom.ACTIVE_PLAYER_COLORS[slotIndex] ?? SharedBoardRoom.SPECTATOR_COLOR;
+  }
+
+  private sendBattleReplay(client?: Client): void {
+    if (!this.latestBattleReplayMessage) {
+      return;
+    }
+
+    if (client) {
+      client.send(SERVER_MESSAGE_TYPES.BATTLE_REPLAY, this.latestBattleReplayMessage);
+      return;
+    }
+
+    this.broadcast(SERVER_MESSAGE_TYPES.BATTLE_REPLAY, this.latestBattleReplayMessage);
+  }
+
+  private buildBattleReplayDisplayName(battleUnitId: string): string {
+    const tokens = battleUnitId.split("-");
+    const unitType = tokens.find((token) => (
+      token === "vanguard"
+      || token === "ranger"
+      || token === "mage"
+      || token === "assassin"
+    ));
+
+    return unitType ?? battleUnitId;
+  }
+
+  private clearBoardCell(cell: SharedBoardCellState): void {
+    cell.unitId = "";
+    cell.ownerId = "";
+    cell.displayName = "";
+    cell.portraitKey = "";
+    cell.lockedBy = "";
+    cell.lockUntilMs = 0;
+  }
+
+  private buildHeroUnitId(playerId: string): string {
+    return `hero:${playerId}`;
+  }
+
+  private buildBossUnitId(playerId: string): string {
+    return `boss:${playerId}`;
+  }
+
+  private isHeroUnitId(unitId: string): boolean {
+    return unitId.startsWith("hero:");
+  }
+
+  private isBossUnitId(unitId: string): boolean {
+    return unitId.startsWith("boss:");
+  }
+
+  private isSpecialUnitId(unitId: string): boolean {
+    return this.isHeroUnitId(unitId) || this.isBossUnitId(unitId);
+  }
+
+  private isDummyBossPlaceholder(cell: SharedBoardCellState): boolean {
+    return cell.index === this.state.dummyBossCell && cell.unitId === "dummy-boss";
+  }
+
+  private restoreDummyBossPlaceholder(): void {
+    const bossCell = this.state.cells.get(String(this.state.dummyBossCell));
+    if (!bossCell || bossCell.unitId !== "") {
+      return;
+    }
+
+    bossCell.unitId = "dummy-boss";
+    bossCell.ownerId = "boss";
   }
 
   private appendEvent(message: string): void {

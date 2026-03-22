@@ -3,8 +3,11 @@ import type { SharedBoardRoom, PlacementChangeListener } from "./rooms/shared-bo
 import type { SharedBoardCellState } from "./schema/shared-board-state";
 import type { MatchRoomController } from "./match-room-controller";
 import { SharedBoardShadowObserver, type ShadowDiffResult } from "./shared-board-shadow-observer";
-import type { ShadowDiffMessage, BoardUnitPlacement } from "../shared/room-messages";
-import { raidBoardIndexToCombatCell } from "../shared/board-geometry";
+import type {
+  BoardUnitPlacement,
+  SharedBattleReplayMessage,
+  ShadowDiffMessage,
+} from "../shared/room-messages";
 import {
   BridgeMonitor,
   DEFAULT_DASHBOARD_WINDOW_MS,
@@ -28,6 +31,12 @@ import {
  */
 interface PlacementBatchSyncTarget extends Room {
   syncPlayersFromController?: (playerIds: string[]) => void;
+}
+
+interface QueuedSharedBoardCellSnapshot {
+  index: number;
+  unitId: string;
+  ownerId: string;
 }
 
 /**
@@ -58,6 +67,10 @@ export interface SyncOperationRequest {
   playerId: string;
   /** 配置データ */
   placements: BoardUnitPlacement[];
+  /** 主人公セル */
+  heroCellIndex?: number | null;
+  /** ボスセル */
+  bossCellIndex?: number | null;
 }
 
 /**
@@ -102,6 +115,8 @@ export class SharedBoardBridge {
   private readonly roomLookupRetryCount = 5;
   private readonly roomLookupRetryDelayMs = 100;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private lastSharedBoardPhase: string | null = null;
+  private lastSharedBattleId: string | null = null;
   
   // 双方向同期用
   private currentVersion = 0;
@@ -109,7 +124,7 @@ export class SharedBoardBridge {
   private readonly maxAppliedOpIds = 1000;
 
   // 配置変更バッチ同期用
-  private readonly pendingPlacementChanges = new Map<string, SharedBoardCellState[]>();
+  private readonly pendingPlacementChanges = new Map<string, QueuedSharedBoardCellSnapshot[]>();
   private placementBatchTimer: NodeJS.Timeout | null = null;
   private readonly placementBatchWindowMs = 25;
   private isFlushingPlacementBatch = false;
@@ -206,6 +221,7 @@ export class SharedBoardBridge {
       this.state = "READY";
       this.hasEverBeenReady = true;
       this.reconnectAttempts = 0;
+      this.syncSharedBoardViewFromController();
 
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
@@ -299,8 +315,8 @@ export class SharedBoardBridge {
       return;
     }
 
-    // 同一プレイヤーは最新状態で上書き
-    this.pendingPlacementChanges.set(playerId, cells);
+    // Colyseus state cell は mutable なので、flush までに再同期で上書きされないよう snapshot 化する。
+    this.pendingPlacementChanges.set(playerId, this.snapshotPlacementCells(cells));
 
     if (this.placementBatchTimer) {
       return;
@@ -360,7 +376,7 @@ export class SharedBoardBridge {
    */
   private async handlePlacementChange(
     playerId: string,
-    cells: SharedBoardCellState[],
+    cells: QueuedSharedBoardCellSnapshot[],
   ): Promise<boolean> {
     if (this.state !== "READY") {
       return false;
@@ -374,6 +390,8 @@ export class SharedBoardBridge {
     try {
       // SharedBoardセルをBoardUnitPlacementに変換
       const placements = this.convertCellsToPlacements(cells);
+      const heroCellIndex = this.extractHeroCellIndex(playerId, cells);
+      const bossCellIndex = this.extractBossCellIndex(playerId, cells);
 
       // 同期リクエスト作成
       const request: SyncOperationRequest = {
@@ -384,6 +402,8 @@ export class SharedBoardBridge {
         actorId: playerId,
         playerId,
         placements,
+        ...(heroCellIndex !== undefined ? { heroCellIndex } : {}),
+        ...(bossCellIndex !== undefined ? { bossCellIndex } : {}),
       };
 
       // 配置を適用
@@ -458,7 +478,7 @@ export class SharedBoardBridge {
    * @param cells SharedBoardセル一覧
    * @returns BoardUnitPlacement配列
    */
-  private convertCellsToPlacements(cells: SharedBoardCellState[]): BoardUnitPlacement[] {
+  private convertCellsToPlacements(cells: QueuedSharedBoardCellSnapshot[]): BoardUnitPlacement[] {
     const placements: BoardUnitPlacement[] = [];
 
     for (const cell of cells) {
@@ -466,9 +486,7 @@ export class SharedBoardBridge {
         continue;
       }
 
-      // shared_board index (0-23 for 6x4) → combat cell (0-7)
-      const combatCell = raidBoardIndexToCombatCell(cell.index);
-      if (combatCell === null) {
+      if (this.isSpecialUnitId(cell.unitId)) {
         continue;
       }
 
@@ -479,13 +497,53 @@ export class SharedBoardBridge {
       }
 
       placements.push({
-        cell: combatCell,
+        cell: cell.index,
         unitType,
         starLevel: 1,
       });
     }
 
     return placements;
+  }
+
+  private extractHeroCellIndex(
+    playerId: string,
+    cells: QueuedSharedBoardCellSnapshot[],
+  ): number | null | undefined {
+    const heroUnitId = `hero:${playerId}`;
+
+    for (const cell of cells) {
+      if (cell.unitId === heroUnitId) {
+        return cell.index;
+      }
+    }
+
+    return undefined;
+  }
+
+  private extractBossCellIndex(
+    playerId: string,
+    cells: QueuedSharedBoardCellSnapshot[],
+  ): number | null | undefined {
+    const bossUnitId = `boss:${playerId}`;
+
+    for (const cell of cells) {
+      if (cell.unitId === bossUnitId) {
+        return cell.index;
+      }
+    }
+
+    return undefined;
+  }
+
+  private snapshotPlacementCells(
+    cells: SharedBoardCellState[],
+  ): QueuedSharedBoardCellSnapshot[] {
+    return cells.map((cell) => ({
+      index: cell.index,
+      unitId: cell.unitId,
+      ownerId: cell.ownerId,
+    }));
   }
 
   private isBoardUnitType(unitType: string): unitType is BoardUnitPlacement["unitType"] {
@@ -528,6 +586,13 @@ export class SharedBoardBridge {
       return;
     }
 
+    this.syncSharedBoardViewFromController();
+
+    const gameState = this.controller.getGameState?.();
+    if (gameState?.phase !== "Prep") {
+      return;
+    }
+
     try {
       const diffResult = this.shadowObserver.observeAndCompare();
       
@@ -541,6 +606,98 @@ export class SharedBoardBridge {
       if (this.state === "READY") {
         this.scheduleReconnect();
       }
+    }
+  }
+
+  private isHeroUnitId(unitId: string): boolean {
+    return unitId.startsWith("hero:");
+  }
+
+  private isBossUnitId(unitId: string): boolean {
+    return unitId.startsWith("boss:");
+  }
+
+  private isSpecialUnitId(unitId: string): boolean {
+    return this.isHeroUnitId(unitId) || this.isBossUnitId(unitId);
+  }
+
+  private syncSharedBoardViewFromController(forcePrepSync = false): void {
+    if (this.state !== "READY" || !this.sharedBoardRoom) {
+      return;
+    }
+
+    const gameState = this.controller.getGameState?.();
+    if (!gameState) {
+      return;
+    }
+
+    const phase = gameState.phase;
+    const phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
+
+    if (phase === "Battle" || phase === "Settle") {
+      const replayMessage = this.controller.getSharedBattleReplay(phase);
+
+      if (replayMessage) {
+        if (replayMessage.battleId !== this.lastSharedBattleId) {
+          this.sharedBoardRoom.applyBattleReplayFromGame({
+            phase: replayMessage.phase,
+            phaseDeadlineAtMs,
+            battleId: replayMessage.battleId,
+            timeline: replayMessage.timeline,
+          });
+          this.lastSharedBattleId = replayMessage.battleId;
+        } else if (phase !== this.lastSharedBoardPhase) {
+          this.sharedBoardRoom.setModeFromGame({
+            phase,
+            phaseDeadlineAtMs,
+            mode: "battle",
+          });
+        }
+
+        this.lastSharedBoardPhase = phase;
+        return;
+      }
+    }
+
+    this.sharedBoardRoom.setModeFromGame({
+      phase,
+      phaseDeadlineAtMs,
+      mode: "prep",
+    });
+
+    if (forcePrepSync || this.lastSharedBoardPhase !== phase || this.lastSharedBattleId !== null) {
+      this.syncAllPrepPlacementsToSharedBoard();
+    }
+
+    this.lastSharedBoardPhase = phase;
+    this.lastSharedBattleId = null;
+  }
+
+  private syncAllPrepPlacementsToSharedBoard(): void {
+    if (!this.sharedBoardRoom) {
+      return;
+    }
+
+    const playerIds = this.controller.getPlayerIds?.() ?? [];
+    for (const playerId of playerIds) {
+      const placements = this.controller.getBoardPlacementsForPlayer?.(playerId) ?? [];
+      this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
+
+      const heroId = this.controller.getSelectedHero?.(playerId) ?? "";
+      const heroCellIndex = this.controller.getHeroPlacementForPlayer?.(playerId) ?? null;
+      this.sharedBoardRoom.applyHeroPlacementFromGame({
+        playerId,
+        heroId,
+        cellIndex: heroCellIndex,
+      });
+
+      const bossId = this.controller.getSelectedBoss?.(playerId) ?? "";
+      const bossCellIndex = this.controller.getBossPlacementForPlayer?.(playerId) ?? null;
+      this.sharedBoardRoom.applyBossPlacementFromGame({
+        playerId,
+        bossId,
+        cellIndex: bossCellIndex,
+      });
     }
   }
 
@@ -721,6 +878,38 @@ export class SharedBoardBridge {
         return {
           ...failureResult,
         };
+      }
+
+      if (request.heroCellIndex !== undefined && request.heroCellIndex !== null) {
+        const heroResult = this.controller.applyHeroPlacementForPlayer(
+          request.playerId,
+          request.heroCellIndex,
+        );
+
+        if (!heroResult.success) {
+          return {
+            success: false,
+            code: heroResult.code === "PHASE_MISMATCH" ? "invalid_phase" : "forbidden",
+            currentVersion: this.currentVersion,
+            ...(heroResult.error !== undefined ? { error: heroResult.error } : {}),
+          };
+        }
+      }
+
+      if (request.bossCellIndex !== undefined && request.bossCellIndex !== null) {
+        const bossResult = this.controller.applyBossPlacementForPlayer(
+          request.playerId,
+          request.bossCellIndex,
+        );
+
+        if (!bossResult.success) {
+          return {
+            success: false,
+            code: bossResult.code === "PHASE_MISMATCH" ? "invalid_phase" : "forbidden",
+            currentVersion: this.currentVersion,
+            ...(bossResult.error !== undefined ? { error: bossResult.error } : {}),
+          };
+        }
       }
 
       // バージョンインクリメント

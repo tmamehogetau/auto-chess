@@ -6,6 +6,11 @@ import { SharedBoardBridge } from "../../src/server/shared-board-bridge";
 import { BridgeMonitor } from "../../src/server/shared-board-bridge-monitor";
 import type { MatchRoomController } from "../../src/server/match-room-controller";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
+import {
+  createBattleEndEvent,
+  createBattleStartEvent,
+} from "../../src/server/combat/battle-timeline";
+import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
 
 interface BatchSyncGameRoom extends Room {
   syncPlayersFromController: (playerIds: string[]) => void;
@@ -16,6 +21,9 @@ type MockedController = {
   getGameState: ReturnType<typeof vi.fn>;
   getBoardPlacementsForPlayer: ReturnType<typeof vi.fn>;
   getPlayerIds: ReturnType<typeof vi.fn>;
+  getBossPlayerId: ReturnType<typeof vi.fn>;
+  getSharedBattleReplay: ReturnType<typeof vi.fn>;
+  getPlayerStatus: ReturnType<typeof vi.fn>;
 };
 
 describe("SharedBoardBridge validation (T1-2)", () => {
@@ -71,6 +79,9 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       getGameState: vi.fn(() => ({ phase: "Prep", roundIndex: 1 })),
       getBoardPlacementsForPlayer: vi.fn(() => []),
       getPlayerIds: vi.fn(() => ["player-a"]),
+      getBossPlayerId: vi.fn(() => null),
+      getSharedBattleReplay: vi.fn(() => null),
+      getPlayerStatus: vi.fn(() => ({})),
     };
 
     const bridge = new SharedBoardBridge(
@@ -96,7 +107,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
 
       enqueuePlacementChange(bridge, "player-a", [
         {
-          index: 7,
+          index: combatCellToRaidBoardIndex(0),
           unitId: "vanguard-1",
           ownerId: "player-a",
         } as SharedBoardCellState,
@@ -153,6 +164,81 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       expect(controller.applyPrepPlacementForPlayer).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("battle replay sync", () => {
+    it("Battleフェーズではshared board roomへbattle replayを同期する", async () => {
+      const { bridge, controller } = createBridge();
+      const applyBattleReplayFromGame = vi.fn();
+      const setModeFromGame = vi.fn();
+
+      controller.getGameState.mockReturnValue({ phase: "Battle", roundIndex: 3 });
+      controller.getSharedBattleReplay.mockReturnValue({
+        type: "shared_battle_replay",
+        battleId: "battle-raid-1",
+        phase: "Battle",
+        timeline: [
+          createBattleStartEvent({
+            battleId: "battle-raid-1",
+            round: 3,
+            boardConfig: { width: 6, height: 6 },
+            units: [
+              {
+                battleUnitId: "raid-vanguard-1",
+                side: "raid",
+                x: 0,
+                y: 3,
+                currentHp: 40,
+                maxHp: 40,
+              },
+            ],
+          }),
+          createBattleEndEvent({
+            type: "battleEnd",
+            battleId: "battle-raid-1",
+            atMs: 600,
+            winner: "raid",
+          }),
+        ],
+      });
+
+      Reflect.set(bridge, "sharedBoardRoom", {
+        applyBattleReplayFromGame,
+        setModeFromGame,
+        offPlacementChange: vi.fn(),
+      });
+
+      const syncSharedBoardViewFromController = Reflect.get(bridge, "syncSharedBoardViewFromController") as
+        | (() => void)
+        | undefined;
+
+      if (!syncSharedBoardViewFromController) {
+        throw new Error("Expected syncSharedBoardViewFromController to be available");
+      }
+
+      syncSharedBoardViewFromController.call(bridge);
+
+      expect(controller.getSharedBattleReplay).toHaveBeenCalledWith("Battle");
+      expect(controller.getPlayerStatus).not.toHaveBeenCalled();
+      expect(applyBattleReplayFromGame).toHaveBeenCalledWith(
+        expect.objectContaining({
+          battleId: "battle-raid-1",
+          phase: "Battle",
+          timeline: expect.arrayContaining([
+            expect.objectContaining({
+              type: "battleStart",
+              battleId: "battle-raid-1",
+            }),
+            expect.objectContaining({
+              type: "battleEnd",
+              battleId: "battle-raid-1",
+              winner: "raid",
+            }),
+          ]),
+        }),
+      );
+      expect(setModeFromGame).not.toHaveBeenCalled();
     });
   });
 

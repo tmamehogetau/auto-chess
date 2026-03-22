@@ -250,8 +250,8 @@ describe("admin monitor", () => {
       status: "mismatch",
       mismatchCount: 2,
       mismatchedCells: [
-        { combatCell: 3, gameUnitType: "vanguard", sharedUnitType: null },
-        { combatCell: 5, gameUnitType: null, sharedUnitType: "exists_in_shared_only" },
+        { sharedBoardCellIndex: 3, gameUnitType: "vanguard", sharedUnitType: null },
+        { sharedBoardCellIndex: 5, gameUnitType: null, sharedUnitType: "exists_in_shared_only" },
       ],
     });
 

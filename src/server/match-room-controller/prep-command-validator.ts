@@ -1,10 +1,7 @@
 import type { BoardUnitPlacement } from "../../shared/room-messages";
 import type { ItemType } from "../../shared/types";
 import { normalizeBoardPlacements } from "../combat/unit-effects";
-import {
-  COMBAT_CELL_MAX_INDEX,
-  COMBAT_CELL_MIN_INDEX,
-} from "../../shared/board-geometry";
+import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 
@@ -20,6 +17,8 @@ const MAX_INVENTORY_SIZE = 9;
 const MAX_ITEMS_PER_UNIT = 3;
 const ITEM_SHOP_SIZE = 5;
 const TOUHOU_COST_TIERS: readonly [1, 2, 3, 4, 5] = [1, 2, 3, 4, 5];
+const SHARED_BOARD_MIN_INDEX = 0;
+const SHARED_BOARD_MAX_INDEX = DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height - 1;
 
 export interface ShopOffer {
   unitType: string;
@@ -56,6 +55,9 @@ export interface CommandPayload {
     benchIndex: number;
     cell: number;
   };
+  boardToBenchCell?: {
+    cell: number;
+  };
   benchSellIndex?: number;
   boardSellIndex?: number;
   itemBuySlotIndex?: number;
@@ -90,6 +92,7 @@ export interface ValidationDependencies {
   isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
   getRosterFlags: () => FeatureFlags;
+  getReservedBoardCells?: (playerId: string) => number[];
 }
 
 export interface ValidationContext {
@@ -259,8 +262,8 @@ function validatePayload(
       !Number.isInteger(benchIndex) ||
       benchIndex < 0 ||
       !Number.isInteger(cell) ||
-      cell < COMBAT_CELL_MIN_INDEX ||
-      cell > COMBAT_CELL_MAX_INDEX
+      cell < SHARED_BOARD_MIN_INDEX ||
+      cell > SHARED_BOARD_MAX_INDEX
     ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
@@ -273,12 +276,22 @@ function validatePayload(
     }
   }
 
+  if (payload.boardToBenchCell !== undefined) {
+    if (
+      !Number.isInteger(payload.boardToBenchCell.cell) ||
+      payload.boardToBenchCell.cell < SHARED_BOARD_MIN_INDEX ||
+      payload.boardToBenchCell.cell > SHARED_BOARD_MAX_INDEX
+    ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+  }
+
   // boardSellIndex validation
   if (payload.boardSellIndex !== undefined) {
     if (
       !Number.isInteger(payload.boardSellIndex) ||
-      payload.boardSellIndex < COMBAT_CELL_MIN_INDEX ||
-      payload.boardSellIndex > COMBAT_CELL_MAX_INDEX
+      payload.boardSellIndex < SHARED_BOARD_MIN_INDEX ||
+      payload.boardSellIndex > SHARED_BOARD_MAX_INDEX
     ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
@@ -366,8 +379,20 @@ function validateCommandConflicts(
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
+  if (payload.boardToBenchCell !== undefined && payload.benchToBoardCell !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardSellIndex and benchSellIndex cannot be used together
   if (payload.boardSellIndex !== undefined && payload.benchSellIndex !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  if (payload.boardToBenchCell !== undefined && payload.benchSellIndex !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  if (payload.boardToBenchCell !== undefined && payload.boardSellIndex !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
@@ -376,13 +401,25 @@ function validateCommandConflicts(
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
+  if (payload.boardToBenchCell !== undefined && payload.shopBuySlotIndex !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardSellIndex and boardUnitCount cannot be used together
   if (payload.boardSellIndex !== undefined && payload.boardUnitCount !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
+  if (payload.boardToBenchCell !== undefined && payload.boardUnitCount !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardSellIndex and boardPlacements cannot be used together
   if (payload.boardSellIndex !== undefined && payload.boardPlacements !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
+  if (payload.boardToBenchCell !== undefined && payload.boardPlacements !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
@@ -405,6 +442,8 @@ function validatePreconditions(
   deps: ValidationDependencies,
   internalResult?: ValidationInternalResult,
 ): import("../../shared/room-messages").CommandResult | null {
+  const reservedBoardCells = new Set(deps.getReservedBoardCells?.(playerId) ?? []);
+
   // benchToBoardCell preconditions
   if (payload.benchToBoardCell !== undefined) {
     const benchUnits = deps.getBenchUnits(playerId);
@@ -423,7 +462,7 @@ function validatePreconditions(
       (placement) => placement.cell === payload.benchToBoardCell?.cell,
     );
 
-    if (duplicatedCell) {
+    if (duplicatedCell || reservedBoardCells.has(payload.benchToBoardCell.cell)) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
@@ -445,6 +484,32 @@ function validatePreconditions(
     );
 
     if (!hasBoardUnit) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+  }
+
+  if (payload.boardToBenchCell !== undefined) {
+    const benchUnits = deps.getBenchUnits(playerId);
+    const boardPlacements = deps.getBoardPlacements(playerId);
+    const hasBoardUnit = boardPlacements.some(
+      (placement) => placement.cell === payload.boardToBenchCell?.cell,
+    );
+
+    if (!hasBoardUnit) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (benchUnits.length >= MAX_BENCH_SIZE) {
+      return { accepted: false, code: "BENCH_FULL" };
+    }
+  }
+
+  if (payload.boardPlacements !== undefined) {
+    const conflictsWithReservedCell = payload.boardPlacements.some((placement) =>
+      reservedBoardCells.has(placement.cell),
+    );
+
+    if (conflictsWithReservedCell) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }

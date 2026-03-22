@@ -1,4 +1,8 @@
 import type { BoardUnitType } from "../../shared/room-messages";
+import {
+  sharedBoardIndexToCoordinate,
+  sharedBoardManhattanDistance,
+} from "../../shared/board-geometry";
 import type { BattleUnit } from "./battle-simulator";
 
 export interface SkillEffect {
@@ -30,6 +34,69 @@ function calculateUltimateDamage(caster: BattleUnit, baseDamage: number, target?
   return Math.floor(damage);
 }
 
+function calculateSharedBoardDistance(leftCell: number, rightCell: number): number {
+  return sharedBoardManhattanDistance(
+    sharedBoardIndexToCoordinate(leftCell),
+    sharedBoardIndexToCoordinate(rightCell),
+  );
+}
+
+function selectLowestHpTarget(caster: BattleUnit, enemies: BattleUnit[]): BattleUnit | null {
+  const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+  if (livingEnemies.length === 0) {
+    return null;
+  }
+
+  return livingEnemies.reduce((best, enemy) => {
+    if (enemy.hp !== best.hp) {
+      return enemy.hp < best.hp ? enemy : best;
+    }
+
+    const bestDistance = calculateSharedBoardDistance(caster.cell, best.cell);
+    const enemyDistance = calculateSharedBoardDistance(caster.cell, enemy.cell);
+    if (enemyDistance !== bestDistance) {
+      return enemyDistance < bestDistance ? enemy : best;
+    }
+
+    return enemy.cell < best.cell ? enemy : best;
+  });
+}
+
+function selectBestAreaCenter(caster: BattleUnit, enemies: BattleUnit[], radius: number): number | null {
+  const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+  if (livingEnemies.length === 0) {
+    return null;
+  }
+
+  let bestCenter = livingEnemies[0]!.cell;
+  let bestCount = -1;
+  let bestCasterDistance = Infinity;
+
+  for (const candidate of livingEnemies) {
+    const affectedCount = livingEnemies.filter(
+      (enemy) => calculateSharedBoardDistance(enemy.cell, candidate.cell) <= radius,
+    ).length;
+    const casterDistance = calculateSharedBoardDistance(caster.cell, candidate.cell);
+
+    if (
+      affectedCount > bestCount
+      || (
+        affectedCount === bestCount
+        && (
+          casterDistance < bestCasterDistance
+          || (casterDistance === bestCasterDistance && candidate.cell < bestCenter)
+        )
+      )
+    ) {
+      bestCenter = candidate.cell;
+      bestCount = affectedCount;
+      bestCasterDistance = casterDistance;
+    }
+  }
+
+  return bestCenter;
+}
+
 export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   vanguard: {
     name: 'Shield Wall',
@@ -51,9 +118,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     triggerCount: 3,
     execute: (caster, _allies, enemies, log) => {
       // HP が最も低い敵に 2 倍攻撃ダメージを与える
-      const livingEnemies = enemies.filter(e => !e.isDead);
-      if (livingEnemies.length > 0) {
-        const target = livingEnemies.reduce((lowest, e) => e.hp < lowest.hp ? e : lowest);
+      const target = selectLowestHpTarget(caster, enemies);
+      if (target) {
         const damage = calculateUltimateDamage(
           caster,
           caster.attackPower * caster.buffModifiers.attackMultiplier * 2,
@@ -97,9 +163,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     triggerCount: 2,  // Assassin はトリガーが速い
     execute: (caster, _allies, enemies, log) => {
       // HP が最も低い敵に 3 倍ダメージを与える
-      const livingEnemies = enemies.filter(e => !e.isDead);
-      if (livingEnemies.length > 0) {
-        const target = livingEnemies.reduce((lowest, e) => e.hp < lowest.hp ? e : lowest);
+      const target = selectLowestHpTarget(caster, enemies);
+      if (target) {
         const damage = calculateUltimateDamage(
           caster,
           caster.attackPower * caster.buffModifiers.attackMultiplier * 3,
@@ -160,9 +225,8 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
     triggerType: 'on_mana_full',
     execute: (caster, _allies, enemies, log) => {
       // HPが最も低い敵に3連撃（ATK × 1.2 × 3）
-      const livingEnemies = enemies.filter(e => !e.isDead);
-      if (livingEnemies.length > 0) {
-        const target = livingEnemies.reduce((lowest, e) => e.hp < lowest.hp ? e : lowest);
+      const target = selectLowestHpTarget(caster, enemies);
+      if (target) {
         const singleDamage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 1.2);
         const totalDamage = singleDamage * 3;
         target.hp -= totalDamage;
@@ -179,26 +243,12 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
       const livingEnemies = enemies.filter(e => !e.isDead);
       if (livingEnemies.length === 0) return;
 
-      // 各セルの敵の数をカウントして、最も密集しているセルを探す
-      const cellCounts: Record<number, number> = {};
-      for (const enemy of livingEnemies) {
-        cellCounts[enemy.cell] = (cellCounts[enemy.cell] || 0) + 1;
-      }
-
-      let maxCount = 0;
-      let centerCell = livingEnemies[0]?.cell ?? 0;
-      for (const [cell, count] of Object.entries(cellCounts)) {
-        if (count > maxCount) {
-          maxCount = count;
-          centerCell = parseInt(cell, 10);
-        }
-      }
-
       // 半径2マス以内の敵を検索してデバフを適用
       const radius = 2;
+      const centerCell = selectBestAreaCenter(caster, livingEnemies, radius) ?? (livingEnemies[0]?.cell ?? 0);
       const affectedEnemies: BattleUnit[] = [];
       for (const enemy of livingEnemies) {
-        const distance = Math.abs(enemy.cell - centerCell);
+        const distance = calculateSharedBoardDistance(enemy.cell, centerCell);
         if (distance <= radius) {
           if (enemy.debuffImmunityCategories?.includes('crowd_control')) {
             continue;

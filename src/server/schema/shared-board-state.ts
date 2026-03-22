@@ -1,5 +1,7 @@
 import { ArraySchema, MapSchema, Schema, defineTypes } from "@colyseus/schema";
 
+import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
+
 export class SharedBoardCellState extends Schema {
   declare public index: number;
   declare public unitId: string;
@@ -62,8 +64,10 @@ export class SharedBoardPlayerState extends Schema {
 }
 
 export class SharedBoardState extends Schema {
+  declare public mode: string;
   declare public phase: string;
   declare public phaseDeadlineAtMs: number;
+  declare public battleId: string;
   declare public boardWidth: number;
   declare public boardHeight: number;
   declare public dummyBossCell: number;
@@ -74,10 +78,12 @@ export class SharedBoardState extends Schema {
 
   public constructor() {
     super();
+    this.mode = "prep";
     this.phase = "Sandbox";
     this.phaseDeadlineAtMs = 0;
-    this.boardWidth = 6;
-    this.boardHeight = 4;
+    this.battleId = "";
+    this.boardWidth = DEFAULT_SHARED_BOARD_CONFIG.width;
+    this.boardHeight = DEFAULT_SHARED_BOARD_CONFIG.height;
     this.dummyBossCell = 2;
     this.players = new MapSchema<SharedBoardPlayerState>();
     this.cursors = new MapSchema<SharedBoardCursorState>();
@@ -115,8 +121,10 @@ defineTypes(SharedBoardPlayerState, {
 });
 
 defineTypes(SharedBoardState, {
+  mode: "string",
   phase: "string",
   phaseDeadlineAtMs: "number",
+  battleId: "string",
   boardWidth: "number",
   boardHeight: "number",
   dummyBossCell: "number",

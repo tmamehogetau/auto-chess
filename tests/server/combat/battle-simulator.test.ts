@@ -4,6 +4,9 @@ import type { BoardUnitPlacement, BoardUnitType } from "../../../src/shared/room
 import { getMvpPhase1Boss, type SubUnitConfig } from "../../../src/shared/types";
 import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 import {
+  sharedBoardCoordinateToIndex,
+} from "../../../src/shared/board-geometry";
+import {
   BattleSimulator,
   calculateCellDistance,
   createBattleUnit,
@@ -12,6 +15,44 @@ import {
 } from "../../../src/server/combat/battle-simulator";
 import { resolveBattlePlacements } from "../../../src/server/unit-id-resolver";
 
+const LEGACY_RAID_COORDINATES = [
+  { x: 1, y: 3 },
+  { x: 2, y: 3 },
+  { x: 3, y: 3 },
+  { x: 4, y: 3 },
+  { x: 1, y: 4 },
+  { x: 2, y: 4 },
+  { x: 3, y: 4 },
+  { x: 4, y: 4 },
+] as const;
+
+const LEGACY_BOSS_COORDINATES = [
+  { x: 1, y: 1 },
+  { x: 2, y: 1 },
+  { x: 3, y: 1 },
+  { x: 4, y: 1 },
+  { x: 1, y: 2 },
+  { x: 2, y: 2 },
+  { x: 3, y: 2 },
+  { x: 4, y: 2 },
+] as const;
+
+function combatCellToRaidBoardIndex(cell: number): number {
+  return sharedBoardCoordinateToIndex(LEGACY_RAID_COORDINATES[cell]!);
+}
+
+function combatCellToBossBoardIndex(cell: number): number {
+  return sharedBoardCoordinateToIndex(LEGACY_BOSS_COORDINATES[cell]!);
+}
+
+function normalizeTestBattleCell(cell: number, side: "left" | "right"): number {
+  if (Number.isInteger(cell) && cell >= 0 && cell <= 7) {
+    return side === "left" ? combatCellToRaidBoardIndex(cell) : combatCellToBossBoardIndex(cell);
+  }
+
+  return cell;
+}
+
 function createTestBattleUnit(
   placement: BoardUnitPlacement,
   side: "left" | "right",
@@ -19,14 +60,23 @@ function createTestBattleUnit(
   isBoss: boolean = false,
   flags = DEFAULT_FLAGS,
 ): BattleUnit {
-  return createBattleUnit(placement, side, index, isBoss, flags);
+  return createBattleUnit(
+    {
+      ...placement,
+      cell: normalizeTestBattleCell(placement.cell, side),
+    },
+    side,
+    index,
+    isBoss,
+    flags,
+  );
 }
 
 import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
 } from "../../../src/server/combat/synergy-definitions";
-import { HERO_SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
+import { HERO_SKILL_DEFINITIONS, SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
 
 describe("battle-simulator", () => {
   describe("scarlet mansion synergy", () => {
@@ -103,12 +153,11 @@ describe("battle-simulator", () => {
   describe("boss passive", () => {
     test("isBoss=true かつ remilia は boss data baseline を使う", () => {
       const bossBaseline = getMvpPhase1Boss();
-      const boss = createBattleUnit(
+      const boss = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
-        DEFAULT_FLAGS,
       );
 
       expect(boss.maxHp).toBe(bossBaseline.hp);
@@ -163,7 +212,7 @@ describe("battle-simulator", () => {
         1_500,
       );
 
-      expect(passiveResult.damageDealt.left).toBeGreaterThan(nonPassiveResult.damageDealt.left);
+      expect(passiveResult.damageDealt.right).toBeGreaterThan(nonPassiveResult.damageDealt.right);
     });
   });
 
@@ -204,6 +253,89 @@ describe("battle-simulator", () => {
 
       expect(normalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
     });
+
+    test("咲夜の範囲デバフは 6x6 の縦距離も半径計算に含める", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", starLevel: 1 },
+        "left",
+        0,
+      );
+      const centerTarget = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const verticalTarget = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "ranger", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [centerTarget, verticalTarget], log);
+
+      expect(centerTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(verticalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+    });
+
+    test("咲夜は最も多く巻き込める中心を選ぶ", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "assassin", starLevel: 1 },
+        "left",
+        0,
+      );
+      const isolatedEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 0 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const clusteredEnemyA = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", starLevel: 1 },
+        "right",
+        1,
+      );
+      const clusteredEnemyB = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "mage", starLevel: 1 },
+        "right",
+        2,
+      );
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [isolatedEnemy, clusteredEnemyA, clusteredEnemyB], log);
+
+      expect(isolatedEnemy.buffModifiers.attackSpeedMultiplier).toBe(1);
+      expect(clusteredEnemyA.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(clusteredEnemyB.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+    });
+  });
+
+  describe("skill targeting", () => {
+    test("Backstab は同HPなら caster に近い敵を優先する", () => {
+      const assassinSkill = SKILL_DEFINITIONS.assassin!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", starLevel: 1 },
+        "left",
+        0,
+      );
+      const nearerEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 30 },
+        "right",
+        0,
+      );
+      const fartherEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 1 }), unitType: "vanguard", starLevel: 1, hp: 30 },
+        "right",
+        1,
+      );
+
+      const log: string[] = [];
+      assassinSkill.execute(caster, [caster], [fartherEnemy, nearerEnemy], log);
+
+      expect(nearerEnemy.hp).toBeLessThan(nearerEnemy.maxHp);
+      expect(fartherEnemy.hp).toBe(fartherEnemy.maxHp);
+    });
   });
 
   describe("shinreibyou ultimate modifiers", () => {
@@ -215,11 +347,11 @@ describe("battle-simulator", () => {
       };
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
-        { cell: 1, unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
       ];
 
       const result = simulator.simulateBattle(
@@ -245,12 +377,12 @@ describe("battle-simulator", () => {
       };
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
-        { cell: 1, unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
-        { cell: 2, unitType: "ranger", unitId: "tojiko", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 3 }), unitType: "ranger", unitId: "tojiko", starLevel: 1, factionId: "shinreibyou" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
       ];
       const leftUnits = leftPlacements.map((placement, index) =>
         createTestBattleUnit(placement, "left", index, false, flags),
@@ -283,10 +415,10 @@ describe("battle-simulator", () => {
       };
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 1, unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
       ];
 
       const result = simulator.simulateBattle(
@@ -316,7 +448,7 @@ describe("battle-simulator", () => {
       expect(unit.id).toBe("left-vanguard-0");
       expect(unit.type).toBe("vanguard");
       expect(unit.starLevel).toBe(1);
-      expect(unit.cell).toBe(0);
+      expect(unit.cell).toBe(combatCellToRaidBoardIndex(0));
       expect(unit.hp).toBeGreaterThan(0);
       expect(unit.maxHp).toBeGreaterThan(0);
       expect(unit.attackPower).toBeGreaterThan(0);
@@ -342,6 +474,7 @@ describe("battle-simulator", () => {
       expect(createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0)).toMatchObject({
         id: "left-vanguard-0",
         type: "vanguard",
+        cell: combatCellToRaidBoardIndex(0),
         hp: 80,
         maxHp: 80,
         attackPower: 4,
@@ -352,6 +485,7 @@ describe("battle-simulator", () => {
       expect(createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
         id: "left-ranger-1",
         type: "ranger",
+        cell: combatCellToRaidBoardIndex(1),
         hp: 50,
         maxHp: 50,
         attackPower: 5,
@@ -362,6 +496,7 @@ describe("battle-simulator", () => {
       expect(createTestBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
         id: "right-mage-0",
         type: "mage",
+        cell: combatCellToBossBoardIndex(2),
         hp: 40,
         maxHp: 40,
         attackPower: 6,
@@ -372,6 +507,7 @@ describe("battle-simulator", () => {
       expect(createTestBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
         id: "right-assassin-1",
         type: "assassin",
+        cell: combatCellToBossBoardIndex(3),
         hp: 45,
         maxHp: 45,
         attackPower: 5,
@@ -437,19 +573,90 @@ describe("battle-simulator", () => {
 
   describe("calculateCellDistance", () => {
     test("隣接するセルの距離が正しく計算される", () => {
-      expect(calculateCellDistance(0, 1)).toBe(1);
-      expect(calculateCellDistance(3, 4)).toBe(1);
-      expect(calculateCellDistance(7, 6)).toBe(1);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 1, y: 5 }),
+        ),
+      ).toBe(1);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
+          sharedBoardCoordinateToIndex({ x: 3, y: 3 }),
+        ),
+      ).toBe(1);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 5, y: 0 }),
+          sharedBoardCoordinateToIndex({ x: 4, y: 0 }),
+        ),
+      ).toBe(1);
     });
 
     test("遠いセルの距離が正しく計算される", () => {
-      expect(calculateCellDistance(0, 7)).toBe(7);
-      expect(calculateCellDistance(0, 4)).toBe(4);
-      expect(calculateCellDistance(3, 7)).toBe(4);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 3, y: 0 }),
+        ),
+      ).toBe(8);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 0, y: 1 }),
+        ),
+      ).toBe(4);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 3, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 5, y: 2 }),
+        ),
+      ).toBe(5);
     });
 
     test("同じセルの距離は0", () => {
-      expect(calculateCellDistance(3, 3)).toBe(0);
+      expect(calculateCellDistance(sharedBoardCoordinateToIndex({ x: 3, y: 3 }), sharedBoardCoordinateToIndex({ x: 3, y: 3 }))).toBe(0);
+    });
+
+    test("side 指定付きでも shared-board index の 6x6 距離を使う", () => {
+      expect(
+        calculateCellDistance(
+          combatCellToRaidBoardIndex(2),
+          combatCellToBossBoardIndex(7),
+          "left",
+          "right",
+        ),
+      ).toBe(2);
+      expect(
+        calculateCellDistance(
+          combatCellToRaidBoardIndex(2),
+          combatCellToBossBoardIndex(4),
+          "left",
+          "right",
+        ),
+      ).toBe(3);
+    });
+
+    test("side 指定があっても shared-board 上で隣接していれば距離1", () => {
+      const leftCell = sharedBoardCoordinateToIndex({ x: 3, y: 4 });
+      const rightCell = sharedBoardCoordinateToIndex({ x: 3, y: 3 });
+      expect(calculateCellDistance(leftCell, rightCell, "left", "left")).toBe(1);
+      expect(calculateCellDistance(leftCell, rightCell, "left", "right")).toBe(1);
+    });
+
+    test("shared-board index は 6x6 Manhattan 距離で計算される", () => {
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
+        ),
+      ).toBe(6);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
+          sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
+        ),
+      ).toBe(3);
     });
   });
 
@@ -572,7 +779,7 @@ describe("battle-simulator", () => {
         attackPower: 5,
         attackSpeed: 0.8,
         attackRange: 3,
-        cell: 2,
+        cell: combatCellToRaidBoardIndex(2),
         isDead: false,
         attackCount: 0,
         defense: 0,
@@ -596,7 +803,7 @@ describe("battle-simulator", () => {
           attackPower: 5,
           attackSpeed: 0.8,
           attackRange: 3,
-          cell: 7,
+          cell: combatCellToBossBoardIndex(7),
           isDead: false,
           attackCount: 0,
           defense: 0,
@@ -619,7 +826,7 @@ describe("battle-simulator", () => {
           attackPower: 6,
           attackSpeed: 0.6,
           attackRange: 2,
-          cell: 6,
+          cell: combatCellToBossBoardIndex(6),
           isDead: false,
           attackCount: 0,
           defense: 0,
@@ -642,7 +849,7 @@ describe("battle-simulator", () => {
           attackPower: 4,
           attackSpeed: 0.5,
           attackRange: 1,
-          cell: 4,
+          cell: combatCellToBossBoardIndex(4),
           isDead: false,
           attackCount: 0,
           defense: 3,
@@ -659,7 +866,46 @@ describe("battle-simulator", () => {
       ];
       const target = findTarget(attacker, enemies);
       expect(target).not.toBeNull();
-      expect(target!.cell).toBe(4);
+      expect(target!.cell).toBe(combatCellToBossBoardIndex(6));
+    });
+
+    test("同距離ならHPが低い敵を優先する", () => {
+      const attacker: BattleUnit = {
+        id: "left-ranger-0",
+        type: "ranger",
+        starLevel: 1,
+        hp: 50,
+        maxHp: 50,
+        attackPower: 5,
+        attackSpeed: 0.8,
+        attackRange: 3,
+        cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
+        isDead: false,
+        attackCount: 0,
+        defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: undefined,
+        magicReduction: undefined,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
+      };
+      const sturdierEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 80 },
+        "right",
+        0,
+      );
+      const weakerEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "mage", starLevel: 1, hp: 20 },
+        "right",
+        1,
+      );
+
+      const target = findTarget(attacker, [sturdierEnemy, weakerEnemy]);
+      expect(target?.id).toBe(weakerEnemy.id);
     });
 
     test("射程外の敵は対象にならない", () => {
@@ -716,6 +962,100 @@ describe("battle-simulator", () => {
   });
 
   describe("BattleSimulator", () => {
+    test("6x6 shared-board cells では move event が board coordinate の1歩移動になる", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: 24, unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: 11, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const firstMove = result.timeline.find((event) => event.type === "move");
+      expect(firstMove).toMatchObject({
+        type: "move",
+        from: { x: 0, y: 4 },
+        to: { x: 1, y: 4 },
+      });
+    });
+
+    test("6x6 shared-board cells では occupied cell を避けて detour する", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 4 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const detourMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      expect(detourMove).toMatchObject({
+        type: "move",
+        from: { x: 0, y: 4 },
+        to: { x: 0, y: 3 },
+      });
+    });
+
+    test("6x6 shared-board cells では一度離れる遠回りでも有効な path を選ぶ", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const rerouteMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      expect(rerouteMove).toMatchObject({
+        type: "move",
+        from: { x: 1, y: 4 },
+        to: { x: 0, y: 4 },
+      });
+    });
+
     test("単一の対決で正しく戦闘が進行する", () => {
       const simulator = new BattleSimulator();
 
@@ -735,21 +1075,58 @@ describe("battle-simulator", () => {
       expect(result.combatLog[result.combatLog.length - 1]).toMatch(/^Battle ended:/);
     });
 
+    test("hero unit は left side として敵ユニットを攻撃する", () => {
+      const simulator = new BattleSimulator();
+      const heroUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      heroUnit.id = "hero-reimu";
+      heroUnit.sourceUnitId = "hero-reimu";
+
+      const rightUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const result = simulator.simulateBattle([heroUnit], [rightUnit], [], [], 1_000);
+
+      expect(rightUnit.hp).toBeLessThan(rightUnit.maxHp);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && event.targetBattleUnitId === rightUnit.id,
+        ),
+      ).toBe(true);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && event.targetBattleUnitId === "hero-reimu",
+        ),
+      ).toBe(false);
+    });
+
     test("同じ入力からは同じ結果が得られる（決定論性）", () => {
       const simulator1 = new BattleSimulator();
       const simulator2 = new BattleSimulator();
 
-      const leftUnits: BattleUnit[] = [
+      const createLeftUnits = (): BattleUnit[] => [
         createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
         createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
       ];
-      const rightUnits: BattleUnit[] = [
+      const createRightUnits = (): BattleUnit[] => [
         createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
         createTestBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
       ];
 
-      const result1 = simulator1.simulateBattle(leftUnits, rightUnits, [], [], 10000);
-      const result2 = simulator2.simulateBattle(leftUnits, rightUnits, [], [], 10000);
+      const result1 = simulator1.simulateBattle(createLeftUnits(), createRightUnits(), [], [], 10000);
+      const result2 = simulator2.simulateBattle(createLeftUnits(), createRightUnits(), [], [], 10000);
 
       expect(result1.winner).toBe(result2.winner);
       expect(result1.leftSurvivors.length).toBe(result2.leftSurvivors.length);
@@ -786,22 +1163,26 @@ describe("battle-simulator", () => {
 
       expect(result1).toEqual(result2);
       expect(result1).toEqual({
-        winner: "draw",
+        winner: "left",
         durationMs: 10_000,
         damageDealt: {
-          left: 0,
-          right: 0,
+          left: 34,
+          right: 30,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 80, cell: 0 },
-          { id: "left-ranger-1", hp: 50, cell: 1 },
+          { id: "left-vanguard-0", hp: 72, cell: 14 },
+          { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 80, cell: 7 },
-          { id: "right-ranger-1", hp: 50, cell: 6 },
+          { id: "right-vanguard-0", hp: 72, cell: 21 },
+          { id: "right-ranger-1", hp: 4, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
-        combatLogEnd: ["Left units: 2", "Right units: 2", "Battle ended: Draw (HP: 130 vs 130)"],
+        combatLogEnd: [
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 1 damage (72/80)",
+          "Left Vanguard (cell 14) attacks Right Ranger (cell 15) for 4 damage (4/50)",
+          "Battle ended: Left wins (HP: 80 vs 76)",
+        ],
       });
     });
 
@@ -966,11 +1347,11 @@ describe("battle-simulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 3, unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
-        { cell: 7, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -996,19 +1377,19 @@ describe("battle-simulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.hp).toBe(46);
+      expect(leftUnits[0]?.hp).toBe(45);
     });
 
     test("chireiden reflection は反射ダメージを再反射しない", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3, factionId: "chireiden" },
-        { cell: 1, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 3, unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
-        { cell: 7, unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -1035,7 +1416,7 @@ describe("battle-simulator", () => {
       );
 
       expect(leftUnits[0]?.hp).toBe(46);
-      expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(2);
+      expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(3);
     });
 
     test("戦闘ログにダメージ情報が記録される", () => {
@@ -1345,15 +1726,15 @@ describe("battle-simulator", () => {
         10_000,
       );
 
-      expect(result1.winner).toBe("draw");
-      expect(result1.damageDealt).toEqual({ left: 0, right: 0 });
+      expect(result1.winner).toBe("left");
+      expect(result1.damageDealt).toEqual({ left: 34, right: 30 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 80, cell: 0 },
-        { id: "left-ranger-1", hp: 50, cell: 1 },
+        { id: "left-vanguard-0", hp: 72, cell: 14 },
+        { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 80, cell: 7 },
-        { id: "right-ranger-1", hp: 50, cell: 6 },
+        { id: "right-vanguard-0", hp: 72, cell: 21 },
+        { id: "right-ranger-1", hp: 4, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);
     });

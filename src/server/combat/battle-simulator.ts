@@ -1,6 +1,19 @@
-import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
+import type {
+  BattleKeyframeUnitState,
+  BattleStartUnitSnapshot,
+  BattleTimelineEvent,
+  BattleTimelineSide,
+  BoardUnitPlacement,
+  BoardUnitType,
+} from "../../shared/room-messages";
 import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
+import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
+import {
+  sharedBoardCoordinateToIndex,
+  sharedBoardManhattanDistance,
+  sharedBoardIndexToCoordinate,
+} from "../../shared/board-geometry";
 import { getStarCombatMultiplier } from "../star-level-config";
 import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
 import {
@@ -17,6 +30,15 @@ import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 import { HEROES } from "../../data/heroes";
 import { resolveBattlePlacement } from "../unit-id-resolver";
+import {
+  createAttackStartEvent,
+  createBattleEndEvent,
+  createBattleStartEvent,
+  createDamageAppliedEvent,
+  createKeyframeEvent,
+  createMoveEvent,
+  createUnitDeathEvent,
+} from "./battle-timeline";
 
 /**
  * アクションインターフェース
@@ -34,6 +56,7 @@ export interface Action {
  */
 export interface BattleUnit {
   id: string;
+  sourceUnitId?: string;
   type: BoardUnitType;
   starLevel: number;
   hp: number;
@@ -41,7 +64,7 @@ export interface BattleUnit {
   attackPower: number;
   attackSpeed: number; // 1秒あたりの攻撃回数（0.5 = 2秒に1回攻撃）
   attackRange: number; // 1 = 近接, 2+ = 遠距離
-  cell: number; // 0-7 のボード位置
+  cell: number; // shared-board index on the 6x6 battle field
   isDead: boolean;
   isBoss?: boolean; // ボスフラグ（ボス戦時のみ）
   attackCount: number; // スキルトリガー用の攻撃回数トラッキング
@@ -69,6 +92,7 @@ export interface BattleResult {
   winner: "left" | "right" | "draw";
   leftSurvivors: BattleUnit[];
   rightSurvivors: BattleUnit[];
+  timeline: BattleTimelineEvent[];
   combatLog: string[]; // デバッグ用
   durationMs: number;
   damageDealt: {
@@ -94,6 +118,194 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
   mage: { hp: 40, attack: 6, attackSpeed: 0.6, range: 2 },
   assassin: { hp: 45, attack: 5, attackSpeed: 1.0, range: 1 },
 };
+
+function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
+  return resolveBattleSide(unit) === "left" ? "raid" : "boss";
+}
+
+function resolveBattleSide(unit: BattleUnit): "left" | "right" {
+  if (unit.isBoss) {
+    return "right";
+  }
+
+  if (unit.id.startsWith("left") || unit.id.startsWith("hero-")) {
+    return "left";
+  }
+
+  return "right";
+}
+
+function resolveBoardIndexForCell(cell: number): number {
+  if (!Number.isInteger(cell)) {
+    throw new Error("battle board cell index must be an integer");
+  }
+
+  if (cell >= 0 && cell < DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
+    return cell;
+  }
+
+  throw new Error("battle board cell index out of range");
+}
+
+function resolveTimelineCoordinate(unit: BattleUnit): { x: number; y: number } {
+  return resolveCellCoordinate(unit.cell, resolveBattleSide(unit));
+}
+
+function resolveCellCoordinate(cell: number, side: "left" | "right"): { x: number; y: number } {
+  return sharedBoardIndexToCoordinate(
+    resolveBoardIndexForCell(cell),
+    DEFAULT_SHARED_BOARD_CONFIG,
+  );
+}
+
+function isCoordinateWithinBoard(coordinate: { x: number; y: number }): boolean {
+  return (
+    Number.isInteger(coordinate.x) &&
+    Number.isInteger(coordinate.y) &&
+    coordinate.x >= 0 &&
+    coordinate.y >= 0 &&
+    coordinate.x < DEFAULT_SHARED_BOARD_CONFIG.width &&
+    coordinate.y < DEFAULT_SHARED_BOARD_CONFIG.height
+  );
+}
+
+function coordinateKey(coordinate: { x: number; y: number }): string {
+  return `${coordinate.x},${coordinate.y}`;
+}
+
+function buildApproachCandidates(
+  currentCoordinate: { x: number; y: number },
+  targetCoordinate: { x: number; y: number },
+): Array<{ x: number; y: number }> {
+  const deltaX = targetCoordinate.x - currentCoordinate.x;
+  const deltaY = targetCoordinate.y - currentCoordinate.y;
+  const candidates: Array<{ x: number; y: number }> = [];
+  const seen = new Set<string>();
+
+  const pushCandidate = (coordinate: { x: number; y: number }): void => {
+    if (!isCoordinateWithinBoard(coordinate)) {
+      return;
+    }
+
+    const key = coordinateKey(coordinate);
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    candidates.push(coordinate);
+  };
+
+  const horizontalFirst = Math.abs(deltaX) >= Math.abs(deltaY);
+
+  if (horizontalFirst && deltaX !== 0) {
+    pushCandidate({ x: currentCoordinate.x + Math.sign(deltaX), y: currentCoordinate.y });
+  }
+  if (!horizontalFirst && deltaY !== 0) {
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + Math.sign(deltaY) });
+  }
+
+  if (horizontalFirst && deltaY !== 0) {
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + Math.sign(deltaY) });
+  }
+  if (!horizontalFirst && deltaX !== 0) {
+    pushCandidate({ x: currentCoordinate.x + Math.sign(deltaX), y: currentCoordinate.y });
+  }
+
+  if (horizontalFirst) {
+    const preferredVertical = deltaY === 0 ? -1 : Math.sign(deltaY);
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + preferredVertical });
+    pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y - preferredVertical });
+  } else {
+    const preferredHorizontal = deltaX === 0 ? -1 : Math.sign(deltaX);
+    pushCandidate({ x: currentCoordinate.x + preferredHorizontal, y: currentCoordinate.y });
+    pushCandidate({ x: currentCoordinate.x - preferredHorizontal, y: currentCoordinate.y });
+  }
+
+  pushCandidate({ x: currentCoordinate.x + 1, y: currentCoordinate.y });
+  pushCandidate({ x: currentCoordinate.x - 1, y: currentCoordinate.y });
+  pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y + 1 });
+  pushCandidate({ x: currentCoordinate.x, y: currentCoordinate.y - 1 });
+
+  return candidates;
+}
+
+function findShortestApproachStep(
+  currentCoordinate: { x: number; y: number },
+  targetCoordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+  attackRange: number,
+): { x: number; y: number } | null {
+  const queue: Array<{
+    coordinate: { x: number; y: number };
+    firstStep: { x: number; y: number } | null;
+  }> = [{ coordinate: currentCoordinate, firstStep: null }];
+  const visited = new Set<string>([coordinateKey(currentCoordinate)]);
+
+  while (queue.length > 0) {
+    const currentNode = queue.shift();
+    if (!currentNode) {
+      break;
+    }
+
+    const neighbors = buildApproachCandidates(currentNode.coordinate, targetCoordinate);
+    for (const neighbor of neighbors) {
+      const neighborKey = coordinateKey(neighbor);
+      if (visited.has(neighborKey) || occupiedCoordinates.has(neighborKey)) {
+        continue;
+      }
+
+      const firstStep = currentNode.firstStep ?? neighbor;
+      if (sharedBoardManhattanDistance(neighbor, targetCoordinate) <= attackRange) {
+        return firstStep;
+      }
+
+      visited.add(neighborKey);
+      queue.push({ coordinate: neighbor, firstStep });
+    }
+  }
+
+  return null;
+}
+
+function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
+  const coordinate = resolveTimelineCoordinate(unit);
+
+  return {
+    battleUnitId: unit.id,
+    side: resolveTimelineSide(unit),
+    x: coordinate.x,
+    y: coordinate.y,
+    currentHp: unit.hp,
+    maxHp: unit.maxHp,
+  };
+}
+
+function buildBattleKeyframeUnitState(unit: BattleUnit): BattleKeyframeUnitState {
+  const coordinate = resolveTimelineCoordinate(unit);
+
+  return {
+    battleUnitId: unit.id,
+    x: coordinate.x,
+    y: coordinate.y,
+    currentHp: unit.hp,
+    maxHp: unit.maxHp,
+    alive: !unit.isDead,
+    state: unit.isDead ? "dead" : "idle",
+  };
+}
+
+function resolveTimelineWinner(winner: BattleResult["winner"]): "boss" | "raid" | "draw" {
+  if (winner === "left") {
+    return "raid";
+  }
+
+  if (winner === "right") {
+    return "boss";
+  }
+
+  return "draw";
+}
 
 /**
  * BattleUnit を作成するヘルパー関数
@@ -173,6 +385,7 @@ export function createBattleUnit(
 
   return {
     id: `${side}-${unitType}-${index}`,
+    sourceUnitId: resolvedPlacement.unitId ?? `${side}-${unitType}-${index}`,
     type: unitType,
     starLevel,
     hp: finalHp,
@@ -180,7 +393,7 @@ export function createBattleUnit(
     attackPower: finalAttack,
     attackSpeed: finalAttackSpeed,
     attackRange: finalRange,
-    cell,
+    cell: resolveBoardIndexForCell(cell),
     isDead: false,
     isBoss,
     attackCount: 0,
@@ -203,8 +416,15 @@ export function createBattleUnit(
  * セル間の距離を計算
  * ボード上の2つのセル間の距離（絶対値の差）を計算
  */
-export function calculateCellDistance(cell1: number, cell2: number): number {
-  return Math.abs(cell1 - cell2);
+export function calculateCellDistance(
+  cell1: number,
+  cell2: number,
+  side1?: "left" | "right",
+  side2?: "left" | "right",
+): number {
+  const coordinate1 = resolveCellCoordinate(cell1, side1 ?? "left");
+  const coordinate2 = resolveCellCoordinate(cell2, side2 ?? "right");
+  return sharedBoardManhattanDistance(coordinate1, coordinate2);
 }
 
 /**
@@ -242,9 +462,29 @@ export function findTarget(attacker: BattleUnit, enemies: BattleUnit[]): BattleU
   let minDistance = Infinity;
 
   for (const enemy of livingEnemies) {
-    const distance = calculateCellDistance(attacker.cell, enemy.cell);
+    const distance = calculateCellDistance(
+      attacker.cell,
+      enemy.cell,
+      resolveBattleSide(attacker),
+      resolveBattleSide(enemy),
+    );
 
-    if (distance <= attacker.attackRange && distance < minDistance) {
+    if (distance > attacker.attackRange) {
+      continue;
+    }
+
+    if (
+      distance < minDistance
+      || (
+        distance === minDistance
+        && closestTarget
+        && (
+          enemy.hp < closestTarget.hp
+          || (enemy.hp === closestTarget.hp && enemy.cell < closestTarget.cell)
+        )
+      )
+      || (distance === minDistance && !closestTarget)
+    ) {
       minDistance = distance;
       closestTarget = enemy;
     }
@@ -263,8 +503,24 @@ function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): Ba
   let minDistance = Infinity;
 
   for (const enemy of livingEnemies) {
-    const distance = calculateCellDistance(attacker.cell, enemy.cell);
-    if (distance < minDistance) {
+    const distance = calculateCellDistance(
+      attacker.cell,
+      enemy.cell,
+      resolveBattleSide(attacker),
+      resolveBattleSide(enemy),
+    );
+    if (
+      distance < minDistance
+      || (
+        distance === minDistance
+        && closestTarget
+        && (
+          enemy.hp < closestTarget.hp
+          || (enemy.hp === closestTarget.hp && enemy.cell < closestTarget.cell)
+        )
+      )
+      || (distance === minDistance && !closestTarget)
+    ) {
       minDistance = distance;
       closestTarget = enemy;
     }
@@ -275,6 +531,7 @@ function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): Ba
 
 function moveUnitBySimpleApproach(
   unit: BattleUnit,
+  allies: BattleUnit[],
   enemies: BattleUnit[],
   combatLog: string[],
 ): boolean {
@@ -283,16 +540,36 @@ function moveUnitBySimpleApproach(
     return false;
   }
 
-  const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell);
+  const unitSide = resolveBattleSide(unit);
+  const enemySide = resolveBattleSide(nearestEnemy);
+  const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell, unitSide, enemySide);
   if (currentDistance <= unit.attackRange) {
     return false;
   }
 
   const previousCell = unit.cell;
-  const step = unit.cell < nearestEnemy.cell ? 1 : -1;
-  unit.cell += step;
+  const currentCoordinate = resolveCellCoordinate(unit.cell, unitSide);
+  const targetCoordinate = resolveCellCoordinate(nearestEnemy.cell, enemySide);
+  const occupiedCoordinates = new Set(
+    [...allies, ...enemies]
+      .filter((candidate) => !candidate.isDead && candidate.id !== unit.id)
+      .map((candidate) =>
+        coordinateKey(resolveCellCoordinate(candidate.cell, resolveBattleSide(candidate))),
+      ),
+  );
+  const nextCoordinate = findShortestApproachStep(
+    currentCoordinate,
+    targetCoordinate,
+    occupiedCoordinates,
+    unit.attackRange,
+  );
+  if (!nextCoordinate) {
+    return false;
+  }
 
-  const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
+  unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
+
+  const sideLabel = resolveBattleSide(unit) === "left" ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
   combatLog.push(
     `${sideLabel} ${typeLabel} moves from cell ${previousCell} to cell ${unit.cell}`,
@@ -507,7 +784,7 @@ function applySubUnitAssist(
  * ユニット名を生成（戦闘ログ用）
  */
 function generateUnitName(unit: BattleUnit): string {
-  const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
+  const sideLabel = resolveBattleSide(unit) === "left" ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
   return `${sideLabel} ${typeLabel} (cell ${unit.cell})`;
 }
@@ -554,6 +831,7 @@ export class BattleSimulator {
           winner: leftUnits.length > 0 ? "left" : rightUnits.length > 0 ? "right" : "draw",
           leftSurvivors: leftUnits.filter(u => !u.isDead),
           rightSurvivors: rightUnits.filter(u => !u.isDead),
+          timeline: [],
           combatLog: isBothEmpty ? ["Draw (all units defeated)"] : ["Battle with empty teams"],
           durationMs: 0,
           damageDealt: {
@@ -565,9 +843,25 @@ export class BattleSimulator {
       }
 
       const combatLog: string[] = [];
+      const battleId = `battle-${Date.now()}`;
+      const timeline: BattleTimelineEvent[] = [];
       combatLog.push("Battle started");
       combatLog.push(`Left units: ${leftUnits.length}`);
       combatLog.push(`Right units: ${rightUnits.length}`);
+      timeline.push(createBattleStartEvent({
+        battleId,
+        round: 0,
+        boardConfig: {
+          width: DEFAULT_SHARED_BOARD_CONFIG.width,
+          height: DEFAULT_SHARED_BOARD_CONFIG.height,
+        },
+        units: [...leftUnits, ...rightUnits].map(buildBattleStartSnapshot),
+      }));
+      timeline.push(createKeyframeEvent({
+        battleId,
+        atMs: 0,
+        units: [...leftUnits, ...rightUnits].map(buildBattleKeyframeUnitState),
+      }));
 
       const leftScarletBossLifestealActive = hasScarletMansionBossLifesteal(leftPlacements);
       const rightScarletBossLifestealActive = hasScarletMansionBossLifesteal(rightPlacements);
@@ -615,6 +909,18 @@ export class BattleSimulator {
       let damageDealtLeft = 0;  // 左チームが与えたダメージ
       let damageDealtRight = 0; // 右チームが与えたダメージ
       let bossDamage = 0;       // ボスが受けたダメージ
+      let nextKeyframeAtMs = 250;
+
+      const appendDueKeyframes = (atMs: number) => {
+        while (atMs >= nextKeyframeAtMs) {
+          timeline.push(createKeyframeEvent({
+            battleId,
+            atMs: nextKeyframeAtMs,
+            units: [...leftUnits, ...rightUnits].map(buildBattleKeyframeUnitState),
+          }));
+          nextKeyframeAtMs += 250;
+        }
+      };
 
       // 全ユニットの初期アクションをキューに追加
       for (const unit of allUnits) {
@@ -664,12 +970,22 @@ export class BattleSimulator {
       }
 
       currentTime = action.actionTime;
+      appendDueKeyframes(currentTime);
 
       if (action.type === "attack") {
-        const enemies = action.unit.id.startsWith("left") ? rightUnits : leftUnits;
+        const unitSide = resolveBattleSide(action.unit);
+        const enemies = unitSide === "left" ? rightUnits : leftUnits;
+        const allies = unitSide === "left" ? leftUnits : rightUnits;
         const target = findTarget(action.unit, enemies);
 
         if (target) {
+          timeline.push(createAttackStartEvent({
+            type: "attackStart",
+            battleId,
+            atMs: currentTime,
+            sourceBattleUnitId: action.unit.id,
+            targetBattleUnitId: target.id,
+          }));
           // クリティカルヒット判定
           const isCrit = Math.random() < action.unit.critRate;
           const critMultiplier = isCrit ? action.unit.critDamageMultiplier : 1.0;
@@ -693,6 +1009,15 @@ export class BattleSimulator {
           }
 
           target.hp -= actualDamage;
+          timeline.push(createDamageAppliedEvent({
+            type: "damageApplied",
+            battleId,
+            atMs: currentTime,
+            sourceBattleUnitId: action.unit.id,
+            targetBattleUnitId: target.id,
+            amount: actualDamage,
+            remainingHp: Math.max(0, target.hp),
+          }));
 
           if ((target.reflectRatio ?? 0) > 0 && actualDamage > 0) {
             const reflectedDamage = Math.max(1, Math.floor(actualDamage * (target.reflectRatio ?? 0)));
@@ -704,6 +1029,12 @@ export class BattleSimulator {
             if (action.unit.hp <= 0) {
               action.unit.isDead = true;
               combatLog.push(`${generateUnitName(action.unit)} has been defeated!`);
+              timeline.push(createUnitDeathEvent({
+                type: "unitDeath",
+                battleId,
+                atMs: currentTime,
+                battleUnitId: action.unit.id,
+              }));
             }
           }
 
@@ -718,7 +1049,7 @@ export class BattleSimulator {
             }
           }
 
-          const scarletBossLifestealActive = action.unit.id.startsWith("left")
+          const scarletBossLifestealActive = unitSide === "left"
             ? leftScarletBossLifestealActive
             : rightScarletBossLifestealActive;
           const canTriggerScarletBossLifesteal = scarletBossLifestealActive
@@ -734,7 +1065,7 @@ export class BattleSimulator {
           }
 
           // ダメージ追跡
-          const isAttackerLeft = action.unit.id.startsWith("left");
+          const isAttackerLeft = unitSide === "left";
           if (isAttackerLeft) {
             damageDealtLeft += actualDamage;
           } else {
@@ -759,6 +1090,12 @@ export class BattleSimulator {
           if (target.hp <= 0) {
             target.isDead = true;
             combatLog.push(`${generateUnitName(target)} has been defeated!`);
+            timeline.push(createUnitDeathEvent({
+              type: "unitDeath",
+              battleId,
+              atMs: currentTime,
+              battleUnitId: target.id,
+            }));
           }
 
           // 攻撃カウントを増加
@@ -787,9 +1124,17 @@ export class BattleSimulator {
             });
           }
         } else {
-          const isRaidBattle = leftUnits.some((unit) => unit.isBoss) || rightUnits.some((unit) => unit.isBoss);
-          if (flags.enableBossExclusiveShop && isRaidBattle) {
-            moveUnitBySimpleApproach(action.unit, enemies, combatLog);
+          const previousCell = action.unit.cell;
+          moveUnitBySimpleApproach(action.unit, allies, enemies, combatLog);
+          if (action.unit.cell !== previousCell) {
+            timeline.push(createMoveEvent({
+              type: "move",
+              battleId,
+              atMs: currentTime,
+              battleUnitId: action.unit.id,
+              from: resolveTimelineCoordinate({ ...action.unit, cell: previousCell }),
+              to: resolveTimelineCoordinate(action.unit),
+            }));
           }
 
           // 攻撃カウントを増加（ターゲットが見つからない場合も）
@@ -874,6 +1219,7 @@ export class BattleSimulator {
       rightUnits, 
       currentTime, 
       maxDurationMs, 
+      timeline,
       combatLog,
       damageDealtLeft, 
       damageDealtRight,
@@ -888,6 +1234,7 @@ export class BattleSimulator {
         winner: "draw",
         leftSurvivors: leftUnits ? leftUnits.filter(u => !u.isDead) : [],
         rightSurvivors: rightUnits ? rightUnits.filter(u => !u.isDead) : [],
+        timeline: [],
         combatLog: ["Battle error occurred"],
         durationMs: 0,
         damageDealt: {
@@ -916,6 +1263,7 @@ export class BattleSimulator {
     rightUnits: BattleUnit[],
     currentTime: number,
     maxDurationMs: number,
+    timeline: BattleTimelineEvent[],
     combatLog: string[],
     damageDealtLeft: number,
     damageDealtRight: number,
@@ -929,6 +1277,15 @@ export class BattleSimulator {
         winner,
         leftSurvivors,
         rightSurvivors,
+        timeline: [
+          ...timeline,
+          createBattleEndEvent({
+            type: "battleEnd",
+            battleId: timeline[0]?.battleId ?? "battle-unknown",
+            atMs: currentTime,
+            winner: resolveTimelineWinner(winner),
+          }),
+        ],
         combatLog,
         durationMs: currentTime,
         damageDealt: {

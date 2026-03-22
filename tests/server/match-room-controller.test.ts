@@ -2,7 +2,14 @@ import { describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { MatchLogger } from "../../src/server/match-logger";
-import type { BoardUnitPlacement } from "../../src/shared/room-messages";
+import type { BattleTimelineEvent, BoardUnitPlacement } from "../../src/shared/room-messages";
+import {
+  createBattleEndEvent,
+  createBattleStartEvent,
+} from "../../src/server/combat/battle-timeline";
+import {
+  combatCellToRaidBoardIndex,
+} from "../../src/shared/board-geometry";
 import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
 
 const controllerOptions = {
@@ -158,6 +165,68 @@ describe("MatchRoomController", () => {
         mage: 0,
         assassin: 0,
       },
+    });
+  });
+
+  test("shared board replay 用の battle timeline を専用 accessor で返す", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
+      opponentId: string;
+      won: boolean;
+      damageDealt: number;
+      damageTaken: number;
+      survivors: number;
+      opponentSurvivors: number;
+      timeline?: BattleTimelineEvent[];
+    }>;
+
+    battleResultsByPlayer.set("p1", {
+      opponentId: "p4",
+      won: true,
+      damageDealt: 12,
+      damageTaken: 4,
+      survivors: 1,
+      opponentSurvivors: 0,
+      timeline: [
+        createBattleStartEvent({
+          battleId: "battle-shared-1",
+          round: 1,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-1",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+          ],
+        }),
+        createBattleEndEvent({
+          type: "battleEnd",
+          battleId: "battle-shared-1",
+          atMs: 700,
+          winner: "raid",
+        }),
+      ],
+    });
+
+    expect(controller.getSharedBattleReplay("Battle")).toMatchObject({
+      type: "shared_battle_replay",
+      battleId: "battle-shared-1",
+      phase: "Battle",
     });
   });
 
@@ -1309,6 +1378,34 @@ describe("MatchRoomController", () => {
     expect(status.gold).toBe(beforeSellGold + unitCost);
     expect(status.benchUnits.length).toBe(0);
     expect(status.ownedUnits[soldOwnedKey]).toBe(beforeSellOwned[soldOwnedKey] - 1);
+  });
+
+  test("boardToBenchCellで盤面ユニットをbenchへ戻せる", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const placeResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      boardPlacements: [{ cell: 3, unitType: "mage" }],
+    });
+    const returnResult = controller.submitPrepCommand("p1", 2, 3_100, {
+      boardToBenchCell: { cell: 3 },
+    });
+    const status = controller.getPlayerStatus("p1");
+
+    expect(placeResult).toEqual({ accepted: true });
+    expect(returnResult).toEqual({ accepted: true });
+    expect(status.boardUnitCount).toBe(0);
+    expect(status.boardUnits).toEqual([]);
+    expect(status.benchUnits).toEqual(["mage"]);
   });
 
   test("enablePerUnitSharedPool=true では Touhou unitId ごとに購入在庫が減る", async () => {
@@ -2576,18 +2673,18 @@ describe("MatchRoomController", () => {
 
     const p1Result = controller.submitPrepCommand("p1", 1, 3_000, {
       boardPlacements: [
-        { cell: 4, unitType: "assassin" },
-        { cell: 5, unitType: "assassin" },
-        { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "mage" },
+        { cell: combatCellToRaidBoardIndex(4), unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(1), unitType: "mage" },
       ],
     });
     const p4Result = controller.submitPrepCommand("p4", 1, 3_000, {
       boardPlacements: [
-        { cell: 4, unitType: "mage" },
-        { cell: 5, unitType: "ranger" },
-        { cell: 6, unitType: "ranger" },
-        { cell: 0, unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(4), unitType: "mage" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(6), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
       ],
     });
 
@@ -2598,10 +2695,10 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(91);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
-  test("後列ranger2体の援護射撃で不利マッチアップを逆転できる", () => {
+  test("後列ranger2体の援護射撃 fixture は shared-index pathing では押し切られる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -2616,18 +2713,18 @@ describe("MatchRoomController", () => {
 
     const p1Result = controller.submitPrepCommand("p1", 1, 3_000, {
       boardPlacements: [
-        { cell: 4, unitType: "ranger" },
-        { cell: 5, unitType: "ranger" },
-        { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "mage" },
+        { cell: combatCellToRaidBoardIndex(4), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(1), unitType: "mage" },
       ],
     });
     const p4Result = controller.submitPrepCommand("p4", 1, 3_000, {
       boardPlacements: [
-        { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "assassin" },
-        { cell: 5, unitType: "ranger" },
-        { cell: 6, unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(1), unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(6), unitType: "ranger" },
       ],
     });
 
@@ -2641,7 +2738,7 @@ describe("MatchRoomController", () => {
     expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
-  test("set2ではrangerスキル条件が緩くなりset1と勝敗が変わる", () => {
+  test("set2でもこのranger編成 fixture は shared-index pathing で勝利する", () => {
     const set1Controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -2668,18 +2765,18 @@ describe("MatchRoomController", () => {
 
       controller.submitPrepCommand("p1", 1, 3_000, {
         boardPlacements: [
-          { cell: 4, unitType: "ranger" },
-          { cell: 5, unitType: "ranger" },
-          { cell: 0, unitType: "vanguard" },
-          { cell: 1, unitType: "assassin" },
+          { cell: combatCellToRaidBoardIndex(4), unitType: "ranger" },
+          { cell: combatCellToRaidBoardIndex(5), unitType: "ranger" },
+          { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+          { cell: combatCellToRaidBoardIndex(1), unitType: "assassin" },
         ],
       });
       controller.submitPrepCommand("p4", 1, 3_000, {
         boardPlacements: [
-          { cell: 0, unitType: "vanguard" },
-          { cell: 2, unitType: "ranger" },
-          { cell: 5, unitType: "mage" },
-          { cell: 4, unitType: "assassin" },
+          { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+          { cell: combatCellToRaidBoardIndex(2), unitType: "ranger" },
+          { cell: combatCellToRaidBoardIndex(5), unitType: "mage" },
+          { cell: combatCellToRaidBoardIndex(4), unitType: "assassin" },
         ],
       });
 
@@ -2688,12 +2785,12 @@ describe("MatchRoomController", () => {
     }
 
     expect(set1Controller.getPlayerHp("p1")).toBe(100);
-    expect(set1Controller.getPlayerHp("p4")).toBe(89);
+    expect(set1Controller.getPlayerHp("p4")).toBe(87);
     expect(set2Controller.getPlayerHp("p1")).toBe(100);
-    expect(set2Controller.getPlayerHp("p4")).toBe(89);
+    expect(set2Controller.getPlayerHp("p4")).toBe(87);
   });
 
-  test("前列vanguard2体の防衛陣形で不利マッチアップを逆転できる", () => {
+  test("前列vanguard2体の防衛陣形 fixture は shared-index pathing でも受け切れない", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -2708,18 +2805,18 @@ describe("MatchRoomController", () => {
 
     const p1Result = controller.submitPrepCommand("p1", 1, 3_000, {
       boardPlacements: [
-        { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "vanguard" },
-        { cell: 2, unitType: "assassin" },
-        { cell: 3, unitType: "mage" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(1), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(2), unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(3), unitType: "mage" },
       ],
     });
     const p4Result = controller.submitPrepCommand("p4", 1, 3_000, {
       boardPlacements: [
-        { cell: 0, unitType: "vanguard" },
-        { cell: 4, unitType: "ranger" },
-        { cell: 5, unitType: "mage" },
-        { cell: 6, unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(4), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "mage" },
+        { cell: combatCellToRaidBoardIndex(6), unitType: "assassin" },
       ],
     });
 
@@ -2729,8 +2826,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(87);
-    expect(controller.getPlayerHp("p4")).toBe(100);
+    expect(controller.getPlayerHp("p1")).toBe(100);
+    expect(controller.getPlayerHp("p4")).toBe(93);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {
@@ -2754,6 +2851,45 @@ describe("MatchRoomController", () => {
     });
 
     expect(result).toEqual({ accepted: false, code: "DUPLICATE_CELL" });
+  });
+
+  test("applyBossPlacementForPlayerは通常ユニット配置済みセルを拒否する", async () => {
+    await withFlags({
+      ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+      enableBossExclusiveShop: true,
+      enableHeroSystem: true,
+    }, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      expect(controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3", "p4"], {
+        bossPlayerId: "p2",
+        selectedHeroByPlayer: new Map([
+          ["p1", "reimu"],
+          ["p3", "marisa"],
+          ["p4", "okina"],
+        ]),
+        selectedBossByPlayer: new Map([
+          ["p2", "remilia"],
+        ]),
+      })).toBe(true);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+      };
+      internals.boardPlacementsByPlayer.set("p2", [
+        { cell: 2, unitType: "vanguard" },
+      ]);
+
+      expect(controller.applyBossPlacementForPlayer("p2", 2)).toEqual({
+        success: false,
+        code: "INVALID_CELL",
+        error: "Boss cell already occupied by board unit",
+      });
+    });
   });
 
   test("ゴースト対戦で敗北側にダメージが適用される", () => {

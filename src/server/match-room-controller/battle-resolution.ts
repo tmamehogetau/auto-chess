@@ -5,9 +5,11 @@
  */
 
 import type { BattleUnit, BattleResult as SimulatorBattleResult } from "../combat/battle-simulator";
-import type { BoardUnitPlacement } from "../../shared/room-messages";
+import type { BattleTimelineEvent, BoardUnitPlacement } from "../../shared/room-messages";
 import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
+import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
+import type { BattleResultSurvivorSnapshot } from "../types/player-state-types";
 
 /**
  * Spell combat modifiers
@@ -17,9 +19,10 @@ export interface SpellCombatModifiers {
   defenseMultiplier: number;
   attackSpeedMultiplier: number;
 }
-import type { SubUnitConfig } from "../../shared/types";
+import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import type { BoardUnitType } from "../../shared/room-messages";
 import { HEROES } from "../../data/heroes";
+import { BOSS_CHARACTERS } from "../../shared/boss-characters";
 import { buildLoserDamage } from "./damage-calculator";
 
 /**
@@ -43,6 +46,8 @@ export interface PlayerBattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  survivorSnapshots?: BattleResultSurvivorSnapshot[];
+  timeline?: BattleTimelineEvent[];
 }
 
 /**
@@ -233,6 +238,8 @@ export class BattleResolutionService {
         damageTaken: damageToLeft,
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
+        timeline: battleResult.timeline,
       };
 
       rightBattleResult = {
@@ -242,6 +249,8 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
+        timeline: battleResult.timeline,
       };
 
       outcome = {
@@ -277,6 +286,8 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
+        timeline: battleResult.timeline,
       };
 
       rightBattleResult = {
@@ -286,6 +297,8 @@ export class BattleResolutionService {
         damageTaken: damageToRight,
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
+        timeline: battleResult.timeline,
       };
 
       outcome = {
@@ -317,6 +330,8 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
+        timeline: battleResult.timeline,
       };
 
       rightBattleResult = {
@@ -326,6 +341,8 @@ export class BattleResolutionService {
         damageTaken: 0,
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
+        survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
+        timeline: battleResult.timeline,
       };
 
       outcome = {
@@ -355,6 +372,23 @@ export class BattleResolutionService {
       leftBattleResult,
       rightBattleResult,
     };
+  }
+
+  private buildSurvivorSnapshots(survivors: BattleUnit[]): BattleResultSurvivorSnapshot[] {
+    return survivors.map((survivor) => {
+      const unitId = typeof survivor.sourceUnitId === "string" && survivor.sourceUnitId.length > 0
+        ? survivor.sourceUnitId
+        : survivor.id;
+      const presentation = resolveSharedBoardUnitPresentation(unitId, survivor.type);
+      return {
+        unitId,
+        displayName: presentation?.displayName ?? survivor.type,
+        unitType: survivor.type,
+        hp: Math.max(0, Math.round(Number(survivor.hp) || 0)),
+        maxHp: Math.max(0, Math.round(Number(survivor.maxHp) || 0)),
+        sharedBoardCellIndex: Number.isInteger(survivor.cell) ? survivor.cell : -1,
+      };
+    });
   }
 
   /**
@@ -425,11 +459,15 @@ export class BattleResolutionService {
   createHeroBattleUnit(
     heroId: string | undefined,
     playerId: string,
+    boardCellIndex?: number,
   ): BattleUnit | null {
     if (!heroId) return null;
 
     const hero = HEROES.find((h) => h.id === heroId);
     if (!hero) return null;
+    const resolvedBoardCellIndex = (
+      typeof boardCellIndex === "number" && Number.isInteger(boardCellIndex)
+    ) ? boardCellIndex : 8;
 
     return {
       id: `hero-${playerId}`,
@@ -440,7 +478,7 @@ export class BattleResolutionService {
       attackPower: hero.attack,
       attackSpeed: 0.5,
       attackRange: 1,
-      cell: 8,
+      cell: resolvedBoardCellIndex,
       isDead: false,
       attackCount: 0,
       defense: 0,
@@ -448,6 +486,48 @@ export class BattleResolutionService {
       critDamageMultiplier: 1.5,
       physicalReduction: undefined,
       magicReduction: undefined,
+      buffModifiers: {
+        attackMultiplier: 1,
+        defenseMultiplier: 1,
+        attackSpeedMultiplier: 1,
+      },
+    };
+  }
+
+  createBossBattleUnit(
+    bossId: string | undefined,
+    playerId: string,
+    boardCellIndex?: number,
+  ): BattleUnit | null {
+    if (!bossId) return null;
+
+    const boss = BOSS_CHARACTERS.find((candidate) => candidate.id === bossId);
+    if (!boss) return null;
+
+    const resolvedBoardCellIndex = (
+      typeof boardCellIndex === "number" && Number.isInteger(boardCellIndex)
+    ) ? boardCellIndex : 2;
+    const bossStats = getMvpPhase1Boss();
+
+    return {
+      id: `boss-${playerId}`,
+      sourceUnitId: boss.id,
+      type: "vanguard" as BoardUnitType,
+      starLevel: 1,
+      hp: bossStats.hp,
+      maxHp: bossStats.hp,
+      attackPower: bossStats.attack,
+      attackSpeed: bossStats.attackSpeed,
+      attackRange: bossStats.range,
+      cell: resolvedBoardCellIndex,
+      isDead: false,
+      isBoss: true,
+      attackCount: 0,
+      defense: 0,
+      critRate: 0,
+      critDamageMultiplier: 1.5,
+      physicalReduction: bossStats.physicalReduction,
+      magicReduction: bossStats.magicReduction,
       buffModifiers: {
         attackMultiplier: 1,
         defenseMultiplier: 1,

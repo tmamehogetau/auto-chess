@@ -43,7 +43,9 @@ import {
 import type {
   BoardUnitType,
   BoardUnitPlacement,
+  BattleTimelineEvent,
   CommandResult,
+  SharedBattleReplayMessage,
   ShopItemOffer,
 } from "../shared/room-messages";
 import { MatchLogger } from "./match-logger";
@@ -95,6 +97,7 @@ import { FeatureFlagService } from "./feature-flag-service";
 import { SharedPool } from "./shared-pool";
 import {
   getActiveRosterKind,
+  getActiveRosterUnitById,
   getTouhouDraftRosterUnits,
   validateRosterAvailability,
 } from "./roster/roster-provider";
@@ -114,6 +117,7 @@ import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
 } from "../shared/board-geometry";
+import { DEFAULT_SHARED_BOARD_CONFIG, sharedBoardCoordinateToIndex } from "../shared/shared-board-config";
 
 function shouldEmitVerboseBattleLogs(): boolean {
   return process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true";
@@ -126,9 +130,7 @@ interface MatchRoomControllerOptions {
   settleDurationMs: number;
   eliminationDurationMs: number;
   setId?: UnitEffectSetId;
-  featureFlags?: {
-    enablePhaseExpansion?: boolean;
-  };
+  featureFlags?: Partial<FeatureFlags>;
 }
 
 
@@ -346,6 +348,15 @@ interface BattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  timeline?: BattleTimelineEvent[];
+  survivorSnapshots?: Array<{
+    unitId: string;
+    displayName: string;
+    unitType: string;
+    hp: number;
+    maxHp: number;
+    sharedBoardCellIndex: number;
+  }>;
 }
 
 export class MatchRoomController {
@@ -388,8 +399,10 @@ export class MatchRoomController {
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
   private readonly selectedHeroByPlayer: Map<string, string>;
+  private readonly heroPlacementByPlayer: Map<string, number>;
 
   private readonly selectedBossByPlayer: Map<string, string>;
+  private readonly bossPlacementByPlayer: Map<string, number>;
 
   private readonly wantsBossByPlayer: Map<string, boolean>;
 
@@ -510,7 +523,9 @@ export class MatchRoomController {
     this.kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
+    this.heroPlacementByPlayer = new Map<string, number>();
     this.selectedBossByPlayer = new Map<string, string>();
+    this.bossPlacementByPlayer = new Map<string, number>();
     this.wantsBossByPlayer = new Map<string, boolean>();
     this.roleByPlayer = new Map<string, "unassigned" | "raid" | "boss">();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
@@ -531,17 +546,21 @@ export class MatchRoomController {
     this.currentRoundPairings = [];
     this.eliminatedFromBottom = [];
     this.setId = options.setId ?? DEFAULT_UNIT_EFFECT_SET_ID;
+    const resolvedFeatureFlags: FeatureFlags = {
+      ...FeatureFlagService.getInstance().getFlags(),
+      ...options.featureFlags,
+    };
     this.featureFlags = {
-      enablePhaseExpansion: options.featureFlags?.enablePhaseExpansion ?? false,
+      enablePhaseExpansion: resolvedFeatureFlags.enablePhaseExpansion,
     };
 
-    // Store roster flags for runtime use
-    this.rosterFlags = FeatureFlagService.getInstance().getFlags();
+    // Store a room-local snapshot for the full match lifetime.
+    this.rosterFlags = resolvedFeatureFlags;
 
     // Feature Flagに基づいて共有プールを初期化
     this.enableSharedPool =
-      FeatureFlagService.getInstance().isFeatureEnabled('enableSharedPool')
-      || this.rosterFlags.enablePerUnitSharedPool;
+      resolvedFeatureFlags.enableSharedPool
+      || resolvedFeatureFlags.enablePerUnitSharedPool;
     this.sharedPool = this.enableSharedPool ? new SharedPool() : null;
 
     validateRosterAvailability(this.rosterFlags);
@@ -598,13 +617,15 @@ export class MatchRoomController {
       this.itemShopOffersByPlayer.set(playerId, []);
       this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
+      this.heroPlacementByPlayer.set(playerId, -1);
       this.selectedBossByPlayer.set(playerId, "");
+      this.bossPlacementByPlayer.set(playerId, -1);
       this.wantsBossByPlayer.set(playerId, false);
       this.roleByPlayer.set(playerId, "unassigned");
     }
 
     // Feature Flagに基づいてサブユニットシステムを初期化
-    this.enableSubUnitSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableSubUnitSystem');
+    this.enableSubUnitSystem = resolvedFeatureFlags.enableSubUnitSystem;
     this.subUnitAssistConfigByType = this.enableSubUnitSystem
       ? resolveSubUnitAssistConfigByType()
       : new Map<BoardUnitType, SubUnitConfig>();
@@ -623,14 +644,14 @@ export class MatchRoomController {
     this.battleResolutionService = new BattleResolutionService(battleResolutionDeps);
 
     // Feature Flagに基づいてスペルカードを初期化
-    this.enableSpellCard = FeatureFlagService.getInstance().isFeatureEnabled('enableSpellCard');
+    this.enableSpellCard = resolvedFeatureFlags.enableSpellCard;
     this.spellCardHandler = new SpellCardHandler({
       enableSpellCard: this.enableSpellCard,
       matchLogger: this.matchLogger,
     });
 
     // Feature Flagに基づいて噂勢力を初期化
-    this.enableRumorInfluence = FeatureFlagService.getInstance().isFeatureEnabled('enableRumorInfluence');
+    this.enableRumorInfluence = resolvedFeatureFlags.enableRumorInfluence;
     this.rumorInfluenceEligibleByPlayer = new Map<string, boolean>();
 
     // 噂勢力 eligibility を全プレイヤーで初期化
@@ -638,10 +659,10 @@ export class MatchRoomController {
       this.rumorInfluenceEligibleByPlayer.set(playerId, false);
     }
 
-    this.enableHeroSystem = FeatureFlagService.getInstance().isFeatureEnabled('enableHeroSystem');
+    this.enableHeroSystem = resolvedFeatureFlags.enableHeroSystem;
 
     // Feature Flagに基づいてボス専用ショップを初期化
-    this.enableBossExclusiveShop = FeatureFlagService.getInstance().isFeatureEnabled('enableBossExclusiveShop');
+    this.enableBossExclusiveShop = resolvedFeatureFlags.enableBossExclusiveShop;
     this.bossShopOffersByPlayer = new Map<string, ShopOffer[]>();
   }
 
@@ -803,6 +824,101 @@ export class MatchRoomController {
     return this.selectedHeroByPlayer.get(playerId) ?? "";
   }
 
+  public getSelectedBoss(playerId: string): string {
+    this.ensureKnownPlayer(playerId);
+    return this.selectedBossByPlayer.get(playerId) ?? "";
+  }
+
+  public getHeroPlacementForPlayer(playerId: string): number | null {
+    this.ensureKnownPlayer(playerId);
+    const placement = this.heroPlacementByPlayer.get(playerId) ?? -1;
+    return Number.isInteger(placement) && placement >= 0 ? placement : null;
+  }
+
+  public getBossPlacementForPlayer(playerId: string): number | null {
+    this.ensureKnownPlayer(playerId);
+    const placement = this.bossPlacementByPlayer.get(playerId) ?? -1;
+    return Number.isInteger(placement) && placement >= 0 ? placement : null;
+  }
+
+  public applyHeroPlacementForPlayer(
+    playerId: string,
+    cellIndex: number,
+  ): { success: boolean; code: string; error?: string } {
+    try {
+      this.ensureKnownPlayer(playerId);
+
+      if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
+        return { success: false, code: "PHASE_MISMATCH", error: "Not in Prep phase" };
+      }
+
+      if (!this.selectedHeroByPlayer.get(playerId)) {
+        return { success: false, code: "INVALID_PAYLOAD", error: "Hero not selected" };
+      }
+
+      if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
+        return { success: false, code: "INVALID_CELL", error: "Hero cell out of range" };
+      }
+
+      const row = Math.floor(cellIndex / DEFAULT_SHARED_BOARD_CONFIG.width);
+      if (row < Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+        return { success: false, code: "INVALID_CELL", error: "Hero must stay in raid deployment rows" };
+      }
+
+      if (this.isBoardCellOccupiedByStandardPlacement(cellIndex)) {
+        return { success: false, code: "INVALID_CELL", error: "Hero cell already occupied by board unit" };
+      }
+
+      this.heroPlacementByPlayer.set(playerId, cellIndex);
+      return { success: true, code: "SUCCESS" };
+    } catch (error) {
+      return {
+        success: false,
+        code: "ERROR",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  public applyBossPlacementForPlayer(
+    playerId: string,
+    cellIndex: number,
+  ): { success: boolean; code: string; error?: string } {
+    try {
+      this.ensureKnownPlayer(playerId);
+
+      if (!this.gameLoopState || this.gameLoopState.phase !== "Prep") {
+        return { success: false, code: "PHASE_MISMATCH", error: "Not in Prep phase" };
+      }
+
+      if (!this.selectedBossByPlayer.get(playerId)) {
+        return { success: false, code: "INVALID_PAYLOAD", error: "Boss not selected" };
+      }
+
+      if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
+        return { success: false, code: "INVALID_CELL", error: "Boss cell out of range" };
+      }
+
+      const row = Math.floor(cellIndex / DEFAULT_SHARED_BOARD_CONFIG.width);
+      if (row >= Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+        return { success: false, code: "INVALID_CELL", error: "Boss must stay in boss deployment rows" };
+      }
+
+      if (this.isBoardCellOccupiedByStandardPlacement(cellIndex)) {
+        return { success: false, code: "INVALID_CELL", error: "Boss cell already occupied by board unit" };
+      }
+
+      this.bossPlacementByPlayer.set(playerId, cellIndex);
+      return { success: true, code: "SUCCESS" };
+    } catch (error) {
+      return {
+        success: false,
+        code: "ERROR",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   public startIfReady(nowMs: number, connectedPlayerIds: string[] = this.playerIds): boolean {
     if (this.gameLoopState) {
       return false;
@@ -865,6 +981,7 @@ export class MatchRoomController {
       this.wantsBossByPlayer.set(playerId, isBossPlayer);
       this.roleByPlayer.set(playerId, isBossPlayer ? "boss" : "raid");
       this.selectedBossByPlayer.set(playerId, isBossPlayer ? bossId : "");
+      this.bossPlacementByPlayer.set(playerId, -1);
       this.selectedHeroByPlayer.set(
         playerId,
         isBossPlayer || !this.enableHeroSystem
@@ -881,6 +998,7 @@ export class MatchRoomController {
       this.wantsBossByPlayer.set(playerId, false);
       this.roleByPlayer.set(playerId, "unassigned");
       this.selectedBossByPlayer.set(playerId, "");
+      this.bossPlacementByPlayer.set(playerId, -1);
       this.selectedHeroByPlayer.set(playerId, "");
     }
 
@@ -1067,6 +1185,7 @@ export class MatchRoomController {
           ? `${benchUnit.unitType}:${benchUnit.starLevel}`
           : benchUnit.unitType,
       ),
+      benchDisplayNames: benchUnits.map((benchUnit) => this.resolveBenchUnitDisplayName(benchUnit)),
       boardUnits: boardPlacements.map((placement) => {
         const starLevel = placement.starLevel ?? 1;
         const hasSubUnitAssist =
@@ -1118,6 +1237,33 @@ export class MatchRoomController {
     return baseStatus;
   }
 
+  public getSharedBattleReplay(phase: "Battle" | "Settle"): SharedBattleReplayMessage | null {
+    const state = this.ensureStarted();
+    const candidatePlayerIds = [
+      state.bossPlayerId,
+      ...state.raidPlayerIds,
+      ...this.playerIds,
+    ].filter((playerId): playerId is string => typeof playerId === "string" && playerId.length > 0);
+
+    for (const playerId of candidatePlayerIds) {
+      const timeline = this.battleResultsByPlayer.get(playerId)?.timeline;
+      const battleId = this.resolveBattleIdFromTimeline(timeline);
+
+      if (!battleId || !timeline || timeline.length === 0) {
+        continue;
+      }
+
+      return {
+        type: "shared_battle_replay",
+        battleId,
+        phase,
+        timeline,
+      };
+    }
+
+    return null;
+  }
+
   public getPhaseProgress(): {
     targetHp: number;
     damageDealt: number;
@@ -1132,6 +1278,15 @@ export class MatchRoomController {
       result: this.phaseResult,
       completionRate: this.phaseCompletionRate,
     };
+  }
+
+  private resolveBattleIdFromTimeline(timeline: BattleTimelineEvent[] | undefined): string | null {
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      return null;
+    }
+
+    const firstEvent = timeline.find((event) => typeof event?.battleId === "string");
+    return firstEvent?.battleId ?? null;
   }
 
   public setPendingRoundDamage(damageByPlayer: RoundDamageByPlayer): void {
@@ -1360,6 +1515,7 @@ export class MatchRoomController {
       },
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
       getRosterFlags: () => this.rosterFlags,
+      getReservedBoardCells: () => this.getReservedSpecialBoardCells(),
     };
   }
 
@@ -1379,6 +1535,7 @@ export class MatchRoomController {
       buyShopOffer: (id, slotIndex) => this.buyShopOfferBySlot(id, slotIndex),
       deployBenchUnitToBoard: (id, benchIndex, cell) =>
         this.deployBenchUnitToBoard(id, benchIndex, cell),
+      returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
       sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
       sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
       addItemToInventory: (id, itemType) => this.addItemToInventory(id, itemType),
@@ -1807,6 +1964,42 @@ export class MatchRoomController {
     this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
   }
 
+  private returnBoardUnitToBench(playerId: string, cell: number): void {
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
+
+    if (targetIndex < 0 || benchUnits.length >= MAX_BENCH_SIZE) {
+      return;
+    }
+
+    const returnedPlacement = boardPlacements[targetIndex];
+
+    if (!returnedPlacement) {
+      return;
+    }
+
+    boardPlacements.splice(targetIndex, 1);
+
+    const benchUnit: BenchUnit = {
+      unitType: returnedPlacement.unitType,
+      cost: returnedPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[returnedPlacement.unitType] ?? 1,
+      starLevel: returnedPlacement.starLevel ?? 1,
+      unitCount: returnedPlacement.unitCount ?? returnedPlacement.starLevel ?? 1,
+      items: [...(returnedPlacement.items ?? [])],
+    };
+
+    if (returnedPlacement.unitId !== undefined) {
+      benchUnit.unitId = returnedPlacement.unitId;
+    }
+
+    benchUnits.push(benchUnit);
+
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+  }
+
   private sellBenchUnit(playerId: string, benchIndex: number): void {
     const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
     const benchUnit = benchUnits[benchIndex];
@@ -1896,6 +2089,14 @@ export class MatchRoomController {
     );
   }
 
+  private resolveBenchUnitDisplayName(benchUnit: BenchUnit): string {
+    if (!benchUnit.unitId) {
+      return "";
+    }
+
+    return getActiveRosterUnitById(this.rosterFlags, benchUnit.unitId)?.name ?? "";
+  }
+
   private ensureKnownPlayer(playerId: string): void {
     if (this.lastCmdSeqByPlayer.has(playerId)) {
       return;
@@ -1934,7 +2135,9 @@ export class MatchRoomController {
     this.itemShopOffersByPlayer.delete(playerId);
     this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
     this.selectedHeroByPlayer.delete(playerId);
+    this.heroPlacementByPlayer.delete(playerId);
     this.selectedBossByPlayer.delete(playerId);
+    this.bossPlacementByPlayer.delete(playerId);
     this.wantsBossByPlayer.delete(playerId);
     this.roleByPlayer.delete(playerId);
     this.battleResultsByPlayer.delete(playerId);
@@ -1972,6 +2175,8 @@ export class MatchRoomController {
     }
 
     this.matchLogger?.logRoundTransition("Prep", this.gameLoopState.roundIndex, nowMs);
+    this.ensureInitialHeroPlacements(activePlayerIds);
+    this.ensureInitialBossPlacements(activePlayerIds);
 
     this.initializeShopsForPrep();
     this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
@@ -2132,7 +2337,9 @@ export class MatchRoomController {
     }
 
     const bossPlacements = (this.battleInputSnapshotByPlayer.get(bossPlayerId) ?? []).map(
-      (placement) => ({ ...placement }),
+      (placement) => ({
+        ...placement,
+      }),
     );
     const raidPlacements = raidPlayerIds.flatMap((playerId) =>
       (this.battleInputSnapshotByPlayer.get(playerId) ?? []).map((placement) => ({ ...placement })),
@@ -2516,7 +2723,11 @@ export class MatchRoomController {
       buildSpellModifiers: (playerIds) => this.buildSideSpellModifiers(playerIds),
       applySpellModifiers: (battleUnits, modifiers) =>
         this.battleResolutionService.applySpellModifiers(battleUnits, modifiers),
-      appendHeroBattleUnits: (playerIds, battleUnits) => this.appendHeroBattleUnits(playerIds, battleUnits),
+      appendHeroBattleUnits: (playerIds, battleUnits) => {
+        const heroIds = this.appendHeroBattleUnits(playerIds, battleUnits);
+        this.appendBossBattleUnits(playerIds, battleUnits);
+        return heroIds;
+      },
       buildHeroSynergyBonusTypes: (playerIds) => this.buildSideHeroSynergyBonusTypes(playerIds),
     });
 
@@ -2538,13 +2749,31 @@ export class MatchRoomController {
 
     for (const heroPlayerId of playerIds) {
       const heroId = this.selectedHeroByPlayer.get(heroPlayerId);
-      const heroBattleUnit = this.battleResolutionService.createHeroBattleUnit(heroId, heroPlayerId);
+      const heroBattleUnit = this.battleResolutionService.createHeroBattleUnit(
+        heroId,
+        heroPlayerId,
+        this.getHeroPlacementForPlayer(heroPlayerId) ?? undefined,
+      );
       if (heroBattleUnit) {
         battleUnits.push(heroBattleUnit);
       }
     }
 
     return heroIds;
+  }
+
+  private appendBossBattleUnits(playerIds: string[], battleUnits: BattleUnit[]): void {
+    for (const bossPlayerId of playerIds) {
+      const bossId = this.selectedBossByPlayer.get(bossPlayerId);
+      const bossBattleUnit = this.battleResolutionService.createBossBattleUnit(
+        bossId,
+        bossPlayerId,
+        this.getBossPlacementForPlayer(bossPlayerId) ?? undefined,
+      );
+      if (bossBattleUnit) {
+        battleUnits.push(bossBattleUnit);
+      }
+    }
   }
 
   private logBattleInputTrace(params: {
@@ -2636,6 +2865,85 @@ export class MatchRoomController {
       // eslint-disable-next-line no-console
       console.log(JSON.stringify(resultTraceLog));
     }
+  }
+
+  private ensureInitialHeroPlacements(activePlayerIds: string[]): void {
+    const state = this.ensureStarted();
+    const defaultColumns = [0, 2, 4, 1, 3, 5];
+    const raidPlayerIds = state.bossPlayerId
+      ? state.raidPlayerIds
+      : activePlayerIds.filter((playerId) => (this.selectedHeroByPlayer.get(playerId) ?? "").length > 0);
+
+    let nextColumnIndex = 0;
+    for (const playerId of raidPlayerIds) {
+      const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+      if (!selectedHeroId) {
+        this.heroPlacementByPlayer.set(playerId, -1);
+        continue;
+      }
+
+      const existingPlacement = this.heroPlacementByPlayer.get(playerId) ?? -1;
+      if (Number.isInteger(existingPlacement) && existingPlacement >= 0) {
+        continue;
+      }
+
+      const targetColumn = defaultColumns[nextColumnIndex] ?? (nextColumnIndex % DEFAULT_SHARED_BOARD_CONFIG.width);
+      nextColumnIndex += 1;
+      this.heroPlacementByPlayer.set(playerId, sharedBoardCoordinateToIndex({
+        x: targetColumn,
+        y: DEFAULT_SHARED_BOARD_CONFIG.height - 1,
+      }));
+    }
+  }
+
+  private ensureInitialBossPlacements(activePlayerIds: string[]): void {
+    const state = this.ensureStarted();
+    const bossPlayerId = state.bossPlayerId;
+
+    if (!bossPlayerId || !activePlayerIds.includes(bossPlayerId)) {
+      return;
+    }
+
+    const selectedBossId = this.selectedBossByPlayer.get(bossPlayerId) ?? "";
+    if (!selectedBossId) {
+      this.bossPlacementByPlayer.set(bossPlayerId, -1);
+      return;
+    }
+
+    const existingPlacement = this.bossPlacementByPlayer.get(bossPlayerId) ?? -1;
+    if (Number.isInteger(existingPlacement) && existingPlacement >= 0) {
+      return;
+    }
+
+    this.bossPlacementByPlayer.set(bossPlayerId, sharedBoardCoordinateToIndex({ x: 2, y: 0 }));
+  }
+
+  private getReservedSpecialBoardCells(): number[] {
+    const reserved = new Set<number>();
+
+    for (const placement of this.heroPlacementByPlayer.values()) {
+      if (Number.isInteger(placement) && placement >= 0) {
+        reserved.add(placement);
+      }
+    }
+
+    for (const placement of this.bossPlacementByPlayer.values()) {
+      if (Number.isInteger(placement) && placement >= 0) {
+        reserved.add(placement);
+      }
+    }
+
+    return Array.from(reserved);
+  }
+
+  private isBoardCellOccupiedByStandardPlacement(cellIndex: number): boolean {
+    for (const placements of this.boardPlacementsByPlayer.values()) {
+      if (placements.some((placement) => placement.cell === cellIndex)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private resolveUnitCount(playerId: string): number {

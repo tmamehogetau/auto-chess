@@ -69,10 +69,17 @@ export function renderPlayerPrepSummary(input: {
       displayName?: string;
     }>;
     benchUnits?: unknown[] | Iterable<unknown>;
+    benchDisplayNames?: unknown[] | Iterable<unknown>;
   } | null;
   sessionId?: string;
   currentPhase?: string;
   selectedBenchIndex?: number | null;
+  canSellBench?: boolean;
+  canSellBoard?: boolean;
+  canReturnBoard?: boolean;
+  benchSellButton?: HTMLButtonElement | null;
+  boardReturnButton?: HTMLButtonElement | null;
+  boardSellButton?: HTMLButtonElement | null;
   sharedBoardConnected?: boolean;
 }): void;
 
@@ -93,6 +100,41 @@ export function renderPlayerResultSummary(input: {
       damageTaken?: number;
       survivors?: number;
       opponentSurvivors?: number;
+      timelineEndState?: Array<{
+        battleUnitId?: string;
+        side?: "boss" | "raid";
+        x?: number;
+        y?: number;
+        currentHp?: number;
+        maxHp?: number;
+        displayName?: string;
+        unitType?: string;
+      }> | Iterable<{
+        battleUnitId?: string;
+        side?: "boss" | "raid";
+        x?: number;
+        y?: number;
+        currentHp?: number;
+        maxHp?: number;
+        displayName?: string;
+        unitType?: string;
+      }>;
+      timelineEvents?: Array<string | Record<string, unknown>> | Iterable<string | Record<string, unknown>>;
+      survivorSnapshots?: Array<{
+        unitId?: string;
+        displayName?: string;
+        unitType?: string;
+        hp?: number;
+        maxHp?: number;
+        sharedBoardCellIndex?: number;
+      }> | Iterable<{
+        unitId?: string;
+        displayName?: string;
+        unitType?: string;
+        hp?: number;
+        maxHp?: number;
+        sharedBoardCellIndex?: number;
+      }>;
     } | null;
   } | null;
   phaseHpProgress?: PhaseHpProgress;

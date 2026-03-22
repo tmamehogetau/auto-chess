@@ -80,22 +80,30 @@ async function createKpiEvidenceVitestEnv(): Promise<NodeJS.ProcessEnv> {
 }
 
 async function runVitestForKpiEvidence() {
-  const env = await createKpiEvidenceVitestEnv();
+  if (cachedKpiEvidenceVitestRun) {
+    return cachedKpiEvidenceVitestRun;
+  }
 
-  return execFileAsync(
-    process.execPath,
-    [
-      vitestCliPath,
-      "run",
-      "tests/server/full-game-simulation.integration.test.ts",
-      "tests/server/realistic-kpi-simulation.integration.test.ts",
-    ],
-    {
-      cwd: process.cwd(),
-      env,
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+  cachedKpiEvidenceVitestRun = (async () => {
+    const env = await createKpiEvidenceVitestEnv();
+
+    return execFileAsync(
+      process.execPath,
+      [
+        vitestCliPath,
+        "run",
+        "tests/server/full-game-simulation.integration.test.ts",
+        "tests/server/realistic-kpi-simulation.integration.test.ts",
+      ],
+      {
+        cwd: process.cwd(),
+        env,
+        maxBuffer: 16 * 1024 * 1024,
+      },
+    );
+  })();
+
+  return cachedKpiEvidenceVitestRun;
 }
 
 interface AggregateReport {
@@ -138,7 +146,17 @@ interface EligibleFailureClassification {
   earlyEliminationCases: number;
 }
 
+type KpiEvidenceVitestResult = Awaited<ReturnType<typeof execFileAsync>>;
+
+let cachedKpiEvidenceVitestRun: Promise<KpiEvidenceVitestResult> | null = null;
 let cachedEligibleFailureClassification: Promise<EligibleFailureClassification> | null = null;
+let cachedPrepCommandClassification: Promise<PrepCommandClassification> | null = null;
+
+function toExecOutputText(output: string | NodeJS.ArrayBufferView): string {
+  return typeof output === "string"
+    ? output
+    : Buffer.from(output.buffer, output.byteOffset, output.byteLength).toString("utf8");
+}
 
 interface RunMatchToR8Options {
   applyForcedPhaseProgress?: boolean;
@@ -510,45 +528,53 @@ async function runMatchToFinalRound(
 }
 
 async function collectPrepCommandClassification(): Promise<PrepCommandClassification> {
-  const ctx = await createTestContext(2_575);
-  setupLogCapture(ctx);
-  const nextCmdSeqByClient = new Map<string, number>();
-
-  const counts: PrepCommandClassification = {
-    acceptedCommands: 0,
-    rejectedCommands: 0,
-    rejectionCodes: {},
-  };
-
-  try {
-    const placements: ScenarioUnitPlacement[] = [
-      { unitType: "vanguard", cell: 0 },
-      { unitType: "vanguard", cell: 1 },
-      { unitType: "vanguard", cell: 2 },
-    ];
-
-    const { serverRoom } = await runMatchToFinalRound(ctx, async (room, clients) => {
-      for (const client of clients) {
-        const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
-        const updatedCmdSeq = await buildTrackedCompositionViaPrepActions(
-          room,
-          client.sessionId,
-          client,
-          nextCmdSeq,
-          placements,
-          counts,
-        );
-        nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
-      }
-    });
-
-    await serverRoom.disconnect();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    return counts;
-  } finally {
-    await destroyTestContext(ctx);
+  if (cachedPrepCommandClassification) {
+    return cachedPrepCommandClassification;
   }
+
+  cachedPrepCommandClassification = (async () => {
+    const ctx = await createTestContext(2_575);
+    setupLogCapture(ctx);
+    const nextCmdSeqByClient = new Map<string, number>();
+
+    const counts: PrepCommandClassification = {
+      acceptedCommands: 0,
+      rejectedCommands: 0,
+      rejectionCodes: {},
+    };
+
+    try {
+      const placements: ScenarioUnitPlacement[] = [
+        { unitType: "vanguard", cell: 0 },
+        { unitType: "vanguard", cell: 1 },
+        { unitType: "vanguard", cell: 2 },
+      ];
+
+      const { serverRoom } = await runMatchToFinalRound(ctx, async (room, clients) => {
+        for (const client of clients) {
+          const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
+          const updatedCmdSeq = await buildTrackedCompositionViaPrepActions(
+            room,
+            client.sessionId,
+            client,
+            nextCmdSeq,
+            placements,
+            counts,
+          );
+          nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
+        }
+      });
+
+      await serverRoom.disconnect();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      return counts;
+    } finally {
+      await destroyTestContext(ctx);
+    }
+  })();
+
+  return cachedPrepCommandClassification;
 }
 
 async function collectHarnessProgressComparison(): Promise<HarnessProgressComparison> {
@@ -618,9 +644,10 @@ async function collectHarnessProgressComparison(): Promise<HarnessProgressCompar
 
 async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassification> {
   const { stdout } = await runVitestForKpiEvidence();
+  const stdoutText = toExecOutputText(stdout);
 
-  const matchSummaries = extractTypedLogRecords<MatchSummaryLog>(stdout, "match_summary");
-  const kpiSummaries = extractTypedLogRecords<GameplayKpiSummary>(stdout, "gameplay_kpi_summary");
+  const matchSummaries = extractTypedLogRecords<MatchSummaryLog>(stdoutText, "match_summary");
+  const kpiSummaries = extractTypedLogRecords<GameplayKpiSummary>(stdoutText, "gameplay_kpi_summary");
 
   return {
     totalMatches: matchSummaries.length,
@@ -633,8 +660,9 @@ async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassi
 
 async function collectCurrentRealisticAggregate(): Promise<AggregateReport> {
   const { stdout } = await runVitestForKpiEvidence();
+  const stdoutText = toExecOutputText(stdout);
 
-  const summaries = extractEligibleKpiSummaries(stdout);
+  const summaries = extractEligibleKpiSummaries(stdoutText);
 
   const sampledMatches = summaries.length;
   const totalPlayersSurvivedR8 = summaries.reduce((sum, summary) => sum + summary.playersSurvivedR8, 0);
@@ -684,7 +712,10 @@ async function collectRefinedEligibleBundle(): Promise<RefinedEligibleAggregate>
   const vitestResult = await runVitestForKpiEvidence();
 
   // Write combined stdout/stderr to log file
-  writeFileSync(logPath, vitestResult.stdout + "\n" + vitestResult.stderr);
+  writeFileSync(
+    logPath,
+    `${toExecOutputText(vitestResult.stdout)}\n${toExecOutputText(vitestResult.stderr)}`,
+  );
 
   const { stdout } = await execFileAsync(
     process.execPath,
@@ -695,7 +726,7 @@ async function collectRefinedEligibleBundle(): Promise<RefinedEligibleAggregate>
     },
   );
 
-  const parsed = JSON.parse(stdout) as {
+  const parsed = JSON.parse(toExecOutputText(stdout)) as {
     eligibleBundle: RefinedEligibleAggregate;
   };
 
@@ -708,43 +739,44 @@ async function collectEligibleFailureClassification(): Promise<EligibleFailureCl
   }
 
   cachedEligibleFailureClassification = (async () => {
-  const { stdout } = await runVitestForKpiEvidence();
+    const { stdout } = await runVitestForKpiEvidence();
+    const stdoutText = toExecOutputText(stdout);
 
-  const suiteManifest = getKpiEvidenceSuiteManifest();
-  const caseManifest = getFullGameEvidenceCaseManifest();
+    const suiteManifest = getKpiEvidenceSuiteManifest();
+    const caseManifest = getFullGameEvidenceCaseManifest();
 
-  const eligibleRecords = extractKpiRecordsWithContext(stdout).filter((record) => {
-    if (!record.suitePath) {
-      return false;
+    const eligibleRecords = extractKpiRecordsWithContext(stdoutText).filter((record) => {
+      if (!record.suitePath) {
+        return false;
+      }
+
+      if (record.suitePath === "tests/server/full-game-simulation.integration.test.ts") {
+        return record.testName !== null && caseManifest[record.testName] === "eligible";
+      }
+
+      return suiteManifest[record.suitePath] === "eligible";
+    });
+
+    let phaseProgressOnlyCases = 0;
+    let playerHpDamageCases = 0;
+    let earlyEliminationCases = 0;
+    let matchesBelowR8Threshold = 0;
+
+    for (const record of eligibleRecords) {
+      if (record.data.r8CompletionRate < 0.97) {
+        matchesBelowR8Threshold += 1;
+      }
+
+      if (record.data.totalRounds < 8) {
+        earlyEliminationCases += 1;
+        continue;
+      }
+
+      if (record.suitePath === "tests/server/full-game-simulation.integration.test.ts") {
+        phaseProgressOnlyCases += 1;
+        continue;
+      }
     }
-
-    if (record.suitePath === "tests/server/full-game-simulation.integration.test.ts") {
-      return record.testName !== null && caseManifest[record.testName] === "eligible";
-    }
-
-    return suiteManifest[record.suitePath] === "eligible";
-  });
-
-  let phaseProgressOnlyCases = 0;
-  let playerHpDamageCases = 0;
-  let earlyEliminationCases = 0;
-  let matchesBelowR8Threshold = 0;
-
-  for (const record of eligibleRecords) {
-    if (record.data.r8CompletionRate < 0.97) {
-      matchesBelowR8Threshold += 1;
-    }
-
-    if (record.data.totalRounds < 8) {
-      earlyEliminationCases += 1;
-      continue;
-    }
-
-    if (record.suitePath === "tests/server/full-game-simulation.integration.test.ts") {
-      phaseProgressOnlyCases += 1;
-      continue;
-    }
-  }
 
     return {
       totalEligibleMatches: eligibleRecords.length,

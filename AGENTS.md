@@ -42,6 +42,14 @@ npx lefthook run pre-commit
 - You may read and update files under `docs/` when the task requires documentation work.
 - Do not include `docs/` changes in repository commits unless the user explicitly asks for a docs-repo workflow.
 
+## Browser Companion On This Windows Setup
+
+- If the brainstorming/browser-companion helper server does not stay reachable on this Windows worktree, fall back to a plain static HTML flow.
+- Put the generated companion screen under `.superpowers/brainstorm/<session>/`.
+- Serve that directory with `node scripts/brainstorm-static-server.js <screen_dir> 54321 127.0.0.1`.
+- If sandboxed localhost binding is blocked, rerun the server start with escalated permissions.
+- Open `http://127.0.0.1:54321` in Playwright or the user's browser and use that URL for the review step.
+
 ## Done Criteria
 
 - `npm run verify:ci` passes.

@@ -1,5 +1,9 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
 import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+  sharedBoardIndexToCoordinate,
+} from "../../shared/shared-board-config";
+import {
   VALID_UNIT_TYPES,
   getUnitEffectTable,
   type UnitEffectRule,
@@ -7,13 +11,10 @@ import {
   type UnitSkillRule,
 } from "./unit-effect-definitions";
 import { getStarCombatMultiplier } from "../star-level-config";
-import {
-  COMBAT_CELL_COUNT,
-  COMBAT_CELL_MAX_INDEX,
-  COMBAT_CELL_MIN_INDEX,
-} from "../../shared/board-geometry";
 
-const MAX_BOARD_UNITS = COMBAT_CELL_COUNT;
+const MAX_BOARD_UNITS = 8;
+const SHARED_BOARD_MIN_INDEX = 0;
+const SHARED_BOARD_MAX_INDEX = DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height - 1;
 
 interface UnitEffectOptions {
   setId?: UnitEffectSetId;
@@ -55,8 +56,8 @@ export function normalizeBoardPlacements(
 
     if (
       !Number.isInteger(placement.cell) ||
-      placement.cell < COMBAT_CELL_MIN_INDEX ||
-      placement.cell > COMBAT_CELL_MAX_INDEX
+      placement.cell < SHARED_BOARD_MIN_INDEX ||
+      placement.cell > SHARED_BOARD_MAX_INDEX
     ) {
       return { normalized: null, errorCode: "INVALID_CELL" };
     }
@@ -291,9 +292,20 @@ function groupPlacementsByType(
 }
 
 function isBackRowCell(cell: number): boolean {
-  return cell >= 4;
+  if (cell >= 0 && cell <= 7) {
+    return cell >= 4;
+  }
+
+  const coordinate = sharedBoardIndexToCoordinate(cell, DEFAULT_SHARED_BOARD_CONFIG);
+  const frontRaidRow = Math.min(...DEFAULT_SHARED_BOARD_CONFIG.deploymentRows.raid);
+  return coordinate.y > frontRaidRow;
 }
 
 function isFrontRowCell(cell: number): boolean {
-  return cell <= 3;
+  if (cell >= 0 && cell <= 7) {
+    return cell <= 3;
+  }
+
+  const coordinate = sharedBoardIndexToCoordinate(cell, DEFAULT_SHARED_BOARD_CONFIG);
+  return coordinate.y === Math.min(...DEFAULT_SHARED_BOARD_CONFIG.deploymentRows.raid);
 }

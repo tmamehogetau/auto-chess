@@ -13,6 +13,8 @@ import {
   withFlags,
   FLAG_CONFIGURATIONS,
   createRoomWithFlags,
+  createRoomWithForcedFlags,
+  restoreForcedFlagFixtures,
 } from "./feature-flag-test-helper";
 
 const waitForCondition = async (
@@ -57,6 +59,8 @@ describe("Feature Flag Regression Tests", () => {
   });
 
   afterEach(async () => {
+    restoreForcedFlagFixtures();
+
     if (!testServer) {
       return;
     }
@@ -73,6 +77,41 @@ describe("Feature Flag Regression Tests", () => {
   });
 
   describe("Hero System Flag (enableHeroSystem)", () => {
+    test("forced flags は Prep 開始後も room state に維持される", async () => {
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableHeroSystem: true,
+        enableBossExclusiveShop: true,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+      }
+
+      clients[1]?.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+
+      for (const client of clients) {
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
+
+      clients[0]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+      clients[2]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+      clients[3]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
+      clients[1]?.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+      await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+      expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(true);
+      expect(serverRoom.state.featureFlagsEnableBossExclusiveShop).toBe(true);
+    });
+
     test("フラグOFF時: Hero Selectメッセージは無視される", async () => {
       await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
         const serverRoom = await testServer.createRoom<GameRoom>("game");

@@ -6,6 +6,8 @@ import { SharedBoardBridge } from "../../src/server/shared-board-bridge";
 import { BridgeMonitor } from "../../src/server/shared-board-bridge-monitor";
 import type { MatchRoomController } from "../../src/server/match-room-controller";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
+import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
+import { sharedBoardCoordinateToIndex } from "../../src/shared/shared-board-config";
 
 interface BatchSyncGameRoom extends Room {
   syncPlayersFromController: (playerIds: string[]) => void;
@@ -101,14 +103,14 @@ describe("SharedBoardBridge batch sync", () => {
 
     enqueuePlacementChange(bridge, "player-a", [
       {
-        index: 7,
+        index: combatCellToRaidBoardIndex(0),
         unitId: "vanguard-1",
         ownerId: "player-a",
       } as SharedBoardCellState,
     ]);
     enqueuePlacementChange(bridge, "player-a", [
       {
-        index: 9,
+        index: combatCellToRaidBoardIndex(1),
         unitId: "ranger-1",
         ownerId: "player-a",
       } as SharedBoardCellState,
@@ -126,6 +128,60 @@ describe("SharedBoardBridge batch sync", () => {
 
     expect(playerId).toBe("player-a");
     expect(placements[0]?.unitType).toBe("ranger");
+  });
+
+  it("flush前にshared board cellが再同期で書き換わっても、enqueue時点の配置を適用する", async () => {
+    const { bridge, controller } = createBridge();
+
+    const queuedCell = {
+      index: combatCellToRaidBoardIndex(4),
+      unitId: "vanguard-queued",
+      ownerId: "player-a",
+    } as SharedBoardCellState;
+
+    enqueuePlacementChange(bridge, "player-a", [queuedCell]);
+
+    queuedCell.index = combatCellToRaidBoardIndex(0);
+    queuedCell.unitId = "vanguard-resynced";
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledTimes(1);
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledWith(
+      "player-a",
+      expect.arrayContaining([
+        expect.objectContaining({
+          cell: combatCellToRaidBoardIndex(4),
+          unitType: "vanguard",
+        }),
+      ]),
+    );
+  });
+
+  it("旧combat footprint外のshared board cellもそのままplacementへ反映する", async () => {
+    const { bridge, controller } = createBridge();
+    const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 0, y: 4 });
+
+    enqueuePlacementChange(bridge, "player-a", [
+      {
+        index: sharedCellIndex,
+        unitId: "vanguard-extended",
+        ownerId: "player-a",
+      } as SharedBoardCellState,
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledTimes(1);
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledWith(
+      "player-a",
+      expect.arrayContaining([
+        expect.objectContaining({
+          cell: sharedCellIndex,
+          unitType: "vanguard",
+        }),
+      ]),
+    );
   });
 
   it("古いbaseVersionの同期要求はconflictで拒否される", async () => {

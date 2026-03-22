@@ -236,7 +236,7 @@ export function handleShadowDiff(message) {
     const mismatchedCells = Array.isArray(message.mismatchedCells)
       ? message.mismatchedCells
         .slice(0, 3)
-        .map((cell) => cell?.combatCell)
+        .map((cell) => cell?.sharedBoardCellIndex)
         .filter((cell) => Number.isInteger(cell))
       : [];
     const cellPreview = mismatchedCells.length > 0 ? ` cells=${mismatchedCells.join(",")}` : "";
@@ -409,8 +409,8 @@ function formatMismatchCell(cell) {
     return "";
   }
 
-  const combatCell = Number(cell.combatCell);
-  const cellLabel = Number.isInteger(combatCell) ? `c${combatCell}` : "c?";
+  const sharedBoardCellIndex = Number(cell.sharedBoardCellIndex);
+  const cellLabel = Number.isInteger(sharedBoardCellIndex) ? `c${sharedBoardCellIndex}` : "c?";
   const gameUnit = typeof cell.gameUnitType === "string" && cell.gameUnitType.length > 0
     ? cell.gameUnitType
     : "empty";

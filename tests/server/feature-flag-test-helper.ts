@@ -147,6 +147,46 @@ function createMockFeatureFlagService(forcedFlags: FeatureFlags): FeatureFlagSer
   } as FeatureFlagService;
 }
 
+function applyKnownRoomOptions(
+  room: GameRoom,
+  roomOptions?: Record<string, unknown>,
+): void {
+  if (!roomOptions) {
+    return;
+  }
+
+  const mutableRoom = room as unknown as {
+    readyAutoStartMs?: number;
+    prepDurationMs?: number;
+    battleDurationMs?: number;
+    settleDurationMs?: number;
+    eliminationDurationMs?: number;
+    selectionTimeoutMs?: number;
+    sharedBoardRoomId?: string;
+  };
+
+  const numericOptionKeys = [
+    "readyAutoStartMs",
+    "prepDurationMs",
+    "battleDurationMs",
+    "settleDurationMs",
+    "eliminationDurationMs",
+    "selectionTimeoutMs",
+  ] as const;
+
+  for (const optionKey of numericOptionKeys) {
+    const optionValue = roomOptions[optionKey];
+    if (typeof optionValue === "number") {
+      mutableRoom[optionKey] = optionValue;
+    }
+  }
+
+  const sharedBoardRoomId = roomOptions.sharedBoardRoomId;
+  if (typeof sharedBoardRoomId === "string") {
+    mutableRoom.sharedBoardRoomId = sharedBoardRoomId;
+  }
+}
+
 /**
  * Create a GameRoom with forced feature flags, bypassing validation.
  * This helper ensures room state and controllers see the same flag snapshot.
@@ -202,7 +242,11 @@ export async function createRoomWithForcedFlags(
   FeatureFlagService.getInstance = () => createMockFeatureFlagService(mergedFlags);
 
   // Create room - it will use our mock service
-  const room = await testServer.createRoom<GameRoom>("game", roomOptions);
+  const room = await testServer.createRoom<GameRoom>("game", {
+    ...roomOptions,
+    forcedFeatureFlags: mergedFlags,
+  });
+  applyKnownRoomOptions(room, roomOptions);
   
   return room;
 }

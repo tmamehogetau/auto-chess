@@ -1,3 +1,5 @@
+import type { BattleTimelineEvent } from "../../shared/room-messages";
+
 /**
  * Shared player state types for MatchRoomController and player-state-sync
  *
@@ -18,6 +20,29 @@ export interface PlayerStatusBattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  survivorSnapshots?: BattleResultSurvivorSnapshot[];
+  timelineEndState?: BattleTimelineEndStateUnit[];
+  timeline?: BattleTimelineEvent[];
+}
+
+export interface BattleTimelineEndStateUnit {
+  battleUnitId: string;
+  side: "boss" | "raid";
+  x: number;
+  y: number;
+  currentHp: number;
+  maxHp: number;
+  displayName?: string;
+  unitType?: string;
+}
+
+export interface BattleResultSurvivorSnapshot {
+  unitId: string;
+  displayName: string;
+  unitType: string;
+  hp: number;
+  maxHp: number;
+  sharedBoardCellIndex: number;
 }
 
 /**
@@ -83,6 +108,7 @@ export interface ControllerPlayerStatus {
   shopOffers: ShopOfferView[];
   shopLocked: boolean;
   benchUnits: string[];
+  benchDisplayNames?: string[];
   boardUnits: string[];
   ownedUnits: OwnedUnitsView;
   itemInventory: string[];
@@ -116,6 +142,7 @@ export interface CommandResultPayload {
   ownedUnits: OwnedUnitsView;
   shopOffers: ShopOfferView[];
   benchUnits: string[];
+  benchDisplayNames?: string[];
   boardUnits: string[];
   itemShopOffers: ShopItemOfferView[];
   itemInventory: string[];

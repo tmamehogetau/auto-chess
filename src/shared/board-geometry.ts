@@ -1,3 +1,5 @@
+import { DEFAULT_SHARED_BOARD_CONFIG, type SharedBoardConfig } from "./shared-board-config";
+
 export interface BoardCoordinate {
   x: number;
   y: number;
@@ -9,9 +11,11 @@ export const COMBAT_CELL_COUNT = COMBAT_CELL_MAX_INDEX - COMBAT_CELL_MIN_INDEX +
 export const COMBAT_ROW_SIZE = 4;
 
 export const RAID_BOARD_WIDTH = 6;
-export const RAID_BOARD_HEIGHT = 4;
-export const BOSS_BOARD_WIDTH = 7;
-export const BOSS_BOARD_HEIGHT = 4;
+export const RAID_BOARD_HEIGHT = 6;
+export const BOSS_BOARD_WIDTH = 6;
+export const BOSS_BOARD_HEIGHT = 6;
+export const SHARED_BOARD_WIDTH = DEFAULT_SHARED_BOARD_CONFIG.width;
+export const SHARED_BOARD_HEIGHT = DEFAULT_SHARED_BOARD_CONFIG.height;
 
 const COMBAT_CELL_TO_CANONICAL_COORDINATE: readonly BoardCoordinate[] = [
   { x: 0, y: 0 },
@@ -24,7 +28,7 @@ const COMBAT_CELL_TO_CANONICAL_COORDINATE: readonly BoardCoordinate[] = [
   { x: 3, y: 1 },
 ];
 
-const RAID_BOARD_EMBED_OFFSET = { x: 1, y: 1 } as const;
+const RAID_BOARD_EMBED_OFFSET = { x: 1, y: 3 } as const;
 const BOSS_BOARD_EMBED_OFFSET = { x: 1, y: 1 } as const;
 
 function assertCombatCellIndex(cellIndex: number): void {
@@ -69,6 +73,27 @@ function fromBoardIndex(index: number, width: number, height: number): BoardCoor
     x: index % width,
     y: Math.floor(index / width),
   };
+}
+
+export function sharedBoardCoordinateToIndex(
+  coordinate: BoardCoordinate,
+  config: SharedBoardConfig = DEFAULT_SHARED_BOARD_CONFIG,
+): number {
+  return toBoardIndex(coordinate, config.width, config.height);
+}
+
+export function sharedBoardIndexToCoordinate(
+  index: number,
+  config: SharedBoardConfig = DEFAULT_SHARED_BOARD_CONFIG,
+): BoardCoordinate {
+  return fromBoardIndex(index, config.width, config.height);
+}
+
+export function sharedBoardManhattanDistance(
+  left: BoardCoordinate,
+  right: BoardCoordinate,
+): number {
+  return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
 }
 
 export function combatCellToCanonicalCoordinate(cellIndex: number): BoardCoordinate {

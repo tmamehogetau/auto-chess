@@ -110,6 +110,48 @@
         font-size: 22px;
       }
 
+      .player-battle-start-banner {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 14px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(245, 193, 108, 0.28);
+        background:
+          radial-gradient(circle at top, rgba(245, 193, 108, 0.16), transparent 40%),
+          linear-gradient(135deg, rgba(48, 20, 20, 0.92), rgba(20, 30, 52, 0.94));
+        box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+      }
+
+      .player-battle-start-banner[hidden] {
+        display: none;
+      }
+
+      .player-battle-start-banner.visible {
+        animation: playerBattleStartSweep 0.9s ease-out forwards;
+      }
+
+      .player-battle-start-kicker {
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .player-battle-start-title {
+        font-size: clamp(28px, 5vw, 42px);
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        text-shadow: 0 0 24px rgba(231, 76, 60, 0.42);
+      }
+
+      .player-battle-start-round {
+        color: rgba(244, 247, 251, 0.76);
+        font-size: 0.92rem;
+      }
+
       .player-summary-grid,
       .player-role-grid,
       .player-prep-grid,
@@ -140,6 +182,41 @@
         display: block;
         margin-bottom: 8px;
         color: var(--accent);
+      }
+
+      .player-phase.battle-start-sweep .player-result-grid {
+        animation: playerBattleGridPulse 0.9s ease-out;
+      }
+
+      .player-survivor-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .player-survivor-row {
+        display: grid;
+        gap: 6px;
+      }
+
+      .player-survivor-copy {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.92rem;
+      }
+
+      .player-survivor-bar {
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+
+      .player-survivor-bar-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ffb347 0%, #ffd166 100%);
       }
 
       .player-inline-actions {
@@ -187,10 +264,12 @@
       }
 
       .shared-board-grid {
+        --shared-board-gap: 8px;
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 8px;
+        gap: var(--shared-board-gap);
         margin-top: 12px;
+        position: relative;
       }
 
       .shared-board-cell {
@@ -211,6 +290,38 @@
 
       .shared-board-cell.zone-raid {
         background: rgba(39, 88, 68, 0.22);
+      }
+
+      .shared-board-cell.active-combat-area {
+        border-color: rgba(245, 193, 108, 0.32);
+      }
+
+      .shared-board-cell.active-boss-area {
+        box-shadow: inset 0 0 0 1px rgba(215, 96, 96, 0.28);
+      }
+
+      .shared-board-cell.active-raid-area {
+        box-shadow: inset 0 0 0 1px rgba(102, 205, 153, 0.24);
+      }
+
+      .shared-board-cell.outside-combat-area {
+        opacity: 0.42;
+        border-style: dashed;
+        background: rgba(8, 12, 20, 0.68);
+      }
+
+      .shared-board-cell.outside-combat-area::after {
+        content: "Blocked";
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.38);
+        color: var(--muted);
+        font-size: 9px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
 
       .shared-board-cell.occupied-own {
@@ -240,6 +351,199 @@
         gap: 4px;
       }
 
+      .shared-board-battle-unit {
+        width: 100%;
+        gap: 3px;
+        position: relative;
+      }
+
+      .shared-board-battle-unit.shared-board-battle-boss {
+        color: #ffd7d7;
+      }
+
+      .shared-board-battle-unit.shared-board-battle-raid {
+        color: #d8fff0;
+      }
+
+      .shared-board-battle-unit.shared-board-battle-attacking {
+        box-shadow: inset 0 0 0 1px rgba(255, 209, 102, 0.28);
+        filter: brightness(1.08);
+      }
+
+      .shared-board-battle-unit.shared-board-battle-casting {
+        box-shadow: inset 0 0 0 1px rgba(122, 214, 255, 0.34);
+        filter: brightness(1.12);
+      }
+
+      .shared-board-battle-unit.shared-board-battle-lunging {
+        transform: translate(
+          var(--shared-board-attack-lunge-x, 0),
+          var(--shared-board-attack-lunge-y, 0)
+        );
+      }
+
+      .shared-board-battle-unit.shared-board-battle-moving {
+        box-shadow: inset 0 0 0 1px rgba(123, 214, 255, 0.3);
+        filter: brightness(1.08);
+      }
+
+      .shared-board-battle-unit.shared-board-battle-moving-anchor {
+        opacity: 0;
+      }
+
+      .shared-board-battle-unit.shared-board-battle-targeted {
+        box-shadow: inset 0 0 0 1px rgba(255, 120, 120, 0.34);
+      }
+
+      .shared-board-battle-unit.shared-board-battle-impacted {
+        box-shadow: inset 0 0 0 1px rgba(255, 120, 120, 0.5);
+        filter: brightness(1.14);
+      }
+
+      .shared-board-battle-unit.shared-board-battle-dead {
+        box-shadow: inset 0 0 0 1px rgba(255, 170, 170, 0.2);
+        filter: grayscale(0.6) brightness(0.82);
+        opacity: 0.76;
+      }
+
+      .shared-board-battle-hp-copy {
+        font-size: 9px;
+        color: var(--text);
+      }
+
+      .shared-board-battle-hp-bar {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+      }
+
+      .shared-board-battle-hp-bar-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ffb347 0%, #ffd166 100%);
+      }
+
+      .shared-board-battle-state-tag {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        color: var(--text);
+        font-size: 9px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .shared-board-battle-impact-tag {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(255, 107, 107, 0.18);
+        color: #ffd2d2;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .shared-board-battle-cast-focus {
+        position: absolute;
+        inset: -4px;
+        border-radius: 14px;
+        border: 1px solid rgba(122, 214, 255, 0.5);
+        box-shadow: 0 0 14px rgba(122, 214, 255, 0.2);
+      }
+
+      .shared-board-battle-hit-burst {
+        position: absolute;
+        inset: -6px;
+        border-radius: 16px;
+        background:
+          radial-gradient(circle, rgba(255, 177, 120, 0.32) 0%, rgba(255, 107, 107, 0.2) 36%, transparent 68%);
+      }
+
+      .shared-board-battle-attack-direction {
+        position: absolute;
+        left: 50%;
+        top: 18px;
+        width: var(--shared-board-attack-length, 18px);
+        height: 3px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(255, 209, 102, 0.22) 0%, rgba(255, 209, 102, 0.92) 100%);
+        box-shadow: 0 0 12px rgba(255, 209, 102, 0.22);
+        transform-origin: left center;
+        transform: rotate(var(--shared-board-attack-angle, 0deg));
+      }
+
+      .shared-board-battle-attack-direction::after {
+        content: "";
+        position: absolute;
+        right: -2px;
+        top: 50%;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #ffd166;
+        transform: translateY(-50%);
+      }
+
+      .shared-board-battle-projectile-tracer {
+        position: absolute;
+        left: 50%;
+        top: 20px;
+        width: var(--shared-board-attack-length, 18px);
+        height: 2px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(122, 214, 255, 0.15) 0%, rgba(122, 214, 255, 0.95) 100%);
+        box-shadow: 0 0 12px rgba(122, 214, 255, 0.3);
+        transform-origin: left center;
+        transform: rotate(var(--shared-board-attack-angle, 0deg));
+      }
+
+      .shared-board-battle-projectile-tracer::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: #9ee7ff;
+        transform: translateY(-50%);
+      }
+
+      .shared-board-battle-overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        gap: var(--shared-board-gap);
+        grid-auto-rows: minmax(72px, auto);
+        pointer-events: none;
+      }
+
+      .shared-board-battle-ghost {
+        animation: shared-board-battle-slide 220ms ease-out forwards;
+      }
+
+      .shared-board-battle-ghost-unit {
+        width: 100%;
+      }
+
+      @keyframes shared-board-battle-slide {
+        from {
+          transform: translate(var(--shared-board-ghost-from-x), var(--shared-board-ghost-from-y));
+        }
+
+        to {
+          transform: translate(0, 0);
+        }
+      }
+
       .shared-board-owner {
         width: 14px;
         height: 14px;
@@ -260,6 +564,45 @@
         text-align: center;
       }
 
+      .result-imprint-grid {
+        margin-top: 10px;
+      }
+
+      .shared-board-cell.result-imprint-empty {
+        opacity: 0.55;
+      }
+
+      .shared-board-cell.result-imprint-survivor {
+        border-color: rgba(245, 193, 108, 0.72);
+        box-shadow:
+          inset 0 0 0 1px rgba(245, 193, 108, 0.22),
+          0 0 18px rgba(245, 193, 108, 0.12);
+      }
+
+      .result-imprint-unit {
+        width: 100%;
+        gap: 3px;
+      }
+
+      .result-imprint-hp-copy {
+        font-size: 10px;
+        color: var(--text);
+      }
+
+      .result-imprint-hp-bar {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+
+      .result-imprint-hp-bar-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #f59e0b 0%, #ffd166 100%);
+      }
+
       .player-cursor-list {
         display: flex;
         flex-wrap: wrap;
@@ -274,6 +617,44 @@
         padding: 14px 18px;
         color: var(--muted);
         line-height: 1.5;
+      }
+
+      @keyframes playerBattleStartSweep {
+        0% {
+          opacity: 0;
+          transform: translateY(18px) scale(0.97);
+        }
+        28% {
+          opacity: 1;
+          transform: translateY(0) scale(1.02);
+        }
+        72% {
+          opacity: 0.98;
+          transform: translateY(0) scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-6px) scale(0.995);
+        }
+      }
+
+      @keyframes playerBattleGridPulse {
+        0% {
+          transform: scale(1);
+          filter: brightness(1);
+        }
+        25% {
+          transform: scale(1.01);
+          filter: brightness(1.08);
+        }
+        55% {
+          transform: scale(1.015);
+          filter: brightness(1.03);
+        }
+        100% {
+          transform: scale(1);
+          filter: brightness(1);
+        }
       }
 
       @media (max-width: 820px) {
@@ -346,13 +727,17 @@
           <div class="player-prep-grid" data-player-prep-surface>
             <div class="player-card player-board" data-player-shared-board-grid>
               <strong>Shared Board</strong>
-              <div data-shared-board-help>Boss は上段、raid は下段を守ります。open lane を選んで配置してください。</div>
+              <div data-shared-board-help>shared-board は 6x6 です。Boss は上半分、raid は下半分を使います。現在の Prep slice では highlighted raid cells が配置対象です。</div>
               <div data-player-board-copy data-shared-board-placement-guide>shared-board をここへ mount する。</div>
+              <div class="player-inline-actions">
+                <button class="player-action-btn" type="button" data-player-board-return-button>Return Selected Unit</button>
+                <button class="player-action-btn" type="button" data-player-board-sell-button>Sell Selected Unit</button>
+              </div>
               <div class="player-cursor-list" data-shared-board-status-legend>
                 <span data-shared-board-own-status>Your unit</span>
                 <span data-shared-board-ally-status>Ally unit</span>
-                <span data-shared-board-open-status>Open lane</span>
-                <span data-shared-board-blocked-status>Blocked lane</span>
+                <span data-shared-board-open-status>Active cell</span>
+                <span data-shared-board-blocked-status>Inactive cell</span>
               </div>
               <div class="shared-board-grid" data-player-board-cells>
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="0" aria-label="Board cell 0">0</button>
@@ -379,6 +764,18 @@
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="21" aria-label="Board cell 21">21</button>
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="22" aria-label="Board cell 22">22</button>
                 <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="23" aria-label="Board cell 23">23</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="24" aria-label="Board cell 24">24</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="25" aria-label="Board cell 25">25</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="26" aria-label="Board cell 26">26</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="27" aria-label="Board cell 27">27</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="28" aria-label="Board cell 28">28</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="29" aria-label="Board cell 29">29</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="30" aria-label="Board cell 30">30</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="31" aria-label="Board cell 31">31</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="32" aria-label="Board cell 32">32</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="33" aria-label="Board cell 33">33</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="34" aria-label="Board cell 34">34</button>
+                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="35" aria-label="Board cell 35">35</button>
               </div>
               <div class="player-cursor-list" data-player-shared-cursor-list>Board presence をここに出す。</div>
             </div>
@@ -397,6 +794,9 @@
               <div class="player-card" data-player-bench>
                 <strong>Bench</strong>
                 <div data-player-bench-copy>bench UI をここへ mount する。</div>
+                <div class="player-inline-actions">
+                  <button class="player-action-btn" type="button" data-player-bench-sell-button>Sell Selected Bench Unit</button>
+                </div>
                 <div class="player-mini-grid" data-player-bench-grid>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="0" aria-label="Bench slot 0">0</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="1" aria-label="Bench slot 1">1</button>
@@ -416,6 +816,11 @@
         <section class="player-phase" data-player-phase="result" hidden>
           <p class="player-phase-tag">Battle / Result</p>
           <h2>Watch And Read The Outcome</h2>
+          <div class="player-battle-start-banner" data-player-battle-start-banner hidden>
+            <div class="player-battle-start-kicker" data-player-battle-start-kicker>Boss Raid</div>
+            <div class="player-battle-start-title">BATTLE START</div>
+            <div class="player-battle-start-round" data-player-battle-start-round>Round 1 kickoff</div>
+          </div>
           <div class="player-result-grid" data-player-result-surface>
             <div class="player-card">
               <strong>Battle State</strong>

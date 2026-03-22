@@ -4,8 +4,15 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
-import { combatCellToRaidBoardIndex } from "../../src/shared/board-geometry";
+import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../src/shared/board-geometry";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+} from "../../src/shared/shared-board-config";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
+import {
+  createBattleEndEvent,
+  createBattleStartEvent,
+} from "../../src/server/combat/battle-timeline";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -45,18 +52,17 @@ const sendConcurrently = async (
 const seedSharedBoardUnit = (
   serverRoom: SharedBoardRoom,
   playerId: string,
-  combatCell: number,
+  cellIndex: number,
   unitType: "vanguard" | "ranger" | "mage" | "assassin" = "vanguard",
 ): { unitId: string; cellIndex: number } => {
-  const result = serverRoom.applyPlacementsFromGame(playerId, [{ cell: combatCell, unitType }]);
+  const result = serverRoom.applyPlacementsFromGame(playerId, [{ cell: cellIndex, unitType }]);
 
   expect(result).toEqual({ applied: 1, skipped: 0 });
 
-  const cellIndex = combatCellToRaidBoardIndex(combatCell);
   const targetCell = serverRoom.state.cells.get(String(cellIndex));
 
   if (!targetCell || targetCell.unitId === "") {
-    throw new Error(`Expected seeded unit for ${playerId} at combat cell ${combatCell}`);
+    throw new Error(`Expected seeded unit for ${playerId} at shared cell ${cellIndex}`);
   }
 
   return {
@@ -70,9 +76,10 @@ const findFirstEmptyCellIndex = (
   excludedIndexes: number[] = [],
 ): number => {
   const excludedSet = new Set(excludedIndexes);
-  const candidate = [...serverRoom.state.cells.values()].find(
+  const candidate = [...serverRoom.state.cells.values()].reverse().find(
     (cell) =>
       cell.index !== serverRoom.state.dummyBossCell
+      && raidBoardIndexToCombatCell(cell.index) !== null
       && cell.unitId === ""
       && !excludedSet.has(cell.index),
   );
@@ -145,6 +152,83 @@ describe("SharedBoardRoom integration", () => {
     }
 
     await testServer.shutdown();
+  });
+
+  test("6x6 board defaults expose the full raid lower half as playable", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const roomInternals = serverRoom as unknown as {
+      isPlayablePlacementCellIndex: (cellIndex: number) => boolean;
+    };
+
+    expect(serverRoom.state.boardWidth).toBe(6);
+    expect(serverRoom.state.boardHeight).toBe(6);
+    expect(serverRoom.state.cells.size).toBe(36);
+    expect(
+      roomInternals.isPlayablePlacementCellIndex(
+        combatCellToRaidBoardIndex(0),
+      ),
+    ).toBe(true);
+    expect(roomInternals.isPlayablePlacementCellIndex(18)).toBe(true);
+    expect(roomInternals.isPlayablePlacementCellIndex(1)).toBe(false);
+  });
+
+  test("battle replay mode seeds battle units and rejects board edits", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom, { gamePlayerId: "raid-player-1" });
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    const role = await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE, 5_000);
+    expect(role.isSpectator).toBe(false);
+
+    serverRoom.applyBattleReplayFromGame({
+      phase: "Battle",
+      phaseDeadlineAtMs: Date.now() + 2_000,
+      battleId: "battle-raid-1",
+      timeline: [
+        createBattleStartEvent({
+          battleId: "battle-raid-1",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-1",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+            {
+              battleUnitId: "boss-ranger-1",
+              side: "boss",
+              x: 5,
+              y: 0,
+              currentHp: 50,
+              maxHp: 50,
+            },
+          ],
+        }),
+        createBattleEndEvent({
+          type: "battleEnd",
+          battleId: "battle-raid-1",
+          atMs: 900,
+          winner: "raid",
+        }),
+      ],
+    });
+
+    expect(serverRoom.state.mode).toBe("battle");
+    expect(serverRoom.state.battleId).toBe("battle-raid-1");
+    expect(serverRoom.state.cells.get("18")?.unitId).toContain("battle:");
+    expect(serverRoom.state.cells.get("5")?.unitId).toContain("battle:");
+
+    client.send(CLIENT_MESSAGE_TYPES.RESET);
+    const result = await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT, 5_000);
+    expect(result).toEqual({
+      accepted: false,
+      action: "reset",
+      code: "PHASE_MISMATCH",
+    });
   });
 
   test("最初の4接続がactiveで5人目がspectatorになる", async () => {
@@ -381,7 +465,11 @@ describe("SharedBoardRoom integration", () => {
       throw new Error("Expected first player to exist");
     }
 
-    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0).unitId;
+    const firstUnitId = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      combatCellToRaidBoardIndex(0),
+    ).unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, {
       unitId: firstUnitId,
@@ -432,8 +520,17 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined && secondPlayer !== undefined;
     }, 1_000);
 
-    const { cellIndex: firstCellIndex } = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0);
-    const { unitId: secondUnitId } = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger");
+    const { cellIndex: firstCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      firstClient.sessionId,
+      combatCellToRaidBoardIndex(0),
+    );
+    const { unitId: secondUnitId } = seedSharedBoardUnit(
+      serverRoom,
+      secondClient.sessionId,
+      combatCellToRaidBoardIndex(1),
+      "ranger",
+    );
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -461,7 +558,7 @@ describe("SharedBoardRoom integration", () => {
       return player !== undefined;
     }, 1_000);
 
-    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, 0).unitId;
+    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, combatCellToRaidBoardIndex(0)).unitId;
 
     client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId,
@@ -485,6 +582,34 @@ describe("SharedBoardRoom integration", () => {
       SERVER_MESSAGE_TYPES.ACTION_RESULT,
     );
     expect(bossCellReject).toEqual({
+      accepted: false,
+      action: "place_unit",
+      code: "TARGET_OCCUPIED",
+    });
+  });
+
+  test("中央4x2の外へのplaceでTARGET_OCCUPIED", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(client.sessionId);
+      return player !== undefined;
+    }, 1_000);
+
+    const unitId = seedSharedBoardUnit(serverRoom, client.sessionId, combatCellToRaidBoardIndex(0)).unitId;
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId,
+      toCell: 0,
+    });
+
+    const nonPlayableReject =
+      await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    expect(nonPlayableReject).toEqual({
       accepted: false,
       action: "place_unit",
       code: "TARGET_OCCUPIED",
@@ -516,7 +641,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex]);
 
@@ -529,7 +654,7 @@ describe("SharedBoardRoom integration", () => {
       await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
     expect(placeResult).toEqual({ accepted: true, action: "place_unit" });
 
-    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, combatCellToRaidBoardIndex(1), "ranger").unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -570,7 +695,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex]);
 
@@ -581,7 +706,7 @@ describe("SharedBoardRoom integration", () => {
 
     await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
 
-    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, combatCellToRaidBoardIndex(1), "ranger").unitId;
 
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
       unitId: secondUnitId,
@@ -658,7 +783,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstSourceCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const cellAIndex = findFirstEmptyCellIndex(serverRoom, [firstSourceCellIndex]);
     const cellBIndex = findFirstEmptyCellIndex(serverRoom, [firstSourceCellIndex, cellAIndex]);
@@ -671,7 +796,7 @@ describe("SharedBoardRoom integration", () => {
 
     await firstClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
 
-    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 1, "ranger").unitId;
+    const secondUnitId = seedSharedBoardUnit(serverRoom, secondClient.sessionId, combatCellToRaidBoardIndex(1), "ranger").unitId;
 
     // P2がAへ即時配置でTARGET_LOCKED
     secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
@@ -760,12 +885,12 @@ describe("SharedBoardRoom integration", () => {
     const { unitId: firstUnitId, cellIndex: firstCellIndex } = seedSharedBoardUnit(
       serverRoom,
       firstClient.sessionId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const { unitId: secondUnitId, cellIndex: secondCellIndex } = seedSharedBoardUnit(
       serverRoom,
       secondClient.sessionId,
-      1,
+      combatCellToRaidBoardIndex(1),
       "ranger",
     );
     const emptyCellIndex = findFirstEmptyCellIndex(serverRoom, [firstCellIndex, secondCellIndex]);
@@ -848,7 +973,7 @@ describe("SharedBoardRoom integration", () => {
       return firstPlayer !== undefined;
     }, 1_000);
 
-    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 0).unitId;
+    const firstUnitId = seedSharedBoardUnit(serverRoom, firstClient.sessionId, combatCellToRaidBoardIndex(0)).unitId;
 
     const firstResultPromise = firstClient.waitForMessage(
       SERVER_MESSAGE_TYPES.ACTION_RESULT,
@@ -897,7 +1022,7 @@ describe("SharedBoardRoom integration", () => {
     const targetCellIndex = combatCellToRaidBoardIndex(0);
     const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
       {
-        cell: 0,
+        cell: targetCellIndex,
         unitType: "vanguard",
       },
     ]);
@@ -920,7 +1045,7 @@ describe("SharedBoardRoom integration", () => {
     const targetCellIndex = combatCellToRaidBoardIndex(0);
     const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
       {
-        cell: 0,
+        cell: targetCellIndex,
         unitType: "assassin",
         unitId: "koishi",
       },
@@ -950,7 +1075,7 @@ describe("SharedBoardRoom integration", () => {
     const { unitId, cellIndex: sourceCellIndex } = seedSharedBoardUnit(
       serverRoom,
       mappedGamePlayerId,
-      0,
+      combatCellToRaidBoardIndex(0),
     );
     const targetCellIndex = findFirstEmptyCellIndex(serverRoom, [sourceCellIndex]);
 

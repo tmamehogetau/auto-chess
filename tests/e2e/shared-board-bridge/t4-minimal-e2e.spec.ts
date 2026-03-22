@@ -181,9 +181,9 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
           };
 
           const seededPlacements = [
-            [{ cell: 0, unitType: "vanguard" as const }],
-            [{ cell: 1, unitType: "ranger" as const }],
-            [{ cell: 2, unitType: "mage" as const }],
+            [{ cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" as const }],
+            [{ cell: combatCellToRaidBoardIndex(1), unitType: "ranger" as const }],
+            [{ cell: combatCellToRaidBoardIndex(2), unitType: "mage" as const }],
           ];
 
           for (const [index, gameClient] of gameClients.slice(0, 3).entries()) {
@@ -218,7 +218,7 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
           await waitForCondition(
             () => {
               const placements = gameRoomWithController.controller?.getBoardPlacementsForPlayer(editedPlayer.sessionId) ?? [];
-              return placements.some((placement) => placement.cell === movedCombatCell && placement.unitType === "vanguard");
+              return placements.some((placement) => placement.cell === movedRaidCell && placement.unitType === "vanguard");
             },
             3_000,
           );
@@ -270,7 +270,7 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
 
           expect(editedPlacements).toEqual(
             expect.arrayContaining([
-              expect.objectContaining({ cell: movedCombatCell, unitType: "vanguard" }),
+              expect.objectContaining({ cell: movedRaidCell, unitType: "vanguard" }),
             ]),
           );
 

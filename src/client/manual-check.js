@@ -77,11 +77,6 @@ const ITEM_ICONS = {
   amulet: "📿",
 };
 
-const SHARED_BOARD_WIDTH = 6;
-const SHARED_BOARD_HEIGHT = 6;
-const SHARED_BOARD_COMBAT_OFFSET_X = 1;
-const SHARED_BOARD_COMBAT_OFFSET_Y = 3;
-
 // Hero definitions (client-side copy)
 const HEROES = [
   {
@@ -983,8 +978,7 @@ function deployBenchUnit(benchIndex, cellIndex) {
     return;
   }
 
-  const combatCell = sharedBoardIndexToCombatCell(cellIndex);
-  if (combatCell === null) {
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
     showMessage("That shared-board cell is outside the current raid deployment slice. Use one of the highlighted raid cells.", "error");
     return;
   }
@@ -992,10 +986,10 @@ function deployBenchUnit(benchIndex, cellIndex) {
   sendPrepCommand({
     benchToBoardCell: {
       benchIndex: benchIndex,
-      cell: combatCell,
+      cell: cellIndex,
     },
   });
-  showMessage(`Deploying bench unit to Shared Battle Board cell ${cellIndex} (combat cell ${combatCell})...`, "success");
+  showMessage(`Deploying bench unit to Shared Battle Board cell ${cellIndex}...`, "success");
 }
 
 function handleSell() {
@@ -1028,23 +1022,6 @@ function updateActionButtons() {
   if (sellBtn) {
     sellBtn.disabled = !canSell || currentPhase !== "Prep";
   }
-}
-
-function sharedBoardIndexToCombatCell(boardIndex) {
-  if (!Number.isInteger(boardIndex) || boardIndex < 0 || boardIndex >= SHARED_BOARD_WIDTH * SHARED_BOARD_HEIGHT) {
-    return null;
-  }
-
-  const x = boardIndex % SHARED_BOARD_WIDTH;
-  const y = Math.floor(boardIndex / SHARED_BOARD_WIDTH);
-  const combatX = x - SHARED_BOARD_COMBAT_OFFSET_X;
-  const combatY = y - SHARED_BOARD_COMBAT_OFFSET_Y;
-
-  if (combatX < 0 || combatX >= 4 || combatY < 0 || combatY >= 2) {
-    return null;
-  }
-
-  return combatY * 4 + combatX;
 }
 
 function showSelectionMode(text) {

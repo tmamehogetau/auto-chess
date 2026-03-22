@@ -34,7 +34,7 @@ describe("player-app script contract", () => {
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.HERO_SELECT")).toBe(true);
-    expect(source.includes("function sharedBoardIndexToCombatCell(")).toBe(true);
+    expect(source.includes("function sharedBoardIndexToCombatCell(")).toBe(false);
     expect(source.includes("handlePlayerShopBuy(")).toBe(true);
     expect(source.includes("handlePlayerBenchSelect(")).toBe(true);
     expect(source.includes("handlePlayerBenchSell(")).toBe(true);
@@ -46,6 +46,9 @@ describe("player-app script contract", () => {
     expect(source.includes("boardToBenchCell")).toBe(true);
     expect(source.includes("benchSellIndex")).toBe(true);
     expect(source.includes("boardSellIndex")).toBe(true);
+    expect(source.includes("cell: cellIndex,")).toBe(true);
+    expect(source.includes("boardToBenchCell: { cell: cellIndex },")).toBe(true);
+    expect(source.includes("boardSellIndex: cellIndex,")).toBe(true);
     expect(source.includes("startMonitorPolling")).toBe(false);
     expect(source.includes("connectAutoFillRooms")).toBe(false);
     expect(source.includes("requestAdminMonitorSnapshot")).toBe(false);

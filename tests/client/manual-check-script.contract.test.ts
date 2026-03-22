@@ -61,14 +61,12 @@ describe("manual-check script contract", () => {
     expect(source.includes("benchToBoardCell")).toBe(true);
   });
 
-  test("bench deploy converts shared-board index into combat cell and rejects non-playable cells", () => {
+  test("bench deploy sends shared-board index directly and rejects non-playable cells", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
-    expect(source.includes("function sharedBoardIndexToCombatCell(boardIndex) {")).toBe(true);
-    expect(source.includes("const combatCell = sharedBoardIndexToCombatCell(cellIndex);")).toBe(true);
-    expect(source.includes("cell: combatCell,")).toBe(true);
-    expect(source.includes("const SHARED_BOARD_HEIGHT = 6;")).toBe(true);
-    expect(source.includes("const SHARED_BOARD_COMBAT_OFFSET_Y = 3;")).toBe(true);
+    expect(source.includes("function sharedBoardIndexToCombatCell(boardIndex) {")).toBe(false);
+    expect(source.includes("const combatCell = sharedBoardIndexToCombatCell(cellIndex);")).toBe(false);
+    expect(source.includes("cell: cellIndex,")).toBe(true);
     expect(source.includes("highlighted raid cells")).toBe(true);
     expect(source.includes("center lane")).toBe(false);
     expect(source.includes("playable combat area")).toBe(false);

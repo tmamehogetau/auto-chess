@@ -447,15 +447,15 @@ function handlePlayerBoardSell() {
     return;
   }
 
-  const combatCell = resolveSelectedSharedBoardCombatCell();
-  if (combatCell === null) {
+  const cellIndex = resolveSelectedSharedBoardCellIndex();
+  if (cellIndex === null) {
     showPlayerStatus("shared-board で自分の unit を選んでから Sell を押してください。");
     return;
   }
 
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
-    boardSellIndex: combatCell,
+    boardSellIndex: cellIndex,
   });
 }
 
@@ -464,15 +464,15 @@ function handlePlayerBoardReturn() {
     return;
   }
 
-  const combatCell = resolveSelectedSharedBoardCombatCell();
-  if (combatCell === null) {
+  const cellIndex = resolveSelectedSharedBoardCellIndex();
+  if (cellIndex === null) {
     showPlayerStatus("shared-board で自分の unit を選んでから Return を押してください。");
     return;
   }
 
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
-    boardToBenchCell: { cell: combatCell },
+    boardToBenchCell: { cell: cellIndex },
   });
 }
 
@@ -487,8 +487,7 @@ function handlePlayerSharedCellClick(cellIndex) {
     return;
   }
 
-  const combatCell = sharedBoardIndexToCombatCell(cellIndex);
-  if (combatCell === null) {
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
     showPlayerStatus("いま配置できるのは、下側の highlighted raid cells だけです。");
     return;
   }
@@ -497,28 +496,11 @@ function handlePlayerSharedCellClick(cellIndex) {
     cmdSeq: nextCmdSeq(),
     benchToBoardCell: {
       benchIndex: selectedBenchIndex,
-      cell: combatCell,
+      cell: cellIndex,
     },
   });
   selectedBenchIndex = null;
   renderPlayerPrepSurface();
-}
-
-function sharedBoardIndexToCombatCell(boardIndex) {
-  if (!Number.isInteger(boardIndex) || boardIndex < 0 || boardIndex >= 36) {
-    return null;
-  }
-
-  const x = boardIndex % 6;
-  const y = Math.floor(boardIndex / 6);
-  const combatX = x - 1;
-  const combatY = y - 3;
-
-  if (combatX < 0 || combatX >= 4 || combatY < 0 || combatY >= 2) {
-    return null;
-  }
-
-  return combatY * 4 + combatX;
 }
 
 function getCurrentBoardCellElements() {
@@ -548,8 +530,8 @@ function renderPlayerPrepSurface() {
     currentPhase: typeof latestState?.phase === "string" ? latestState.phase : "Waiting",
     selectedBenchIndex,
     canSellBench: selectedBenchIndex !== null,
-    canSellBoard: resolveSelectedSharedBoardCombatCell() !== null,
-    canReturnBoard: resolveSelectedSharedBoardCombatCell() !== null,
+    canSellBoard: resolveSelectedSharedBoardCellIndex() !== null,
+    canReturnBoard: resolveSelectedSharedBoardCellIndex() !== null,
     benchSellButton,
     boardReturnButton,
     boardSellButton,
@@ -557,7 +539,7 @@ function renderPlayerPrepSurface() {
   });
 }
 
-function resolveSelectedSharedBoardCombatCell() {
+function resolveSelectedSharedBoardCellIndex() {
   const selectedUnitId = getSelectedSharedUnitId();
   if (!selectedUnitId) {
     return null;
@@ -569,7 +551,7 @@ function resolveSelectedSharedBoardCombatCell() {
       continue;
     }
 
-    return sharedBoardIndexToCombatCell(Number.parseInt(cellIndex, 10));
+    return Number.parseInt(cellIndex, 10);
   }
 
   return null;

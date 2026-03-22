@@ -38,7 +38,7 @@ test("simulateBattle emits move, attack, damage, death, and keyframe events in o
   const simulator = new BattleSimulator();
 
   const leftPlacements: BoardUnitPlacement[] = [{
-    cell: 0,
+    cell: combatCellToRaidBoardIndex(0),
     unitType: "vanguard",
     hp: 50,
     attack: 10,
@@ -46,7 +46,7 @@ test("simulateBattle emits move, attack, damage, death, and keyframe events in o
     range: 1,
   }];
   const rightPlacements: BoardUnitPlacement[] = [{
-    cell: 7,
+    cell: combatCellToBossBoardIndex(7),
     unitType: "mage",
     hp: 1,
     attack: 1,
@@ -123,16 +123,16 @@ test("simulateBattle keeps full 6x6 shared-board coordinates in battleStart snap
   ]));
 });
 
-test("simulateBattle normalizes legacy combat cells into shared-board battleStart coordinates", () => {
+test("simulateBattle preserves shared-board indices in battleStart coordinates", () => {
   const flags = { ...DEFAULT_FLAGS, enableBossExclusiveShop: true };
   const simulator = new BattleSimulator();
 
   const leftPlacements: BoardUnitPlacement[] = [{
-    cell: 0,
+    cell: combatCellToRaidBoardIndex(0),
     unitType: "vanguard",
   }];
   const rightPlacements: BoardUnitPlacement[] = [{
-    cell: 7,
+    cell: combatCellToBossBoardIndex(7),
     unitType: "ranger",
   }];
 
@@ -152,8 +152,8 @@ test("simulateBattle normalizes legacy combat cells into shared-board battleStar
   );
 
   const battleStart = result.timeline.find((event) => event.type === "battleStart");
-  const leftCoordinate = sharedBoardIndexToCoordinate(combatCellToRaidBoardIndex(0));
-  const rightCoordinate = sharedBoardIndexToCoordinate(combatCellToBossBoardIndex(7));
+  const leftCoordinate = sharedBoardIndexToCoordinate(leftPlacements[0]!.cell);
+  const rightCoordinate = sharedBoardIndexToCoordinate(rightPlacements[0]!.cell);
 
   expect(battleStart?.type).toBe("battleStart");
   expect(battleStart?.units).toEqual(expect.arrayContaining([

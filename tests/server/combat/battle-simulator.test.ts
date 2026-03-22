@@ -17,6 +17,14 @@ import {
 } from "../../../src/server/combat/battle-simulator";
 import { resolveBattlePlacements } from "../../../src/server/unit-id-resolver";
 
+function normalizeTestBattleCell(cell: number, side: "left" | "right"): number {
+  if (Number.isInteger(cell) && cell >= 0 && cell <= 7) {
+    return side === "left" ? combatCellToRaidBoardIndex(cell) : combatCellToBossBoardIndex(cell);
+  }
+
+  return cell;
+}
+
 function createTestBattleUnit(
   placement: BoardUnitPlacement,
   side: "left" | "right",
@@ -24,7 +32,16 @@ function createTestBattleUnit(
   isBoss: boolean = false,
   flags = DEFAULT_FLAGS,
 ): BattleUnit {
-  return createBattleUnit(placement, side, index, isBoss, flags);
+  return createBattleUnit(
+    {
+      ...placement,
+      cell: normalizeTestBattleCell(placement.cell, side),
+    },
+    side,
+    index,
+    isBoss,
+    flags,
+  );
 }
 
 import {
@@ -108,12 +125,11 @@ describe("battle-simulator", () => {
   describe("boss passive", () => {
     test("isBoss=true かつ remilia は boss data baseline を使う", () => {
       const bossBaseline = getMvpPhase1Boss();
-      const boss = createBattleUnit(
+      const boss = createTestBattleUnit(
         { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
-        DEFAULT_FLAGS,
       );
 
       expect(boss.maxHp).toBe(bossBaseline.hp);
@@ -471,29 +487,75 @@ describe("battle-simulator", () => {
 
   describe("calculateCellDistance", () => {
     test("隣接するセルの距離が正しく計算される", () => {
-      expect(calculateCellDistance(0, 1)).toBe(1);
-      expect(calculateCellDistance(3, 4)).toBe(1);
-      expect(calculateCellDistance(7, 6)).toBe(1);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 1, y: 5 }),
+        ),
+      ).toBe(1);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
+          sharedBoardCoordinateToIndex({ x: 3, y: 3 }),
+        ),
+      ).toBe(1);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 5, y: 0 }),
+          sharedBoardCoordinateToIndex({ x: 4, y: 0 }),
+        ),
+      ).toBe(1);
     });
 
     test("遠いセルの距離が正しく計算される", () => {
-      expect(calculateCellDistance(0, 7)).toBe(7);
-      expect(calculateCellDistance(0, 4)).toBe(4);
-      expect(calculateCellDistance(3, 7)).toBe(4);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 3, y: 0 }),
+        ),
+      ).toBe(8);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 0, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 0, y: 1 }),
+        ),
+      ).toBe(4);
+      expect(
+        calculateCellDistance(
+          sharedBoardCoordinateToIndex({ x: 3, y: 5 }),
+          sharedBoardCoordinateToIndex({ x: 5, y: 2 }),
+        ),
+      ).toBe(5);
     });
 
     test("同じセルの距離は0", () => {
-      expect(calculateCellDistance(3, 3)).toBe(0);
+      expect(calculateCellDistance(sharedBoardCoordinateToIndex({ x: 3, y: 3 }), sharedBoardCoordinateToIndex({ x: 3, y: 3 }))).toBe(0);
     });
 
-    test("legacy combat cells は side 指定があっても従来距離を維持する", () => {
-      expect(calculateCellDistance(2, 7, "left", "right")).toBe(5);
-      expect(calculateCellDistance(2, 4, "left", "right")).toBe(2);
+    test("side 指定付きでも shared-board index の 6x6 距離を使う", () => {
+      expect(
+        calculateCellDistance(
+          combatCellToRaidBoardIndex(2),
+          combatCellToBossBoardIndex(7),
+          "left",
+          "right",
+        ),
+      ).toBe(2);
+      expect(
+        calculateCellDistance(
+          combatCellToRaidBoardIndex(2),
+          combatCellToBossBoardIndex(4),
+          "left",
+          "right",
+        ),
+      ).toBe(3);
     });
 
-    test("legacy combat cells は side 指定があっても隣接距離を保つ", () => {
-      expect(calculateCellDistance(3, 4, "left", "left")).toBe(1);
-      expect(calculateCellDistance(3, 4, "left", "right")).toBe(1);
+    test("side 指定があっても shared-board 上で隣接していれば距離1", () => {
+      const leftCell = sharedBoardCoordinateToIndex({ x: 3, y: 4 });
+      const rightCell = sharedBoardCoordinateToIndex({ x: 3, y: 3 });
+      expect(calculateCellDistance(leftCell, rightCell, "left", "left")).toBe(1);
+      expect(calculateCellDistance(leftCell, rightCell, "left", "right")).toBe(1);
     });
 
     test("shared-board index は 6x6 Manhattan 距離で計算される", () => {
@@ -631,7 +693,7 @@ describe("battle-simulator", () => {
         attackPower: 5,
         attackSpeed: 0.8,
         attackRange: 3,
-        cell: 2,
+        cell: combatCellToRaidBoardIndex(2),
         isDead: false,
         attackCount: 0,
         defense: 0,
@@ -655,7 +717,7 @@ describe("battle-simulator", () => {
           attackPower: 5,
           attackSpeed: 0.8,
           attackRange: 3,
-          cell: 7,
+          cell: combatCellToBossBoardIndex(7),
           isDead: false,
           attackCount: 0,
           defense: 0,
@@ -678,7 +740,7 @@ describe("battle-simulator", () => {
           attackPower: 6,
           attackSpeed: 0.6,
           attackRange: 2,
-          cell: 6,
+          cell: combatCellToBossBoardIndex(6),
           isDead: false,
           attackCount: 0,
           defense: 0,
@@ -701,7 +763,7 @@ describe("battle-simulator", () => {
           attackPower: 4,
           attackSpeed: 0.5,
           attackRange: 1,
-          cell: 4,
+          cell: combatCellToBossBoardIndex(4),
           isDead: false,
           attackCount: 0,
           defense: 3,
@@ -718,7 +780,7 @@ describe("battle-simulator", () => {
       ];
       const target = findTarget(attacker, enemies);
       expect(target).not.toBeNull();
-      expect(target!.cell).toBe(4);
+      expect(target!.cell).toBe(combatCellToBossBoardIndex(6));
     });
 
     test("射程外の敵は対象にならない", () => {

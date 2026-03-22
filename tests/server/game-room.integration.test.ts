@@ -2118,7 +2118,7 @@ describe("GameRoom integration", () => {
     expect(afterPlayer?.ownedVanguard).toBe(9);
   });
 
-  test("set2ルームではrangerスキル条件の差分が戦闘結果に反映される", async () => {
+  test("set2ルームのranger編成 fixture は shared-index pathing でも勝利する", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game", {
       setId: "set2",
     });
@@ -2164,19 +2164,19 @@ describe("GameRoom integration", () => {
     lowClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
       boardPlacements: [
-        { cell: 4, unitType: "ranger" },
-        { cell: 5, unitType: "ranger" },
-        { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(4), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(1), unitType: "assassin" },
       ],
     });
     highClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
       boardPlacements: [
-        { cell: 0, unitType: "vanguard" },
-        { cell: 2, unitType: "ranger" },
-        { cell: 5, unitType: "mage" },
-        { cell: 4, unitType: "assassin" },
+        { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+        { cell: combatCellToRaidBoardIndex(2), unitType: "ranger" },
+        { cell: combatCellToRaidBoardIndex(5), unitType: "mage" },
+        { cell: combatCellToRaidBoardIndex(4), unitType: "assassin" },
       ],
     });
 
@@ -2194,7 +2194,7 @@ describe("GameRoom integration", () => {
     );
 
     expect(serverRoom.state.players.get(lowId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(highId)?.hp).toBe(91);
+    expect(serverRoom.state.players.get(highId)?.hp).toBe(89);
   });
 
   test("connectAndAttachSetIdDisplayでjoinOrCreateからsetId表示できる", async () => {

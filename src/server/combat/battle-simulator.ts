@@ -10,8 +10,6 @@ import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import {
-  combatCellToBossBoardIndex,
-  combatCellToRaidBoardIndex,
   decodeSharedBoardBattleCellIndex,
   isEncodedSharedBoardBattleCellIndex,
   sharedBoardCoordinateToIndex,
@@ -139,10 +137,6 @@ function resolveBattleSide(unit: BattleUnit): "left" | "right" {
   return "right";
 }
 
-function isLegacyCombatCell(cell: number): boolean {
-  return Number.isInteger(cell) && cell >= 0 && cell <= 7;
-}
-
 function resolveBoardIndexForCell(cell: number, side: "left" | "right"): number {
   if (!Number.isInteger(cell)) {
     throw new Error("battle board cell index must be an integer");
@@ -150,12 +144,6 @@ function resolveBoardIndexForCell(cell: number, side: "left" | "right"): number 
 
   if (isEncodedSharedBoardBattleCellIndex(cell)) {
     return decodeSharedBoardBattleCellIndex(cell);
-  }
-
-  if (isLegacyCombatCell(cell)) {
-    return side === "left"
-      ? combatCellToRaidBoardIndex(cell)
-      : combatCellToBossBoardIndex(cell);
   }
 
   if (cell >= 0 && cell < DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height) {
@@ -397,10 +385,6 @@ export function calculateCellDistance(
   side1?: "left" | "right",
   side2?: "left" | "right",
 ): number {
-  if (isLegacyCombatCell(cell1) && isLegacyCombatCell(cell2)) {
-    return Math.abs(cell1 - cell2);
-  }
-
   const coordinate1 = resolveCellCoordinate(cell1, side1 ?? "left");
   const coordinate2 = resolveCellCoordinate(cell2, side2 ?? "right");
   return sharedBoardManhattanDistance(coordinate1, coordinate2);

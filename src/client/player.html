@@ -78,6 +78,15 @@
         cursor: pointer;
       }
 
+      .player-room-code-input {
+        min-width: 220px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: rgba(9, 16, 29, 0.9);
+        color: var(--text);
+      }
+
       .player-action-btn:disabled {
         opacity: 0.55;
         cursor: not-allowed;
@@ -673,6 +682,7 @@
           進行に合わせて、いま必要な操作だけを表示する player-facing shell。
         </p>
         <div class="player-header-actions">
+          <input class="player-room-code-input" type="text" placeholder="Room code" data-player-room-code-input />
           <button class="player-action-btn" type="button" data-player-connect-btn>Join Session</button>
         </div>
       </header>

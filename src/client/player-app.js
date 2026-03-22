@@ -13,12 +13,14 @@ import {
   handleSharedCellClick,
   initSharedBoardClient,
   setSharedBoardGamePlayerId,
+  setSharedBoardRoomId,
 } from "./shared-board-client.js";
 import { buildCommandResultCopy } from "./ui/player-facing-copy.js";
 import { mapEntries, mapGet } from "./utils/pure-utils.js";
 
 const playerShell = document.querySelector("[data-player-shell]");
 const statusCopy = document.querySelector("[data-player-status-copy]");
+const roomCodeInput = document.querySelector("[data-player-room-code-input]");
 const connectButton = document.querySelector("[data-player-connect-btn]");
 const participantSummaryElement = document.querySelector("[data-player-participant-summary]");
 const participantCopyElement = document.querySelector("[data-player-participant-copy]");
@@ -143,6 +145,9 @@ gameRoomSession.onStateChange((state) => {
   const player = mapGet(state?.players, gameRoomSession.getRoom()?.sessionId ?? "") ?? null;
   latestState = state;
   latestPlayer = player;
+  if (typeof state?.sharedBoardRoomId === "string" && state.sharedBoardRoomId.length > 0) {
+    setSharedBoardRoomId(state.sharedBoardRoomId);
+  }
   showPlayerPhase(nextView);
   syncPlayerBattleStartSweep(previousPhase, state);
   renderPlayerLobbySummary({ participantSummaryElement: participantCopyElement, state });
@@ -387,11 +392,18 @@ function updateReadyButton(player) {
 
 async function connectPlayerSession() {
   try {
-    const room = await gameRoomSession.connect();
+    const roomCode = roomCodeInput instanceof HTMLInputElement
+      ? roomCodeInput.value.trim()
+      : "";
+    const room = await gameRoomSession.connect({ roomId: roomCode });
     const client = gameRoomSession.getClient();
 
     if (room?.sessionId) {
       setSharedBoardGamePlayerId(room.sessionId);
+    }
+
+    if (typeof room?.state?.sharedBoardRoomId === "string" && room.state.sharedBoardRoomId.length > 0) {
+      setSharedBoardRoomId(room.state.sharedBoardRoomId);
     }
 
     if (client) {

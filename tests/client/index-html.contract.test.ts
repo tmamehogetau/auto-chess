@@ -12,6 +12,8 @@ describe("index.html contract", () => {
     const requiredAttributes = [
       "data-endpoint-input",
       "data-room-input",
+      "data-room-code-input",
+      "data-room-code-output",
       "data-setid-select",
       "data-autofill-input",
       "data-connect-button",
@@ -135,5 +137,13 @@ describe("index.html contract", () => {
     expect(html.includes("Operator Console")).toBe(true);
     expect(html.includes("data-operator-guide")).toBe(true);
     expect(html.includes("./player.html")).toBe(true);
+  });
+
+  test("room code controls は accessible copy を持つ", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes('data-room-code-input')).toBe(true);
+    expect(html.includes('aria-label="Room code"')).toBe(true);
+    expect(html.includes('data-room-code-output aria-live="polite"')).toBe(true);
   });
 });

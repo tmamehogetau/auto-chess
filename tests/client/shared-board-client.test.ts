@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi, afterEach } from "vitest";
 
 // @ts-ignore JS client module has no declaration file.
-import { connectSharedBoard, getSelectedSharedUnitId, handleSharedCellClick, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId } from "../../src/client/shared-board-client.js";
+import { connectSharedBoard, getSelectedSharedUnitId, handleSharedCellClick, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId, setSharedBoardRoomId } from "../../src/client/shared-board-client.js";
 
 class FakeClassList {
   private readonly owner: FakeElement;
@@ -136,6 +136,7 @@ function findDescendantByClass(root: FakeElement | undefined, className: string)
 describe("shared-board client", () => {
   beforeEach(() => {
     leaveSharedBoardRoom();
+    setSharedBoardRoomId("");
     vi.useFakeTimers();
     globalThis.document = {
       createElement: () => new FakeElement(),
@@ -190,6 +191,43 @@ describe("shared-board client", () => {
         players: {},
       });
     }).not.toThrow();
+  });
+
+  test("sharedBoardRoomId があるときは joinById で dedicated shared board に入る", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const room = {
+      sessionId: "player-1",
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (_handler: (state: unknown) => void) => {},
+    };
+    const joinCalls: string[] = [];
+    const client = {
+      joinById: async (roomId: string) => {
+        joinCalls.push(roomId);
+        return room;
+      },
+      joinOrCreate: async () => {
+        throw new Error("joinOrCreate should not be used");
+      },
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+    setSharedBoardRoomId("shared-room-123");
+
+    await connectSharedBoard(client as object);
+
+    expect(joinCalls).toEqual(["shared-room-123"]);
   });
 
   test("MapSchema 内部キーを cursor 一覧へ表示しない", async () => {

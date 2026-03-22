@@ -123,4 +123,33 @@ describe("runtime shared_board server config", () => {
 
     expect(sharedBoardRoom.state.cells.get(String(raidCell))?.ownerId).toBe(ownerClient.sessionId);
   });
+
+  test("dedicated game room exposes its sharedBoardRoomId through state and round_state", async () => {
+    const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const gameRoom = await testServer.createRoom<GameRoom>("game", {
+      sharedBoardRoomId: sharedBoardRoom.roomId,
+    });
+    const clients = await Promise.all([
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+    }
+
+    const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+    for (const client of clients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    const roundState = await roundStatePromise;
+
+    expect(gameRoom.state.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(roundState.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(clients[0]?.sessionId.length).toBeGreaterThan(0);
+  });
 });

@@ -33,6 +33,7 @@ describe("player.html contract", () => {
       "data-player-battle-start-kicker",
       "data-player-battle-start-round",
       "data-player-status-copy",
+      "data-player-room-code-input",
       "data-player-connect-btn",
       "data-player-participant-summary",
       "data-player-preference-copy",
@@ -118,6 +119,7 @@ describe("player.html contract", () => {
       'data-player-board-sell-button',
       'data-player-bench-sell-button',
       'data-player-board-return-button',
+      'placeholder="Room code"',
     ];
 
     for (const attribute of requiredAttributes) {

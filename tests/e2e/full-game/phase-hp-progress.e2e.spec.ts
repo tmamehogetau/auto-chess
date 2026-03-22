@@ -175,8 +175,14 @@ describe("E2E: Phase HP Progress", () => {
           // Prep待機
           await waitForCondition(() => gameRoom.state.phase !== "Waiting", 5_000);
           await waitForPhase(gameRoom, "Prep", 5_000);
+          await waitForCondition(
+            () => roundStates.some((state) => state.roundIndex === 1 && state.phase === "Prep"),
+            5_000,
+          );
 
-          const r1State = roundStates.find((state) => state.roundIndex === 1);
+          const r1State = roundStates.find(
+            (state) => state.roundIndex === 1 && state.phase === "Prep",
+          );
           expect(r1State).toBeDefined();
           expect(r1State.phaseHpTarget).toBe(10);
           expect(r1State.phaseDamageDealt).toBe(0);

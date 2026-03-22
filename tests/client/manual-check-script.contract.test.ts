@@ -43,6 +43,17 @@ describe("manual-check script contract", () => {
     expect(source.includes("buildCommandResultCopy({ accepted: false, code: result.code, hint })")).toBe(true);
   });
 
+  test("room create / join 用に room code と shared board pairing を扱う", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("data-room-code-input")).toBe(true);
+    expect(source.includes("data-room-code-output")).toBe(true);
+    expect(source.includes("client.create(\"shared_board\"")).toBe(true);
+    expect(source.includes("sharedBoardRoomId: sharedBoardSeedRoom.roomId")).toBe(true);
+    expect(source.includes("client.joinById(roomCode")).toBe(true);
+    expect(source.includes("setSharedBoardRoomId(")).toBe(true);
+  });
+
   test("boss role selection uses explicit preference and selection actions", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
@@ -76,9 +87,9 @@ describe("manual-check script contract", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("setSharedBoardGamePlayerId(room.sessionId);")).toBe(true);
-    expect(source.includes("await connectSharedBoard(client);")).toBe(true);
+    expect(source.includes("await connectSharedBoard(client, sharedBoardSeedRoom ? { existingRoom: sharedBoardSeedRoom } : undefined);")).toBe(true);
     expect(source.indexOf("setSharedBoardGamePlayerId(room.sessionId);"))
-      .toBeLessThan(source.indexOf("await connectSharedBoard(client);"));
+      .toBeLessThan(source.indexOf("await connectSharedBoard(client, sharedBoardSeedRoom ? { existingRoom: sharedBoardSeedRoom } : undefined);"));
   });
 
   test("phase hp と battle result は読み切れる表示時間と待機説明を持つ", () => {
@@ -93,11 +104,11 @@ describe("manual-check script contract", () => {
 
     expect(source.indexOf("room.onStateChange((state) => {")).toBeGreaterThan(-1);
     expect(source.indexOf("room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {")).toBeGreaterThan(-1);
-    expect(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions);")).toBeGreaterThan(-1);
+    expect(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions, room.roomId ?? roomCodeValue);")).toBeGreaterThan(-1);
     expect(source.indexOf("room.onStateChange((state) => {"))
-      .toBeLessThan(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions);"));
+      .toBeLessThan(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions, room.roomId ?? roomCodeValue);"));
     expect(source.indexOf("room.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {"))
-      .toBeLessThan(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions);"));
+      .toBeLessThan(source.indexOf("await connectAutoFillRooms(client, roomName, roomOptions, room.roomId ?? roomCodeValue);"));
   });
 
   test("empty lastBattleResult does not produce a Round 0 defeat log", () => {

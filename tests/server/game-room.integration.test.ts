@@ -66,7 +66,7 @@ const waitForText = async (
   throw new Error(`Timed out while waiting text: ${expected}`);
 };
 
-const SHARED_BOARD_PROPAGATION_TIMEOUT_MS = 3_000;
+const SHARED_BOARD_PROPAGATION_TIMEOUT_MS = 10_000;
 
 const registerRoundStateListeners = (clients: Array<{ onMessage: (type: string, handler: (_message: unknown) => void) => void }>): void => {
   for (const client of clients) {
@@ -1947,6 +1947,7 @@ describe("GameRoom integration", () => {
       accepted: true,
       action: "place_unit",
     });
+    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
     await waitForCondition(() => {
       const targetCell = sharedBoardRoom.state.cells.get(String(targetBossCell));

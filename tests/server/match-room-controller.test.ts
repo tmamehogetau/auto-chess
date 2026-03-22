@@ -2695,7 +2695,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(91);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("後列ranger2体の援護射撃 fixture は shared-index pathing では押し切られる", () => {
@@ -2734,7 +2734,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(87);
+    expect(controller.getPlayerHp("p1")).toBe(89);
     expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
@@ -2785,9 +2785,9 @@ describe("MatchRoomController", () => {
     }
 
     expect(set1Controller.getPlayerHp("p1")).toBe(100);
-    expect(set1Controller.getPlayerHp("p4")).toBe(89);
+    expect(set1Controller.getPlayerHp("p4")).toBe(87);
     expect(set2Controller.getPlayerHp("p1")).toBe(100);
-    expect(set2Controller.getPlayerHp("p4")).toBe(89);
+    expect(set2Controller.getPlayerHp("p4")).toBe(87);
   });
 
   test("前列vanguard2体の防衛陣形 fixture は shared-index pathing でも受け切れない", () => {
@@ -2826,8 +2826,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(89);
-    expect(controller.getPlayerHp("p4")).toBe(100);
+    expect(controller.getPlayerHp("p1")).toBe(100);
+    expect(controller.getPlayerHp("p4")).toBe(93);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {

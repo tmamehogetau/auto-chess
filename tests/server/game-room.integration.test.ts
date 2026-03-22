@@ -2194,7 +2194,7 @@ describe("GameRoom integration", () => {
     );
 
     expect(serverRoom.state.players.get(lowId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(highId)?.hp).toBe(89);
+    expect(serverRoom.state.players.get(highId)?.hp).toBe(87);
   });
 
   test("connectAndAttachSetIdDisplayでjoinOrCreateからsetId表示できる", async () => {

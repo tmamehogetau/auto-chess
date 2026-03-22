@@ -469,7 +469,22 @@ export function findTarget(attacker: BattleUnit, enemies: BattleUnit[]): BattleU
       resolveBattleSide(enemy),
     );
 
-    if (distance <= attacker.attackRange && distance < minDistance) {
+    if (distance > attacker.attackRange) {
+      continue;
+    }
+
+    if (
+      distance < minDistance
+      || (
+        distance === minDistance
+        && closestTarget
+        && (
+          enemy.hp < closestTarget.hp
+          || (enemy.hp === closestTarget.hp && enemy.cell < closestTarget.cell)
+        )
+      )
+      || (distance === minDistance && !closestTarget)
+    ) {
       minDistance = distance;
       closestTarget = enemy;
     }
@@ -494,7 +509,18 @@ function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): Ba
       resolveBattleSide(attacker),
       resolveBattleSide(enemy),
     );
-    if (distance < minDistance) {
+    if (
+      distance < minDistance
+      || (
+        distance === minDistance
+        && closestTarget
+        && (
+          enemy.hp < closestTarget.hp
+          || (enemy.hp === closestTarget.hp && enemy.cell < closestTarget.cell)
+        )
+      )
+      || (distance === minDistance && !closestTarget)
+    ) {
       minDistance = distance;
       closestTarget = enemy;
     }

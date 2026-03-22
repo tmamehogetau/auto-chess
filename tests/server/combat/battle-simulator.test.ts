@@ -76,7 +76,7 @@ import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
 } from "../../../src/server/combat/synergy-definitions";
-import { HERO_SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
+import { HERO_SKILL_DEFINITIONS, SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
 
 describe("battle-simulator", () => {
   describe("scarlet mansion synergy", () => {
@@ -277,6 +277,64 @@ describe("battle-simulator", () => {
 
       expect(centerTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
       expect(verticalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+    });
+
+    test("咲夜は最も多く巻き込める中心を選ぶ", () => {
+      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "assassin", starLevel: 1 },
+        "left",
+        0,
+      );
+      const isolatedEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 0 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const clusteredEnemyA = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", starLevel: 1 },
+        "right",
+        1,
+      );
+      const clusteredEnemyB = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "mage", starLevel: 1 },
+        "right",
+        2,
+      );
+
+      const log: string[] = [];
+      sakuyaSkill.execute(caster, [caster], [isolatedEnemy, clusteredEnemyA, clusteredEnemyB], log);
+
+      expect(isolatedEnemy.buffModifiers.attackSpeedMultiplier).toBe(1);
+      expect(clusteredEnemyA.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(clusteredEnemyB.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+    });
+  });
+
+  describe("skill targeting", () => {
+    test("Backstab は同HPなら caster に近い敵を優先する", () => {
+      const assassinSkill = SKILL_DEFINITIONS.assassin!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", starLevel: 1 },
+        "left",
+        0,
+      );
+      const nearerEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 30 },
+        "right",
+        0,
+      );
+      const fartherEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 1 }), unitType: "vanguard", starLevel: 1, hp: 30 },
+        "right",
+        1,
+      );
+
+      const log: string[] = [];
+      assassinSkill.execute(caster, [caster], [fartherEnemy, nearerEnemy], log);
+
+      expect(nearerEnemy.hp).toBeLessThan(nearerEnemy.maxHp);
+      expect(fartherEnemy.hp).toBe(fartherEnemy.maxHp);
     });
   });
 
@@ -811,6 +869,45 @@ describe("battle-simulator", () => {
       expect(target!.cell).toBe(combatCellToBossBoardIndex(6));
     });
 
+    test("同距離ならHPが低い敵を優先する", () => {
+      const attacker: BattleUnit = {
+        id: "left-ranger-0",
+        type: "ranger",
+        starLevel: 1,
+        hp: 50,
+        maxHp: 50,
+        attackPower: 5,
+        attackSpeed: 0.8,
+        attackRange: 3,
+        cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
+        isDead: false,
+        attackCount: 0,
+        defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: undefined,
+        magicReduction: undefined,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
+      };
+      const sturdierEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 80 },
+        "right",
+        0,
+      );
+      const weakerEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "mage", starLevel: 1, hp: 20 },
+        "right",
+        1,
+      );
+
+      const target = findTarget(attacker, [sturdierEnemy, weakerEnemy]);
+      expect(target?.id).toBe(weakerEnemy.id);
+    });
+
     test("射程外の敵は対象にならない", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
@@ -1069,22 +1166,22 @@ describe("battle-simulator", () => {
         winner: "left",
         durationMs: 10_000,
         damageDealt: {
-          left: 35,
-          right: 14,
+          left: 34,
+          right: 30,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 66, cell: 14 },
-          { id: "left-ranger-1", hp: 30, cell: combatCellToRaidBoardIndex(1) },
+          { id: "left-vanguard-0", hp: 72, cell: 14 },
+          { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 69, cell: 8 },
-          { id: "right-ranger-1", hp: 6, cell: combatCellToBossBoardIndex(6) },
+          { id: "right-vanguard-0", hp: 72, cell: 21 },
+          { id: "right-ranger-1", hp: 4, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
         combatLogEnd: [
-          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 1 damage (66/80)",
-          "Left Vanguard (cell 14) attacks Right Vanguard (cell 8) for 1 damage (69/80)",
-          "Battle ended: Left wins (HP: 96 vs 75)",
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 1 damage (72/80)",
+          "Left Vanguard (cell 14) attacks Right Ranger (cell 15) for 4 damage (4/50)",
+          "Battle ended: Left wins (HP: 80 vs 76)",
         ],
       });
     });
@@ -1318,7 +1415,7 @@ describe("battle-simulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.hp).toBe(45);
+      expect(leftUnits[0]?.hp).toBe(46);
       expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(3);
     });
 
@@ -1630,14 +1727,14 @@ describe("battle-simulator", () => {
       );
 
       expect(result1.winner).toBe("left");
-      expect(result1.damageDealt).toEqual({ left: 35, right: 14 });
+      expect(result1.damageDealt).toEqual({ left: 34, right: 30 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 66, cell: 14 },
-        { id: "left-ranger-1", hp: 30, cell: combatCellToRaidBoardIndex(1) },
+        { id: "left-vanguard-0", hp: 72, cell: 14 },
+        { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 69, cell: 8 },
-        { id: "right-ranger-1", hp: 6, cell: combatCellToBossBoardIndex(6) },
+        { id: "right-vanguard-0", hp: 72, cell: 21 },
+        { id: "right-ranger-1", hp: 4, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);
     });

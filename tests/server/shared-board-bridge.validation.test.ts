@@ -225,6 +225,17 @@ describe("SharedBoardBridge validation (T1-2)", () => {
         expect.objectContaining({
           battleId: "battle-raid-1",
           phase: "Battle",
+          timeline: expect.arrayContaining([
+            expect.objectContaining({
+              type: "battleStart",
+              battleId: "battle-raid-1",
+            }),
+            expect.objectContaining({
+              type: "battleEnd",
+              battleId: "battle-raid-1",
+              winner: "raid",
+            }),
+          ]),
         }),
       );
       expect(setModeFromGame).not.toHaveBeenCalled();

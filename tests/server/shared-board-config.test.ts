@@ -53,4 +53,36 @@ describe("shared-board-config", () => {
     expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: 5, y: 5 }, "raid")).toBe(true);
     expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: 5, y: 5 }, "boss")).toBe(false);
   });
+
+  it("rejects overlapping deployment rows", () => {
+    expect(() =>
+      getDeploymentZoneForRow(
+        {
+          width: 6,
+          height: 6,
+          deploymentRows: {
+            boss: [0, 1, 2],
+            raid: [2, 3, 4],
+          },
+        },
+        2,
+      ),
+    ).toThrow("deployment rows overlap");
+  });
+
+  it("rejects out-of-range deployment rows", () => {
+    expect(() =>
+      getDeploymentZoneForRow(
+        {
+          width: 6,
+          height: 6,
+          deploymentRows: {
+            boss: [0, 1, 6],
+            raid: [3, 4, 5],
+          },
+        },
+        0,
+      ),
+    ).toThrow("boss deployment rows");
+  });
 });

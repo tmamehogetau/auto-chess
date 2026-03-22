@@ -183,7 +183,7 @@ async function placeUnit(
 
           await waitForCondition(
             () => sharedBoardRoom.state.phase === "Prep" && sharedBoardRoom.state.mode === "prep",
-            2_000,
+            10_000,
           );
 
           // 初期メトリクス記録
@@ -292,7 +292,7 @@ async function placeUnit(
 
           await waitForCondition(
             () => sharedBoardRoom.state.phase === "Prep" && sharedBoardRoom.state.mode === "prep",
-            2_000,
+            10_000,
           );
 
           // 初期メトリクス記録

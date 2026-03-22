@@ -20,6 +20,8 @@ export const DEFAULT_SHARED_BOARD_CONFIG: SharedBoardConfig = {
   },
 };
 
+const validatedDeploymentConfigs = new WeakSet<SharedBoardConfig>();
+
 function assertPositiveInteger(value: number, label: string): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${label} must be a non-negative integer`);
@@ -47,6 +49,44 @@ function assertCoordinateWithinBoard(
   if (!isCoordinateWithinBoard(coordinate, config)) {
     throw new Error("shared board coordinate out of range");
   }
+}
+
+function validateDeploymentRows(
+  config: SharedBoardConfig,
+): void {
+  if (validatedDeploymentConfigs.has(config)) {
+    return;
+  }
+
+  const bossRows = new Set<number>();
+  const raidRows = new Set<number>();
+
+  for (const row of config.deploymentRows.boss) {
+    if (!Number.isInteger(row) || row < 0 || row >= config.height) {
+      throw new Error(
+        `boss deployment rows must be integers in range 0-${config.height - 1}: ${JSON.stringify(config.deploymentRows.boss)}`,
+      );
+    }
+    bossRows.add(row);
+  }
+
+  for (const row of config.deploymentRows.raid) {
+    if (!Number.isInteger(row) || row < 0 || row >= config.height) {
+      throw new Error(
+        `raid deployment rows must be integers in range 0-${config.height - 1}: ${JSON.stringify(config.deploymentRows.raid)}`,
+      );
+    }
+    raidRows.add(row);
+  }
+
+  const overlappingRows = [...bossRows].filter((row) => raidRows.has(row));
+  if (overlappingRows.length > 0) {
+    throw new Error(
+      `deployment rows overlap for boss/raid: ${overlappingRows.join(", ")}`,
+    );
+  }
+
+  validatedDeploymentConfigs.add(config);
 }
 
 export function sharedBoardCoordinateToIndex(
@@ -79,6 +119,8 @@ export function getDeploymentZoneForRow(
   config: SharedBoardConfig = DEFAULT_SHARED_BOARD_CONFIG,
   row: number,
 ): SharedBoardSide | null {
+  validateDeploymentRows(config);
+
   if (!Number.isInteger(row) || row < 0 || row >= config.height) {
     return null;
   }

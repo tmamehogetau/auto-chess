@@ -40,15 +40,11 @@ describe("Boss Raid Simulation", () => {
     { x: 4, y: 2 },
   ] as const;
 
-  function normalizeTestBattleCell(cell: number, side: "left" | "right"): number {
-    if (Number.isInteger(cell) && cell >= 0 && cell <= 7) {
-      const coordinate = side === "left"
-        ? LEGACY_RAID_COORDINATES[cell]!
-        : LEGACY_BOSS_COORDINATES[cell]!;
-      return sharedBoardCoordinateToIndex(coordinate);
-    }
-
-    return cell;
+  function legacySlotToSharedIndex(cell: number, side: "left" | "right"): number {
+    const coordinate = side === "left"
+      ? LEGACY_RAID_COORDINATES[cell]!
+      : LEGACY_BOSS_COORDINATES[cell]!;
+    return sharedBoardCoordinateToIndex(coordinate);
   }
 
   /**
@@ -58,7 +54,7 @@ describe("Boss Raid Simulation", () => {
   function createBossUnit(): BattleUnit {
     const boss = createBattleUnit(
       {
-        cell: normalizeTestBattleCell(0, "right"),
+        cell: legacySlotToSharedIndex(0, "right"),
         unitType: "vanguard",
         starLevel: 1,
         archetype: "remilia",
@@ -81,7 +77,7 @@ describe("Boss Raid Simulation", () => {
     cell: number,
   ): BattleUnit {
     return createBattleUnit(
-      { cell: normalizeTestBattleCell(cell, "left"), unitType, starLevel },
+      { cell: legacySlotToSharedIndex(cell, "left"), unitType, starLevel },
       "left",
       cell,
       false,
@@ -183,8 +179,8 @@ describe("Boss Raid Simulation", () => {
       ];
       const rightUnits = [
         createBattleUnit(
-          {
-            cell: normalizeTestBattleCell(7, "right"),
+        {
+            cell: legacySlotToSharedIndex(7, "right"),
             unitType: "vanguard",
             starLevel: 1,
             archetype: "remilia",
@@ -222,7 +218,7 @@ describe("Boss Raid Simulation", () => {
     test("simple approach movement also runs in non-raid battles", () => {
       const leftUnits = [
         createBattleUnit(
-          { cell: normalizeTestBattleCell(0, "left"), unitType: "vanguard", starLevel: 1 },
+          { cell: legacySlotToSharedIndex(0, "left"), unitType: "vanguard", starLevel: 1 },
           "left",
           0,
           false,
@@ -231,7 +227,7 @@ describe("Boss Raid Simulation", () => {
       ];
       const rightUnits = [
         createBattleUnit(
-          { cell: normalizeTestBattleCell(7, "right"), unitType: "ranger", starLevel: 1 },
+          { cell: legacySlotToSharedIndex(7, "right"), unitType: "ranger", starLevel: 1 },
           "right",
           0,
           false,

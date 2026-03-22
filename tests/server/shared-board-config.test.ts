@@ -52,6 +52,8 @@ describe("shared-board-config", () => {
     expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: 1, y: 3 }, "raid")).toBe(true);
     expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: 5, y: 5 }, "raid")).toBe(true);
     expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: 5, y: 5 }, "boss")).toBe(false);
+    expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: -1, y: 0 }, "boss")).toBe(false);
+    expect(isDeploymentCellForSide(DEFAULT_SHARED_BOARD_CONFIG, { x: 6, y: 3 }, "raid")).toBe(false);
   });
 
   it("rejects overlapping deployment rows", () => {

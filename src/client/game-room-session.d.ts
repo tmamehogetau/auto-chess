@@ -64,6 +64,15 @@ export type GameRoomSession = {
     sessionId?: string;
   } | null;
   getState: () => unknown;
+  takeCreatedSharedBoardRoom: () => {
+    roomId?: string;
+    sessionId?: string;
+    state?: unknown;
+    onStateChange: (listener: (state: unknown) => void) => void;
+    onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+    send?: (type: string, payload?: unknown) => void;
+    leave?: (consented?: boolean) => Promise<void>;
+  } | null;
 };
 
 export function createGameRoomSession(options?: GameRoomSessionOptions): GameRoomSession;

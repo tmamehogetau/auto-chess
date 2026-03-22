@@ -18,6 +18,46 @@ export const SERVER_MESSAGE_TYPES = {
   ADMIN_RESPONSE: "admin_response",
 };
 
+function normalizeConnectOptions(rawOptions) {
+  if (!rawOptions || typeof rawOptions !== "object") {
+    return { mode: "joinOrCreate", roomId: "", roomOptions: {}, sharedBoardRoomName: "shared_board" };
+  }
+
+  const candidate = rawOptions;
+  const hasStructuredKeys = "mode" in candidate || "roomId" in candidate || "roomOptions" in candidate;
+  if (!hasStructuredKeys) {
+    return {
+      mode: "joinOrCreate",
+      roomId: "",
+      roomOptions: candidate,
+      sharedBoardRoomName: "shared_board",
+    };
+  }
+
+  const topLevelRoomOptions = { ...candidate };
+  delete topLevelRoomOptions.mode;
+  delete topLevelRoomOptions.roomId;
+  delete topLevelRoomOptions.roomOptions;
+  delete topLevelRoomOptions.sharedBoardRoomName;
+
+  return {
+    mode: candidate.mode === "create" || candidate.mode === "createPaired"
+      ? candidate.mode
+      : "joinOrCreate",
+    roomId: typeof candidate.roomId === "string" ? candidate.roomId.trim() : "",
+    sharedBoardRoomName:
+      typeof candidate.sharedBoardRoomName === "string" && candidate.sharedBoardRoomName.trim().length > 0
+        ? candidate.sharedBoardRoomName.trim()
+        : "shared_board",
+    roomOptions: {
+      ...topLevelRoomOptions,
+      ...(candidate.roomOptions && typeof candidate.roomOptions === "object"
+        ? candidate.roomOptions
+        : {}),
+    },
+  };
+}
+
 export function createGameRoomSession(options = {}) {
   const endpoint = typeof options.endpoint === "string" && options.endpoint.length > 0
     ? options.endpoint
@@ -33,6 +73,7 @@ export function createGameRoomSession(options = {}) {
   let room = null;
   let state = null;
   let connectionState = "idle";
+  let createdSharedBoardRoom = null;
 
   const stateListeners = new Set();
   const connectionListeners = new Set();
@@ -58,10 +99,12 @@ export function createGameRoomSession(options = {}) {
     }
   }
 
-  async function connect(connectOptions = {}) {
+  async function connect(rawOptions = {}) {
     if (room) {
       return room;
     }
+
+    const connectOptions = normalizeConnectOptions(rawOptions);
 
     connectionState = "connecting";
     notifyConnection();
@@ -69,14 +112,19 @@ export function createGameRoomSession(options = {}) {
     try {
       const sdk = await loadSdk();
       client = new sdk.Client(endpoint);
-      const { roomId, roomOptions } = normalizeConnectOptions(connectOptions);
-      if (typeof roomId === "string" && roomId.length > 0) {
-        if (typeof client.joinById !== "function") {
-          throw new Error("joinById not available");
-        }
-        room = await client.joinById(roomId, roomOptions);
+      if (connectOptions.roomId.length > 0) {
+        room = await client.joinById(connectOptions.roomId, connectOptions.roomOptions);
+      } else if (connectOptions.mode === "createPaired") {
+        const sharedBoardRoom = await client.create(connectOptions.sharedBoardRoomName);
+        createdSharedBoardRoom = sharedBoardRoom;
+        room = await client.create(roomName, {
+          ...connectOptions.roomOptions,
+          sharedBoardRoomId: sharedBoardRoom.roomId,
+        });
+      } else if (connectOptions.mode === "create") {
+        room = await client.create(roomName, connectOptions.roomOptions);
       } else {
-        room = await client.joinOrCreate(roomName, roomOptions);
+        room = await client.joinOrCreate(roomName, connectOptions.roomOptions);
       }
       connectionState = "connected";
       notifyConnection();
@@ -98,6 +146,7 @@ export function createGameRoomSession(options = {}) {
       client = null;
       room = null;
       state = null;
+      createdSharedBoardRoom = null;
       connectionState = "idle";
       notifyConnection();
       throw error;
@@ -115,6 +164,7 @@ export function createGameRoomSession(options = {}) {
     room = null;
     state = null;
     client = null;
+    createdSharedBoardRoom = null;
     connectionState = "disconnecting";
     notifyConnection();
     try {
@@ -168,6 +218,12 @@ export function createGameRoomSession(options = {}) {
     return true;
   }
 
+  function takeCreatedSharedBoardRoom() {
+    const nextRoom = createdSharedBoardRoom;
+    createdSharedBoardRoom = null;
+    return nextRoom;
+  }
+
   return {
     connect,
     disconnect,
@@ -179,30 +235,7 @@ export function createGameRoomSession(options = {}) {
     getConnectionState: () => connectionState,
     getRoom: () => room,
     getState: () => state,
-  };
-}
-
-function normalizeConnectOptions(connectOptions) {
-  if (!connectOptions || typeof connectOptions !== "object" || Array.isArray(connectOptions)) {
-    return { roomId: "", roomOptions: {} };
-  }
-
-  const hasStructuredFields = Object.prototype.hasOwnProperty.call(connectOptions, "roomId")
-    || Object.prototype.hasOwnProperty.call(connectOptions, "roomOptions");
-
-  if (!hasStructuredFields) {
-    return {
-      roomId: "",
-      roomOptions: connectOptions,
-    };
-  }
-
-  return {
-    roomId: typeof connectOptions.roomId === "string" ? connectOptions.roomId.trim() : "",
-    roomOptions:
-      connectOptions.roomOptions && typeof connectOptions.roomOptions === "object"
-        ? connectOptions.roomOptions
-        : {},
+    takeCreatedSharedBoardRoom,
   };
 }
 

@@ -2457,12 +2457,16 @@
         <input data-room-input type="text" placeholder="Room name" value="game" />
       </div>
       <div class="connection-row">
+        <input data-room-code-input type="text" placeholder="Room code" aria-label="Room code" />
+        <strong data-room-code-output aria-live="polite" role="status">-</strong>
+      </div>
+      <div class="connection-row">
         <select data-setid-select>
           <option value="">Default Set</option>
           <option value="set1">Set 1</option>
           <option value="set2">Set 2</option>
         </select>
-        <input data-autofill-input type="number" min="0" max="3" value="3" placeholder="Bots" />
+        <input data-autofill-input type="number" min="0" max="3" value="0" placeholder="Bots" />
         <strong data-set-id-display>-</strong>
       </div>
       <div class="connection-row">

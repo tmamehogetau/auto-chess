@@ -3,6 +3,7 @@ import type { PhaseHpProgress } from "./ui/player-facing-copy.js";
 export function renderPlayerLobbySummary(input: {
   participantSummaryElement?: HTMLElement | null;
   state?: {
+    maxPlayers?: number;
     players?: unknown;
   } | null;
 }): void;
@@ -37,7 +38,17 @@ export function renderPlayerPrepSummary(input: {
   boardCopyElement?: HTMLElement | null;
   shopCopyElement?: HTMLElement | null;
   bossShopCopyElement?: HTMLElement | null;
+  specialUnitCopyElement?: HTMLElement | null;
+  spellCopyElement?: HTMLElement | null;
+  synergyCopyElement?: HTMLElement | null;
+  itemShopElement?: HTMLElement | null;
+  itemShopCopyElement?: HTMLElement | null;
+  itemShopSlotElements?: HTMLButtonElement[];
   benchCopyElement?: HTMLElement | null;
+  itemInventoryCopyElement?: HTMLElement | null;
+  itemInventorySlotElements?: HTMLButtonElement[];
+  benchItemCopyElement?: HTMLElement | null;
+  benchItemListElement?: HTMLElement | null;
   roomCopyElement?: HTMLElement | null;
   deadlineCopyElement?: HTMLElement | null;
   boardElement?: HTMLElement | null;
@@ -58,8 +69,11 @@ export function renderPlayerPrepSummary(input: {
     phaseDeadlineAtMs?: number;
     sharedBoardMode?: string;
     featureFlagsEnableHeroSystem?: boolean;
+    featureFlagsEnableSpellCard?: boolean;
     featureFlagsEnableBossExclusiveShop?: boolean;
     bossPlayerId?: string;
+    declaredSpellId?: string;
+    usedSpellIds?: unknown[] | Iterable<unknown>;
     players?: unknown;
   } | null;
   player?: {
@@ -72,6 +86,23 @@ export function renderPlayerPrepSummary(input: {
     level?: number;
     selectedHeroId?: string;
     selectedBossId?: string;
+    activeSynergies?: Array<{
+      unitType?: string;
+      count?: number;
+      tier?: number;
+    }> | Iterable<{
+      unitType?: string;
+      count?: number;
+      tier?: number;
+    }>;
+    itemShopOffers?: Array<{
+      itemType?: string;
+      cost?: number;
+    }> | Iterable<{
+      itemType?: string;
+      cost?: number;
+    }>;
+    itemInventory?: unknown[] | Iterable<unknown>;
     bossShopOffers?: Array<{
       unitType?: string;
       cost?: number;
@@ -92,11 +123,14 @@ export function renderPlayerPrepSummary(input: {
     }>;
     benchUnits?: unknown[] | Iterable<unknown>;
     benchDisplayNames?: unknown[] | Iterable<unknown>;
+    benchItemLoadouts?: unknown[] | Iterable<unknown>;
   } | null;
   sessionId?: string;
   currentPhase?: string;
   selectedBenchIndex?: number | null;
+  selectedInventoryIndex?: number | null;
   canSellBench?: boolean;
+  canSellItem?: boolean;
   canSellBoard?: boolean;
   canReturnBoard?: boolean;
   roomSummary?: {
@@ -108,6 +142,7 @@ export function renderPlayerPrepSummary(input: {
     valueText?: string;
   } | null;
   benchSellButton?: HTMLButtonElement | null;
+  itemSellButton?: HTMLButtonElement | null;
   boardReturnButton?: HTMLButtonElement | null;
   boardSellButton?: HTMLButtonElement | null;
   sharedBoardConnected?: boolean;

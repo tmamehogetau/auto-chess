@@ -30,6 +30,51 @@ const waitForCondition = async (
   throw new Error("Timed out while waiting for condition");
 };
 
+const registerRoundStateListeners = (
+  clients: Array<{ onMessage: (type: string, handler: (_message: unknown) => void) => void }>,
+): void => {
+  for (const client of clients) {
+    client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+  }
+};
+
+const resolveBossRoleSelectionToPrep = async (
+  gameRoom: GameRoom,
+  clients: Array<{
+    sessionId: string;
+    send: (type: string, message?: unknown) => void;
+  }>,
+  timeoutMs = 3_000,
+): Promise<void> => {
+  const bossClient = clients[1];
+  const raidClientA = clients[0];
+  const raidClientB = clients[2];
+  const raidClientC = clients[3];
+
+  if (!bossClient || !raidClientA || !raidClientB || !raidClientC) {
+    throw new Error("Expected four clients for role selection");
+  }
+
+  bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+  await waitForCondition(
+    () => gameRoom.state.players.get(bossClient.sessionId)?.wantsBoss === true,
+    timeoutMs,
+  );
+
+  for (const client of clients) {
+    client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+  }
+
+  await waitForCondition(() => gameRoom.state.lobbyStage === "selection", timeoutMs);
+
+  raidClientA.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+  raidClientB.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+  raidClientC.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
+  bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+  await waitForCondition(() => gameRoom.state.phase === "Prep", timeoutMs);
+};
+
 describe("runtime shared_board server config", () => {
   let testServer!: ColyseusTestServer;
 
@@ -80,15 +125,8 @@ describe("runtime shared_board server config", () => {
       testServer.connectTo(gameRoom),
     ]);
 
-    for (const client of clients) {
-      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
-    }
-
-    for (const client of clients) {
-      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-    }
-
-    await waitForCondition(() => gameRoom.state.phase === "Prep", 3_000);
+    registerRoundStateListeners(clients);
+    await resolveBossRoleSelectionToPrep(gameRoom, clients, 3_000);
 
     const ownerClient = clients[0];
     if (!ownerClient) {
@@ -124,17 +162,61 @@ describe("runtime shared_board server config", () => {
     expect(sharedBoardRoom.state.cells.get(String(raidCell))?.ownerId).toBe(ownerClient.sessionId);
   });
 
-  test("game room exposes dedicated sharedBoardRoomId through room state and round_state", async () => {
+  test("dedicated game room exposes its sharedBoardRoomId through state and round_state", async () => {
     const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const gameRoom = await testServer.createRoom<GameRoom>("game", {
       sharedBoardRoomId: sharedBoardRoom.roomId,
     });
-    const roomInternals = gameRoom as unknown as {
-      createRoundStateMessage: () => Record<string, unknown>;
-    };
-    const latestRoundState = roomInternals.createRoundStateMessage();
+    const clients = await Promise.all([
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+    }
+
+    const roundStatePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ROUND_STATE);
+
+    for (const client of clients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    const roundState = await roundStatePromise;
 
     expect(gameRoom.state.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
-    expect(latestRoundState?.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(roundState.sharedBoardRoomId).toBe(sharedBoardRoom.roomId);
+    expect(clients[0]?.sessionId.length).toBeGreaterThan(0);
+  });
+
+  test("runtime local-play server enables the current player-facing release slice flags", async () => {
+    const gameRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+    ]);
+    registerRoundStateListeners(clients);
+
+    const roundStates: Array<unknown> = [];
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message: unknown) => {
+        roundStates.push(message);
+      });
+    }
+
+    await resolveBossRoleSelectionToPrep(gameRoom, clients, 3_000);
+    const roundState = roundStates.at(-1) as Record<string, unknown> | undefined;
+
+    expect(gameRoom.state.featureFlagsEnableHeroSystem).toBe(true);
+    expect(gameRoom.state.featureFlagsEnableBossExclusiveShop).toBe(true);
+    expect(gameRoom.state.featureFlagsEnableSpellCard).toBe(true);
+    expect(gameRoom.state.featureFlagsEnableSharedBoardShadow).toBe(true);
+
+    expect(roundState?.phase).toBeDefined();
+    expect(roundState?.sharedBoardRoomId).toBe(gameRoom.state.sharedBoardRoomId);
   });
 });

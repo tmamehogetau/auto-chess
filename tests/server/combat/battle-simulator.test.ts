@@ -4,8 +4,6 @@ import type { BoardUnitPlacement, BoardUnitType } from "../../../src/shared/room
 import { getMvpPhase1Boss, type SubUnitConfig } from "../../../src/shared/types";
 import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 import {
-  combatCellToBossBoardIndex,
-  combatCellToRaidBoardIndex,
   sharedBoardCoordinateToIndex,
 } from "../../../src/shared/board-geometry";
 import {
@@ -16,6 +14,36 @@ import {
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
 import { resolveBattlePlacements } from "../../../src/server/unit-id-resolver";
+
+const LEGACY_RAID_COORDINATES = [
+  { x: 1, y: 3 },
+  { x: 2, y: 3 },
+  { x: 3, y: 3 },
+  { x: 4, y: 3 },
+  { x: 1, y: 4 },
+  { x: 2, y: 4 },
+  { x: 3, y: 4 },
+  { x: 4, y: 4 },
+] as const;
+
+const LEGACY_BOSS_COORDINATES = [
+  { x: 1, y: 1 },
+  { x: 2, y: 1 },
+  { x: 3, y: 1 },
+  { x: 4, y: 1 },
+  { x: 1, y: 2 },
+  { x: 2, y: 2 },
+  { x: 3, y: 2 },
+  { x: 4, y: 2 },
+] as const;
+
+function combatCellToRaidBoardIndex(cell: number): number {
+  return sharedBoardCoordinateToIndex(LEGACY_RAID_COORDINATES[cell]!);
+}
+
+function combatCellToBossBoardIndex(cell: number): number {
+  return sharedBoardCoordinateToIndex(LEGACY_BOSS_COORDINATES[cell]!);
+}
 
 function normalizeTestBattleCell(cell: number, side: "left" | "right"): number {
   if (Number.isInteger(cell) && cell >= 0 && cell <= 7) {

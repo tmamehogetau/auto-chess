@@ -6,10 +6,7 @@ import {
   createBattleUnit,
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
-import {
-  combatCellToBossBoardIndex,
-  combatCellToRaidBoardIndex,
-} from "../../../src/shared/board-geometry";
+import { sharedBoardCoordinateToIndex } from "../../../src/shared/board-geometry";
 
 /**
  * Boss Raid Simulation Tests
@@ -22,10 +19,33 @@ import {
 
 describe("Boss Raid Simulation", () => {
   const simulator = new BattleSimulator();
+  const LEGACY_RAID_COORDINATES = [
+    { x: 1, y: 3 },
+    { x: 2, y: 3 },
+    { x: 3, y: 3 },
+    { x: 4, y: 3 },
+    { x: 1, y: 4 },
+    { x: 2, y: 4 },
+    { x: 3, y: 4 },
+    { x: 4, y: 4 },
+  ] as const;
+  const LEGACY_BOSS_COORDINATES = [
+    { x: 1, y: 1 },
+    { x: 2, y: 1 },
+    { x: 3, y: 1 },
+    { x: 4, y: 1 },
+    { x: 1, y: 2 },
+    { x: 2, y: 2 },
+    { x: 3, y: 2 },
+    { x: 4, y: 2 },
+  ] as const;
 
   function normalizeTestBattleCell(cell: number, side: "left" | "right"): number {
     if (Number.isInteger(cell) && cell >= 0 && cell <= 7) {
-      return side === "left" ? combatCellToRaidBoardIndex(cell) : combatCellToBossBoardIndex(cell);
+      const coordinate = side === "left"
+        ? LEGACY_RAID_COORDINATES[cell]!
+        : LEGACY_BOSS_COORDINATES[cell]!;
+      return sharedBoardCoordinateToIndex(coordinate);
     }
 
     return cell;

@@ -3,8 +3,7 @@ import { expect, test } from "vitest";
 import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
 import type { BoardUnitPlacement } from "../../src/shared/room-messages";
 import {
-  combatCellToBossBoardIndex,
-  combatCellToRaidBoardIndex,
+  sharedBoardCoordinateToIndex,
   sharedBoardIndexToCoordinate,
 } from "../../src/shared/board-geometry";
 import { BattleSimulator, createBattleUnit } from "../../src/server/combat/battle-simulator";
@@ -38,7 +37,7 @@ test("simulateBattle emits move, attack, damage, death, and keyframe events in o
   const simulator = new BattleSimulator();
 
   const leftPlacements: BoardUnitPlacement[] = [{
-    cell: combatCellToRaidBoardIndex(0),
+    cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }),
     unitType: "vanguard",
     hp: 50,
     attack: 10,
@@ -46,7 +45,7 @@ test("simulateBattle emits move, attack, damage, death, and keyframe events in o
     range: 1,
   }];
   const rightPlacements: BoardUnitPlacement[] = [{
-    cell: combatCellToBossBoardIndex(7),
+    cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
     unitType: "mage",
     hp: 1,
     attack: 1,
@@ -128,11 +127,11 @@ test("simulateBattle preserves shared-board indices in battleStart coordinates",
   const simulator = new BattleSimulator();
 
   const leftPlacements: BoardUnitPlacement[] = [{
-    cell: combatCellToRaidBoardIndex(0),
+    cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }),
     unitType: "vanguard",
   }];
   const rightPlacements: BoardUnitPlacement[] = [{
-    cell: combatCellToBossBoardIndex(7),
+    cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
     unitType: "ranger",
   }];
 

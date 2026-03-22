@@ -18,8 +18,6 @@ const UNIT_ICONS = {
 
 const RESULT_IMPRINT_BOARD_WIDTH = 6;
 const RESULT_IMPRINT_BOARD_HEIGHT = 6;
-const RESULT_IMPRINT_COMBAT_WIDTH = 4;
-const RESULT_IMPRINT_COMBAT_HEIGHT = 2;
 
 export function renderPlayerLobbySummary({ participantSummaryElement, state }) {
   if (!(participantSummaryElement instanceof HTMLElement)) {
@@ -449,7 +447,7 @@ function resolveResultImprintState({ survivorSnapshots, timelineEndState, timeli
 
   const snapshotByBoardCellIndex = new Map();
   for (const snapshot of survivorSnapshots) {
-    const boardCellIndex = combatCellToResultBoardIndex(Number(snapshot?.combatCell));
+    const boardCellIndex = normalizeResultBoardCellIndex(Number(snapshot?.sharedBoardCellIndex));
     if (boardCellIndex === null) {
       continue;
     }
@@ -630,18 +628,16 @@ function resolveTimelineEndState(timelineEvents, survivorSnapshots) {
   };
 }
 
-function combatCellToResultBoardIndex(combatCell) {
+function normalizeResultBoardCellIndex(sharedBoardCellIndex) {
   if (
-    !Number.isInteger(combatCell) ||
-    combatCell < 0 ||
-    combatCell >= RESULT_IMPRINT_COMBAT_WIDTH * RESULT_IMPRINT_COMBAT_HEIGHT
+    !Number.isInteger(sharedBoardCellIndex) ||
+    sharedBoardCellIndex < 0 ||
+    sharedBoardCellIndex >= RESULT_IMPRINT_BOARD_WIDTH * RESULT_IMPRINT_BOARD_HEIGHT
   ) {
     return null;
   }
 
-  const combatX = combatCell % RESULT_IMPRINT_COMBAT_WIDTH;
-  const combatY = Math.floor(combatCell / RESULT_IMPRINT_COMBAT_WIDTH);
-  return (combatY + 3) * RESULT_IMPRINT_BOARD_WIDTH + combatX + 1;
+  return sharedBoardCellIndex;
 }
 
 function resolveResultImprintDeploymentZone(boardCellIndex, boardWidth, boardHeight) {

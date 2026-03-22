@@ -42,7 +42,7 @@ export interface BattleResultSurvivorSnapshot {
   unitType: string;
   hp: number;
   maxHp: number;
-  combatCell: number;
+  sharedBoardCellIndex: number;
 }
 
 /**

@@ -52,7 +52,7 @@ function syncBattleResultSurvivorSnapshots(
     nextSnapshot.unitType = snapshot?.unitType ?? "vanguard";
     nextSnapshot.hp = Number(snapshot?.hp ?? 0);
     nextSnapshot.maxHp = Number(snapshot?.maxHp ?? 0);
-    nextSnapshot.combatCell = Number(snapshot?.combatCell ?? -1);
+    nextSnapshot.sharedBoardCellIndex = Number(snapshot?.sharedBoardCellIndex ?? -1);
     target.survivorSnapshots.push(nextSnapshot);
   }
 }

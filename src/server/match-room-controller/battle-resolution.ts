@@ -386,7 +386,7 @@ export class BattleResolutionService {
         unitType: survivor.type,
         hp: Math.max(0, Math.round(Number(survivor.hp) || 0)),
         maxHp: Math.max(0, Math.round(Number(survivor.maxHp) || 0)),
-        combatCell: Number.isInteger(survivor.cell) ? survivor.cell : -1,
+        sharedBoardCellIndex: Number.isInteger(survivor.cell) ? survivor.cell : -1,
       };
     });
   }

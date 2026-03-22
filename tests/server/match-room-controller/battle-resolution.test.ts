@@ -121,7 +121,7 @@ describe("BattleResolutionService", () => {
           unitType: "vanguard",
           hp: 100,
           maxHp: 100,
-          combatCell: 0,
+          sharedBoardCellIndex: 0,
         },
       ]);
       expect(result.leftBattleResult.timeline).toEqual(mockTimeline);

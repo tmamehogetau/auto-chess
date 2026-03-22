@@ -72,7 +72,7 @@ export class BattleResultSurvivorSchema extends Schema {
   declare public unitType: string;
   declare public hp: number;
   declare public maxHp: number;
-  declare public combatCell: number;
+  declare public sharedBoardCellIndex: number;
 
   public constructor() {
     super();
@@ -81,7 +81,7 @@ export class BattleResultSurvivorSchema extends Schema {
     this.unitType = "vanguard";
     this.hp = 0;
     this.maxHp = 0;
-    this.combatCell = -1;
+    this.sharedBoardCellIndex = -1;
   }
 }
 
@@ -333,7 +333,7 @@ defineTypes(BattleResultSurvivorSchema, {
   unitType: "string",
   hp: "number",
   maxHp: "number",
-  combatCell: "number",
+  sharedBoardCellIndex: "number",
 });
 
 defineTypes(SynergySchema, {

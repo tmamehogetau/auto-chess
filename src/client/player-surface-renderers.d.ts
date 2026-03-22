@@ -126,14 +126,14 @@ export function renderPlayerResultSummary(input: {
         unitType?: string;
         hp?: number;
         maxHp?: number;
-        combatCell?: number;
+        sharedBoardCellIndex?: number;
       }> | Iterable<{
         unitId?: string;
         displayName?: string;
         unitType?: string;
         hp?: number;
         maxHp?: number;
-        combatCell?: number;
+        sharedBoardCellIndex?: number;
       }>;
     } | null;
   } | null;

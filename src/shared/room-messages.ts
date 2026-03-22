@@ -150,7 +150,7 @@ export interface RoundStateMessage {
       unitType: string;
       hp: number;
       maxHp: number;
-      combatCell: number;
+      sharedBoardCellIndex: number;
     }>;
   };
 
@@ -190,7 +190,7 @@ export interface PlayerMatchStatus {
       unitType: string;
       hp: number;
       maxHp: number;
-      combatCell: number;
+      sharedBoardCellIndex: number;
     }>;
   };
   activeSynergies?: {

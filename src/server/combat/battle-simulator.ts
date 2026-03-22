@@ -543,7 +543,7 @@ function moveUnitBySimpleApproach(
 
   unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
 
-  const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
+  const sideLabel = resolveBattleSide(unit) === "left" ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
   combatLog.push(
     `${sideLabel} ${typeLabel} moves from cell ${previousCell} to cell ${unit.cell}`,
@@ -758,7 +758,7 @@ function applySubUnitAssist(
  * ユニット名を生成（戦闘ログ用）
  */
 function generateUnitName(unit: BattleUnit): string {
-  const sideLabel = unit.id.startsWith("left") ? "Left" : "Right";
+  const sideLabel = resolveBattleSide(unit) === "left" ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
   return `${sideLabel} ${typeLabel} (cell ${unit.cell})`;
 }
@@ -947,8 +947,9 @@ export class BattleSimulator {
       appendDueKeyframes(currentTime);
 
       if (action.type === "attack") {
-        const enemies = action.unit.id.startsWith("left") ? rightUnits : leftUnits;
-        const allies = action.unit.id.startsWith("left") ? leftUnits : rightUnits;
+        const unitSide = resolveBattleSide(action.unit);
+        const enemies = unitSide === "left" ? rightUnits : leftUnits;
+        const allies = unitSide === "left" ? leftUnits : rightUnits;
         const target = findTarget(action.unit, enemies);
 
         if (target) {
@@ -1022,7 +1023,7 @@ export class BattleSimulator {
             }
           }
 
-          const scarletBossLifestealActive = action.unit.id.startsWith("left")
+          const scarletBossLifestealActive = unitSide === "left"
             ? leftScarletBossLifestealActive
             : rightScarletBossLifestealActive;
           const canTriggerScarletBossLifesteal = scarletBossLifestealActive
@@ -1038,7 +1039,7 @@ export class BattleSimulator {
           }
 
           // ダメージ追跡
-          const isAttackerLeft = action.unit.id.startsWith("left");
+          const isAttackerLeft = unitSide === "left";
           if (isAttackerLeft) {
             damageDealtLeft += actualDamage;
           } else {

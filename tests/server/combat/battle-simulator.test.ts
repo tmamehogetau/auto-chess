@@ -212,7 +212,7 @@ describe("battle-simulator", () => {
         1_500,
       );
 
-      expect(passiveResult.damageDealt.left).toBeGreaterThan(nonPassiveResult.damageDealt.left);
+      expect(passiveResult.damageDealt.right).toBeGreaterThan(nonPassiveResult.damageDealt.right);
     });
   });
 
@@ -976,6 +976,43 @@ describe("battle-simulator", () => {
       expect(result.combatLog.length).toBeGreaterThan(1);
       expect(result.combatLog[0]).toBe("Battle started");
       expect(result.combatLog[result.combatLog.length - 1]).toMatch(/^Battle ended:/);
+    });
+
+    test("hero unit は left side として敵ユニットを攻撃する", () => {
+      const simulator = new BattleSimulator();
+      const heroUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      heroUnit.id = "hero-reimu";
+      heroUnit.sourceUnitId = "hero-reimu";
+
+      const rightUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const result = simulator.simulateBattle([heroUnit], [rightUnit], [], [], 1_000);
+
+      expect(rightUnit.hp).toBeLessThan(rightUnit.maxHp);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && event.targetBattleUnitId === rightUnit.id,
+        ),
+      ).toBe(true);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && event.targetBattleUnitId === "hero-reimu",
+        ),
+      ).toBe(false);
     });
 
     test("同じ入力からは同じ結果が得られる（決定論性）", () => {

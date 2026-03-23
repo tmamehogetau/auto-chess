@@ -5,12 +5,6 @@ export interface PrepCommandLoggingDeps {
   logger: MatchLogger | null;
   getShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
   getBossShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
-  getPlayerStatus: (sessionId: string) => {
-    gold: number;
-    itemShopOffers: Array<{ itemType: string; cost: number }>;
-    itemInventory: string[];
-    benchUnits: string[];
-  } | null;
   getRoundIndex: () => number;
   getPlayerGold: (sessionId: string) => number;
 }
@@ -97,54 +91,6 @@ export function logPrepCommandActions(
   if (commandPayload.boardSellIndex !== undefined) {
     deps.logger.logAction(sessionId, roundIndex, "board_sell", {
       cell: commandPayload.boardSellIndex,
-      goldBefore,
-      goldAfter: goldBefore + 1,
-    });
-  }
-
-  if (commandPayload.itemBuySlotIndex !== undefined) {
-    const playerStatus = deps.getPlayerStatus(sessionId);
-    const itemOffer = playerStatus?.itemShopOffers[commandPayload.itemBuySlotIndex];
-    if (itemOffer) {
-      deps.logger.logAction(sessionId, roundIndex, "buy_item", {
-        itemType: itemOffer.itemType,
-        cost: itemOffer.cost,
-        goldBefore,
-        goldAfter: goldBefore - itemOffer.cost,
-      });
-    }
-  }
-
-  if (commandPayload.itemEquipToBench !== undefined) {
-    const playerStatus = deps.getPlayerStatus(sessionId);
-    const item = playerStatus?.itemInventory[commandPayload.itemEquipToBench.inventoryItemIndex];
-    deps.logger.logAction(sessionId, roundIndex, "equip_item", {
-      inventoryIndex: commandPayload.itemEquipToBench.inventoryItemIndex,
-      benchIndex: commandPayload.itemEquipToBench.benchIndex,
-      ...(item !== undefined && { itemType: item }),
-      goldBefore,
-      goldAfter: goldBefore,
-    });
-  }
-
-  if (commandPayload.itemUnequipFromBench !== undefined) {
-    const playerStatus = deps.getPlayerStatus(sessionId);
-    const benchUnit = playerStatus?.benchUnits[commandPayload.itemUnequipFromBench.benchIndex];
-    deps.logger.logAction(sessionId, roundIndex, "unequip_item", {
-      benchIndex: commandPayload.itemUnequipFromBench.benchIndex,
-      itemSlotIndex: commandPayload.itemUnequipFromBench.itemSlotIndex,
-      ...(benchUnit !== undefined && { benchUnit }),
-      goldBefore,
-      goldAfter: goldBefore,
-    });
-  }
-
-  if (commandPayload.itemSellInventoryIndex !== undefined) {
-    const playerStatus = deps.getPlayerStatus(sessionId);
-    const item = playerStatus?.itemInventory[commandPayload.itemSellInventoryIndex];
-    deps.logger.logAction(sessionId, roundIndex, "sell_item", {
-      inventoryIndex: commandPayload.itemSellInventoryIndex,
-      ...(item !== undefined && { itemType: item }),
       goldBefore,
       goldAfter: goldBefore + 1,
     });

@@ -375,17 +375,16 @@ describe("MatchLogger - P1 Feature Logs", () => {
   describe("updateFinalUnits", () => {
     it("入力配列の変更が記録済みユニットに影響しないこと", () => {
       const boardUnits = [
-        { unitType: "vanguard", starLevel: 1, cell: 0, items: ["item1"] },
+        { unitType: "vanguard", starLevel: 1, cell: 0 },
       ];
       const benchUnits = [
-        { unitType: "ranger", starLevel: 2, benchIndex: 0, items: ["item2", "item3"] },
+        { unitType: "ranger", starLevel: 2, benchIndex: 0 },
       ];
 
       logger.updateFinalUnits("player-1", boardUnits, benchUnits);
 
       // Modify input after recording
       boardUnits[0]!.unitType = "modified";
-      boardUnits[0]!.items.push("newItem");
       benchUnits[0]!.starLevel = 99;
 
       // Verify generateSummary returns unchanged data
@@ -400,7 +399,6 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
       const player = summary.players.find((p) => p.playerId === "player-1")!;
       expect(player.finalBoardUnits[0]!.unitType).toBe("vanguard");
-      expect(player.finalBoardUnits[0]!.items).toEqual(["item1"]);
       expect(player.finalBenchUnits[0]!.starLevel).toBe(2);
     });
   });
@@ -408,9 +406,9 @@ describe("MatchLogger - P1 Feature Logs", () => {
   describe("generateSummary", () => {
     it("should defensively copy final units in summary", () => {
       const boardUnits = [
-        { unitType: "vanguard", starLevel: 1, cell: 0, items: ["item1"] },
+        { unitType: "vanguard", starLevel: 1, cell: 0 },
       ];
-      const benchUnits: { unitType: string; starLevel: number; benchIndex: number; items: string[] }[] = [];
+      const benchUnits: { unitType: string; starLevel: number; benchIndex: number }[] = [];
 
       logger.updateFinalUnits("player-1", boardUnits, benchUnits);
 
@@ -438,12 +436,9 @@ describe("MatchLogger - P1 Feature Logs", () => {
       expect(player1.finalBoardUnits).not.toBe(player2.finalBoardUnits);
       // Different object instances
       expect(player1.finalBoardUnits[0]).not.toBe(player2.finalBoardUnits[0]);
-      // Different items array instances
-      expect(player1.finalBoardUnits[0]!.items).not.toBe(player2.finalBoardUnits[0]!.items);
 
       // Modifying returned summary should not affect internal state
       player1.finalBoardUnits[0]!.unitType = "modified";
-      player1.finalBoardUnits[0]!.items.push("newItem");
 
       const summary3 = logger.generateSummary(null, ["player-1", "player-2"], 5, {
         enableHeroSystem: false,
@@ -455,7 +450,6 @@ describe("MatchLogger - P1 Feature Logs", () => {
       });
       const player3 = summary3.players.find((p) => p.playerId === "player-1")!;
       expect(player3.finalBoardUnits[0]!.unitType).toBe("vanguard");
-      expect(player3.finalBoardUnits[0]!.items).toEqual(["item1"]);
     });
   });
 
@@ -756,8 +750,8 @@ describe("MatchLogger - P1 Feature Logs", () => {
     it("should include top1CompositionSignature as string from winner's board", () => {
       // Setup: Winner has board units
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0, items: ["sword"] },
-        { unitType: "ranger", starLevel: 1, cell: 1, items: [] },
+        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "ranger", starLevel: 1, cell: 1 },
       ], []);
 
       const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
@@ -774,7 +768,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
     it("should return empty signature when winner is null", () => {
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+        { unitType: "vanguard", starLevel: 2, cell: 0 },
       ], []);
 
       const kpi = logger.getGameplayKpiSummary(null, ["player-1", "player-2"], 8, featureFlags);
@@ -863,7 +857,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
         logger.incrementRoundsSurvived("player-1");
       }
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+        { unitType: "vanguard", starLevel: 2, cell: 0 },
       ], []);
 
       // Some prep commands with failures
@@ -913,8 +907,8 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
     it("should include top1 composition signature as string from winner's board", () => {
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
-        { unitType: "ranger", starLevel: 1, cell: 1, items: [] },
+        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "ranger", starLevel: 1, cell: 1 },
       ], []);
 
       logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
@@ -943,7 +937,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       // Setup complete match
       logger.incrementRoundsSurvived("player-1");
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0, items: [] },
+        { unitType: "vanguard", starLevel: 2, cell: 0 },
       ], []);
 
       // Call both output methods

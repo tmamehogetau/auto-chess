@@ -26,10 +26,6 @@ export function buildPrepCommandPayload(
     message.boardToBenchCell === undefined &&
     message.benchSellIndex === undefined &&
     message.boardSellIndex === undefined &&
-    message.itemBuySlotIndex === undefined &&
-    message.itemEquipToBench === undefined &&
-    message.itemUnequipFromBench === undefined &&
-    message.itemSellInventoryIndex === undefined &&
     message.bossShopBuySlotIndex === undefined
   ) {
     return undefined;
@@ -46,10 +42,6 @@ export function buildPrepCommandPayload(
     ...(message.boardToBenchCell !== undefined && { boardToBenchCell: message.boardToBenchCell }),
     ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
     ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
-    ...(message.itemBuySlotIndex !== undefined && { itemBuySlotIndex: message.itemBuySlotIndex }),
-    ...(message.itemEquipToBench !== undefined && { itemEquipToBench: message.itemEquipToBench }),
-    ...(message.itemUnequipFromBench !== undefined && { itemUnequipFromBench: message.itemUnequipFromBench }),
-    ...(message.itemSellInventoryIndex !== undefined && { itemSellInventoryIndex: message.itemSellInventoryIndex }),
     ...(message.bossShopBuySlotIndex !== undefined && { bossShopBuySlotIndex: message.bossShopBuySlotIndex }),
   };
 }

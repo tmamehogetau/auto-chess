@@ -1156,6 +1156,7 @@ export class MatchRoomController {
           : benchUnit.unitType,
       ),
       benchDisplayNames: benchUnits.map((benchUnit) => this.resolveBenchUnitDisplayName(benchUnit)),
+      benchItemLoadouts: benchUnits.map((benchUnit) => JSON.stringify(benchUnit.items ?? [])),
       boardUnits: boardPlacements.map((placement) => {
         const starLevel = placement.starLevel ?? 1;
         const hasSubUnitAssist =

@@ -16,14 +16,17 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
  * @typedef {Object} SharedBoardDependencies
  * @property {object|null} client Colyseus Client
  * @property {string} gamePlayerId ゲームプレイヤーID
+ * @property {string} sharedBoardRoomId 共有ボード room id
  * @property {(message: string, type: string) => void} onLog ログ追加関数
  * @property {(message: string, type: string) => void} showMessage メッセージ表示関数
  * @property {() => boolean} isTouhouRosterEnabled 東方ロスター有効判定
+ * @property {() => ("boss"|"raid")} [getPlayerPlacementSide] 現在の配置サイド
  * @property {(client: object, roomName: string, options?: object) => Promise<object>} joinOrCreate ルーム接続関数
  */
 
 const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 const SHARED_BOARD_BATTLE_REPLAY_MESSAGE = "shared_battle_replay";
+let currentSharedBoardRoomId = "";
 
 /** @type {SharedBoardDOMRefs} */
 let domRefs = {
@@ -36,9 +39,11 @@ let domRefs = {
 let deps = {
   client: null,
   gamePlayerId: "",
+  sharedBoardRoomId: "",
   onLog: () => {},
   showMessage: () => {},
   isTouhouRosterEnabled: () => false,
+  getPlayerPlacementSide: () => "raid",
   joinOrCreate: async () => null,
 };
 
@@ -98,14 +103,40 @@ export function setSharedBoardGamePlayerId(gamePlayerId) {
   };
 }
 
+export function setSharedBoardRoomId(sharedBoardRoomId) {
+  if (typeof sharedBoardRoomId === "string") {
+    currentSharedBoardRoomId = sharedBoardRoomId.trim();
+    return;
+  }
+
+  currentSharedBoardRoomId = "";
+}
+
 /**
  * 共有ボードルームに接続
  * @param {object} client Colyseus Client
  * @returns {Promise<void>}
  */
-export async function connectSharedBoard(client) {
-  if (!client || sharedBoardRoom) {
+export async function connectSharedBoard(client, options = {}) {
+  const requestedRoomId = typeof options?.roomId === "string" && options.roomId.trim().length > 0
+    ? options.roomId.trim()
+    : currentSharedBoardRoomId.length > 0
+      ? currentSharedBoardRoomId
+      : DEFAULT_SHARED_BOARD_ROOM_NAME;
+
+  if (!client) {
     return;
+  }
+
+  if (
+    sharedBoardRoom
+    && (sharedBoardRoom.roomId === requestedRoomId || sharedBoardRoom.roomName === requestedRoomId)
+  ) {
+    return;
+  }
+
+  if (sharedBoardRoom) {
+    leaveSharedBoardRoom();
   }
 
   try {
@@ -113,23 +144,40 @@ export async function connectSharedBoard(client) {
       ? { gamePlayerId: deps.gamePlayerId }
       : undefined;
 
-    sharedBoardRoom = await client.joinOrCreate(
-      DEFAULT_SHARED_BOARD_ROOM_NAME,
-      sharedBoardJoinOptions,
-    );
+    const existingRoom = options?.existingRoom ?? null;
+    if (existingRoom) {
+      sharedBoardRoom = existingRoom;
+    } else if (requestedRoomId !== DEFAULT_SHARED_BOARD_ROOM_NAME && typeof client.joinById === "function") {
+      sharedBoardRoom = await client.joinById(requestedRoomId, sharedBoardJoinOptions);
+    } else {
+      sharedBoardRoom = await client.joinOrCreate(
+        DEFAULT_SHARED_BOARD_ROOM_NAME,
+        sharedBoardJoinOptions,
+      );
+    }
     currentSharedBoardState = null;
     sharedBoardSpectatorNoticeShown = false;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
     clearSharedBattleReplay();
 
-    sharedBoardRoom.onMessage("shared_role", (message) => {
+    bindSharedBoardRoomListeners(sharedBoardRoom);
+  } catch (error) {
+    currentSharedBoardState = null;
+    renderSharedBoardState(null);
+    const message = error instanceof Error ? error.message : String(error);
+    deps.onLog(`Shared board unavailable: ${message}`, "info");
+  }
+}
+
+function bindSharedBoardRoomListeners(room) {
+  room.onMessage("shared_role", (message) => {
       if (message?.isSpectator === true && !sharedBoardSpectatorNoticeShown) {
         deps.onLog("Shared board role: spectator", "info");
       }
     });
 
-    sharedBoardRoom.onMessage("shared_action_result", (message) => {
+    room.onMessage("shared_action_result", (message) => {
       if (message?.accepted === true && message.action === "place_unit") {
         selectedSharedUnitId = null;
         renderSharedBoardState(currentSharedBoardState);
@@ -148,7 +196,7 @@ export async function connectSharedBoard(client) {
       }
     });
 
-    sharedBoardRoom.onStateChange((state) => {
+    room.onStateChange((state) => {
       currentSharedBoardState = state;
       if (state?.mode === "battle") {
         sharedDraggedUnitId = null;
@@ -159,11 +207,11 @@ export async function connectSharedBoard(client) {
       renderSharedBoardState(state);
     });
 
-    sharedBoardRoom.onMessage(SHARED_BOARD_BATTLE_REPLAY_MESSAGE, (message) => {
+    room.onMessage(SHARED_BOARD_BATTLE_REPLAY_MESSAGE, (message) => {
       startSharedBattleReplay(message);
     });
 
-    sharedBoardRoom.onLeave(() => {
+    room.onLeave(() => {
       sharedBoardRoom = null;
       currentSharedBoardState = null;
       sharedDraggedUnitId = null;
@@ -171,12 +219,6 @@ export async function connectSharedBoard(client) {
       clearSharedBattleReplay();
       renderSharedBoardState(null);
     });
-  } catch (error) {
-    currentSharedBoardState = null;
-    renderSharedBoardState(null);
-    const message = error instanceof Error ? error.message : String(error);
-    deps.onLog(`Shared board unavailable: ${message}`, "info");
-  }
 }
 
 /**
@@ -184,6 +226,7 @@ export async function connectSharedBoard(client) {
  */
 export function leaveSharedBoardRoom() {
   if (!sharedBoardRoom) {
+    currentSharedBoardRoomId = "";
     currentSharedBoardState = null;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
@@ -195,6 +238,7 @@ export function leaveSharedBoardRoom() {
 
   const roomToLeave = sharedBoardRoom;
   sharedBoardRoom = null;
+  currentSharedBoardRoomId = "";
   currentSharedBoardState = null;
   sharedDraggedUnitId = null;
   selectedSharedUnitId = null;
@@ -302,22 +346,40 @@ function updateSharedBoardPlacementGuide(state) {
   ));
 
   if (!hasOwnUnits) {
-    domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
-      ? "Buy a unit into your Bench, then place it onto one of the center 4x2 combat cells. Boss uses the upper row, raid uses the lower row."
-      : "Buy a unit into your Bench, then place it onto one of the highlighted raid cells. Boss deployment stays reserved for now.";
+    if (isLegacyEmbeddedBoard(state)) {
+      domRefs.placementGuideElement.textContent = "Buy a unit into your Bench, then place it onto one of the center 4x2 combat cells. Boss uses the upper row, raid uses the lower row.";
+      return;
+    }
+
+    const placementSide = resolveOwnPlacementSide(null);
+    domRefs.placementGuideElement.textContent = placementSide === "boss"
+      ? "Buy a unit into your Bench, then place it anywhere in the upper boss half. Boss units stay on the board and can be repositioned there."
+      : "Buy a unit into your Bench, then place it anywhere in the lower raid half. Hero units stay on the board and can be repositioned there.";
     return;
   }
 
   if (selectedSharedUnitId || sharedDraggedUnitId) {
-    domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
-      ? "Blue cells inside the center 4x2 combat area are open for your selected unit. Red cells are blocked or outside that area."
-      : "Blue highlighted raid cells are open for your selected unit. Red cells are occupied or outside the active raid footprint.";
+    if (isLegacyEmbeddedBoard(state)) {
+      domRefs.placementGuideElement.textContent = "Blue cells inside the center 4x2 combat area are open for your selected unit. Red cells are blocked or outside that area.";
+      return;
+    }
+
+    const placementSide = resolveOwnPlacementSide(selectedSharedUnitId || sharedDraggedUnitId);
+    domRefs.placementGuideElement.textContent = placementSide === "boss"
+      ? "Blue cells in the upper boss half are open for your selected unit. Red cells are occupied or outside the boss deployment half."
+      : "Blue cells in the lower raid half are open for your selected unit. Red cells are occupied or outside the raid deployment half.";
     return;
   }
 
-  domRefs.placementGuideElement.textContent = isLegacyEmbeddedBoard(state)
-    ? "Select or drag one of your units. The center 4x2 combat area keeps boss on top and raid on bottom."
-    : "Select or drag one of your units. Place it onto the highlighted raid cells in the lower half of the board.";
+  if (isLegacyEmbeddedBoard(state)) {
+    domRefs.placementGuideElement.textContent = "Select or drag one of your units. The center 4x2 combat area keeps boss on top and raid on bottom.";
+    return;
+  }
+
+  const placementSide = resolveOwnPlacementSide(null);
+  domRefs.placementGuideElement.textContent = placementSide === "boss"
+    ? "Select or drag one of your units. Boss units can reposition anywhere in the upper half of the board."
+    : "Select or drag one of your units. Raid units can reposition anywhere in the lower half of the board.";
 }
 
 /**
@@ -368,11 +430,8 @@ function renderSharedBoard(state) {
       }
     } else {
       cellElement.classList.add(deploymentZone === "boss" ? "deployment-boss" : "deployment-raid");
-      if (isActiveRaidCombatFootprintCell(state, i)) {
-        cellElement.classList.add("active-combat-area", "active-raid-area");
-      } else {
-        cellElement.classList.add("outside-combat-area");
-      }
+      cellElement.classList.add("active-combat-area");
+      cellElement.classList.add(deploymentZone === "boss" ? "active-boss-area" : "active-raid-area");
     }
     cellElement.onclick = () => {
       handleSharedCellClick(state, i);
@@ -776,15 +835,10 @@ function isPlayableSharedBoardCell(state, cellIndex, activeUnitId = null) {
     return sharedBoardIndexToInnerAreaIndex(state, cellIndex) !== null;
   }
 
-  if (isHeroSharedUnitId(activeUnitId)) {
-    return isRaidDeploymentCell(state, cellIndex);
-  }
-
-  if (isBossSharedUnitId(activeUnitId)) {
-    return isBossDeploymentCell(state, cellIndex);
-  }
-
-  return isActiveRaidCombatFootprintCell(state, cellIndex);
+  const placementSide = resolveOwnPlacementSide(activeUnitId);
+  return placementSide === "boss"
+    ? isBossDeploymentCell(state, cellIndex)
+    : isRaidDeploymentCell(state, cellIndex);
 }
 
 function resolveDeploymentZone(state, cellIndex) {
@@ -896,13 +950,14 @@ function sharedBoardIndexToInnerAreaIndex(state, boardIndex) {
 
 function buildSharedDropRejectMessage(state, cellIndex) {
   const activeUnitId = sharedDraggedUnitId || selectedSharedUnitId;
+  const placementSide = resolveOwnPlacementSide(activeUnitId);
 
   if (!isPlayableSharedBoardCell(state, cellIndex, activeUnitId)) {
     return isLegacyEmbeddedBoard(state)
       ? "That cell is outside the center combat area. Pick one of the center cells."
-      : isHeroSharedUnitId(activeUnitId)
-        ? "Hero units can move anywhere in the lower raid half. Pick an open cell there."
-        : "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.";
+      : placementSide === "boss"
+        ? "That cell is outside the upper boss deployment half. Pick an open cell there."
+        : "That cell is outside the lower raid deployment half. Pick an open cell there.";
   }
 
   const cell = mapGet(state?.cells, String(cellIndex));
@@ -1021,11 +1076,9 @@ function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
             ? "upper combat row"
             : "lower combat row";
       })()
-    : isActiveRaidCombatFootprintCell(state, cellIndex)
-      ? "active raid combat footprint"
-      : resolveDeploymentZone(state, cellIndex) === "boss"
-        ? "boss deployment zone"
-        : "raid staging zone";
+    : resolveDeploymentZone(state, cellIndex) === "boss"
+      ? "boss deployment zone"
+      : "raid deployment zone";
   const unitName = typeof cell?.displayName === "string" && cell.displayName.length > 0
     ? cell.displayName
     : typeof cell?.unitId === "string" && cell.unitId.length > 0
@@ -1041,6 +1094,18 @@ function buildSharedBoardCellAriaLabel(cellIndex, cell, state) {
 
 function isSharedBoardBattleMode(state) {
   return state?.mode === "battle";
+}
+
+function resolveOwnPlacementSide(activeUnitId = null) {
+  if (isHeroSharedUnitId(activeUnitId)) {
+    return "raid";
+  }
+
+  if (isBossSharedUnitId(activeUnitId)) {
+    return "boss";
+  }
+
+  return deps.getPlayerPlacementSide?.() === "boss" ? "boss" : "raid";
 }
 
 function resolveSharedBoardCellsForRender(state) {

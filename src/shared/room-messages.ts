@@ -106,6 +106,7 @@ export interface RoundStateMessage {
   phase: MatchPhase;
   roundIndex: number;
   phaseDeadlineAtMs: number;
+  sharedBoardRoomId?: string;
   lobbyStage?: "preference" | "selection" | "started";
   selectionDeadlineAtMs?: number;
   ranking: string[];

@@ -14,6 +14,9 @@ export const GAME_ROOM_OPTIONS = {
   eliminationDurationMs: 5_000,
   forcedFeatureFlags: {
     ...DEFAULT_FLAGS,
+    enableHeroSystem: true,
+    enableSpellCard: true,
+    enableBossExclusiveShop: true,
     enableSharedBoardShadow: true,
   },
 } as const;

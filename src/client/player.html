@@ -78,6 +78,15 @@
         cursor: pointer;
       }
 
+      .player-room-code-input {
+        min-width: 200px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        background: rgba(12, 20, 38, 0.72);
+        color: var(--text);
+      }
+
       .player-action-btn:disabled {
         opacity: 0.55;
         cursor: not-allowed;
@@ -224,6 +233,34 @@
         flex-wrap: wrap;
         gap: 10px;
         margin-top: 10px;
+      }
+
+      .player-chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .player-chip-btn {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: rgba(12, 20, 38, 0.72);
+        color: var(--text);
+        font-size: 0.84rem;
+        cursor: pointer;
+      }
+
+      .player-chip-btn.selected {
+        border-color: var(--accent);
+        background: rgba(245, 193, 108, 0.12);
+      }
+
+      .player-chip-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
 
       .player-choice-grid {
@@ -673,7 +710,26 @@
           進行に合わせて、いま必要な操作だけを表示する player-facing shell。
         </p>
         <div class="player-header-actions">
+          <input
+            class="player-room-code-input"
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            placeholder="Room code"
+            aria-label="Room code"
+            data-player-room-code-input
+          />
           <button class="player-action-btn" type="button" data-player-connect-btn>Join Session</button>
+        </div>
+        <div class="player-summary-grid" style="margin-top: 14px;">
+          <div class="player-card" data-player-room-summary>
+            <strong>Room</strong>
+            <div data-player-room-copy>進行役から受け取った room code と shared-board room を表示します。</div>
+          </div>
+          <div class="player-card" data-player-deadline-summary>
+            <strong>Deadline</strong>
+            <div data-player-deadline-copy>phase ごとの締切をここに表示します。</div>
+          </div>
         </div>
       </header>
 
@@ -727,7 +783,7 @@
           <div class="player-prep-grid" data-player-prep-surface>
             <div class="player-card player-board" data-player-shared-board-grid>
               <strong>Shared Board</strong>
-              <div data-shared-board-help>shared-board は 6x6 です。Boss は上半分、raid は下半分を使います。現在の Prep slice では highlighted raid cells が配置対象です。</div>
+              <div data-shared-board-help>shared-board は 6x6 です。Boss は上半分、raid は下半分の配置セルを使います。通常ユニットも主人公もボスも、自分の半分の中で位置調整します。</div>
               <div data-player-board-copy data-shared-board-placement-guide>shared-board をここへ mount する。</div>
               <div class="player-inline-actions">
                 <button class="player-action-btn" type="button" data-player-board-return-button>Return Selected Unit</button>
@@ -783,12 +839,48 @@
               <div class="player-card" data-player-unit-shop>
                 <strong>Shop</strong>
                 <div data-player-shop-copy>ユニット購入 UI をここへ mount する。</div>
+                <div class="player-inline-actions">
+                  <button class="player-action-btn" type="button" data-player-shop-refresh-button>Refresh Shop</button>
+                  <button class="player-action-btn" type="button" data-player-buy-xp-button>Buy XP</button>
+                </div>
                 <div class="player-mini-grid" data-player-shop-grid>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="0" aria-label="Shop slot 0">0</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="1" aria-label="Shop slot 1">1</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="2" aria-label="Shop slot 2">2</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="3" aria-label="Shop slot 3">3</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="4" aria-label="Shop slot 4">4</button>
+                </div>
+              </div>
+              <div class="player-card" data-player-boss-shop>
+                <strong>Boss Shop</strong>
+                <div data-player-boss-shop-copy>boss 専用 shop をここへ mount する。</div>
+                <div class="player-mini-grid" data-player-boss-shop-grid>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="0" aria-label="Boss shop slot 0">0</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="1" aria-label="Boss shop slot 1">1</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="2" aria-label="Boss shop slot 2">2</button>
+                </div>
+              </div>
+              <div class="player-card" data-player-special-unit-card>
+                <strong>Special Unit</strong>
+                <div data-player-special-unit-copy>選択した主人公またはボスをここに表示します。</div>
+              </div>
+              <div class="player-card" data-player-spell-card>
+                <strong>Spell</strong>
+                <div data-player-spell-copy>この round の spell 状態をここに表示します。</div>
+              </div>
+              <div class="player-card" data-player-synergy-card>
+                <strong>Synergy</strong>
+                <div data-player-synergy-copy>現在有効な synergy をここに表示します。</div>
+              </div>
+              <div class="player-card" data-player-item-shop>
+                <strong>Item Shop</strong>
+                <div data-player-item-shop-copy>item offer をここに表示します。</div>
+                <div class="player-mini-grid" data-player-item-shop-grid>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-shop-slot="0" aria-label="Item shop slot 0">0</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-shop-slot="1" aria-label="Item shop slot 1">1</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-shop-slot="2" aria-label="Item shop slot 2">2</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-shop-slot="3" aria-label="Item shop slot 3">3</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-shop-slot="4" aria-label="Item shop slot 4">4</button>
                 </div>
               </div>
               <div class="player-card" data-player-bench>
@@ -808,6 +900,29 @@
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="7" aria-label="Bench slot 7">7</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="8" aria-label="Bench slot 8">8</button>
                 </div>
+              </div>
+              <div class="player-card" data-player-item-inventory>
+                <strong>Inventory</strong>
+                <div data-player-item-inventory-copy>所持 item をここに表示します。</div>
+                <div class="player-inline-actions">
+                  <button class="player-action-btn" type="button" data-player-item-sell-button>Sell Selected Item</button>
+                </div>
+                <div class="player-mini-grid" data-player-item-inventory-grid>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="0" aria-label="Inventory slot 0">0</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="1" aria-label="Inventory slot 1">1</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="2" aria-label="Inventory slot 2">2</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="3" aria-label="Inventory slot 3">3</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="4" aria-label="Inventory slot 4">4</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="5" aria-label="Inventory slot 5">5</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="6" aria-label="Inventory slot 6">6</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="7" aria-label="Inventory slot 7">7</button>
+                  <button class="player-choice-btn player-slot-btn" type="button" data-player-item-inventory-slot="8" aria-label="Inventory slot 8">8</button>
+                </div>
+              </div>
+              <div class="player-card" data-player-bench-item-card>
+                <strong>Bench Items</strong>
+                <div data-player-bench-item-copy>bench に付いた item はここから外せます。</div>
+                <div class="player-chip-list" data-player-bench-item-list></div>
               </div>
             </div>
           </div>

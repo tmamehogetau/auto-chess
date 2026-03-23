@@ -20,16 +20,19 @@ describe("player-app script contract", () => {
     expect(source.includes("renderPlayerResultSummary(")).toBe(true);
     expect(source.includes("initSharedBoardClient(")).toBe(true);
     expect(source.includes("connectSharedBoard(")).toBe(true);
+    expect(source.includes("setSharedBoardRoomId(")).toBe(true);
     expect(source.includes("setSharedBoardGamePlayerId(")).toBe(true);
     expect(source.includes("handleSharedCellClick(")).toBe(true);
     expect(source.includes("SERVER_MESSAGE_TYPES.ROUND_STATE")).toBe(true);
+    expect(source.includes("data-player-room-code-input")).toBe(true);
+    expect(source.includes("roomCodeInput")).toBe(true);
     expect(source.includes("connectButton?.addEventListener(\"click\"")).toBe(true);
     expect(source.includes("readyButton?.addEventListener(\"click\"")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.READY")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.HERO_SELECT")).toBe(true);
-    expect(source.includes("gameRoomSession.connect()")).toBe(true);
+    expect(source.includes("gameRoomSession.connect({ roomId")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
@@ -41,7 +44,21 @@ describe("player-app script contract", () => {
     expect(source.includes("handlePlayerBoardSell(")).toBe(true);
     expect(source.includes("handlePlayerBoardReturn(")).toBe(true);
     expect(source.includes("handlePlayerSharedCellClick(")).toBe(true);
+    expect(source.includes("handlePlayerBossShopBuy(")).toBe(true);
+    expect(source.includes("handlePlayerItemShopBuy(")).toBe(true);
+    expect(source.includes("handlePlayerInventorySelect(")).toBe(true);
+    expect(source.includes("handlePlayerItemSell(")).toBe(true);
+    expect(source.includes("handlePlayerBenchItemUnequip(")).toBe(true);
+    expect(source.includes("handlePlayerShopRefresh(")).toBe(true);
+    expect(source.includes("handlePlayerBuyXp(")).toBe(true);
     expect(source.includes("shopBuySlotIndex")).toBe(true);
+    expect(source.includes("itemBuySlotIndex")).toBe(true);
+    expect(source.includes("itemEquipToBench")).toBe(true);
+    expect(source.includes("itemUnequipFromBench")).toBe(true);
+    expect(source.includes("itemSellInventoryIndex")).toBe(true);
+    expect(source.includes("bossShopBuySlotIndex")).toBe(true);
+    expect(source.includes("shopRefreshCount")).toBe(true);
+    expect(source.includes("xpPurchaseCount")).toBe(true);
     expect(source.includes("benchToBoardCell")).toBe(true);
     expect(source.includes("boardToBenchCell")).toBe(true);
     expect(source.includes("benchSellIndex")).toBe(true);
@@ -70,6 +87,8 @@ describe("player-app script contract", () => {
     expect(source.includes("function syncPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function triggerPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function clearPlayerBattleStartSweep(")).toBe(true);
+    expect(source.includes("function resolveRequestedRoomCode(")).toBe(true);
+    expect(source.includes("function resolveSharedBoardRoomId(")).toBe(true);
     expect(source.includes('lobbyStage === "preference"')).toBe(true);
     expect(source.includes('lobbyStage === "selection"')).toBe(true);
     expect(source.includes('phase === "Prep"')).toBe(true);
@@ -92,8 +111,30 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("let cmdSeqCounter = 0;")).toBe(true);
+    expect(source.includes("let selectedInventoryIndex = null;")).toBe(true);
     expect(source.includes("function nextCmdSeq()")).toBe(true);
     expect(source.includes("cmdSeq: nextCmdSeq()")).toBe(true);
     expect(source.includes("cmdSeq: Date.now()")).toBe(false);
+  });
+
+  test("player app wires room code and dedicated shared-board room binding", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("data-player-room-code-input")).toBe(true);
+    expect(source.includes('let latestSharedBoardRoomId = "";')).toBe(true);
+    expect(source.includes("function rememberSharedBoardRoomId(")).toBe(true);
+    expect(source.includes("gameRoomSession.connect({ roomId: requestedRoomCode })")).toBe(true);
+    expect(source.includes('mode: "createPaired"')).toBe(true);
+    expect(source.includes('sharedBoardRoomName: "shared_board"')).toBe(true);
+    expect(source.includes('const requestedSetId = getSearchParam("setId") ?? undefined;')).toBe(true);
+    expect(source.includes("setId: requestedSetId,")).toBe(true);
+    expect(source.includes("latestRoundState = message;")).toBe(true);
+    expect(source.includes("message?.sharedBoardRoomId")).toBe(true);
+    expect(source.includes("state?.sharedBoardRoomId")).toBe(true);
+    expect(source.includes("const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();")).toBe(true);
+    expect(source.includes("pairedSharedBoardRoom?.roomId")).toBe(true);
+    expect(source.includes("existingRoom: pairedSharedBoardRoom,")).toBe(true);
+    expect(source.includes("latestPlayer = null;")).toBe(true);
+    expect(source.includes("latestState = null;")).toBe(true);
   });
 });

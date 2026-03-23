@@ -281,6 +281,11 @@ export function syncPlayerStateFromController(
     playerState.benchDisplayNames.push(benchDisplayName);
   }
 
+  clearArraySchema(playerState.benchItemLoadouts);
+  for (const benchItemLoadout of controllerStatus.benchItemLoadouts ?? []) {
+    playerState.benchItemLoadouts.push(benchItemLoadout);
+  }
+
   // Board units - clear and repopulate
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of controllerStatus.boardUnits) {
@@ -407,6 +412,11 @@ export function syncPlayerStateFromCommandResult(
   clearArraySchema(playerState.benchDisplayNames);
   for (const benchDisplayName of cmdResult.benchDisplayNames ?? []) {
     playerState.benchDisplayNames.push(benchDisplayName);
+  }
+
+  clearArraySchema(playerState.benchItemLoadouts);
+  for (const benchItemLoadout of cmdResult.benchItemLoadouts ?? []) {
+    playerState.benchItemLoadouts.push(benchItemLoadout);
   }
 
   // Board units - clear and repopulate

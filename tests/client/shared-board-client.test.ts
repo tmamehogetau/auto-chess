@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi, afterEach } from "vitest";
 
 // @ts-ignore JS client module has no declaration file.
-import { connectSharedBoard, getSelectedSharedUnitId, handleSharedCellClick, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId } from "../../src/client/shared-board-client.js";
+import { connectSharedBoard, getSelectedSharedUnitId, handleSharedCellClick, initSharedBoardClient, leaveSharedBoardRoom, setSharedBoardGamePlayerId, setSharedBoardRoomId } from "../../src/client/shared-board-client.js";
 
 class FakeClassList {
   private readonly owner: FakeElement;
@@ -136,6 +136,7 @@ function findDescendantByClass(root: FakeElement | undefined, className: string)
 describe("shared-board client", () => {
   beforeEach(() => {
     leaveSharedBoardRoom();
+    setSharedBoardRoomId("");
     vi.useFakeTimers();
     globalThis.document = {
       createElement: () => new FakeElement(),
@@ -190,6 +191,43 @@ describe("shared-board client", () => {
         players: {},
       });
     }).not.toThrow();
+  });
+
+  test("sharedBoardRoomId があるときは joinById で dedicated shared board に入る", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const room = {
+      sessionId: "player-1",
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (_handler: (state: unknown) => void) => {},
+    };
+    const joinCalls: string[] = [];
+    const client = {
+      joinById: async (roomId: string) => {
+        joinCalls.push(roomId);
+        return room;
+      },
+      joinOrCreate: async () => {
+        throw new Error("joinOrCreate should not be used");
+      },
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+    setSharedBoardRoomId("shared-room-123");
+
+    await connectSharedBoard(client as object);
+
+    expect(joinCalls).toEqual(["shared-room-123"]);
   });
 
   test("MapSchema 内部キーを cursor 一覧へ表示しない", async () => {
@@ -294,6 +332,53 @@ describe("shared-board client", () => {
     expect(gridElement.children[17]?.dataset.raidRegion).toBe("boss-top");
     expect(gridElement.children[18]?.dataset.raidRegion).toBe("raid-bottom");
     expect(gridElement.children[35]?.dataset.raidRegion).toBe("raid-bottom");
+    expect(gridElement.children[0]?.className).toContain("active-combat-area");
+    expect(gridElement.children[0]?.className).toContain("active-boss-area");
+    expect(gridElement.children[17]?.className).toContain("active-boss-area");
+    expect(gridElement.children[18]?.className).toContain("active-combat-area");
+    expect(gridElement.children[18]?.className).toContain("active-raid-area");
+    expect(gridElement.children[35]?.className).toContain("active-raid-area");
+    expect(gridElement.children[0]?.className).not.toContain("outside-combat-area");
+    expect(gridElement.children[35]?.className).not.toContain("outside-combat-area");
+  });
+
+  test("dedicated sharedBoardRoomId があればその room に join する", async () => {
+    const gridElement = new FakeElement();
+    const joinCalls: Array<{ roomId: string; options: unknown }> = [];
+
+    const room = {
+      roomId: "shared-room-123",
+      sessionId: "player-1",
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (_handler: (state: unknown) => void) => {},
+    };
+
+    const client = {
+      joinById: async (roomId: string, options?: unknown) => {
+        joinCalls.push({ roomId, options });
+        return room;
+      },
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object, { roomId: "shared-room-123" });
+
+    expect(joinCalls).toEqual([
+      {
+        roomId: "shared-room-123",
+        options: { gamePlayerId: "player-1" },
+      },
+    ]);
   });
 
   test("shared board cells expose zone classes for visual affordances", async () => {
@@ -1631,7 +1716,7 @@ describe("shared-board client", () => {
     expect(gridElement.children[13]?.className).not.toContain("occupied-ally");
   });
 
-  test("shared board placement guide explains move state and highlights open and blocked combat cells", async () => {
+  test("shared board placement guide explains move state across the full 6x6 raid half", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
     const placementGuideElement = new FakeElement();
@@ -1673,27 +1758,27 @@ describe("shared-board client", () => {
     }
 
     (stateChangeHandler as (state: unknown) => void)({
-      boardWidth: 6,
-      boardHeight: 4,
       cells: {
-        7: { unitId: "vanguard-1", ownerId: "player-1" },
-        8: { unitId: "", ownerId: "" },
-        9: { unitId: "ranger-1", ownerId: "player-2" },
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+        30: { unitId: "", ownerId: "" },
+        2: { unitId: "dummy-boss", ownerId: "boss" },
       },
       cursors: {},
       players: {
         "player-1": { isSpectator: false },
       },
+      boardWidth: 6,
+      boardHeight: 6,
     });
 
-    expect(placementGuideElement.textContent).toContain("center 4x2 combat area");
+    expect(placementGuideElement.textContent).toContain("lower half of the board");
 
-    gridElement.children[7]?.onpointerdown?.();
+    gridElement.children[19]?.onpointerdown?.();
 
-    expect(placementGuideElement.textContent).toContain("center 4x2 combat area");
-    expect(gridElement.children[7]?.className).toContain("selected");
-    expect(gridElement.children[8]?.className).toContain("drop-target");
-    expect(gridElement.children[9]?.className).toContain("blocked-target");
+    expect(placementGuideElement.textContent).toContain("lower raid half");
+    expect(gridElement.children[19]?.className).toContain("selected");
+    expect(gridElement.children[30]?.className).toContain("drop-target");
+    expect(gridElement.children[2]?.className).toContain("blocked-target");
   });
 
   test("shared board shows an empty board until real units are placed", async () => {
@@ -2199,7 +2284,7 @@ describe("shared-board client", () => {
     expect(getSelectedSharedUnitId()).toBe("vanguard-1");
   });
 
-  test("shared board 6x6 staging rejects lower-half cells outside the active raid footprint", async () => {
+  test("shared board 6x6 raid placement rejects boss-half cells for ordinary raid units", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
     const sendCalls: Array<{ type: string; payload: unknown }> = [];
@@ -2263,13 +2348,77 @@ describe("shared-board client", () => {
       cells: {
         19: { unitId: "vanguard-1", ownerId: "player-1" },
       },
-    }, 18);
+    }, 0);
 
     expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
     expect(messages).toEqual([{
-      message: "That cell is outside the active raid combat footprint. Pick one of the highlighted raid cells.",
+      message: "That cell is outside the lower raid deployment half. Pick an open cell there.",
       type: "error",
     }]);
+  });
+
+  test("shared board 6x6 raid placement allows ordinary raid units anywhere in the lower half", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const state = {
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    };
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+    applyStateChange(state);
+
+    gridElement.children[19]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+
+    handleSharedCellClick(state, 30);
+
+    expect(sendCalls).toContainEqual({
+      type: "shared_place_unit",
+      payload: { unitId: "vanguard-1", toCell: 30 },
+    });
   });
 
   test("shared board lets hero units move anywhere in the lower raid half", async () => {

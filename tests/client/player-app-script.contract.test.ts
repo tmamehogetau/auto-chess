@@ -45,17 +45,9 @@ describe("player-app script contract", () => {
     expect(source.includes("handlePlayerBoardReturn(")).toBe(true);
     expect(source.includes("handlePlayerSharedCellClick(")).toBe(true);
     expect(source.includes("handlePlayerBossShopBuy(")).toBe(true);
-    expect(source.includes("handlePlayerItemShopBuy(")).toBe(true);
-    expect(source.includes("handlePlayerInventorySelect(")).toBe(true);
-    expect(source.includes("handlePlayerItemSell(")).toBe(true);
-    expect(source.includes("handlePlayerBenchItemUnequip(")).toBe(true);
     expect(source.includes("handlePlayerShopRefresh(")).toBe(true);
     expect(source.includes("handlePlayerBuyXp(")).toBe(true);
     expect(source.includes("shopBuySlotIndex")).toBe(true);
-    expect(source.includes("itemBuySlotIndex")).toBe(true);
-    expect(source.includes("itemEquipToBench")).toBe(true);
-    expect(source.includes("itemUnequipFromBench")).toBe(true);
-    expect(source.includes("itemSellInventoryIndex")).toBe(true);
     expect(source.includes("bossShopBuySlotIndex")).toBe(true);
     expect(source.includes("shopRefreshCount")).toBe(true);
     expect(source.includes("xpPurchaseCount")).toBe(true);
@@ -111,7 +103,6 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("let cmdSeqCounter = 0;")).toBe(true);
-    expect(source.includes("let selectedInventoryIndex = null;")).toBe(true);
     expect(source.includes("function nextCmdSeq()")).toBe(true);
     expect(source.includes("cmdSeq: nextCmdSeq()")).toBe(true);
     expect(source.includes("cmdSeq: Date.now()")).toBe(false);

@@ -256,29 +256,15 @@ describe("player surface renderers", () => {
     expect(deadlineCopyElement.textContent).toContain("15s remaining");
   });
 
-  test("prep summary renders special unit, spell, synergies, item shop, inventory, and bench items", () => {
+  test("prep summary renders special unit, spell, and synergies", () => {
     const specialUnitCopyElement = new FakeElement();
     const spellCopyElement = new FakeElement();
     const synergyCopyElement = new FakeElement();
-    const itemShopCopyElement = new FakeElement();
-    const itemInventoryCopyElement = new FakeElement();
-    const benchItemCopyElement = new FakeElement();
-    const benchItemListElement = new FakeElement();
-    const itemShopSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
-    const itemInventorySlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
-    const itemSellButton = new FakeButtonElement();
 
     renderPlayerPrepSummary({
       specialUnitCopyElement: specialUnitCopyElement as unknown as HTMLElement,
       spellCopyElement: spellCopyElement as unknown as HTMLElement,
       synergyCopyElement: synergyCopyElement as unknown as HTMLElement,
-      itemShopCopyElement: itemShopCopyElement as unknown as HTMLElement,
-      itemShopSlotElements: itemShopSlotElements as unknown as HTMLButtonElement[],
-      itemInventoryCopyElement: itemInventoryCopyElement as unknown as HTMLElement,
-      itemInventorySlotElements: itemInventorySlotElements as unknown as HTMLButtonElement[],
-      benchItemCopyElement: benchItemCopyElement as unknown as HTMLElement,
-      benchItemListElement: benchItemListElement as unknown as HTMLElement,
-      itemSellButton: itemSellButton as unknown as HTMLButtonElement,
       state: {
         phase: "Prep",
         featureFlagsEnableHeroSystem: true,
@@ -291,32 +277,16 @@ describe("player surface renderers", () => {
         role: "raid",
         selectedHeroId: "reimu",
         activeSynergies: [{ unitType: "mage", count: 2, tier: 1 }],
-        itemShopOffers: [
-          { itemType: "sword", cost: 3 },
-          { itemType: "shield", cost: 2 },
-        ],
-        itemInventory: ["sword", "shield"],
-        benchItemLoadouts: ['["ring","boots"]'],
       },
       sessionId: "raid-1",
       currentPhase: "Prep",
       selectedBenchIndex: 0,
-      selectedInventoryIndex: 1,
-      canSellItem: true,
     });
 
     expect(specialUnitCopyElement.textContent).toContain("霊夢");
     expect(spellCopyElement.textContent).toContain("スカーレットシュート");
     expect(spellCopyElement.textContent).toContain("used");
     expect(synergyCopyElement.textContent).toContain("mage x2");
-    expect(itemShopCopyElement.textContent).toContain("Item shop");
-    expect(itemShopSlotElements[0]?.textContent).toContain("sword");
-    expect(itemInventoryCopyElement.textContent).toContain("Inventory 2");
-    expect(itemInventorySlotElements[1]?.className).toContain("selected");
-    expect(benchItemCopyElement.textContent).toContain("Bench 1");
-    expect(benchItemListElement.innerHTML).toContain("ring");
-    expect(benchItemListElement.innerHTML).toContain("boots");
-    expect(itemSellButton.disabled).toBe(false);
   });
 
   test("prep summary prefers benchDisplayNames when available", () => {

@@ -84,14 +84,12 @@ export interface BoardUnitSnapshot {
   unitType: string;
   starLevel: number;
   cell: number;
-  items: string[];
 }
 
 export interface BenchUnitSnapshot {
   unitType: string;
   starLevel: number;
   benchIndex: number;
-  items: string[];
 }
 
 export interface RoundSummaryLog {
@@ -128,7 +126,6 @@ export interface PlayerActionLog {
   playerId: string;
   actionType:
     | "buy_unit"
-    | "buy_item"
     | "sell_unit"
     | "board_sell"
     | "deploy"
@@ -137,9 +134,6 @@ export interface PlayerActionLog {
     | "hero_select"
     | "shop_refresh"
     | "buy_xp"
-    | "equip_item"
-    | "unequip_item"
-    | "sell_item"
     | "buy_boss_unit"
     | "shop_lock";
   timestamp: number;
@@ -155,9 +149,7 @@ export interface PlayerActionLog {
     boardCells?: number[];
     heroId?: string;
     itemCount?: number;
-    itemType?: string;
     inventoryIndex?: number;
-    itemSlotIndex?: number;
     locked?: boolean;
     benchUnit?: string;
     isRumorUnit?: boolean;
@@ -487,14 +479,8 @@ export class MatchLogger {
     const stats = this.playerStats.get(playerId);
     if (stats) {
       // Snapshot: 入力配列の防御的コピー
-      stats.finalBoardUnits = boardUnits.map((unit) => ({
-        ...unit,
-        items: [...unit.items],
-      }));
-      stats.finalBenchUnits = benchUnits.map((unit) => ({
-        ...unit,
-        items: [...unit.items],
-      }));
+      stats.finalBoardUnits = boardUnits.map((unit) => ({ ...unit }));
+      stats.finalBenchUnits = benchUnits.map((unit) => ({ ...unit }));
     }
   }
 
@@ -522,14 +508,8 @@ export class MatchLogger {
           battleWins: stats.battleWins,
           battleLosses: stats.battleLosses,
           selectedHeroId: stats.selectedHeroId,
-          finalBoardUnits: stats.finalBoardUnits.map((unit) => ({
-            ...unit,
-            items: [...unit.items],
-          })),
-          finalBenchUnits: stats.finalBenchUnits.map((unit) => ({
-            ...unit,
-            items: [...unit.items],
-          })),
+          finalBoardUnits: stats.finalBoardUnits.map((unit) => ({ ...unit })),
+          finalBenchUnits: stats.finalBenchUnits.map((unit) => ({ ...unit })),
         });
       }
     }

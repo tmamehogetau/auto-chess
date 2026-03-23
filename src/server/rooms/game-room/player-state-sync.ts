@@ -3,10 +3,9 @@ import {
   BattleTimelineEndStateUnitSchema,
   PlayerPresenceState,
   ShopOfferState,
-  ShopItemOfferState,
   SynergySchema,
 } from "../../schema/match-room-state";
-import type { BoardUnitType, ItemType } from "../../../shared/types";
+import type { BoardUnitType } from "../../../shared/types";
 import type {
   BattleResultSurvivorSnapshot,
   BattleTimelineEndStateUnit,
@@ -19,7 +18,6 @@ import type { BattleTimelineEvent } from "../../../shared/room-messages";
 export type {
   PlayerStatusBattleResult,
   ShopOfferView,
-  ShopItemOfferView,
   OwnedUnitsView,
   ActiveSynergyView,
   ControllerPlayerStatus,
@@ -28,10 +26,9 @@ export type {
 
 // Type assertions for string-to-union-type conversions
 const toBoardUnitType = (s: string): BoardUnitType => s as BoardUnitType;
-const toItemType = (s: string): ItemType => s as ItemType;
 
 /**
- * Clears all items from a Colyseus ArraySchema using pop().
+ * Clears all entries from a Colyseus ArraySchema using pop().
  * This is the recommended pattern for clearing Colyseus arrays.
  */
 function clearArraySchema<T>(array: { length: number; pop: () => T | undefined }): void {
@@ -284,24 +281,10 @@ export function syncPlayerStateFromController(
     playerState.benchDisplayNames.push(benchDisplayName);
   }
 
-  clearArraySchema(playerState.benchItemLoadouts);
-  for (const benchItemLoadout of controllerStatus.benchItemLoadouts ?? []) {
-    playerState.benchItemLoadouts.push(benchItemLoadout);
-  }
-
   // Board units - clear and repopulate
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of controllerStatus.boardUnits) {
     playerState.boardUnits.push(boardUnit);
-  }
-
-  // Item shop offers - clear and repopulate
-  clearArraySchema(playerState.itemShopOffers);
-  for (const offer of controllerStatus.itemShopOffers || []) {
-    const nextOffer = new ShopItemOfferState();
-    nextOffer.itemType = toItemType(offer.itemType);
-    nextOffer.cost = offer.cost;
-    playerState.itemShopOffers.push(nextOffer);
   }
 
   // Boss shop offers - clear and repopulate
@@ -316,12 +299,6 @@ export function syncPlayerStateFromController(
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
     playerState.bossShopOffers.push(nextOffer);
-  }
-
-  // Item inventory - clear and repopulate
-  clearArraySchema(playerState.itemInventory);
-  for (const item of controllerStatus.itemInventory || []) {
-    playerState.itemInventory.push(item);
   }
 
   // Last battle result
@@ -432,24 +409,10 @@ export function syncPlayerStateFromCommandResult(
     playerState.benchDisplayNames.push(benchDisplayName);
   }
 
-  clearArraySchema(playerState.benchItemLoadouts);
-  for (const benchItemLoadout of cmdResult.benchItemLoadouts ?? []) {
-    playerState.benchItemLoadouts.push(benchItemLoadout);
-  }
-
   // Board units - clear and repopulate
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of cmdResult.boardUnits) {
     playerState.boardUnits.push(boardUnit);
-  }
-
-  // Item shop offers - clear and repopulate
-  clearArraySchema(playerState.itemShopOffers);
-  for (const offer of cmdResult.itemShopOffers || []) {
-    const nextOffer = new ShopItemOfferState();
-    nextOffer.itemType = toItemType(offer.itemType);
-    nextOffer.cost = offer.cost;
-    playerState.itemShopOffers.push(nextOffer);
   }
 
   // Boss shop offers - clear and repopulate
@@ -464,12 +427,6 @@ export function syncPlayerStateFromCommandResult(
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
     playerState.bossShopOffers.push(nextOffer);
-  }
-
-  // Item inventory - clear and repopulate
-  clearArraySchema(playerState.itemInventory);
-  for (const item of cmdResult.itemInventory || []) {
-    playerState.itemInventory.push(item);
   }
 
   // Last battle result

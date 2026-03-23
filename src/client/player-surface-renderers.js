@@ -16,14 +16,6 @@ const UNIT_ICONS = {
   assassin: "🗡️",
 };
 
-const ITEM_ICONS = {
-  sword: "⚔️",
-  shield: "🛡️",
-  boots: "👞",
-  ring: "💍",
-  amulet: "📿",
-};
-
 const HERO_DETAILS = {
   reimu: { name: "霊夢", role: "balance", hp: 120, attack: 18 },
   marisa: { name: "魔理沙", role: "dps", hp: 100, attack: 25 },
@@ -130,14 +122,7 @@ export function renderPlayerPrepSummary({
   specialUnitCopyElement,
   spellCopyElement,
   synergyCopyElement,
-  itemShopElement,
-  itemShopCopyElement,
-  itemShopSlotElements = [],
   benchCopyElement,
-  itemInventoryCopyElement,
-  itemInventorySlotElements = [],
-  benchItemCopyElement,
-  benchItemListElement,
   roomCopyElement,
   deadlineCopyElement,
   boardElement,
@@ -155,15 +140,12 @@ export function renderPlayerPrepSummary({
   sessionId = "",
   currentPhase,
   selectedBenchIndex,
-  selectedInventoryIndex,
   canSellBench = false,
-  canSellItem = false,
   canSellBoard = false,
   canReturnBoard = false,
   roomSummary = null,
   deadlineSummary = null,
   benchSellButton,
-  itemSellButton,
   boardReturnButton,
   boardSellButton,
   sharedBoardConnected = false,
@@ -172,9 +154,7 @@ export function renderPlayerPrepSummary({
   const bossRoleSelectionEnabled = state?.featureFlagsEnableBossExclusiveShop === true;
 
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
-    if (selectedInventoryIndex !== null) {
-      boardCopyElement.textContent = "Inventory item を選択中です。bench の unit を押すと装備し、Sell Selected Item で売却します。";
-    } else if (selectedBenchIndex === null) {
+    if (selectedBenchIndex === null) {
       boardCopyElement.textContent = isBossPlayer
         ? "共有ボードは 6x6 です。boss は上半分から布陣し、ボス駒は常設のまま位置調整できます。"
         : "共有ボードは 6x6 です。raid は下半分から布陣し、主人公は常設のまま位置調整できます。";
@@ -295,29 +275,6 @@ export function renderPlayerPrepSummary({
     button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "👑"} ${displayName} / ${cost}G` : `Boss ${index + 1}`;
   });
 
-  const itemShopOffers = toRenderableArray(player?.itemShopOffers);
-  if (itemShopElement instanceof HTMLElement) {
-    itemShopElement.hidden = false;
-  }
-  if (itemShopCopyElement instanceof HTMLElement) {
-    itemShopCopyElement.textContent = itemShopOffers.length === 0
-      ? "Item shop offer の更新待ちです。"
-      : `Item shop / ${itemShopOffers.length} offers。bench に付けたい item を先に確保します。`;
-  }
-
-  itemShopSlotElements.forEach((button, index) => {
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-
-    const offer = itemShopOffers[index];
-    const itemType = typeof offer?.itemType === "string" ? offer.itemType : null;
-    const cost = Number(offer?.cost ?? 0);
-    button.disabled = !offer || currentPhase !== "Prep";
-    button.classList.toggle("selected", false);
-    button.textContent = offer ? `${ITEM_ICONS[itemType] ?? "🧰"} ${itemType} / ${cost}G` : `Item ${index + 1}`;
-  });
-
   if (roomCopyElement instanceof HTMLElement) {
     const roomId = typeof roomSummary?.roomId === "string" && roomSummary.roomId.length > 0
       ? roomSummary.roomId
@@ -360,48 +317,6 @@ export function renderPlayerPrepSummary({
     button.textContent = unitText ?? `Bench ${index + 1}`;
   });
 
-  const itemInventory = toRenderableArray(player?.itemInventory);
-  if (itemInventoryCopyElement instanceof HTMLElement) {
-    itemInventoryCopyElement.textContent = selectedInventoryIndex === null
-      ? `${itemInventory.length} / 9 items。bench unit を選ぶと装備できます。`
-      : `Inventory ${selectedInventoryIndex + 1} を選択中です。bench unit を押すと装備、Sell で売却します。`;
-  }
-
-  itemInventorySlotElements.forEach((button, index) => {
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-
-    const itemType = typeof itemInventory[index] === "string" ? itemInventory[index] : null;
-    button.disabled = !itemType || currentPhase !== "Prep";
-    button.classList.toggle("selected", selectedInventoryIndex === index);
-    button.textContent = itemType ? `${ITEM_ICONS[itemType] ?? "🧰"} ${itemType}` : `Inv ${index + 1}`;
-  });
-
-  const benchItemLoadouts = toRenderableArray(player?.benchItemLoadouts).map(parseBenchItemLoadout);
-  if (benchItemCopyElement instanceof HTMLElement) {
-    if (selectedBenchIndex === null) {
-      benchItemCopyElement.textContent = "Bench の unit を選ぶと、その unit の item をここから外せます。";
-    } else {
-      const loadout = benchItemLoadouts[selectedBenchIndex] ?? [];
-      benchItemCopyElement.textContent = loadout.length === 0
-        ? `Bench ${selectedBenchIndex + 1} には item が付いていません。`
-        : `Bench ${selectedBenchIndex + 1} の item。外したい item を押してください。`;
-    }
-  }
-
-  if (benchItemListElement instanceof HTMLElement) {
-    const loadout = selectedBenchIndex === null ? [] : benchItemLoadouts[selectedBenchIndex] ?? [];
-    benchItemListElement.innerHTML = loadout.map((itemType, index) => `
-      <button
-        class="player-chip-btn"
-        type="button"
-        data-player-bench-item-slot="${index}"
-        ${currentPhase === "Prep" ? "" : "disabled"}
-      >${ITEM_ICONS[itemType] ?? "🧰"} ${itemType}</button>
-    `).join("");
-  }
-
   boardCellElements.forEach((button) => {
     if (!(button instanceof HTMLButtonElement)) {
       return;
@@ -412,10 +327,6 @@ export function renderPlayerPrepSummary({
 
   if (benchSellButton instanceof HTMLButtonElement) {
     benchSellButton.disabled = currentPhase !== "Prep" || !canSellBench;
-  }
-
-  if (itemSellButton instanceof HTMLButtonElement) {
-    itemSellButton.disabled = currentPhase !== "Prep" || !canSellItem;
   }
 
   if (boardSellButton instanceof HTMLButtonElement) {
@@ -571,27 +482,6 @@ function toRenderableArray(value) {
   }
 
   return Array.from(value);
-}
-
-function parseBenchItemLoadout(value) {
-  if (Array.isArray(value)) {
-    return value.filter((entry) => typeof entry === "string" && entry.length > 0);
-  }
-
-  if (typeof value !== "string" || value.length === 0) {
-    return [];
-  }
-
-  try {
-    const parsedValue = JSON.parse(value);
-    if (Array.isArray(parsedValue)) {
-      return parsedValue.filter((entry) => typeof entry === "string" && entry.length > 0);
-    }
-  } catch {
-    // Fall through to empty loadout.
-  }
-
-  return [];
 }
 
 function buildSurvivorSnapshotMarkup(survivorSnapshots) {

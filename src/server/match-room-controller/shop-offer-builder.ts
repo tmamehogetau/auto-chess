@@ -1,6 +1,4 @@
 import type { BoardUnitType } from "../../shared/room-messages";
-import type { ShopItemOffer } from "../../shared/room-messages";
-import type { ItemType } from "../combat/item-definitions";
 import type { RumorUnit } from "../../data/rumor-units";
 import type { ScarletMansionUnit } from "../../data/scarlet-mansion-units";
 import { ROSTER_KIND_TOUHOU, type RosterUnit } from "../roster/roster-provider";
@@ -23,7 +21,6 @@ interface ShopOffer {
 
 const SHOP_SIZE = 5;
 const BOSS_SHOP_SIZE = 2;
-const ITEM_SHOP_SIZE = 5;
 const MAX_LEVEL = 6;
 
 const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
@@ -86,7 +83,7 @@ export interface ShopOfferBuilderDependencies {
   isRumorInfluenceEnabled: () => boolean;
   /** Set ID for seed generation */
   setId: string;
-  /** Random function for item shop (returns 0-1) */
+  /** Random function used by shop generation */
   random: () => number;
   /** Get active roster kind from provider (for boundary validation) */
   getActiveRosterKind: () => string;
@@ -164,36 +161,6 @@ export class ShopOfferBuilder {
         displayName: unit.displayName,
         rarity: unit.cost as UnitRarity,
         cost: unit.cost,
-      });
-    }
-
-    return offers;
-  }
-
-  /**
-   * Build item shop offers
-   * @param itemTypes Available item types
-   * @param itemDefinitions Item definitions with costs
-   * @returns Array of item shop offers
-   */
-  buildItemShopOffers(
-    itemTypes: readonly ItemType[],
-    itemDefinitions: Readonly<Record<ItemType, { cost: number }>>,
-  ): ShopItemOffer[] {
-    const offers: ShopItemOffer[] = [];
-
-    for (let i = 0; i < ITEM_SHOP_SIZE; i++) {
-      const randomIndex = Math.floor(this.deps.random() * itemTypes.length);
-      const randomItem = itemTypes[randomIndex];
-
-      if (!randomItem) {
-        continue;
-      }
-
-      const itemDef = itemDefinitions[randomItem];
-      offers.push({
-        itemType: randomItem,
-        cost: itemDef.cost,
       });
     }
 

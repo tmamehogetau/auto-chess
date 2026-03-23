@@ -750,7 +750,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       logger: this.matchLogger,
       getShopOffers: (sid) => this.controller?.getShopOffersForPlayer(sid),
       getBossShopOffers: (sid) => this.controller?.getBossShopOffersForPlayer(sid),
-      getPlayerStatus: (sid) => this.controller?.getPlayerStatus(sid) ?? null,
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
     }, { shopOffersSnapshot });
@@ -1027,7 +1026,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           unitType: placement.unitType,
           starLevel: placement.starLevel ?? 1,
           cell: placement.cell,
-          items: placement.items ?? [],
         }));
 
         // Convert bench units to BenchUnitSnapshot format
@@ -1035,7 +1033,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           unitType: unit.unitType,
           starLevel: unit.starLevel ?? 1,
           benchIndex: index,
-          items: unit.items ?? [],
         }));
 
         this.matchLogger.updateFinalUnits(playerId, finalBoardUnits, finalBenchUnits);

@@ -1,12 +1,10 @@
 import type { CommandResult, BoardUnitPlacement } from "../../shared/room-messages";
-import type { ItemType } from "../../shared/types";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { normalizeBoardPlacements } from "../combat/unit-effects";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 import type {
   CommandPayload,
   ShopOffer,
-  ItemShopOffer,
 } from "./prep-command-validator";
 
 // Constants from the controller
@@ -38,12 +36,6 @@ export interface ExecutionDependencies {
   sellBenchUnit: (playerId: string, benchIndex: number) => void;
   sellBoardUnit: (playerId: string, cell: number) => void;
 
-  // Item operations
-  addItemToInventory: (playerId: string, itemType: ItemType) => void;
-  equipItemToBenchUnit: (playerId: string, inventoryItemIndex: number, benchIndex: number) => void;
-  unequipItemFromBenchUnit: (playerId: string, benchIndex: number, itemSlotIndex: number) => void;
-  sellInventoryItem: (playerId: string, inventoryItemIndex: number) => void;
-
   // Boss shop operations
   buyBossShopOffer: (playerId: string, slotIndex: number) => void;
 
@@ -53,13 +45,10 @@ export interface ExecutionDependencies {
     cost: number;
     starLevel: number;
     unitCount: number;
-    items?: ItemType[];
   }>;
   getOwnedUnits: (playerId: string) => { vanguard: number; ranger: number; mage: number; assassin: number };
-  getItemInventory: (playerId: string) => ItemType[];
   getBoardPlacements: (playerId: string) => BoardUnitPlacement[];
   getShopOffers: (playerId: string) => ShopOffer[];
-  getItemShopOffers: (playerId: string) => ItemShopOffer[];
   getBossShopOffers: (playerId: string) => ShopOffer[];
   getRosterFlags: () => FeatureFlags;
 
@@ -123,17 +112,6 @@ export function executePrepCommand(
     }
   }
 
-  // Item buy cost
-  if (payload.itemBuySlotIndex !== undefined) {
-    const itemShop = deps.getItemShopOffers(playerId);
-    if (itemShop && payload.itemBuySlotIndex < itemShop.length) {
-      const offer = itemShop[payload.itemBuySlotIndex];
-      if (offer) {
-        totalGoldCost += offer.cost;
-      }
-    }
-  }
-
   // Boss shop buy cost
   if (payload.bossShopBuySlotIndex !== undefined) {
     const bossOffers = deps.getBossShopOffers(playerId);
@@ -163,18 +141,7 @@ export function executePrepCommand(
     deps.buyShopOffer(playerId, payload.shopBuySlotIndex);
   }
 
-  // 7. Execute item buy
-  if (payload.itemBuySlotIndex !== undefined) {
-    const itemShop = deps.getItemShopOffers(playerId);
-    if (itemShop) {
-      const offer = itemShop[payload.itemBuySlotIndex];
-      if (offer) {
-        deps.addItemToInventory(playerId, offer.itemType);
-      }
-    }
-  }
-
-  // 8. Execute boss shop buy
+  // 7. Execute boss shop buy
   if (payload.bossShopBuySlotIndex !== undefined) {
     deps.buyBossShopOffer(playerId, payload.bossShopBuySlotIndex);
 
@@ -205,12 +172,12 @@ export function executePrepCommand(
     }
   }
 
-  // 9. Apply shop lock
+  // 8. Apply shop lock
   if (payload.shopLock !== undefined) {
     deps.setShopLock(playerId, payload.shopLock);
   }
 
-  // 10. Execute bench to board
+  // 9. Execute bench to board
   if (payload.benchToBoardCell !== undefined) {
     deps.deployBenchUnitToBoard(
       playerId,
@@ -219,45 +186,22 @@ export function executePrepCommand(
     );
   }
 
-  // 11. Execute board to bench
+  // 10. Execute board to bench
   if (payload.boardToBenchCell !== undefined) {
     deps.returnBoardUnitToBench(playerId, payload.boardToBenchCell.cell);
   }
 
-  // 12. Execute bench sell
+  // 11. Execute bench sell
   if (payload.benchSellIndex !== undefined) {
     deps.sellBenchUnit(playerId, payload.benchSellIndex);
   }
 
-  // 13. Execute board sell
+  // 12. Execute board sell
   if (payload.boardSellIndex !== undefined) {
     deps.sellBoardUnit(playerId, payload.boardSellIndex);
   }
 
-  // 14. Execute item equip to bench
-  if (payload.itemEquipToBench !== undefined) {
-    deps.equipItemToBenchUnit(
-      playerId,
-      payload.itemEquipToBench.inventoryItemIndex,
-      payload.itemEquipToBench.benchIndex,
-    );
-  }
-
-  // 15. Execute item unequip from bench
-  if (payload.itemUnequipFromBench !== undefined) {
-    deps.unequipItemFromBenchUnit(
-      playerId,
-      payload.itemUnequipFromBench.benchIndex,
-      payload.itemUnequipFromBench.itemSlotIndex,
-    );
-  }
-
-  // 16. Execute item sell
-  if (payload.itemSellInventoryIndex !== undefined) {
-    deps.sellInventoryItem(playerId, payload.itemSellInventoryIndex);
-  }
-
-  // 17. Update last command sequence
+  // 13. Update last command sequence
   deps.setLastCmdSeq(playerId, cmdSeq);
 
   return { accepted: true };

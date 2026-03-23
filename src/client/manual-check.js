@@ -69,15 +69,6 @@ const UNIT_ICONS = {
   assassin: "🗡️",
 };
 
-// Item icons (emoji mapping for common items)
-const ITEM_ICONS = {
-  sword: "⚔️",
-  shield: "🛡️",
-  boots: "👞",
-  ring: "💍",
-  amulet: "📿",
-};
-
 // Hero definitions (client-side copy)
 const HEROES = [
   {
@@ -997,7 +988,6 @@ function updateSpellSelectUI(roundIndex) {
 
 // Selection and deployment handlers
 function handleBenchClick(index) {
-  // If we have an item selected, try to equip it
   // Toggle selection
   if (selectedBenchIndex === index) {
     clearSelections();

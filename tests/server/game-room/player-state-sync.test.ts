@@ -12,7 +12,6 @@ import {
   PlayerPresenceState,
   MatchRoomState,
   ShopOfferState,
-  ShopItemOfferState,
   BattleResultSchema,
   SynergySchema,
 } from "../../../src/server/schema/match-room-state";
@@ -69,7 +68,6 @@ describe("player-state-sync", () => {
         shopLocked: true,
         benchUnits: ["unit-a", "unit-b"],
         benchDisplayNames: ["Unit A", "Unit B"],
-        benchItemLoadouts: ['["sword"]', '["shield","boots"]'],
         boardUnits: ["board-unit-1", "board-unit-2", "board-unit-3"],
         ownedUnits: {
           vanguard: 2,
@@ -77,11 +75,6 @@ describe("player-state-sync", () => {
           mage: 0,
           assassin: 0,
         },
-        itemInventory: ["sword", "shield"],
-        itemShopOffers: [
-          { itemType: "sword", cost: 3 },
-          { itemType: "bow", cost: 4 },
-        ],
         bossShopOffers: [
           { unitType: "vanguard", cost: 5, rarity: 4, isRumorUnit: false },
         ],
@@ -135,8 +128,6 @@ describe("player-state-sync", () => {
       expect(playerState.benchUnits[0]).toBe("unit-a");
       expect(playerState.benchDisplayNames.length).toBe(2);
       expect(playerState.benchDisplayNames[1]).toBe("Unit B");
-      expect(playerState.benchItemLoadouts.length).toBe(2);
-      expect(playerState.benchItemLoadouts[1]).toBe('["shield","boots"]');
       expect(playerState.boardUnits.length).toBe(3);
       expect(playerState.boardUnits[2]).toBe("board-unit-3");
     });
@@ -169,8 +160,6 @@ describe("player-state-sync", () => {
           mage: 0,
           assassin: 0,
         },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [
           {
             unitType: "mage",
@@ -212,8 +201,6 @@ describe("player-state-sync", () => {
         benchDisplayNames: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -229,8 +216,6 @@ describe("player-state-sync", () => {
       expect(playerState.boardUnits.length).toBe(0);
       expect(playerState.benchUnits.length).toBe(0);
       expect(playerState.shopOffers.length).toBe(0);
-      expect(playerState.itemInventory.length).toBe(0);
-      expect(playerState.itemShopOffers.length).toBe(0);
       expect(playerState.bossShopOffers.length).toBe(0);
       expect(playerState.activeSynergies.length).toBe(0);
     });
@@ -250,8 +235,6 @@ describe("player-state-sync", () => {
         benchDisplayNames: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: {
           opponentId: "opponent-123",
@@ -317,8 +300,6 @@ describe("player-state-sync", () => {
         benchDisplayNames: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: {
           opponentId: "opponent-123",
@@ -392,8 +373,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -430,8 +409,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [
@@ -475,8 +452,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -506,8 +481,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [
           { unitType: "vanguard", cost: 5, rarity: 4, isRumorUnit: false },
         ],
@@ -543,8 +516,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -579,8 +550,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -621,8 +590,6 @@ describe("player-state-sync", () => {
         benchDisplayNames: ["New Unit 1"],
         boardUnits: ["board-1", "board-2"],
         ownedUnits: { vanguard: 1, ranger: 0, mage: 1, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -666,8 +633,6 @@ describe("player-state-sync", () => {
         benchUnits: ["unit-x", "unit-y", "unit-z"],
         benchDisplayNames: ["紅美鈴", "十六夜咲夜", "パチュリー・ノーレッジ"],
         boardUnits: ["b1", "b2", "b3", "b4", "b5"],
-        itemShopOffers: [{ itemType: "staff", cost: 5 }],
-        itemInventory: ["potion"],
         lastBattleResult: {
           opponentId: "p2",
           won: true,
@@ -720,8 +685,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         benchDisplayNames: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: {
           opponentId: "p2",
           won: true,
@@ -782,8 +745,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         benchDisplayNames: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
       };
@@ -805,8 +766,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         benchDisplayNames: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
       };
@@ -823,7 +782,6 @@ describe("player-state-sync", () => {
       playerState.shopOffers.push(new ShopOfferState());
       playerState.benchUnits.push("old");
       playerState.benchDisplayNames.push("Old");
-      playerState.itemInventory.push("old-item");
 
       const cmdResult = {
         boardUnitCount: 2,
@@ -836,8 +794,6 @@ describe("player-state-sync", () => {
         benchUnits: ["new-1", "new-2"],
         benchDisplayNames: ["紅美鈴", "十六夜咲夜"],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: ["new-item"],
         lastBattleResult: undefined,
         activeSynergies: [],
       };
@@ -848,8 +804,6 @@ describe("player-state-sync", () => {
       expect(playerState.benchUnits.length).toBe(2);
       expect(playerState.benchUnits[0]).toBe("new-1");
       expect(playerState.benchDisplayNames[1]).toBe("十六夜咲夜");
-      expect(playerState.itemInventory.length).toBe(1);
-      expect(playerState.itemInventory[0]).toBe("new-item");
     });
 
     it("should sync shopOffers with isRumorUnit field", () => {
@@ -867,8 +821,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         benchDisplayNames: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
       };
@@ -894,8 +846,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         benchDisplayNames: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
         bossShopOffers: [
@@ -922,8 +872,6 @@ describe("player-state-sync", () => {
         shopOffers: [],
         benchUnits: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
         selectedHeroId: "hero-special-001",
@@ -947,8 +895,6 @@ describe("player-state-sync", () => {
         shopOffers: [],
         benchUnits: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
         wantsBoss: true,
@@ -982,8 +928,6 @@ describe("player-state-sync", () => {
         shopOffers: [],
         benchUnits: [],
         boardUnits: [],
-        itemShopOffers: [],
-        itemInventory: [],
         lastBattleResult: undefined,
         activeSynergies: [],
         // bossShopOffers, selectedHeroId, isRumorEligible not provided
@@ -1018,8 +962,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -1056,8 +998,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -1090,8 +1030,6 @@ describe("player-state-sync", () => {
         benchUnits: [],
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-        itemInventory: [],
-        itemShopOffers: [],
         bossShopOffers: [],
         lastBattleResult: undefined,
         activeSynergies: undefined as unknown as [],

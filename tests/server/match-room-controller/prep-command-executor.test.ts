@@ -20,18 +20,12 @@ describe("PrepCommandExecutor", () => {
     returnBoardUnitToBench: vi.fn(),
     sellBenchUnit: vi.fn(),
     sellBoardUnit: vi.fn(),
-    addItemToInventory: vi.fn(),
-    equipItemToBenchUnit: vi.fn(),
-    unequipItemFromBenchUnit: vi.fn(),
-    sellInventoryItem: vi.fn(),
     buyBossShopOffer: vi.fn(),
     setLastCmdSeq: vi.fn(),
     getBenchUnits: vi.fn().mockReturnValue([]),
     getOwnedUnits: vi.fn().mockReturnValue({ vanguard: 0, ranger: 0, mage: 0, assassin: 0 }),
-    getItemInventory: vi.fn().mockReturnValue([]),
     getBoardPlacements: vi.fn().mockReturnValue([]),
     getShopOffers: vi.fn().mockReturnValue([]),
-    getItemShopOffers: vi.fn().mockReturnValue([]),
     getBossShopOffers: vi.fn().mockReturnValue([]),
     getRosterFlags: vi.fn().mockReturnValue({
       enableHeroSystem: false,
@@ -225,22 +219,6 @@ describe("PrepCommandExecutor", () => {
     });
   });
 
-  describe("Item Buy", () => {
-    test("spends gold and adds item to inventory when itemBuySlotIndex provided", () => {
-      const deps = createDependencies({
-        getItemShopOffers: vi.fn().mockReturnValue([
-          { itemType: "sword", cost: 5 },
-        ]),
-      });
-      const payload: CommandPayload = { itemBuySlotIndex: 0 };
-
-      executePrepCommand("p1", 1, payload, deps);
-
-      expect(deps.addGold).toHaveBeenCalledWith("p1", -5);
-      expect(deps.addItemToInventory).toHaveBeenCalledWith("p1", "sword");
-    });
-  });
-
   describe("Boss Shop Buy", () => {
     test("spends gold and buys boss shop offer", () => {
       const deps = createDependencies({
@@ -294,43 +272,6 @@ describe("PrepCommandExecutor", () => {
       executePrepCommand("p1", 1, payload, deps);
 
       expect(deps.sellBoardUnit).toHaveBeenCalledWith("p1", 2);
-    });
-  });
-
-  describe("Item Equip", () => {
-    test("equips item from inventory to bench unit when itemEquipToBench provided", () => {
-      const deps = createDependencies();
-      const payload: CommandPayload = {
-        itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 1 },
-      };
-
-      executePrepCommand("p1", 1, payload, deps);
-
-      expect(deps.equipItemToBenchUnit).toHaveBeenCalledWith("p1", 0, 1);
-    });
-  });
-
-  describe("Item Unequip", () => {
-    test("unequips item from bench unit to inventory when itemUnequipFromBench provided", () => {
-      const deps = createDependencies();
-      const payload: CommandPayload = {
-        itemUnequipFromBench: { benchIndex: 1, itemSlotIndex: 0 },
-      };
-
-      executePrepCommand("p1", 1, payload, deps);
-
-      expect(deps.unequipItemFromBenchUnit).toHaveBeenCalledWith("p1", 1, 0);
-    });
-  });
-
-  describe("Item Sell", () => {
-    test("sells inventory item and adds gold when itemSellInventoryIndex provided", () => {
-      const deps = createDependencies();
-      const payload: CommandPayload = { itemSellInventoryIndex: 2 };
-
-      executePrepCommand("p1", 1, payload, deps);
-
-      expect(deps.sellInventoryItem).toHaveBeenCalledWith("p1", 2);
     });
   });
 

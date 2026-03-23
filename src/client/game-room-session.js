@@ -99,6 +99,18 @@ export function createGameRoomSession(options = {}) {
     }
   }
 
+  async function leaveRoomQuietly(roomToLeave, consented = true) {
+    if (!roomToLeave || typeof roomToLeave.leave !== "function") {
+      return;
+    }
+
+    try {
+      await roomToLeave.leave(consented);
+    } catch {
+      // Cleanup should not mask the original connection error.
+    }
+  }
+
   async function connect(rawOptions = {}) {
     if (room) {
       return room;
@@ -143,12 +155,14 @@ export function createGameRoomSession(options = {}) {
 
       return room;
     } catch (error) {
+      const ownedSharedBoardRoom = createdSharedBoardRoom;
       client = null;
       room = null;
       state = null;
       createdSharedBoardRoom = null;
       connectionState = "idle";
       notifyConnection();
+      await leaveRoomQuietly(ownedSharedBoardRoom);
       throw error;
     }
   }
@@ -161,17 +175,31 @@ export function createGameRoomSession(options = {}) {
     }
 
     const roomToLeave = room;
+    const sharedBoardRoomToLeave = createdSharedBoardRoom;
     room = null;
     state = null;
     client = null;
     createdSharedBoardRoom = null;
     connectionState = "disconnecting";
     notifyConnection();
+    let leaveError = null;
     try {
       await roomToLeave.leave(consented);
+    } catch (error) {
+      leaveError = error;
     } finally {
+      await leaveRoomQuietly(
+        sharedBoardRoomToLeave && sharedBoardRoomToLeave !== roomToLeave
+          ? sharedBoardRoomToLeave
+          : null,
+        consented,
+      );
       connectionState = "idle";
       notifyConnection();
+    }
+
+    if (leaveError) {
+      throw leaveError;
     }
   }
 

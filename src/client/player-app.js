@@ -84,6 +84,7 @@ let latestPlayer = null;
 let latestState = null;
 let latestRoundState = null;
 let latestPhaseHpProgress = null;
+let latestSharedBoardRoomId = "";
 let selectedHeroId = null;
 let selectedBossId = "remilia";
 let selectedBenchIndex = null;
@@ -91,6 +92,16 @@ let selectedInventoryIndex = null;
 let cmdSeqCounter = 0;
 let latestRawPhase = "Waiting";
 let battleStartSweepTimeoutId = null;
+
+function rememberSharedBoardRoomId(roomId) {
+  const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
+  if (normalizedRoomId.length === 0) {
+    return;
+  }
+
+  latestSharedBoardRoomId = normalizedRoomId;
+  setSharedBoardRoomId(normalizedRoomId);
+}
 
 const PLAYER_BATTLE_START_SWEEP_MS = 900;
 
@@ -159,8 +170,11 @@ gameRoomSession.onConnectionState((connectionState) => {
     connectButton.disabled = false;
     connectButton.textContent = "Join Session";
   }
+  latestPlayer = null;
+  latestState = null;
   latestPhaseHpProgress = null;
   latestRoundState = null;
+  latestSharedBoardRoomId = "";
   latestRawPhase = "Waiting";
   selectedBenchIndex = null;
   selectedInventoryIndex = null;
@@ -186,7 +200,7 @@ gameRoomSession.onStateChange((state) => {
     selectedInventoryIndex = null;
   }
   if (typeof state?.sharedBoardRoomId === "string" && state.sharedBoardRoomId.length > 0) {
-    setSharedBoardRoomId(state.sharedBoardRoomId);
+    rememberSharedBoardRoomId(state.sharedBoardRoomId);
   }
   showPlayerPhase(nextView);
   syncPlayerBattleStartSweep(previousPhase, state);
@@ -229,7 +243,7 @@ gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
     : "";
   latestPhaseHpProgress = resolvePhaseHpProgress(message);
   if (sharedBoardRoomId.length > 0) {
-    setSharedBoardRoomId(sharedBoardRoomId);
+    rememberSharedBoardRoomId(sharedBoardRoomId);
   }
   renderPlayerHeaderTruth();
   renderPlayerResultSummary({
@@ -486,7 +500,7 @@ function resolveRequestedRoomCode() {
   return getSearchParam("roomId") ?? "";
 }
 
-function resolveSharedBoardRoomId(state, roundState) {
+function resolveSharedBoardRoomId(state, roundState, fallbackRoomId = latestSharedBoardRoomId) {
   const stateRoomId = typeof state?.sharedBoardRoomId === "string" ? state.sharedBoardRoomId.trim() : "";
   if (stateRoomId.length > 0) {
     return stateRoomId;
@@ -499,7 +513,7 @@ function resolveSharedBoardRoomId(state, roundState) {
     return roundStateRoomId;
   }
 
-  return "";
+  return typeof fallbackRoomId === "string" ? fallbackRoomId.trim() : "";
 }
 
 function buildDeadlineSummary(state, roundState) {
@@ -562,7 +576,9 @@ async function syncSharedBoardConnection() {
   }
 
   const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState);
-  setSharedBoardRoomId(sharedBoardRoomId);
+  if (sharedBoardRoomId.length > 0) {
+    rememberSharedBoardRoomId(sharedBoardRoomId);
+  }
   await connectSharedBoard(client, { roomId: sharedBoardRoomId });
 }
 
@@ -596,14 +612,19 @@ async function connectPlayerSession() {
     }
 
     const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();
-
-    if (typeof room?.state?.sharedBoardRoomId === "string" && room.state.sharedBoardRoomId.length > 0) {
-      setSharedBoardRoomId(room.state.sharedBoardRoomId);
+    const initialSharedBoardRoomId = resolveSharedBoardRoomId(
+      latestState,
+      latestRoundState,
+      typeof room?.state?.sharedBoardRoomId === "string"
+        ? room.state.sharedBoardRoomId
+        : pairedSharedBoardRoom?.roomId,
+    );
+    if (initialSharedBoardRoomId.length > 0) {
+      rememberSharedBoardRoomId(initialSharedBoardRoomId);
     }
 
     if (client) {
-      const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState);
-      setSharedBoardRoomId(sharedBoardRoomId);
+      const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState, initialSharedBoardRoomId);
       await connectSharedBoard(client, {
         roomId: sharedBoardRoomId,
         existingRoom: pairedSharedBoardRoom,

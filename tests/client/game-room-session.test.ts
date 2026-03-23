@@ -253,6 +253,89 @@ describe("game-room session", () => {
     expect(session.takeCreatedSharedBoardRoom()).toBeNull();
   });
 
+  test("createPaired で game room 作成が失敗したら先に作った shared_board を閉じる", async () => {
+    const sharedBoardLeave = vi.fn(async () => {});
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async create(roomName: string) {
+            if (roomName === "shared_board") {
+              return {
+                roomId: "shared-room-1",
+                leave: sharedBoardLeave,
+                onLeave: () => {},
+                onMessage: () => {},
+                onStateChange: () => {},
+                sessionId: "shared-owner",
+                state: {},
+              };
+            }
+
+            throw new Error("game create failed");
+          }
+
+          public async joinOrCreate(): Promise<never> {
+            throw new Error("joinOrCreate should not be used");
+          }
+        },
+      }),
+    });
+
+    await expect(session.connect({
+      mode: "createPaired",
+      sharedBoardRoomName: "shared_board",
+    })).rejects.toThrow("game create failed");
+
+    expect(sharedBoardLeave).toHaveBeenCalledTimes(1);
+    expect(session.takeCreatedSharedBoardRoom()).toBeNull();
+  });
+
+  test("disconnect は take 前の paired shared_board も一緒に閉じる", async () => {
+    const leaveCalls: string[] = [];
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async create(roomName: string, options?: Record<string, unknown>) {
+            return {
+              roomId: roomName === "shared_board" ? "shared-room-1" : "game-room-1",
+              leave: async () => {
+                leaveCalls.push(roomName);
+              },
+              onLeave: () => {},
+              onMessage: () => {},
+              onStateChange: () => {},
+              sessionId: roomName === "shared_board" ? "shared-owner" : "player-1",
+              state: roomName === "game"
+                ? { sharedBoardRoomId: String(options?.sharedBoardRoomId ?? "") }
+                : {},
+            };
+          }
+
+          public async joinOrCreate(): Promise<never> {
+            throw new Error("joinOrCreate should not be used");
+          }
+        },
+      }),
+    });
+
+    await session.connect({
+      mode: "createPaired",
+      sharedBoardRoomName: "shared_board",
+    });
+
+    await session.disconnect();
+
+    expect(leaveCalls).toEqual(["game", "shared_board"]);
+  });
+
   test("structured connect options は top-level extras を roomOptions へ引き継ぐ", async () => {
     const calls: Array<{ roomId: string; options?: Record<string, unknown> | undefined }> = [];
     const session = createGameRoomSession({

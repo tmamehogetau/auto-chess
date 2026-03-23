@@ -121,6 +121,8 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("data-player-room-code-input")).toBe(true);
+    expect(source.includes('let latestSharedBoardRoomId = "";')).toBe(true);
+    expect(source.includes("function rememberSharedBoardRoomId(")).toBe(true);
     expect(source.includes("gameRoomSession.connect({ roomId: requestedRoomCode })")).toBe(true);
     expect(source.includes('mode: "createPaired"')).toBe(true);
     expect(source.includes('sharedBoardRoomName: "shared_board"')).toBe(true);
@@ -130,6 +132,9 @@ describe("player-app script contract", () => {
     expect(source.includes("message?.sharedBoardRoomId")).toBe(true);
     expect(source.includes("state?.sharedBoardRoomId")).toBe(true);
     expect(source.includes("const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();")).toBe(true);
+    expect(source.includes("pairedSharedBoardRoom?.roomId")).toBe(true);
     expect(source.includes("existingRoom: pairedSharedBoardRoom,")).toBe(true);
+    expect(source.includes("latestPlayer = null;")).toBe(true);
+    expect(source.includes("latestState = null;")).toBe(true);
   });
 });

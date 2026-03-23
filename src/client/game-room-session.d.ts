@@ -18,21 +18,36 @@ export const SERVER_MESSAGE_TYPES: {
 
 export type GameRoomSdkModule = {
   Client: new (endpoint: string) => {
-    joinById?: (roomId: string, roomOptions?: Record<string, unknown>) => Promise<{
+    create?: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<{
       roomId?: string;
+      roomName?: string;
       sessionId?: string;
       state?: unknown;
       onStateChange: (listener: (state: unknown) => void) => void;
       onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+      onLeave?: (listener: (...args: unknown[]) => void) => void;
+      send?: (type: string, payload?: unknown) => void;
+      leave?: (consented?: boolean) => Promise<void>;
+    }>;
+    joinById?: (roomId: string, roomOptions?: Record<string, unknown>) => Promise<{
+      roomId?: string;
+      roomName?: string;
+      sessionId?: string;
+      state?: unknown;
+      onStateChange: (listener: (state: unknown) => void) => void;
+      onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+      onLeave?: (listener: (...args: unknown[]) => void) => void;
       send?: (type: string, payload?: unknown) => void;
       leave?: (consented?: boolean) => Promise<void>;
     }>;
     joinOrCreate: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<{
       roomId?: string;
+      roomName?: string;
       sessionId?: string;
       state?: unknown;
       onStateChange: (listener: (state: unknown) => void) => void;
       onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+      onLeave?: (listener: (...args: unknown[]) => void) => void;
       send?: (type: string, payload?: unknown) => void;
       leave?: (consented?: boolean) => Promise<void>;
     }>;
@@ -46,8 +61,11 @@ export type GameRoomSessionOptions = {
 };
 
 export type GameRoomConnectOptions = {
+  mode?: "joinOrCreate" | "create" | "createPaired";
   roomId?: string;
   roomOptions?: Record<string, unknown>;
+  sharedBoardRoomName?: string;
+  [key: string]: unknown;
 };
 
 export type GameRoomSession = {
@@ -66,10 +84,12 @@ export type GameRoomSession = {
   getState: () => unknown;
   takeCreatedSharedBoardRoom: () => {
     roomId?: string;
+    roomName?: string;
     sessionId?: string;
     state?: unknown;
     onStateChange: (listener: (state: unknown) => void) => void;
     onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+    onLeave?: (listener: (...args: unknown[]) => void) => void;
     send?: (type: string, payload?: unknown) => void;
     leave?: (consented?: boolean) => Promise<void>;
   } | null;

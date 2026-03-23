@@ -23,7 +23,7 @@ describe("item removal contract", () => {
     expect(matchLoggerSource.includes("equip_item")).toBe(false);
     expect(matchLoggerSource.includes("unequip_item")).toBe(false);
     expect(matchLoggerSource.includes("sell_item")).toBe(false);
-    expect(matchLoggerSource.includes("items: string[]")).toBe(false);
+    expect(matchLoggerSource).not.toMatch(/\bitems\??\s*:/);
 
     expect(prepLoggingSource.includes("itemBuySlotIndex")).toBe(false);
     expect(prepLoggingSource.includes("itemEquipToBench")).toBe(false);

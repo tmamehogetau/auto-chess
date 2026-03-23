@@ -51,18 +51,10 @@ const bossShopSlotElements = Array.from(document.querySelectorAll("[data-player-
 const specialUnitCopyElement = document.querySelector("[data-player-special-unit-copy]");
 const spellCopyElement = document.querySelector("[data-player-spell-copy]");
 const synergyCopyElement = document.querySelector("[data-player-synergy-copy]");
-const itemShopElement = document.querySelector("[data-player-item-shop]");
-const itemShopCopyElement = document.querySelector("[data-player-item-shop-copy]");
-const itemShopSlotElements = Array.from(document.querySelectorAll("[data-player-item-shop-slot]"));
 const benchElement = document.querySelector("[data-player-bench]");
 const benchCopyElement = document.querySelector("[data-player-bench-copy]");
 const benchSlotElements = Array.from(document.querySelectorAll("[data-player-bench-slot]"));
 const benchSellButton = document.querySelector("[data-player-bench-sell-button]");
-const itemInventoryCopyElement = document.querySelector("[data-player-item-inventory-copy]");
-const itemInventorySlotElements = Array.from(document.querySelectorAll("[data-player-item-inventory-slot]"));
-const itemSellButton = document.querySelector("[data-player-item-sell-button]");
-const benchItemCopyElement = document.querySelector("[data-player-bench-item-copy]");
-const benchItemListElement = document.querySelector("[data-player-bench-item-list]");
 const readyElement = document.querySelector("[data-player-ready-btn]");
 const readyCopyElement = document.querySelector("[data-player-ready-copy]");
 const readyButton = document.querySelector("[data-player-ready-button]");
@@ -88,7 +80,6 @@ let latestSharedBoardRoomId = "";
 let selectedHeroId = null;
 let selectedBossId = "remilia";
 let selectedBenchIndex = null;
-let selectedInventoryIndex = null;
 let cmdSeqCounter = 0;
 let latestRawPhase = "Waiting";
 let battleStartSweepTimeoutId = null;
@@ -178,7 +169,6 @@ gameRoomSession.onConnectionState((connectionState) => {
   latestSharedBoardRoomId = "";
   latestRawPhase = "Waiting";
   selectedBenchIndex = null;
-  selectedInventoryIndex = null;
   clearPlayerBattleStartSweep();
   leaveSharedBoardRoom();
   setSharedBoardRoomId("");
@@ -198,9 +188,6 @@ gameRoomSession.onStateChange((state) => {
   latestPlayer = player;
   if (!Number.isInteger(selectedBenchIndex) || selectedBenchIndex < 0 || selectedBenchIndex >= Number(player?.benchUnits?.length ?? 0)) {
     selectedBenchIndex = null;
-  }
-  if (!Number.isInteger(selectedInventoryIndex) || selectedInventoryIndex < 0 || selectedInventoryIndex >= Number(player?.itemInventory?.length ?? 0)) {
-    selectedInventoryIndex = null;
   }
   if (typeof state?.sharedBoardRoomId === "string" && state.sharedBoardRoomId.length > 0) {
     rememberSharedBoardRoomId(state.sharedBoardRoomId);
@@ -304,12 +291,6 @@ bossShopSlotElements.forEach((button, index) => {
   });
 });
 
-itemShopSlotElements.forEach((button, index) => {
-  button.addEventListener("click", () => {
-    handlePlayerItemShopBuy(index);
-  });
-});
-
 shopRefreshButton?.addEventListener("click", () => {
   handlePlayerShopRefresh();
 });
@@ -324,18 +305,8 @@ benchSlotElements.forEach((button, index) => {
   });
 });
 
-itemInventorySlotElements.forEach((button, index) => {
-  button.addEventListener("click", () => {
-    handlePlayerInventorySelect(index);
-  });
-});
-
 benchSellButton?.addEventListener("click", () => {
   handlePlayerBenchSell();
-});
-
-itemSellButton?.addEventListener("click", () => {
-  handlePlayerItemSell();
 });
 
 boardSellButton?.addEventListener("click", () => {
@@ -358,21 +329,6 @@ boardGridElement?.addEventListener("click", (event) => {
     10,
   );
   handlePlayerSharedCellClick(cellIndex);
-});
-
-benchItemListElement?.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof Element)) {
-    return;
-  }
-
-  const button = target.closest("[data-player-bench-item-slot]");
-  if (!(button instanceof HTMLButtonElement)) {
-    return;
-  }
-
-  const itemSlotIndex = Number.parseInt(button.dataset.playerBenchItemSlot ?? "", 10);
-  handlePlayerBenchItemUnequip(itemSlotIndex);
 });
 
 if (getSearchParam("autoconnect") === "1") {
@@ -662,17 +618,6 @@ function handlePlayerBossShopBuy(slotIndex) {
   });
 }
 
-function handlePlayerItemShopBuy(slotIndex) {
-  if (latestState?.phase !== "Prep") {
-    return;
-  }
-
-  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-    cmdSeq: nextCmdSeq(),
-    itemBuySlotIndex: slotIndex,
-  });
-}
-
 function handlePlayerShopRefresh() {
   if (latestState?.phase !== "Prep") {
     return;
@@ -700,31 +645,7 @@ function handlePlayerBenchSelect(index) {
     return;
   }
 
-  // Bench click either equips the selected inventory item or toggles bench selection.
-  if (selectedInventoryIndex !== null) {
-    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: nextCmdSeq(),
-      itemEquipToBench: {
-        inventoryItemIndex: selectedInventoryIndex,
-        benchIndex: index,
-      },
-    });
-    selectedInventoryIndex = null;
-    renderPlayerPrepSurface();
-    return;
-  }
-
   selectedBenchIndex = selectedBenchIndex === index ? null : index;
-  renderPlayerPrepSurface();
-}
-
-function handlePlayerInventorySelect(index) {
-  if (latestState?.phase !== "Prep") {
-    return;
-  }
-
-  selectedBenchIndex = null;
-  selectedInventoryIndex = selectedInventoryIndex === index ? null : index;
   renderPlayerPrepSurface();
 }
 
@@ -743,49 +664,7 @@ function handlePlayerBenchSell() {
     benchSellIndex: selectedBenchIndex,
   });
   selectedBenchIndex = null;
-  selectedInventoryIndex = null;
   renderPlayerPrepSurface();
-}
-
-function handlePlayerItemSell() {
-  if (latestState?.phase !== "Prep") {
-    return;
-  }
-
-  if (selectedInventoryIndex === null) {
-    showPlayerStatus("Inventory から売る item を先に選んでください。");
-    return;
-  }
-
-  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-    cmdSeq: nextCmdSeq(),
-    itemSellInventoryIndex: selectedInventoryIndex,
-  });
-  selectedInventoryIndex = null;
-  renderPlayerPrepSurface();
-}
-
-function handlePlayerBenchItemUnequip(itemSlotIndex) {
-  if (latestState?.phase !== "Prep") {
-    return;
-  }
-
-  if (selectedBenchIndex === null) {
-    showPlayerStatus("Bench の unit を選んでから item を外してください。");
-    return;
-  }
-
-  if (!Number.isInteger(itemSlotIndex) || itemSlotIndex < 0) {
-    return;
-  }
-
-  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-    cmdSeq: nextCmdSeq(),
-    itemUnequipFromBench: {
-      benchIndex: selectedBenchIndex,
-      itemSlotIndex,
-    },
-  });
 }
 
 function handlePlayerBoardSell() {
@@ -860,7 +739,6 @@ function handlePlayerSharedCellClick(cellIndex) {
     },
   });
   selectedBenchIndex = null;
-  selectedInventoryIndex = null;
   renderPlayerPrepSurface();
 }
 
@@ -880,14 +758,7 @@ function renderPlayerPrepSurface() {
     specialUnitCopyElement,
     spellCopyElement,
     synergyCopyElement,
-    itemShopElement,
-    itemShopCopyElement,
-    itemShopSlotElements,
     benchCopyElement,
-    itemInventoryCopyElement,
-    itemInventorySlotElements,
-    benchItemCopyElement,
-    benchItemListElement,
     roomCopyElement,
     deadlineCopyElement,
     boardElement,
@@ -905,9 +776,7 @@ function renderPlayerPrepSurface() {
     sessionId: gameRoomSession.getRoom()?.sessionId ?? "",
     currentPhase: typeof latestState?.phase === "string" ? latestState.phase : "Waiting",
     selectedBenchIndex,
-    selectedInventoryIndex,
     canSellBench: selectedBenchIndex !== null,
-    canSellItem: selectedInventoryIndex !== null,
     canSellBoard: canManipulateSelectedBoardUnit(),
     canReturnBoard: canManipulateSelectedBoardUnit(),
     roomSummary: {
@@ -918,7 +787,6 @@ function renderPlayerPrepSurface() {
     },
     deadlineSummary: buildDeadlineSummary(latestState, latestRoundState),
     benchSellButton,
-    itemSellButton,
     boardReturnButton,
     boardSellButton,
     sharedBoardConnected: Boolean(getSharedBoardState()),

@@ -101,7 +101,6 @@ export interface ControllerPlayerStatus {
   shopLocked: boolean;
   benchUnits: string[];
   benchDisplayNames?: string[];
-  benchItemLoadouts?: string[];
   boardUnits: string[];
   ownedUnits: OwnedUnitsView;
   bossShopOffers: ShopOfferView[];
@@ -134,7 +133,6 @@ export interface CommandResultPayload {
   shopOffers: ShopOfferView[];
   benchUnits: string[];
   benchDisplayNames?: string[];
-  benchItemLoadouts?: string[];
   boardUnits: string[];
   lastBattleResult: PlayerStatusBattleResult | undefined;
   activeSynergies?: ActiveSynergyView[];

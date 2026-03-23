@@ -16,41 +16,23 @@ export const SERVER_MESSAGE_TYPES: {
   ADMIN_RESPONSE: string;
 };
 
+export type RoomHandle = {
+  roomId?: string;
+  roomName?: string;
+  sessionId?: string;
+  state?: unknown;
+  onStateChange: (listener: (state: unknown) => void) => void;
+  onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
+  onLeave?: (listener: (...args: unknown[]) => void) => void;
+  send?: (type: string, payload?: unknown) => void;
+  leave?: (consented?: boolean) => Promise<void>;
+};
+
 export type GameRoomSdkModule = {
   Client: new (endpoint: string) => {
-    create?: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<{
-      roomId?: string;
-      roomName?: string;
-      sessionId?: string;
-      state?: unknown;
-      onStateChange: (listener: (state: unknown) => void) => void;
-      onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
-      onLeave?: (listener: (...args: unknown[]) => void) => void;
-      send?: (type: string, payload?: unknown) => void;
-      leave?: (consented?: boolean) => Promise<void>;
-    }>;
-    joinById?: (roomId: string, roomOptions?: Record<string, unknown>) => Promise<{
-      roomId?: string;
-      roomName?: string;
-      sessionId?: string;
-      state?: unknown;
-      onStateChange: (listener: (state: unknown) => void) => void;
-      onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
-      onLeave?: (listener: (...args: unknown[]) => void) => void;
-      send?: (type: string, payload?: unknown) => void;
-      leave?: (consented?: boolean) => Promise<void>;
-    }>;
-    joinOrCreate: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<{
-      roomId?: string;
-      roomName?: string;
-      sessionId?: string;
-      state?: unknown;
-      onStateChange: (listener: (state: unknown) => void) => void;
-      onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
-      onLeave?: (listener: (...args: unknown[]) => void) => void;
-      send?: (type: string, payload?: unknown) => void;
-      leave?: (consented?: boolean) => Promise<void>;
-    }>;
+    create?: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<RoomHandle>;
+    joinById?: (roomId: string, roomOptions?: Record<string, unknown>) => Promise<RoomHandle>;
+    joinOrCreate: (roomName: string, roomOptions?: Record<string, unknown>) => Promise<RoomHandle>;
   };
 };
 
@@ -82,17 +64,7 @@ export type GameRoomSession = {
     sessionId?: string;
   } | null;
   getState: () => unknown;
-  takeCreatedSharedBoardRoom: () => {
-    roomId?: string;
-    roomName?: string;
-    sessionId?: string;
-    state?: unknown;
-    onStateChange: (listener: (state: unknown) => void) => void;
-    onMessage: (type: string, listener: (...args: unknown[]) => void) => void;
-    onLeave?: (listener: (...args: unknown[]) => void) => void;
-    send?: (type: string, payload?: unknown) => void;
-    leave?: (consented?: boolean) => Promise<void>;
-  } | null;
+  takeCreatedSharedBoardRoom: () => RoomHandle | null;
 };
 
 export function createGameRoomSession(options?: GameRoomSessionOptions): GameRoomSession;

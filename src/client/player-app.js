@@ -96,6 +96,7 @@ let battleStartSweepTimeoutId = null;
 function rememberSharedBoardRoomId(roomId) {
   const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
   if (normalizedRoomId.length === 0) {
+    // Keep the last non-empty room id so reconnect can fall back to it.
     return;
   }
 
@@ -182,7 +183,9 @@ gameRoomSession.onConnectionState((connectionState) => {
   leaveSharedBoardRoom();
   setSharedBoardRoomId("");
   statusCopy.textContent = "進行役がルームを準備したら、この画面の player flow が始まります。";
+  showPlayerPhase("lobby");
   renderPlayerHeaderTruth();
+  renderPlayerPrepSurface();
   updateReadyButton(null);
 });
 
@@ -697,6 +700,7 @@ function handlePlayerBenchSelect(index) {
     return;
   }
 
+  // Bench click either equips the selected inventory item or toggles bench selection.
   if (selectedInventoryIndex !== null) {
     gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: nextCmdSeq(),
@@ -904,8 +908,8 @@ function renderPlayerPrepSurface() {
     selectedInventoryIndex,
     canSellBench: selectedBenchIndex !== null,
     canSellItem: selectedInventoryIndex !== null,
-    canSellBoard: canManipulateSelectedBoardUnit("sell"),
-    canReturnBoard: canManipulateSelectedBoardUnit("return"),
+    canSellBoard: canManipulateSelectedBoardUnit(),
+    canReturnBoard: canManipulateSelectedBoardUnit(),
     roomSummary: {
       roomId: typeof gameRoomSession.getRoom()?.roomId === "string"
         ? gameRoomSession.getRoom().roomId
@@ -951,7 +955,7 @@ function isSpecialSharedUnitId(unitId) {
   return typeof unitId === "string" && (unitId.startsWith("hero:") || unitId.startsWith("boss:"));
 }
 
-function canManipulateSelectedBoardUnit(action) {
+function canManipulateSelectedBoardUnit() {
   const selectedCell = resolveSelectedSharedBoardCell();
   if (!selectedCell) {
     return false;
@@ -961,7 +965,7 @@ function canManipulateSelectedBoardUnit(action) {
     return false;
   }
 
-  return action === "sell" || action === "return";
+  return true;
 }
 
 function showPlayerStatus(message) {

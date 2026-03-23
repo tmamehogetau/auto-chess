@@ -1,7 +1,6 @@
 import { ArraySchema, MapSchema, Schema, defineTypes } from "@colyseus/schema";
 
 import type { BoardUnitType, UnitEffectSetId } from "../../shared/room-messages";
-import type { ItemType } from "../../shared/types";
 import type { FeatureFlags } from "../../shared/feature-flags";
 
 export class ShopOfferState extends Schema {
@@ -28,18 +27,6 @@ export class ShopOfferState extends Schema {
     this.cost = 1;
     this.rarity = 1;
     this.isRumorUnit = false;
-  }
-}
-
-export class ShopItemOfferState extends Schema {
-  declare public itemType: ItemType;
-
-  declare public cost: number;
-
-  public constructor() {
-    super();
-    this.itemType = "sword";
-    this.cost = 3;
   }
 }
 
@@ -166,11 +153,7 @@ export class PlayerPresenceState extends Schema {
 
   declare public lastCmdSeq: number;
 
-  declare public itemShopOffers: ArraySchema<ShopItemOfferState>;
-
   declare public bossShopOffers: ArraySchema<ShopOfferState>;
-
-  declare public itemInventory: ArraySchema<string>;
 
   declare public lastBattleResult: BattleResultSchema;
 
@@ -204,9 +187,7 @@ export class PlayerPresenceState extends Schema {
     this.ownedMage = 0;
     this.ownedAssassin = 0;
     this.lastCmdSeq = 0;
-    this.itemShopOffers = new ArraySchema<ShopItemOfferState>();
     this.bossShopOffers = new ArraySchema<ShopOfferState>();
-    this.itemInventory = new ArraySchema<string>();
     this.lastBattleResult = new BattleResultSchema();
     this.activeSynergies = new ArraySchema<SynergySchema>();
     this.selectedHeroId = "";
@@ -311,11 +292,6 @@ defineTypes(ShopOfferState, {
   isRumorUnit: "boolean",
 });
 
-defineTypes(ShopItemOfferState, {
-  itemType: "string",
-  cost: "number",
-});
-
 defineTypes(BattleResultSchema, {
   opponentId: "string",
   won: "boolean",
@@ -365,9 +341,7 @@ defineTypes(PlayerPresenceState, {
   ownedMage: "number",
   ownedAssassin: "number",
   lastCmdSeq: "number",
-  itemShopOffers: [ShopItemOfferState],
   bossShopOffers: [ShopOfferState],
-  itemInventory: ["string"],
   lastBattleResult: BattleResultSchema,
   activeSynergies: [SynergySchema],
   selectedHeroId: "string",

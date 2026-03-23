@@ -4,7 +4,6 @@ import {
   type ShopOfferBuilderDependencies,
 } from "../../../src/server/match-room-controller/shop-offer-builder";
 import type { BoardUnitType } from "../../../src/shared/room-messages";
-import type { ItemType } from "../../../src/server/combat/item-definitions";
 import {
   ROSTER_KIND_MVP,
   ROSTER_KIND_TOUHOU,
@@ -199,47 +198,6 @@ describe("ShopOfferBuilder", () => {
       expect(offers[0]!.cost).toBe(2);
       expect(offers[1]!.unitType).toBe("mage");
       expect(offers[1]!.cost).toBe(3);
-    });
-  });
-
-  describe("buildItemShopOffers", () => {
-    test("creates 5 item shop offers", () => {
-      const mockItems: ItemType[] = ["sword", "shield", "boots", "ring", "amulet"];
-      const mockItemDefs: Record<ItemType, { cost: number }> = {
-        sword: { cost: 5 },
-        shield: { cost: 4 },
-        boots: { cost: 3 },
-        ring: { cost: 4 },
-        amulet: { cost: 5 },
-      };
-
-      const offers = builder.buildItemShopOffers(mockItems, mockItemDefs);
-
-      expect(offers).toHaveLength(5);
-      offers.forEach((offer) => {
-        expect(offer).toHaveProperty("itemType");
-        expect(offer).toHaveProperty("cost");
-        expect(mockItems).toContain(offer.itemType);
-      });
-    });
-
-    test("uses provided item definitions for costs", () => {
-      const mockItems: ItemType[] = ["sword"];
-      const mockItemDefs: Record<ItemType, { cost: number }> = {
-        sword: { cost: 10 },
-        shield: { cost: 3 },
-        boots: { cost: 3 },
-        ring: { cost: 4 },
-        amulet: { cost: 4 },
-      };
-
-      // Mock the injected random function to always return 0 (first item)
-      mockDeps.random = vi.fn(() => 0);
-
-      const offers = builder.buildItemShopOffers(mockItems, mockItemDefs);
-
-      expect(offers.length).toBeGreaterThan(0);
-      expect(offers[0]!.cost).toBe(10);
     });
   });
 

@@ -14,7 +14,7 @@ export interface ApplyPrepIncomeParams {
   initialGold: number;
 }
 
-export interface InitializePrepShopsParams<TShopOffer, TItemOffer, TBossOffer> {
+export interface InitializePrepShopsParams<TShopOffer, TBossOffer> {
   playerIds: readonly string[];
   roundIndex: number;
   isBossPlayer: (playerId: string) => boolean;
@@ -25,7 +25,6 @@ export interface InitializePrepShopsParams<TShopOffer, TItemOffer, TBossOffer> {
     purchaseCount: number,
     isRumorEligible: boolean,
   ) => TShopOffer[];
-  buildItemShopOffers: () => TItemOffer[];
   buildBossShopOffers: () => TBossOffer[];
   shopRefreshCountByPlayer: Map<string, number>;
   shopPurchaseCountByPlayer: Map<string, number>;
@@ -33,7 +32,6 @@ export interface InitializePrepShopsParams<TShopOffer, TItemOffer, TBossOffer> {
   kouRyuudouFreeRefreshConsumedByPlayer: Map<string, boolean>;
   rumorInfluenceEligibleByPlayer: Map<string, boolean>;
   shopOffersByPlayer: Map<string, TShopOffer[]>;
-  itemShopOffersByPlayer: Map<string, TItemOffer[]>;
   bossShopOffersByPlayer: Map<string, TBossOffer[]>;
   enableRumorInfluence: boolean;
   enableBossExclusiveShop: boolean;
@@ -90,8 +88,8 @@ export function applyPrepIncomeToPlayers(params: ApplyPrepIncomeParams): void {
   }
 }
 
-export function initializeShopsForPrep<TShopOffer, TItemOffer, TBossOffer>(
-  params: InitializePrepShopsParams<TShopOffer, TItemOffer, TBossOffer>,
+export function initializeShopsForPrep<TShopOffer, TBossOffer>(
+  params: InitializePrepShopsParams<TShopOffer, TBossOffer>,
 ): void {
   for (const playerId of params.playerIds) {
     params.shopRefreshCountByPlayer.set(playerId, 0);
@@ -103,10 +101,6 @@ export function initializeShopsForPrep<TShopOffer, TItemOffer, TBossOffer>(
       playerId,
       params.buildShopOffers(playerId, params.roundIndex, 0, 0, isRumorEligible),
     );
-
-    if (!params.shopLockedByPlayer.get(playerId)) {
-      params.itemShopOffersByPlayer.set(playerId, params.buildItemShopOffers());
-    }
 
     if (params.enableRumorInfluence) {
       params.rumorInfluenceEligibleByPlayer.set(playerId, false);

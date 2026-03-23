@@ -1,6 +1,6 @@
 import type { TouhouFactionId } from '../data/touhou-units';
 import type { BossCharacterId } from './boss-characters';
-import type { ItemType, UnitId } from './types';
+import type { UnitId } from './types';
 
 export const CLIENT_MESSAGE_TYPES = {
   READY: "ready",
@@ -56,27 +56,12 @@ export interface PrepCommandMessage {
   };
   benchSellIndex?: number;
   boardSellIndex?: number;
-  itemBuySlotIndex?: number;           // Buy item from shop
-  itemEquipToBench?: {                 // Equip item to bench unit
-    inventoryItemIndex: number;        // Index in inventory
-    benchIndex: number;                // Bench unit index
-  };
-  itemUnequipFromBench?: {             // Unequip item from bench
-    benchIndex: number;                // Bench unit index
-    itemSlotIndex: number;             // Item slot on unit (0-2)
-  };
-  itemSellInventoryIndex?: number;     // Sell item from inventory
   bossShopBuySlotIndex?: number;       // Buy unit from boss shop
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
 
 export type UnitEffectSetId = "set1" | "set2";
-
-export interface ShopItemOffer {
-  itemType: ItemType;
-  cost: number;
-}
 
 export interface BoardUnitPlacement {
   cell: number;
@@ -90,7 +75,6 @@ export interface BoardUnitPlacement {
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;
-  items?: ItemType[];  // Max 3 items per unit
   archetype?: string;  // 特殊ユニットのアーキタイプ（例: meiling, sakuya, patchouli）
 }
 
@@ -175,8 +159,6 @@ export interface PlayerMatchStatus {
   benchDisplayNames?: string[];
   boardUnits: string[];
   ownedUnits: any;
-  itemInventory: ItemType[];
-  itemShopOffers: ShopItemOffer[];
   lastBattleResult?: {
     opponentId: string;
     won: boolean;

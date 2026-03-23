@@ -20,7 +20,7 @@ export const SERVER_MESSAGE_TYPES = {
 
 function normalizeConnectOptions(rawOptions) {
   if (!rawOptions || typeof rawOptions !== "object") {
-    return { mode: "joinOrCreate", roomId: "", roomOptions: {} };
+    return { mode: "joinOrCreate", roomId: "", roomOptions: {}, sharedBoardRoomName: "shared_board" };
   }
 
   const candidate = rawOptions;
@@ -30,6 +30,7 @@ function normalizeConnectOptions(rawOptions) {
       mode: "joinOrCreate",
       roomId: "",
       roomOptions: candidate,
+      sharedBoardRoomName: "shared_board",
     };
   }
 
@@ -37,10 +38,17 @@ function normalizeConnectOptions(rawOptions) {
   delete topLevelRoomOptions.mode;
   delete topLevelRoomOptions.roomId;
   delete topLevelRoomOptions.roomOptions;
+  delete topLevelRoomOptions.sharedBoardRoomName;
 
   return {
-    mode: candidate.mode === "create" ? "create" : "joinOrCreate",
+    mode: candidate.mode === "create" || candidate.mode === "createPaired"
+      ? candidate.mode
+      : "joinOrCreate",
     roomId: typeof candidate.roomId === "string" ? candidate.roomId.trim() : "",
+    sharedBoardRoomName:
+      typeof candidate.sharedBoardRoomName === "string" && candidate.sharedBoardRoomName.trim().length > 0
+        ? candidate.sharedBoardRoomName.trim()
+        : "shared_board",
     roomOptions: {
       ...topLevelRoomOptions,
       ...(candidate.roomOptions && typeof candidate.roomOptions === "object"
@@ -65,6 +73,7 @@ export function createGameRoomSession(options = {}) {
   let room = null;
   let state = null;
   let connectionState = "idle";
+  let createdSharedBoardRoom = null;
 
   const stateListeners = new Set();
   const connectionListeners = new Set();
@@ -90,6 +99,18 @@ export function createGameRoomSession(options = {}) {
     }
   }
 
+  async function leaveRoomQuietly(roomToLeave, consented = true) {
+    if (!roomToLeave || typeof roomToLeave.leave !== "function") {
+      return;
+    }
+
+    try {
+      await roomToLeave.leave(consented);
+    } catch {
+      // Cleanup should not mask the original connection error.
+    }
+  }
+
   async function connect(rawOptions = {}) {
     if (room) {
       return room;
@@ -105,6 +126,13 @@ export function createGameRoomSession(options = {}) {
       client = new sdk.Client(endpoint);
       if (connectOptions.roomId.length > 0) {
         room = await client.joinById(connectOptions.roomId, connectOptions.roomOptions);
+      } else if (connectOptions.mode === "createPaired") {
+        const sharedBoardRoom = await client.create(connectOptions.sharedBoardRoomName);
+        createdSharedBoardRoom = sharedBoardRoom;
+        room = await client.create(roomName, {
+          ...connectOptions.roomOptions,
+          sharedBoardRoomId: sharedBoardRoom.roomId,
+        });
       } else if (connectOptions.mode === "create") {
         room = await client.create(roomName, connectOptions.roomOptions);
       } else {
@@ -127,11 +155,14 @@ export function createGameRoomSession(options = {}) {
 
       return room;
     } catch (error) {
+      const ownedSharedBoardRoom = createdSharedBoardRoom;
       client = null;
       room = null;
       state = null;
+      createdSharedBoardRoom = null;
       connectionState = "idle";
       notifyConnection();
+      await leaveRoomQuietly(ownedSharedBoardRoom);
       throw error;
     }
   }
@@ -144,16 +175,31 @@ export function createGameRoomSession(options = {}) {
     }
 
     const roomToLeave = room;
+    const sharedBoardRoomToLeave = createdSharedBoardRoom;
     room = null;
     state = null;
     client = null;
+    createdSharedBoardRoom = null;
     connectionState = "disconnecting";
     notifyConnection();
+    let leaveError = null;
     try {
       await roomToLeave.leave(consented);
+    } catch (error) {
+      leaveError = error;
     } finally {
+      await leaveRoomQuietly(
+        sharedBoardRoomToLeave && sharedBoardRoomToLeave !== roomToLeave
+          ? sharedBoardRoomToLeave
+          : null,
+        consented,
+      );
       connectionState = "idle";
       notifyConnection();
+    }
+
+    if (leaveError) {
+      throw leaveError;
     }
   }
 
@@ -200,6 +246,12 @@ export function createGameRoomSession(options = {}) {
     return true;
   }
 
+  function takeCreatedSharedBoardRoom() {
+    const nextRoom = createdSharedBoardRoom;
+    createdSharedBoardRoom = null;
+    return nextRoom;
+  }
+
   return {
     connect,
     disconnect,
@@ -211,6 +263,7 @@ export function createGameRoomSession(options = {}) {
     getConnectionState: () => connectionState,
     getRoom: () => room,
     getState: () => state,
+    takeCreatedSharedBoardRoom,
   };
 }
 

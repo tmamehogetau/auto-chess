@@ -34,16 +34,16 @@ export function buildReadyHint({
     return "Selections are resolving. Wait for the room to open the first prep phase.";
   }
 
-  if (phase === "Waiting" && heroEnabled && !heroSelected) {
-    return "Choose a hero first. Then press Ready to open the first prep phase.";
-  }
-
   if (phase === "Waiting") {
     if (isReady) {
       return "Ready locked. Wait for Prep to open, then buy and place before battle starts.";
     }
 
     return "Press Ready to open the first prep phase. Buying and placement unlock as soon as Prep begins.";
+  }
+
+  if (phase === "Prep" && heroEnabled && !heroSelected) {
+    return "Choose a hero first. Then finish your prep setup.";
   }
 
   if (phase !== "Prep" && phase !== "Waiting") {
@@ -107,7 +107,7 @@ export function buildEntryFlowStatus({
     }
   }
 
-  if (heroEnabled && !heroSelected && (phase === "Waiting" || phase === "Prep")) {
+  if (heroEnabled && !heroSelected && phase === "Prep") {
     return "Step 2: Choose a hero before your first Ready. Your hero always stays on the field.";
   }
 

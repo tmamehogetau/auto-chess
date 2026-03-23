@@ -97,6 +97,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   public onCreate(options: GameRoomOptions = {}): void {
     this.maxClients = GameRoom.MAX_PLAYERS;
     this.state = new MatchRoomState();
+    this.state.maxPlayers = GameRoom.MAX_PLAYERS;
     const rawSetId = (options as { setId?: unknown }).setId;
 
     if (rawSetId !== undefined && !isUnitEffectSetId(rawSetId)) {

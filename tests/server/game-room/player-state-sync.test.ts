@@ -69,6 +69,7 @@ describe("player-state-sync", () => {
         shopLocked: true,
         benchUnits: ["unit-a", "unit-b"],
         benchDisplayNames: ["Unit A", "Unit B"],
+        benchItemLoadouts: ['["sword"]', '["shield","boots"]'],
         boardUnits: ["board-unit-1", "board-unit-2", "board-unit-3"],
         ownedUnits: {
           vanguard: 2,
@@ -134,6 +135,8 @@ describe("player-state-sync", () => {
       expect(playerState.benchUnits[0]).toBe("unit-a");
       expect(playerState.benchDisplayNames.length).toBe(2);
       expect(playerState.benchDisplayNames[1]).toBe("Unit B");
+      expect(playerState.benchItemLoadouts.length).toBe(2);
+      expect(playerState.benchItemLoadouts[1]).toBe('["shield","boots"]');
       expect(playerState.boardUnits.length).toBe(3);
       expect(playerState.boardUnits[2]).toBe("board-unit-3");
     });

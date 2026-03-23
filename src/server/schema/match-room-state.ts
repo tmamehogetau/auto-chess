@@ -154,6 +154,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public benchDisplayNames: ArraySchema<string>;
 
+  declare public benchItemLoadouts: ArraySchema<string>;
+
   declare public boardUnits: ArraySchema<string>;
 
   declare public ownedVanguard: number;
@@ -198,6 +200,7 @@ export class PlayerPresenceState extends Schema {
     this.level = 1;
     this.benchUnits = new ArraySchema<string>();
     this.benchDisplayNames = new ArraySchema<string>();
+    this.benchItemLoadouts = new ArraySchema<string>();
     this.boardUnits = new ArraySchema<string>();
     this.ownedVanguard = 0;
     this.ownedRanger = 0;
@@ -218,6 +221,8 @@ export class MatchRoomState extends Schema {
   declare public phase: string;
 
   declare public setId: UnitEffectSetId;
+
+  declare public maxPlayers: number;
 
   declare public lobbyStage: "preference" | "selection" | "started";
 
@@ -275,6 +280,7 @@ export class MatchRoomState extends Schema {
     super();
     this.phase = "Waiting";
     this.setId = "set1";
+    this.maxPlayers = 4;
     this.lobbyStage = "preference";
     this.phaseDeadlineAtMs = 0;
     this.sharedBoardRoomId = "";
@@ -362,6 +368,7 @@ defineTypes(PlayerPresenceState, {
   level: "number",
   benchUnits: ["string"],
   benchDisplayNames: ["string"],
+  benchItemLoadouts: ["string"],
   boardUnits: ["string"],
   ownedVanguard: "number",
   ownedRanger: "number",
@@ -380,6 +387,7 @@ defineTypes(PlayerPresenceState, {
 defineTypes(MatchRoomState, {
   phase: "string",
   setId: "string",
+  maxPlayers: "number",
   lobbyStage: "string",
   phaseDeadlineAtMs: "number",
   sharedBoardRoomId: "string",

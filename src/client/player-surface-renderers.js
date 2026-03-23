@@ -16,6 +16,39 @@ const UNIT_ICONS = {
   assassin: "🗡️",
 };
 
+const ITEM_ICONS = {
+  sword: "⚔️",
+  shield: "🛡️",
+  boots: "👞",
+  ring: "💍",
+  amulet: "📿",
+};
+
+const HERO_DETAILS = {
+  reimu: { name: "霊夢", role: "balance", hp: 120, attack: 18 },
+  marisa: { name: "魔理沙", role: "dps", hp: 100, attack: 25 },
+  okina: { name: "隠岐奈", role: "support", hp: 110, attack: 16 },
+  keiki: { name: "袿姫", role: "tank", hp: 180, attack: 12 },
+  megumu: { name: "女苑", role: "economy", hp: 90, attack: 14 },
+};
+
+const BOSS_DETAILS = {
+  remilia: { name: "レミリア", roleCopy: "紅魔館の主" },
+};
+
+const SPELL_DETAILS = {
+  "instant-1": { name: "紅符「スカーレットシュート」", description: "レイド全体へ 50 ダメージ" },
+  "instant-2": { name: "必殺「ハートブレイク」", description: "レイド全体へ 65 ダメージ" },
+  "instant-3": { name: "神槍「スピア・ザ・グングニル」", description: "レイド全体へ 80 ダメージ" },
+  "area-1": { name: "紅符「不夜城レッド」", description: "レイド全体へ 40 ダメージ" },
+  "area-2": { name: "紅魔「スカーレットデビル」", description: "レイド全体へ 55 ダメージ" },
+  "area-3": { name: "魔符「全世界ナイトメア」", description: "レイド全体へ 70 ダメージ" },
+  "rush-1": { name: "神鬼「レミリアストーカー」", description: "レイド全体へ 45 ダメージ" },
+  "rush-2": { name: "夜符「デーモンキングクレイドル」", description: "レイド全体へ 60 ダメージ" },
+  "rush-3": { name: "夜王「ドラキュラクレイドル」", description: "レイド全体へ 75 ダメージ" },
+  "last-word": { name: "「紅色の幻想郷」", description: "レイド全体へ 100 ダメージ" },
+};
+
 const RESULT_IMPRINT_BOARD_WIDTH = 6;
 const RESULT_IMPRINT_BOARD_HEIGHT = 6;
 
@@ -26,9 +59,18 @@ export function renderPlayerLobbySummary({ participantSummaryElement, state }) {
 
   const players = mapEntries(state?.players).map(([, player]) => player);
   const totalPlayers = players.length;
+  const expectedPlayers = Number.isInteger(state?.maxPlayers) && state.maxPlayers > 0
+    ? state.maxPlayers
+    : totalPlayers;
   const readyPlayers = players.filter((player) => player?.ready === true).length;
 
-  participantSummaryElement.textContent = `${readyPlayers} / ${totalPlayers} ready。${totalPlayers > 0 ? "進行役の開始待ちです。" : "プレイヤー接続待ちです。"}`;
+  if (expectedPlayers > totalPlayers) {
+    const remainingSeats = expectedPlayers - totalPlayers;
+    participantSummaryElement.textContent = `${readyPlayers} / ${expectedPlayers} ready。あと ${remainingSeats} 人の参加待ちです。`;
+    return;
+  }
+
+  participantSummaryElement.textContent = `${readyPlayers} / ${expectedPlayers} ready。${expectedPlayers > 0 ? "全員の Ready が揃うと role selection が始まります。" : "プレイヤー接続待ちです。"}`;
 }
 
 export function renderPlayerLobbyPreferenceSummary({ preferenceCopyElement, state, player }) {
@@ -84,10 +126,25 @@ export function renderPlayerSelectionSummary({
 export function renderPlayerPrepSummary({
   boardCopyElement,
   shopCopyElement,
+  bossShopCopyElement,
+  specialUnitCopyElement,
+  spellCopyElement,
+  synergyCopyElement,
+  itemShopElement,
+  itemShopCopyElement,
+  itemShopSlotElements = [],
   benchCopyElement,
+  itemInventoryCopyElement,
+  itemInventorySlotElements = [],
+  benchItemCopyElement,
+  benchItemListElement,
+  roomCopyElement,
+  deadlineCopyElement,
   boardElement,
   shopElement,
   shopSlotElements = [],
+  bossShopElement,
+  bossShopSlotElements = [],
   benchElement,
   benchSlotElements = [],
   readyElement,
@@ -98,26 +155,94 @@ export function renderPlayerPrepSummary({
   sessionId = "",
   currentPhase,
   selectedBenchIndex,
+  selectedInventoryIndex,
   canSellBench = false,
+  canSellItem = false,
   canSellBoard = false,
   canReturnBoard = false,
+  roomSummary = null,
+  deadlineSummary = null,
   benchSellButton,
+  itemSellButton,
   boardReturnButton,
   boardSellButton,
   sharedBoardConnected = false,
 }) {
+  const isBossPlayer = state?.bossPlayerId === sessionId || player?.role === "boss";
+  const bossRoleSelectionEnabled = state?.featureFlagsEnableBossExclusiveShop === true;
+
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
-    boardCopyElement.textContent = selectedBenchIndex === null
-      ? "共有ボードは 6x6 です。bench を選んで、下側の highlighted raid cells へ配置します。置いた unit は選んで再配置や売却ができます。"
-      : `Bench ${selectedBenchIndex + 1} を選択中です。highlighted raid cells をクリックして配置するか、Sell で売却します。`;
+    if (selectedInventoryIndex !== null) {
+      boardCopyElement.textContent = "Inventory item を選択中です。bench の unit を押すと装備し、Sell Selected Item で売却します。";
+    } else if (selectedBenchIndex === null) {
+      boardCopyElement.textContent = isBossPlayer
+        ? "共有ボードは 6x6 です。boss は上半分から布陣し、ボス駒は常設のまま位置調整できます。"
+        : "共有ボードは 6x6 です。raid は下半分から布陣し、主人公は常設のまま位置調整できます。";
+    } else {
+      boardCopyElement.textContent = isBossPlayer
+        ? `Bench ${selectedBenchIndex + 1} を選択中です。上側の配置可能セルをクリックして配置するか、Sell で売却します。`
+        : `Bench ${selectedBenchIndex + 1} を選択中です。下側の配置可能セルをクリックして配置するか、Sell で売却します。`;
+    }
+  }
+
+  const selectedHeroId = typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "";
+  const selectedBossId = typeof player?.selectedBossId === "string" ? player.selectedBossId : "";
+  const heroDetail = HERO_DETAILS[selectedHeroId] ?? null;
+  const bossDetail = BOSS_DETAILS[selectedBossId] ?? null;
+
+  if (specialUnitCopyElement instanceof HTMLElement) {
+    if (isBossPlayer) {
+      specialUnitCopyElement.textContent = bossDetail
+        ? `${bossDetail.name} / ${bossDetail.roleCopy}。共有ボード上で位置だけ調整できます。`
+        : "Boss role は boss character の選択待ちです。";
+    } else {
+      specialUnitCopyElement.textContent = heroDetail
+        ? `${heroDetail.name} / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。主人公は常設です。`
+        : "Raid role は hero selection の完了待ちです。";
+    }
+  }
+
+  if (synergyCopyElement instanceof HTMLElement) {
+    const activeSynergies = toRenderableArray(player?.activeSynergies);
+    if (activeSynergies.length === 0) {
+      synergyCopyElement.textContent = "有効な synergy はまだありません。盤面を広げるとここに出ます。";
+    } else {
+      synergyCopyElement.textContent = activeSynergies
+        .map((synergy) => `${synergy.unitType} x${synergy.count} (T${synergy.tier})`)
+        .join(" / ");
+    }
+  }
+
+  if (spellCopyElement instanceof HTMLElement) {
+    const spellEnabled = state?.featureFlagsEnableSpellCard === true;
+    const declaredSpellId = typeof state?.declaredSpellId === "string" ? state.declaredSpellId : "";
+    const usedSpellIds = toRenderableArray(state?.usedSpellIds);
+    const declaredSpell = SPELL_DETAILS[declaredSpellId] ?? null;
+
+    if (!spellEnabled) {
+      spellCopyElement.textContent = "Spell card system はこのルールセットでは無効です。";
+    } else if (declaredSpell) {
+      const usedSpellCopy = usedSpellIds.length > 0
+        ? ` / used: ${usedSpellIds.map((spellId) => SPELL_DETAILS[spellId]?.name ?? spellId).join(", ")}`
+        : "";
+      spellCopyElement.textContent = `${declaredSpell.name}。${declaredSpell.description}${usedSpellCopy}`;
+    } else if (usedSpellIds.length > 0) {
+      spellCopyElement.textContent = `この round の宣言待ちです。used: ${usedSpellIds.map((spellId) => SPELL_DETAILS[spellId]?.name ?? spellId).join(", ")}`;
+    } else {
+      spellCopyElement.textContent = "Spell はまだ宣言されていません。Battle が始まるとここに current spell が出ます。";
+    }
   }
 
   const offers = toRenderableArray(player?.shopOffers);
+  const gold = Number(player?.gold ?? 0);
+  const level = Math.max(1, Math.round(Number(player?.level ?? 1) || 1));
+  const xp = Math.max(0, Math.round(Number(player?.xp ?? 0) || 0));
+  const hp = Math.max(0, Math.round(Number(player?.hp ?? 0) || 0));
+  const remainingLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
   if (shopCopyElement instanceof HTMLElement) {
-    const gold = Number(player?.gold ?? 0);
     shopCopyElement.textContent = offers.length > 0
-      ? `所持 ${gold}G。shop を押して bench へ購入します。`
-      : `所持 ${gold}G。shop offer の更新待ちです。`;
+      ? `所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
+      : `所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
   }
 
   shopSlotElements.forEach((button, index) => {
@@ -135,6 +260,86 @@ export function renderPlayerPrepSummary({
     button.classList.toggle("selected", false);
     button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "❓"} ${displayName} / ${cost}G` : `Shop ${index + 1}`;
   });
+
+  const bossShopOffers = toRenderableArray(player?.bossShopOffers);
+  if (bossShopElement instanceof HTMLElement) {
+    bossShopElement.hidden = !bossRoleSelectionEnabled;
+  }
+  if (bossShopCopyElement instanceof HTMLElement) {
+    if (!bossRoleSelectionEnabled) {
+      bossShopCopyElement.textContent = "Boss shop はこのルールセットでは無効です。";
+    } else if (!isBossPlayer) {
+      bossShopCopyElement.textContent = "Boss shop は boss role のみ利用できます。";
+    } else if (bossShopOffers.length === 0) {
+      bossShopCopyElement.textContent = "Boss shop offer の更新待ちです。";
+    } else {
+      const firstOffer = bossShopOffers[0];
+      const firstCost = Math.max(0, Math.round(Number(firstOffer?.cost) || 0));
+      bossShopCopyElement.textContent = `Boss shop / ${bossShopOffers.length} offers。先頭 ${firstCost}G、boss 専用ユニットを直接 bench へ追加します。`;
+    }
+  }
+
+  bossShopSlotElements.forEach((button, index) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const offer = bossShopOffers[index];
+    const unitType = offer?.unitType ?? null;
+    const cost = Number(offer?.cost ?? 0);
+    const displayName = typeof offer?.displayName === "string" && offer.displayName.length > 0
+      ? offer.displayName
+      : unitType;
+    button.disabled = !offer || currentPhase !== "Prep" || !isBossPlayer;
+    button.classList.toggle("selected", false);
+    button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "👑"} ${displayName} / ${cost}G` : `Boss ${index + 1}`;
+  });
+
+  const itemShopOffers = toRenderableArray(player?.itemShopOffers);
+  if (itemShopElement instanceof HTMLElement) {
+    itemShopElement.hidden = false;
+  }
+  if (itemShopCopyElement instanceof HTMLElement) {
+    itemShopCopyElement.textContent = itemShopOffers.length === 0
+      ? "Item shop offer の更新待ちです。"
+      : `Item shop / ${itemShopOffers.length} offers。bench に付けたい item を先に確保します。`;
+  }
+
+  itemShopSlotElements.forEach((button, index) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const offer = itemShopOffers[index];
+    const itemType = typeof offer?.itemType === "string" ? offer.itemType : null;
+    const cost = Number(offer?.cost ?? 0);
+    button.disabled = !offer || currentPhase !== "Prep";
+    button.classList.toggle("selected", false);
+    button.textContent = offer ? `${ITEM_ICONS[itemType] ?? "🧰"} ${itemType} / ${cost}G` : `Item ${index + 1}`;
+  });
+
+  if (roomCopyElement instanceof HTMLElement) {
+    const roomId = typeof roomSummary?.roomId === "string" && roomSummary.roomId.length > 0
+      ? roomSummary.roomId
+      : "default";
+    const sharedBoardRoomId = typeof roomSummary?.sharedBoardRoomId === "string" && roomSummary.sharedBoardRoomId.length > 0
+      ? roomSummary.sharedBoardRoomId
+      : "unbound";
+    const sharedBoardMode = typeof state?.sharedBoardMode === "string" && state.sharedBoardMode.length > 0
+      ? state.sharedBoardMode
+      : "local";
+    roomCopyElement.textContent = `Room ${roomId} / Shared board ${sharedBoardRoomId} / Mode ${sharedBoardMode}`;
+  }
+
+  if (deadlineCopyElement instanceof HTMLElement) {
+    const label = typeof deadlineSummary?.label === "string" && deadlineSummary.label.length > 0
+      ? deadlineSummary.label
+      : "Deadline";
+    const valueText = typeof deadlineSummary?.valueText === "string" && deadlineSummary.valueText.length > 0
+      ? deadlineSummary.valueText
+      : "pending";
+    deadlineCopyElement.textContent = `${label}: ${valueText}`;
+  }
 
   const benchUnits = toRenderableArray(player?.benchUnits);
   const benchDisplayNames = toRenderableArray(player?.benchDisplayNames);
@@ -155,6 +360,48 @@ export function renderPlayerPrepSummary({
     button.textContent = unitText ?? `Bench ${index + 1}`;
   });
 
+  const itemInventory = toRenderableArray(player?.itemInventory);
+  if (itemInventoryCopyElement instanceof HTMLElement) {
+    itemInventoryCopyElement.textContent = selectedInventoryIndex === null
+      ? `${itemInventory.length} / 9 items。bench unit を選ぶと装備できます。`
+      : `Inventory ${selectedInventoryIndex + 1} を選択中です。bench unit を押すと装備、Sell で売却します。`;
+  }
+
+  itemInventorySlotElements.forEach((button, index) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const itemType = typeof itemInventory[index] === "string" ? itemInventory[index] : null;
+    button.disabled = !itemType || currentPhase !== "Prep";
+    button.classList.toggle("selected", selectedInventoryIndex === index);
+    button.textContent = itemType ? `${ITEM_ICONS[itemType] ?? "🧰"} ${itemType}` : `Inv ${index + 1}`;
+  });
+
+  const benchItemLoadouts = toRenderableArray(player?.benchItemLoadouts).map(parseBenchItemLoadout);
+  if (benchItemCopyElement instanceof HTMLElement) {
+    if (selectedBenchIndex === null) {
+      benchItemCopyElement.textContent = "Bench の unit を選ぶと、その unit の item をここから外せます。";
+    } else {
+      const loadout = benchItemLoadouts[selectedBenchIndex] ?? [];
+      benchItemCopyElement.textContent = loadout.length === 0
+        ? `Bench ${selectedBenchIndex + 1} には item が付いていません。`
+        : `Bench ${selectedBenchIndex + 1} の item。外したい item を押してください。`;
+    }
+  }
+
+  if (benchItemListElement instanceof HTMLElement) {
+    const loadout = selectedBenchIndex === null ? [] : benchItemLoadouts[selectedBenchIndex] ?? [];
+    benchItemListElement.innerHTML = loadout.map((itemType, index) => `
+      <button
+        class="player-chip-btn"
+        type="button"
+        data-player-bench-item-slot="${index}"
+        ${currentPhase === "Prep" ? "" : "disabled"}
+      >${ITEM_ICONS[itemType] ?? "🧰"} ${itemType}</button>
+    `).join("");
+  }
+
   boardCellElements.forEach((button) => {
     if (!(button instanceof HTMLButtonElement)) {
       return;
@@ -165,6 +412,10 @@ export function renderPlayerPrepSummary({
 
   if (benchSellButton instanceof HTMLButtonElement) {
     benchSellButton.disabled = currentPhase !== "Prep" || !canSellBench;
+  }
+
+  if (itemSellButton instanceof HTMLButtonElement) {
+    itemSellButton.disabled = currentPhase !== "Prep" || !canSellItem;
   }
 
   if (boardSellButton instanceof HTMLButtonElement) {
@@ -320,6 +571,27 @@ function toRenderableArray(value) {
   }
 
   return Array.from(value);
+}
+
+function parseBenchItemLoadout(value) {
+  if (Array.isArray(value)) {
+    return value.filter((entry) => typeof entry === "string" && entry.length > 0);
+  }
+
+  if (typeof value !== "string" || value.length === 0) {
+    return [];
+  }
+
+  try {
+    const parsedValue = JSON.parse(value);
+    if (Array.isArray(parsedValue)) {
+      return parsedValue.filter((entry) => typeof entry === "string" && entry.length > 0);
+    }
+  } catch {
+    // Fall through to empty loadout.
+  }
+
+  return [];
 }
 
 function buildSurvivorSnapshotMarkup(survivorSnapshots) {

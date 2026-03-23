@@ -35,6 +35,11 @@ describe("player.html contract", () => {
       "data-player-status-copy",
       "data-player-room-code-input",
       "data-player-connect-btn",
+      "data-player-room-code-input",
+      "data-player-room-summary",
+      "data-player-room-copy",
+      "data-player-deadline-summary",
+      "data-player-deadline-copy",
       "data-player-participant-summary",
       "data-player-preference-copy",
       "data-player-role-summary",
@@ -48,9 +53,29 @@ describe("player.html contract", () => {
       "data-player-shared-cell",
       "data-player-unit-shop",
       "data-player-shop-slot",
+      "data-player-shop-refresh-button",
+      "data-player-buy-xp-button",
+      "data-player-boss-shop",
+      "data-player-boss-shop-slot",
+      "data-player-special-unit-card",
+      "data-player-special-unit-copy",
+      "data-player-spell-card",
+      "data-player-spell-copy",
+      "data-player-synergy-card",
+      "data-player-synergy-copy",
+      "data-player-item-shop",
+      "data-player-item-shop-copy",
+      "data-player-item-shop-slot",
       "data-player-bench",
       "data-player-bench-slot",
       "data-player-bench-sell-button",
+      "data-player-item-inventory",
+      "data-player-item-inventory-copy",
+      "data-player-item-inventory-slot",
+      "data-player-item-sell-button",
+      "data-player-bench-item-card",
+      "data-player-bench-item-copy",
+      "data-player-bench-item-list",
       "data-player-board-sell-button",
       "data-player-board-return-button",
       "data-player-ready-btn",
@@ -115,9 +140,13 @@ describe("player.html contract", () => {
       'aria-label="Board cell 0"',
       'aria-label="Board cell 35"',
       'aria-label="Shop slot 0"',
+      'aria-label="Boss shop slot 0"',
       'aria-label="Bench slot 0"',
+      'aria-label="Item shop slot 0"',
+      'aria-label="Inventory slot 0"',
       'data-player-board-sell-button',
       'data-player-bench-sell-button',
+      'data-player-item-sell-button',
       'data-player-board-return-button',
       'placeholder="Room code"',
     ];
@@ -135,5 +164,7 @@ describe("player.html contract", () => {
     expect(html.includes("center 4x2")).toBe(false);
     expect(html.includes("中央 4x2")).toBe(false);
     expect(html.includes("open lane")).toBe(false);
+    expect(html.includes("Boss は上半分、raid は下半分の配置セルを使います。")).toBe(true);
+    expect(html.includes("highlighted raid cells")).toBe(false);
   });
 });

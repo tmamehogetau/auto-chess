@@ -136,11 +136,14 @@ describe("player.html contract", () => {
       'data-player-bench-sell-button',
       'data-player-board-return-button',
       'placeholder="Room code"',
+      'data-player-connect-btn',
     ];
 
     for (const attribute of requiredAttributes) {
       expect(html.includes(attribute)).toBe(true);
     }
+
+    expect(html.includes('data-player-connect-btn disabled')).toBe(true);
   });
 
   test("player prep shell seeds a 6x6 shared-board placeholder without legacy 4x2 copy", () => {

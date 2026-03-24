@@ -10,21 +10,31 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { SCARLET_MANSION_UNITS, getScarletMansionUnitById } from "../../src/data/scarlet-mansion-units";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
+import { FLAG_CONFIGURATIONS, FLAG_ENV_VARS } from "./feature-flag-test-helper";
+
+const BOSS_EXCLUSIVE_SHOP_FLAGS = {
+  ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+  enableBossExclusiveShop: true,
+};
 
 describe("Boss Exclusive Shop Integration", () => {
   let controller: MatchRoomController;
   const playerIds = ["player1", "player2", "player3", "player4"] as const;
 
   beforeAll(() => {
-    // Feature Flagを有効にする
-    process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(
+        BOSS_EXCLUSIVE_SHOP_FLAGS[flagName as keyof typeof BOSS_EXCLUSIVE_SHOP_FLAGS],
+      );
+    }
     // Reset singleton to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
   });
 
   afterAll(() => {
-    // 環境変数をリセット
-    delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
+    for (const envVarName of Object.values(FLAG_ENV_VARS)) {
+      delete process.env[envVarName];
+    }
     // Reset singleton
     (FeatureFlagService as any).instance = undefined;
   });
@@ -36,6 +46,7 @@ describe("Boss Exclusive Shop Integration", () => {
       battleDurationMs: 5000,
       settleDurationMs: 1000,
       eliminationDurationMs: 1000,
+      featureFlags: BOSS_EXCLUSIVE_SHOP_FLAGS,
     });
   });
 
@@ -208,9 +219,6 @@ describe("Boss Exclusive Shop Integration", () => {
   describe("Feature Flag無効時の動作", () => {
     beforeEach(() => {
       // Feature Flagを無効にする
-      delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
-      (FeatureFlagService as any).instance = undefined;
-
       // 新しいコントローラーを作成（Flag無効状態）
       controller = new MatchRoomController([...playerIds], Date.now(), {
         readyAutoStartMs: 1000,
@@ -218,13 +226,8 @@ describe("Boss Exclusive Shop Integration", () => {
         battleDurationMs: 5000,
         settleDurationMs: 1000,
         eliminationDurationMs: 1000,
+        featureFlags: FLAG_CONFIGURATIONS.ALL_DISABLED,
       });
-    });
-
-    afterEach(() => {
-      // Feature Flagを再有効化
-      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
-      (FeatureFlagService as any).instance = undefined;
     });
 
     it("enableBossExclusiveShop=falseの場合、ボスショップは空", () => {

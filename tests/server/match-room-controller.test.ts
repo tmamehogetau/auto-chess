@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { MatchLogger } from "../../src/server/match-logger";
@@ -10,7 +10,12 @@ import {
 import {
   combatCellToRaidBoardIndex,
 } from "../../src/shared/board-geometry";
-import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
+import {
+  FLAG_CONFIGURATIONS,
+  FLAG_ENV_VARS,
+  withFlags,
+} from "./feature-flag-test-helper";
+import { FeatureFlagService } from "../../src/server/feature-flag-service";
 
 const controllerOptions = {
   readyAutoStartMs: 60_000,
@@ -89,6 +94,23 @@ function getPhaseHpTarget(roundIndex: number): number {
 }
 
 describe("MatchRoomController", () => {
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(
+        FLAG_CONFIGURATIONS.ALL_DISABLED[flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED],
+      );
+    }
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+  });
+
   test("4人全員Readyなら締切前でも試合開始できる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],

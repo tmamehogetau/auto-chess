@@ -12,12 +12,26 @@ import { FeatureFlagService } from "../../../src/server/feature-flag-service";
 
 import { waitForCondition } from "../shared-board-bridge/helpers/wait";
 import { SERVER_MESSAGE_TYPES } from "../../../src/shared/room-messages";
+import {
+  FLAG_CONFIGURATIONS,
+  FLAG_ENV_VARS,
+} from "../../server/feature-flag-test-helper";
 
 describe("E2E: Full Round Completion (R1-R8)", () => {
   let testServer: ColyseusTestServer;
   const TEST_SERVER_PORT = 4577;
+  const originalEnv = { ...process.env };
 
   beforeAll(async () => {
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(
+        FLAG_CONFIGURATIONS.ALL_DISABLED[
+          flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED
+        ],
+      );
+    }
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+
     const server = defineServer({
       rooms: {
         game: defineRoom(GameRoom, {
@@ -38,18 +52,14 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
     if (testServer) {
       await testServer.cleanup();
     }
-    // Feature flags reset
-    delete process.env.FEATURE_ENABLE_HERO_SYSTEM;
-    delete process.env.FEATURE_ENABLE_SHARED_POOL;
-    delete process.env.FEATURE_ENABLE_SPELL_CARDS;
-    delete process.env.FEATURE_ENABLE_PHASE_EXPANSION;
-    (FeatureFlagService as any).instance = undefined;
   });
 
   afterAll(async () => {
     if (testServer) {
       await testServer.shutdown();
     }
+    process.env = originalEnv;
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
   });
 
   async function waitForPhase(gameRoom: GameRoom, targetPhase: string, timeoutMs = 10_000) {

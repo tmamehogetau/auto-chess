@@ -6,7 +6,7 @@ import { TOUHOU_UNITS } from "../../data/touhou-units";
 
 /**
  * Generic roster unit interface - not tied to MVP-specific types.
- * Future-proof for Touhou roster activation (Phase 2+).
+ * Supports both the legacy MVP regression path and the Touhou mainline roster.
  */
 export interface RosterUnit {
   id: string;
@@ -50,7 +50,7 @@ export class TouhouRosterNotConfiguredError extends Error {
 /**
  * Internal roster source types - abstraction boundary for source selection.
  */
-type RosterSource = "mvp-json" | "touhou-draft";
+type RosterSource = "mvp-json" | "touhou-roster";
 
 /**
  * Select the roster source based on feature flags.
@@ -61,7 +61,7 @@ type RosterSource = "mvp-json" | "touhou-draft";
  */
 function selectRosterSource(flags: FeatureFlags): RosterSource {
   if (flags.enableTouhouRoster) {
-    return "touhou-draft";
+    return "touhou-roster";
   }
   return "mvp-json";
 }
@@ -115,7 +115,7 @@ export function getActiveRosterUnits(flags: FeatureFlags): RosterUnit[] {
   switch (source) {
     case "mvp-json":
       return loadMvpRosterUnits();
-    case "touhou-draft":
+    case "touhou-roster":
       return getTouhouDraftRosterUnits();
     default:
       // Exhaustiveness check - should never reach here

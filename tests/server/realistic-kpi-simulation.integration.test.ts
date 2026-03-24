@@ -9,7 +9,12 @@ import {
   SERVER_MESSAGE_TYPES,
 } from "../../src/shared/room-messages";
 import type { GameplayKpiSummary } from "../../src/server/analytics/gameplay-kpi";
-import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
+import type { FeatureFlags } from "../../src/shared/feature-flags";
+import {
+  createRoomWithFlags,
+  FLAG_CONFIGURATIONS,
+  withFlags,
+} from "./feature-flag-test-helper";
 
 function getRealisticKpiSimulationTestServerPort(): number {
   const configuredPort = Number(process.env.REALISTIC_KPI_SIMULATION_TEST_PORT ?? "26784");
@@ -180,9 +185,13 @@ async function runMatchToFinalRound(
     applyForcedPhaseProgress?: boolean;
     buildCompositions?: (serverRoom: GameRoom, clients: Array<{ send: (type: string, msg: unknown) => void; waitForMessage: (type: string) => Promise<unknown>; sessionId: string }>) => Promise<void>;
     finalRound?: number;
+    featureFlags?: FeatureFlags;
   } = {},
 ): Promise<{ serverRoom: GameRoom; clients: Array<{ sessionId: string; send: (type: string, msg: unknown) => void; waitForMessage: (type: string) => Promise<unknown>; onMessage: (type: string, handler: (msg: unknown) => void) => void }> }> {
-  const serverRoom = await ctx.testServer.createRoom<GameRoom>("game");
+  const serverRoom = await createRoomWithFlags(
+    ctx.testServer,
+    options.featureFlags ?? FLAG_CONFIGURATIONS.ALL_DISABLED,
+  );
   const clients = await Promise.all([
     ctx.testServer.connectTo(serverRoom),
     ctx.testServer.connectTo(serverRoom),
@@ -551,6 +560,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
           const { serverRoom } = await runMatchToFinalRound(ctx, {
             applyForcedPhaseProgress: false,
             finalRound: 12,
+            featureFlags: FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY,
             buildCompositions: async (serverRoom, clients) => {
               for (const client of clients) {
                 injectForcedOffers(serverRoom, client.sessionId, ["vanguard", "vanguard", "vanguard"]);

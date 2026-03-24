@@ -8,6 +8,10 @@ import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
 } from "../../src/shared/room-messages";
+import {
+  createRoomWithFlags,
+  FLAG_CONFIGURATIONS,
+} from "./feature-flag-test-helper";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -68,7 +72,10 @@ describe("Prep duration 45 seconds integration test", () => {
   });
 
   test("4人ready後にGameRoomデフォルトprepDurationMs=45秒が反映される", async () => {
-    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const serverRoom = await createRoomWithFlags(
+      testServer,
+      FLAG_CONFIGURATIONS.ALL_DISABLED,
+    );
     const clients = await Promise.all([
       testServer.connectTo(serverRoom),
       testServer.connectTo(serverRoom),

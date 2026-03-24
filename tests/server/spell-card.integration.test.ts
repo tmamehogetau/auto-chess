@@ -7,6 +7,12 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { MatchRoomController } from "../../src/server/match-room-controller";
 import { SPELL_CARDS, getAvailableSpellsForRound, getSpellCardSetForRound } from "../../src/data/spell-cards";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
+import { FLAG_CONFIGURATIONS, FLAG_ENV_VARS } from "./feature-flag-test-helper";
+
+const SPELL_CARD_FLAGS = {
+  ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+  enableSpellCard: true,
+};
 
 describe("SpellCard Integration", () => {
   let controller: MatchRoomController;
@@ -15,15 +21,19 @@ describe("SpellCard Integration", () => {
   const PLAYER2 = playerIds[1];
 
   beforeAll(() => {
-    // Feature Flagを有効にする
-    process.env.FEATURE_ENABLE_SPELL_CARD = "true";
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(
+        SPELL_CARD_FLAGS[flagName as keyof typeof SPELL_CARD_FLAGS],
+      );
+    }
     // Reset singleton to pick up new environment variables
     (FeatureFlagService as any).instance = undefined;
   });
 
   afterAll(() => {
-    // 環境変数をリセット
-    delete process.env.FEATURE_ENABLE_SPELL_CARD;
+    for (const envVarName of Object.values(FLAG_ENV_VARS)) {
+      delete process.env[envVarName];
+    }
     // Reset singleton
     (FeatureFlagService as any).instance = undefined;
   });
@@ -35,6 +45,7 @@ describe("SpellCard Integration", () => {
       battleDurationMs: 5000,
       settleDurationMs: 1000,
       eliminationDurationMs: 1000,
+      featureFlags: SPELL_CARD_FLAGS,
     });
   });
 
@@ -270,6 +281,7 @@ describe("SpellCard Integration", () => {
         battleDurationMs: 10,
         settleDurationMs: 10,
         eliminationDurationMs: 10,
+        featureFlags: SPELL_CARD_FLAGS,
       });
 
       for (const playerId of r5PlayerIds) {
@@ -318,15 +330,16 @@ describe("SpellCard Integration", () => {
     });
 
     it("boss target healでボスHPが回復する", () => {
-      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
-      (FeatureFlagService as any).instance = undefined;
-
       const bossHealController = new MatchRoomController([...playerIds], Date.now(), {
         readyAutoStartMs: 1000,
         prepDurationMs: 10000,
         battleDurationMs: 5000,
         settleDurationMs: 1000,
         eliminationDurationMs: 1000,
+        featureFlags: {
+          ...SPELL_CARD_FLAGS,
+          enableBossExclusiveShop: true,
+        },
       });
 
       for (const playerId of playerIds) {
@@ -371,21 +384,19 @@ describe("SpellCard Integration", () => {
       }
 
       expect(bossHealController.getPlayerHp(bossId)).toBe(90);
-
-      delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
-      (FeatureFlagService as any).instance = undefined;
     });
 
     it("boss target damageでボスHPが減少する", () => {
-      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
-      (FeatureFlagService as any).instance = undefined;
-
       const bossDamageController = new MatchRoomController([...playerIds], Date.now(), {
         readyAutoStartMs: 1000,
         prepDurationMs: 10000,
         battleDurationMs: 5000,
         settleDurationMs: 1000,
         eliminationDurationMs: 1000,
+        featureFlags: {
+          ...SPELL_CARD_FLAGS,
+          enableBossExclusiveShop: true,
+        },
       });
 
       for (const playerId of playerIds) {

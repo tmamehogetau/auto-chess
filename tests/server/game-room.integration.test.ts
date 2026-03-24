@@ -21,7 +21,12 @@ import {
   type RoundStateMessage,
 } from "../../src/shared/room-messages";
 import type { FeatureFlags } from "../../src/shared/feature-flags";
-import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
+import { FeatureFlagService } from "../../src/server/feature-flag-service";
+import {
+  FLAG_CONFIGURATIONS,
+  FLAG_ENV_VARS,
+  withFlags,
+} from "./feature-flag-test-helper";
 import {
   createRoomWithForcedFlags,
   restoreForcedFlagFixtures,
@@ -174,6 +179,7 @@ class FakeRoot {
 
 describe("GameRoom integration", () => {
   let testServer!: ColyseusTestServer;
+  let originalEnv: NodeJS.ProcessEnv;
 
   const TEST_SERVER_PORT = 2_570;
 
@@ -197,8 +203,20 @@ describe("GameRoom integration", () => {
     testServer = new ColyseusTestServer(server);
   });
 
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(
+        FLAG_CONFIGURATIONS.ALL_DISABLED[flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED],
+      );
+    }
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+  });
+
   afterEach(async () => {
     restoreForcedFlagFixtures();
+    process.env = originalEnv;
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
 
     if (!testServer) {
       return;

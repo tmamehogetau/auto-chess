@@ -16,7 +16,13 @@ import {
   SERVER_MESSAGE_TYPES,
   type CommandResult,
 } from "../../src/shared/room-messages";
-import { FLAG_CONFIGURATIONS, withFlags } from "./feature-flag-test-helper";
+import type { FeatureFlags } from "../../src/shared/feature-flags";
+import {
+  createRoomWithFlags,
+  FLAG_CONFIGURATIONS,
+  FLAG_ENV_VARS,
+  withFlags,
+} from "./feature-flag-test-helper";
 
 const execFileAsync = promisify(execFile);
 const vitestCliPath = resolveVitestCliPath(process.cwd());
@@ -68,9 +74,18 @@ async function getAvailablePort(): Promise<number> {
 async function createKpiEvidenceVitestEnv(): Promise<NodeJS.ProcessEnv> {
   const fullGamePort = await getAvailablePort();
   const realisticPort = await getAvailablePort();
+  const featureFlagEnv = Object.fromEntries(
+    Object.entries(FLAG_ENV_VARS).map(([flagName, envVarName]) => [
+      envVarName,
+      String(
+        FLAG_CONFIGURATIONS.ALL_DISABLED[flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED],
+      ),
+    ]),
+  );
 
   return {
     ...process.env,
+    ...featureFlagEnv,
     FULL_GAME_SIMULATION_TEST_PORT: String(fullGamePort),
     REALISTIC_KPI_SIMULATION_TEST_PORT: String(realisticPort),
     SUPPRESS_VERBOSE_TEST_LOGS: "true",
@@ -161,6 +176,7 @@ function toExecOutputText(output: string | NodeJS.ArrayBufferView): string {
 interface RunMatchToR8Options {
   applyForcedPhaseProgress?: boolean;
   finalRound?: number;
+  featureFlags?: FeatureFlags;
 }
 
 type KpiEvidenceBucket = "eligible" | "incidental";
@@ -460,7 +476,10 @@ async function runMatchToFinalRound(
   buildCompositions: (serverRoom: GameRoom, clients: TestClient[]) => Promise<void>,
   options: RunMatchToR8Options = {},
 ): Promise<{ serverRoom: GameRoom; clients: TestClient[] }> {
-  const serverRoom = await ctx.testServer.createRoom<GameRoom>("game");
+  const serverRoom = await createRoomWithFlags(
+    ctx.testServer,
+    options.featureFlags ?? FLAG_CONFIGURATIONS.ALL_DISABLED,
+  );
   const clients = await Promise.all([
     ctx.testServer.connectTo(serverRoom),
     ctx.testServer.connectTo(serverRoom),
@@ -613,7 +632,11 @@ async function collectHarnessProgressComparison(): Promise<HarnessProgressCompar
             nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
           }
         },
-        { applyForcedPhaseProgress, finalRound: 12 },
+        {
+          applyForcedPhaseProgress,
+          finalRound: 12,
+          featureFlags: FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY,
+        },
       );
 
       await serverRoom.disconnect();

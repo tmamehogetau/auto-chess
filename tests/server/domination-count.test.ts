@@ -10,7 +10,18 @@ const controllerOptions = {
   settleDurationMs: 5_000,
   eliminationDurationMs: 2_000,
   featureFlags: {
+    enableHeroSystem: false,
+    enableSharedPool: false,
     enablePhaseExpansion: true,
+    enableSubUnitSystem: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
   },
 };
 

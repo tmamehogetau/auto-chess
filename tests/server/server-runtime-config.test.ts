@@ -5,6 +5,7 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { buildServer } from "../../server";
 import { GameRoom } from "../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
+import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -84,9 +85,18 @@ describe("runtime shared_board server config", () => {
       client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
     }
 
+    clients[1]?.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+
     for (const client of clients) {
       client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
     }
+
+    await waitForCondition(() => gameRoom.state.lobbyStage === "selection", 3_000);
+
+    clients[0]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+    clients[2]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+    clients[3]?.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
+    clients[1]?.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
 
     await waitForCondition(() => gameRoom.state.phase === "Prep", 3_000);
 
@@ -122,5 +132,31 @@ describe("runtime shared_board server config", () => {
     }, 3_000);
 
     expect(sharedBoardRoom.state.cells.get(String(raidCell))?.ownerId).toBe(ownerClient.sessionId);
+  });
+
+  test("runtime local-play server boots game rooms with Touhou mainline defaults", async () => {
+    const gameRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+      testServer.connectTo(gameRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => gameRoom.state.phase === "Waiting" || gameRoom.state.phase === "Prep", 3_000);
+
+    expect(gameRoom.state.featureFlagsEnableHeroSystem).toBe(DEFAULT_FLAGS.enableHeroSystem);
+    expect(gameRoom.state.featureFlagsEnableBossExclusiveShop).toBe(DEFAULT_FLAGS.enableBossExclusiveShop);
+    expect(gameRoom.state.featureFlagsEnableTouhouRoster).toBe(DEFAULT_FLAGS.enableTouhouRoster);
+    expect(gameRoom.state.featureFlagsEnableTouhouFactions).toBe(DEFAULT_FLAGS.enableTouhouFactions);
+    expect(gameRoom.state.featureFlagsEnableSharedPool).toBe(
+      DEFAULT_FLAGS.enableSharedPool || DEFAULT_FLAGS.enablePerUnitSharedPool,
+    );
+    expect(gameRoom.state.featureFlagsEnableSpellCard).toBe(DEFAULT_FLAGS.enableSpellCard);
   });
 });

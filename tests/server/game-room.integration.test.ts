@@ -2477,15 +2477,6 @@ describe("GameRoom integration", () => {
   });
 
   describe("Rumor Influence - Pre-submit Snapshot Regression", () => {
-    beforeEach(() => {
-      // Enable rumor influence for these tests
-      process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "true";
-    });
-
-    afterEach(() => {
-      delete process.env.FEATURE_ENABLE_RUMOR_INFLUENCE;
-    });
-
     test("shopBuySlotIndex preserves isRumorUnit flag in action log after slot replacement", async () => {
       // This test verifies the fix for the bug where isRumorUnit was lost
       // because shop slot was replaced before logging occurred.

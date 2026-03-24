@@ -961,8 +961,14 @@ describe("battle-simulator", () => {
     });
   });
 
-  describe("BattleSimulator", () => {
-    test("6x6 shared-board cells では move event が board coordinate の1歩移動になる", () => {
+describe("BattleSimulator", () => {
+  const TOUHOU_FACTION_FLAGS = {
+    ...DEFAULT_FLAGS,
+    enableTouhouRoster: true,
+    enableTouhouFactions: true,
+  } as const;
+
+  test("6x6 shared-board cells では move event が board coordinate の1歩移動になる", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
         { cell: 24, unitType: "vanguard", starLevel: 1 },
@@ -1220,11 +1226,6 @@ describe("battle-simulator", () => {
 
     test("grassroot_network tier1 は該当 faction ユニットにだけ攻撃バフを適用する", () => {
       const simulator = new BattleSimulator();
-      const touhouFactionFlags = {
-        ...DEFAULT_FLAGS,
-        enableTouhouRoster: true,
-        enableTouhouFactions: true,
-      };
 
       const leftPlacements: BoardUnitPlacement[] = [
         { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
@@ -1236,13 +1237,13 @@ describe("battle-simulator", () => {
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
-        createTestBattleUnit(placement, "left", index, false, touhouFactionFlags),
+        createTestBattleUnit(placement, "left", index, false, TOUHOU_FACTION_FLAGS),
       );
       const baselineLeftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
-        createTestBattleUnit({ ...placement, factionId: null }, "left", index, false, touhouFactionFlags),
+        createTestBattleUnit({ ...placement, factionId: null }, "left", index, false, TOUHOU_FACTION_FLAGS),
       );
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0, false, touhouFactionFlags),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0, false, TOUHOU_FACTION_FLAGS),
       ];
 
       const result = simulator.simulateBattle(
@@ -1254,7 +1255,7 @@ describe("battle-simulator", () => {
         null,
         null,
         null,
-        touhouFactionFlags,
+        TOUHOU_FACTION_FLAGS,
       );
 
       expect(leftUnits[0]?.attackPower).toBeGreaterThan(baselineLeftUnits[0]!.attackPower);
@@ -1264,11 +1265,6 @@ describe("battle-simulator", () => {
 
     test("myourenji tier2 は該当 faction ユニットに HP と攻撃バフを適用する", () => {
       const simulator = new BattleSimulator();
-      const touhouFactionFlags = {
-        ...DEFAULT_FLAGS,
-        enableTouhouRoster: true,
-        enableTouhouFactions: true,
-      };
 
       const leftPlacements: BoardUnitPlacement[] = [
         { cell: 0, unitType: "ranger", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
@@ -1281,13 +1277,13 @@ describe("battle-simulator", () => {
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
-        createTestBattleUnit(placement, "left", index, false, touhouFactionFlags),
+        createTestBattleUnit(placement, "left", index, false, TOUHOU_FACTION_FLAGS),
       );
       const baselineLeftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
-        createTestBattleUnit({ ...placement, factionId: null }, "left", index, false, touhouFactionFlags),
+        createTestBattleUnit({ ...placement, factionId: null }, "left", index, false, TOUHOU_FACTION_FLAGS),
       );
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0, false, touhouFactionFlags),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0, false, TOUHOU_FACTION_FLAGS),
       ];
 
       const result = simulator.simulateBattle(
@@ -1299,11 +1295,14 @@ describe("battle-simulator", () => {
         null,
         null,
         null,
-        touhouFactionFlags,
+        TOUHOU_FACTION_FLAGS,
       );
 
       expect(leftUnits[0]?.maxHp).toBeGreaterThan(baselineLeftUnits[0]!.maxHp);
       expect(leftUnits[1]?.maxHp).toBeGreaterThan(baselineLeftUnits[1]!.maxHp);
+      expect(leftUnits[2]?.maxHp).toBeGreaterThan(baselineLeftUnits[2]!.maxHp);
+      expect(leftUnits[0]?.attackPower).toBeGreaterThan(baselineLeftUnits[0]!.attackPower);
+      expect(leftUnits[1]?.attackPower).toBeGreaterThan(baselineLeftUnits[1]!.attackPower);
       expect(leftUnits[2]?.attackPower).toBeGreaterThan(baselineLeftUnits[2]!.attackPower);
       expect(leftUnits[3]?.maxHp).toBe(baselineLeftUnits[3]!.maxHp);
       expect(leftUnits[3]?.attackPower).toBe(baselineLeftUnits[3]!.attackPower);

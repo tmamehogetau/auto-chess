@@ -552,46 +552,44 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
   test(
     "realistic harness reaches R12 without forced phase damage",
     async () => {
-      await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
-        setupKpiCapture(ctx);
-        const nextCmdSeqByClient = new Map<string, number>();
+      setupKpiCapture(ctx);
+      const nextCmdSeqByClient = new Map<string, number>();
 
-        try {
-          const { serverRoom } = await runMatchToFinalRound(ctx, {
-            applyForcedPhaseProgress: false,
-            finalRound: 12,
-            featureFlags: FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY,
-            buildCompositions: async (serverRoom, clients) => {
-              for (const client of clients) {
-                injectForcedOffers(serverRoom, client.sessionId, ["vanguard", "vanguard", "vanguard"]);
-                const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
-                const updatedCmdSeq = await buildCompositionViaPrepActions(serverRoom, client.sessionId, client, nextCmdSeq, [
-                  { unitType: "vanguard", cell: 0 },
-                  { unitType: "vanguard", cell: 1 },
-                  { unitType: "vanguard", cell: 2 },
-                ]);
-                nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
-              }
-            },
-          });
+      try {
+        const { serverRoom } = await runMatchToFinalRound(ctx, {
+          applyForcedPhaseProgress: false,
+          finalRound: 12,
+          featureFlags: FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY,
+          buildCompositions: async (serverRoom, clients) => {
+            for (const client of clients) {
+              injectForcedOffers(serverRoom, client.sessionId, ["vanguard", "vanguard", "vanguard"]);
+              const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
+              const updatedCmdSeq = await buildCompositionViaPrepActions(serverRoom, client.sessionId, client, nextCmdSeq, [
+                { unitType: "vanguard", cell: 0 },
+                { unitType: "vanguard", cell: 1 },
+                { unitType: "vanguard", cell: 2 },
+              ]);
+              nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
+            }
+          },
+        });
 
-          expect(serverRoom.state.phase).toBe("End");
-          expect(serverRoom.state.roundIndex).toBe(12);
+        expect(serverRoom.state.phase).toBe("End");
+        expect(serverRoom.state.roundIndex).toBe(12);
 
-          await serverRoom.disconnect();
-          await new Promise((resolve) => setTimeout(resolve, 100));
+        await serverRoom.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-          expect(ctx.kpiOutputs.length).toBeGreaterThan(0);
-          const kpi = getLatestKpiOutput(ctx);
+        expect(ctx.kpiOutputs.length).toBeGreaterThan(0);
+        const kpi = getLatestKpiOutput(ctx);
 
-          expect(kpi.totalRounds).toBe(12);
-          expect(kpi.failedPrepCommands).toBe(0);
-          expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
-          expect(kpi.top1CompositionSignature).toBeTruthy();
-        } finally {
-          restoreConsoleLog(ctx);
-        }
-      });
+        expect(kpi.totalRounds).toBe(12);
+        expect(kpi.failedPrepCommands).toBe(0);
+        expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
+        expect(kpi.top1CompositionSignature).toBeTruthy();
+      } finally {
+        restoreConsoleLog(ctx);
+      }
     },
     60_000,
   );

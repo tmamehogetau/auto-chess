@@ -439,9 +439,6 @@ describe("SpellCard Integration", () => {
       }
 
       expect(bossDamageController.getPlayerHp(bossId)).toBe(70);
-
-      delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
-      (FeatureFlagService as any).instance = undefined;
     });
 
     it("all target healはHP上限100を超えない", () => {

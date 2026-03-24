@@ -26,7 +26,6 @@ import {
   hasScarletMansionBossLifesteal,
   type SynergyEffects,
 } from "./synergy-definitions";
-import { ITEM_DEFINITIONS, ItemType } from "./item-definitions";
 import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 import { HEROES } from "../../data/heroes";
 import { resolveBattlePlacement } from "../unit-id-resolver";
@@ -692,40 +691,6 @@ function applySynergyEffects(unit: BattleUnit, effects: SynergyEffects, tier: nu
 }
 
 /**
- * アイテム効果をユニットに適用
- * @param unit ユニット
- * @param items 装備されているアイテムの配列
- */
-function applyItemEffects(unit: BattleUnit, items: ItemType[]): void {
-  for (const itemType of items) {
-    const itemDef = ITEM_DEFINITIONS[itemType];
-
-    if (!itemDef || !itemDef.effects) {
-      console.warn(`Invalid item definition for: ${itemType}`);
-      continue;
-    }
-
-    if (itemDef.effects.attackPower !== undefined) {
-      unit.attackPower += itemDef.effects.attackPower;
-    }
-    if (itemDef.effects.defense !== undefined) {
-      unit.defense += itemDef.effects.defense;
-    }
-    if (itemDef.effects.attackSpeedMultiplier !== undefined) {
-      unit.buffModifiers.attackSpeedMultiplier += itemDef.effects.attackSpeedMultiplier;
-    }
-    if (itemDef.effects.critRate !== undefined) {
-      unit.critRate += itemDef.effects.critRate;
-    }
-    if (itemDef.effects.hpMultiplier !== undefined) {
-      const multiplier = 1 + itemDef.effects.hpMultiplier;
-      unit.maxHp = Math.floor(unit.maxHp * multiplier);
-      unit.hp = Math.floor(unit.hp * multiplier);
-    }
-  }
-}
-
-/**
  * サブユニット補助効果をユニットへ適用
  */
 function applySubUnitAssist(
@@ -869,22 +834,6 @@ export class BattleSimulator {
       // シナジーバフを適用
       applySynergyBuffs(leftUnits, leftPlacements, leftHeroSynergyBonusType, flags);
       applySynergyBuffs(rightUnits, rightPlacements, rightHeroSynergyBonusType, flags);
-
-      // アイテム効果を適用
-      for (let i = 0; i < leftUnits.length; i++) {
-        const unit = leftUnits[i];
-        if (unit) {
-          const items = leftPlacements[i]?.items || [];
-          applyItemEffects(unit, items);
-        }
-      }
-      for (let i = 0; i < rightUnits.length; i++) {
-        const unit = rightUnits[i];
-        if (unit) {
-          const items = rightPlacements[i]?.items || [];
-          applyItemEffects(unit, items);
-        }
-      }
 
       if (subUnitAssistConfigByType && subUnitAssistConfigByType.size > 0) {
         applySubUnitAssist(

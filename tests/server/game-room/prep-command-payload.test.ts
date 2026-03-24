@@ -19,14 +19,14 @@ describe("prep-command-payload", () => {
       boardPlacements: [{ cell: 1, unitType: "vanguard" }],
       shopRefreshCount: 1,
       shopLock: false,
-      itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 2 },
+      benchToBoardCell: { benchIndex: 2, cell: 7 },
     };
 
     expect(buildPrepCommandPayload(message)).toEqual({
       boardPlacements: [{ cell: 1, unitType: "vanguard" }],
       shopRefreshCount: 1,
       shopLock: false,
-      itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 2 },
+      benchToBoardCell: { benchIndex: 2, cell: 7 },
     });
   });
 });

@@ -1,5 +1,4 @@
 import type { BoardUnitPlacement } from "../../shared/room-messages";
-import type { ItemType } from "../../shared/types";
 import { normalizeBoardPlacements } from "../combat/unit-effects";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import type { FeatureFlags } from "../../shared/feature-flags";
@@ -13,9 +12,6 @@ const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
 const MAX_BENCH_SIZE = 9;
-const MAX_INVENTORY_SIZE = 9;
-const MAX_ITEMS_PER_UNIT = 3;
-const ITEM_SHOP_SIZE = 5;
 const TOUHOU_COST_TIERS: readonly [1, 2, 3, 4, 5] = [1, 2, 3, 4, 5];
 const SHARED_BOARD_MIN_INDEX = 0;
 const SHARED_BOARD_MAX_INDEX = DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height - 1;
@@ -30,18 +26,12 @@ export interface ShopOffer {
   starLevel?: number;
 }
 
-export interface ItemShopOffer {
-  itemType: ItemType;
-  cost: number;
-}
-
 export interface BenchUnit {
   unitType: string;
   unitId?: string;
   cost: number;
   starLevel: number;
   unitCount: number;
-  items?: ItemType[];
 }
 
 export interface CommandPayload {
@@ -60,16 +50,6 @@ export interface CommandPayload {
   };
   benchSellIndex?: number;
   boardSellIndex?: number;
-  itemBuySlotIndex?: number;
-  itemEquipToBench?: {
-    inventoryItemIndex: number;
-    benchIndex: number;
-  };
-  itemUnequipFromBench?: {
-    benchIndex: number;
-    itemSlotIndex: number;
-  };
-  itemSellInventoryIndex?: number;
   bossShopBuySlotIndex?: number;
 }
 
@@ -83,8 +63,6 @@ export interface ValidationDependencies {
   getBenchUnits: (playerId: string) => BenchUnit[];
   getBoardPlacements: (playerId: string) => BoardUnitPlacement[];
   getBoardUnitCount: (playerId: string) => number;
-  getItemInventory: (playerId: string) => ItemType[];
-  getItemShopOffers: (playerId: string) => ItemShopOffer[];
   getBossShopOffers: (playerId: string) => ShopOffer[];
   getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   isBossPlayer: (playerId: string) => boolean;
@@ -102,7 +80,6 @@ export interface ValidationContext {
   payload: CommandPayload;
   // Computed values that can be used by executor
   shopBuyCost?: number;
-  itemBuyCost?: number;
   bossShopBuyCost?: number;
   requiredGold?: number;
 }
@@ -297,50 +274,6 @@ function validatePayload(
     }
   }
 
-  // itemBuySlotIndex validation
-  if (payload.itemBuySlotIndex !== undefined) {
-    if (
-      !Number.isInteger(payload.itemBuySlotIndex) ||
-      payload.itemBuySlotIndex < 0 ||
-      payload.itemBuySlotIndex >= ITEM_SHOP_SIZE
-    ) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
-  // itemEquipToBench validation
-  if (payload.itemEquipToBench !== undefined) {
-    const { inventoryItemIndex, benchIndex } = payload.itemEquipToBench;
-    if (
-      !Number.isInteger(inventoryItemIndex) ||
-      !Number.isInteger(benchIndex) ||
-      inventoryItemIndex < 0 ||
-      benchIndex < 0
-    ) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
-  // itemUnequipFromBench validation
-  if (payload.itemUnequipFromBench !== undefined) {
-    const { benchIndex, itemSlotIndex } = payload.itemUnequipFromBench;
-    if (
-      !Number.isInteger(benchIndex) ||
-      !Number.isInteger(itemSlotIndex) ||
-      benchIndex < 0 ||
-      itemSlotIndex < 0
-    ) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
-  // itemSellInventoryIndex validation
-  if (payload.itemSellInventoryIndex !== undefined) {
-    if (!Number.isInteger(payload.itemSellInventoryIndex) || payload.itemSellInventoryIndex < 0) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
   // bossShopBuySlotIndex validation
   if (payload.bossShopBuySlotIndex !== undefined) {
     if (
@@ -420,16 +353,6 @@ function validateCommandConflicts(
   }
 
   if (payload.boardToBenchCell !== undefined && payload.boardPlacements !== undefined) {
-    return { accepted: false, code: "INVALID_PAYLOAD" };
-  }
-
-  // itemBuySlotIndex and shopRefreshCount cannot be used together
-  if (payload.itemBuySlotIndex !== undefined && payload.shopRefreshCount !== undefined) {
-    return { accepted: false, code: "INVALID_PAYLOAD" };
-  }
-
-  // itemBuySlotIndex and shopBuySlotIndex cannot be used together
-  if (payload.itemBuySlotIndex !== undefined && payload.shopBuySlotIndex !== undefined) {
     return { accepted: false, code: "INVALID_PAYLOAD" };
   }
 
@@ -551,80 +474,6 @@ function validatePreconditions(
     }
   }
 
-  // itemBuySlotIndex preconditions
-  if (payload.itemBuySlotIndex !== undefined) {
-    const itemShop = deps.getItemShopOffers(playerId);
-
-    if (!itemShop || payload.itemBuySlotIndex < 0 || payload.itemBuySlotIndex >= itemShop.length) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    const inventory = deps.getItemInventory(playerId);
-
-    if (!inventory || inventory.length >= MAX_INVENTORY_SIZE) {
-      return { accepted: false, code: "INVENTORY_FULL" };
-    }
-  }
-
-  // itemEquipToBench preconditions
-  if (payload.itemEquipToBench !== undefined) {
-    const { inventoryItemIndex, benchIndex } = payload.itemEquipToBench;
-    const inventory = deps.getItemInventory(playerId);
-    const benchUnits = deps.getBenchUnits(playerId);
-
-    if (!inventory || inventoryItemIndex >= inventory.length) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (benchIndex >= benchUnits.length) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    const benchUnit = benchUnits[benchIndex];
-    if (!benchUnit) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    const currentItems = benchUnit.items || [];
-    if (currentItems.length >= MAX_ITEMS_PER_UNIT) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
-  // itemUnequipFromBench preconditions
-  if (payload.itemUnequipFromBench !== undefined) {
-    const { benchIndex, itemSlotIndex } = payload.itemUnequipFromBench;
-    const benchUnits = deps.getBenchUnits(playerId);
-    const inventory = deps.getItemInventory(playerId);
-
-    if (benchIndex >= benchUnits.length) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    if (!inventory || inventory.length >= MAX_INVENTORY_SIZE) {
-      return { accepted: false, code: "INVENTORY_FULL" };
-    }
-
-    const benchUnit = benchUnits[benchIndex];
-    if (!benchUnit) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-
-    const currentItems = benchUnit.items || [];
-    if (itemSlotIndex >= currentItems.length) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
-  // itemSellInventoryIndex preconditions
-  if (payload.itemSellInventoryIndex !== undefined) {
-    const inventory = deps.getItemInventory(playerId);
-
-    if (!inventory || payload.itemSellInventoryIndex >= inventory.length) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
-  }
-
   // bossShopBuySlotIndex preconditions
   if (payload.bossShopBuySlotIndex !== undefined) {
     if (!deps.isBossPlayer(playerId)) {
@@ -658,7 +507,6 @@ function validateGold(
   const xpPurchaseCount = payload.xpPurchaseCount ?? 0;
   const shopRefreshCount = payload.shopRefreshCount ?? 0;
   let shopBuyCost = 0;
-  let itemBuyCost = 0;
   let bossShopBuyCost = 0;
 
   // Calculate shop buy cost
@@ -672,17 +520,6 @@ function validateGold(
         boardPlacements,
         deps.getRosterFlags(),
       );
-    }
-  }
-
-  // Calculate item buy cost
-  if (payload.itemBuySlotIndex !== undefined) {
-    const itemShop = deps.getItemShopOffers(playerId);
-    if (itemShop && payload.itemBuySlotIndex < itemShop.length) {
-      const offer = itemShop[payload.itemBuySlotIndex];
-      if (offer) {
-        itemBuyCost = offer.cost;
-      }
     }
   }
 
@@ -700,7 +537,6 @@ function validateGold(
     XP_PURCHASE_COST * xpPurchaseCount +
     deps.getShopRefreshGoldCost(playerId, shopRefreshCount) +
     shopBuyCost +
-    itemBuyCost +
     bossShopBuyCost;
 
   if (currentGold < requiredGold) {
@@ -710,4 +546,4 @@ function validateGold(
   return null;
 }
 
-export type { BoardUnitPlacement, ItemType };
+export type { BoardUnitPlacement };

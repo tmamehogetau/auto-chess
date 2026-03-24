@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 
 import {
+  renderPlayerLobbySummary,
   renderPlayerPrepSummary,
   renderPlayerResultSummary,
 } from "../../src/client/player-surface-renderers.js";
@@ -158,6 +159,134 @@ describe("player surface renderers", () => {
     expect(shopSlotElements[0]?.textContent).toContain("パチュリー");
     expect(benchCopyElement.textContent).toContain("2 / 9");
     expect(benchSlotElements[0]?.textContent).toContain("vanguard");
+  });
+
+  test("lobby summary shows remaining seats when the room is not full yet", () => {
+    const participantSummaryElement = new FakeElement();
+
+    renderPlayerLobbySummary({
+      participantSummaryElement: participantSummaryElement as unknown as HTMLElement,
+      state: {
+        maxPlayers: 4,
+        players: {
+          p1: { ready: true },
+          p2: { ready: true },
+        },
+      },
+    });
+
+    expect(participantSummaryElement.textContent).toContain("2 / 4 ready");
+    expect(participantSummaryElement.textContent).toContain("あと 2 人の参加待ち");
+  });
+
+  test("lobby summary does not imply a host-start flow once the room is full", () => {
+    const participantSummaryElement = new FakeElement();
+
+    renderPlayerLobbySummary({
+      participantSummaryElement: participantSummaryElement as unknown as HTMLElement,
+      state: {
+        maxPlayers: 4,
+        players: {
+          p1: { ready: true },
+          p2: { ready: false },
+          p3: { ready: true },
+          p4: { ready: false },
+        },
+      },
+    });
+
+    expect(participantSummaryElement.textContent).toContain("2 / 4 ready");
+    expect(participantSummaryElement.textContent).not.toContain("進行役の開始待ち");
+    expect(participantSummaryElement.textContent).toContain("role selection");
+  });
+
+  test("prep summary renders boss shop, room summary, and deadline copy when provided", () => {
+    const shopCopyElement = new FakeElement();
+    const bossShopCopyElement = new FakeElement();
+    const roomCopyElement = new FakeElement();
+    const deadlineCopyElement = new FakeElement();
+    const bossShopSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      shopCopyElement: shopCopyElement as unknown as HTMLElement,
+      bossShopCopyElement: bossShopCopyElement as unknown as HTMLElement,
+      bossShopSlotElements: bossShopSlotElements as unknown as HTMLButtonElement[],
+      roomCopyElement: roomCopyElement as unknown as HTMLElement,
+      deadlineCopyElement: deadlineCopyElement as unknown as HTMLElement,
+      state: {
+        phase: "Prep",
+        prepDeadlineAtMs: Date.now() + 15_000,
+        sharedBoardMode: "half-shared",
+        featureFlagsEnableBossExclusiveShop: true,
+        bossPlayerId: "boss-player",
+      },
+      player: {
+        role: "boss",
+        gold: 19,
+        level: 3,
+        xp: 2,
+        hp: 88,
+        remainingLives: 2,
+        bossShopOffers: [
+          { unitType: "mage", cost: 5, displayName: "パチュリー" },
+        ],
+      },
+      roomSummary: {
+        roomId: "room-123",
+        sharedBoardRoomId: "shared-456",
+      },
+      deadlineSummary: {
+        label: "Prep deadline",
+        valueText: "15s remaining",
+      },
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+      sessionId: "boss-player",
+    });
+
+    expect(shopCopyElement.textContent).toContain("19G");
+    expect(shopCopyElement.textContent).toContain("LV 3");
+    expect(shopCopyElement.textContent).toContain("HP 88");
+    expect(bossShopCopyElement.textContent).toContain("Boss shop");
+    expect(bossShopCopyElement.textContent).toContain("5G");
+    expect(bossShopSlotElements[0]?.textContent).toContain("パチュリー");
+    expect(roomCopyElement.textContent).toContain("room-123");
+    expect(roomCopyElement.textContent).toContain("shared-456");
+    expect(deadlineCopyElement.textContent).toContain("Prep deadline");
+    expect(deadlineCopyElement.textContent).toContain("15s remaining");
+  });
+
+  test("prep summary renders special unit, spell, and synergies", () => {
+    const specialUnitCopyElement = new FakeElement();
+    const spellCopyElement = new FakeElement();
+    const synergyCopyElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      specialUnitCopyElement: specialUnitCopyElement as unknown as HTMLElement,
+      spellCopyElement: spellCopyElement as unknown as HTMLElement,
+      synergyCopyElement: synergyCopyElement as unknown as HTMLElement,
+      state: {
+        phase: "Prep",
+        featureFlagsEnableHeroSystem: true,
+        featureFlagsEnableSpellCard: true,
+        declaredSpellId: "instant-1",
+        usedSpellIds: ["area-1"],
+        players: {},
+      },
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+        activeSynergies: [{ unitType: "mage", count: 2, tier: 1 }],
+      },
+      sessionId: "raid-1",
+      currentPhase: "Prep",
+      selectedBenchIndex: 0,
+    });
+
+    expect(specialUnitCopyElement.textContent).toContain("霊夢");
+    expect(spellCopyElement.textContent).toContain("スカーレットシュート");
+    expect(spellCopyElement.textContent).toContain("used");
+    expect(synergyCopyElement.textContent).toContain("mage x2");
   });
 
   test("prep summary prefers benchDisplayNames when available", () => {

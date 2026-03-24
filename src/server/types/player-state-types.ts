@@ -60,14 +60,6 @@ export interface ShopOfferView {
 }
 
 /**
- * Serialized view of a shop item offer for client consumption
- */
-export interface ShopItemOfferView {
-  itemType: string;
-  cost: number;
-}
-
-/**
  * Owned units breakdown by type
  */
 export interface OwnedUnitsView {
@@ -111,8 +103,6 @@ export interface ControllerPlayerStatus {
   benchDisplayNames?: string[];
   boardUnits: string[];
   ownedUnits: OwnedUnitsView;
-  itemInventory: string[];
-  itemShopOffers: ShopItemOfferView[];
   bossShopOffers: ShopOfferView[];
   lastBattleResult: PlayerStatusBattleResult | undefined;
   activeSynergies?: ActiveSynergyView[];
@@ -144,8 +134,6 @@ export interface CommandResultPayload {
   benchUnits: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
-  itemShopOffers: ShopItemOfferView[];
-  itemInventory: string[];
   lastBattleResult: PlayerStatusBattleResult | undefined;
   activeSynergies?: ActiveSynergyView[];
   bossShopOffers?: ShopOfferView[];

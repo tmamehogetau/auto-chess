@@ -13,15 +13,16 @@ import {
 } from "../../src/client/ui/player-facing-copy.js";
 
 describe("player-facing copy", () => {
-  test("hero未選択の waiting では hero 選択を先に促す", () => {
+  test("hero未選択でも preference lobby では Ready を先に促す", () => {
     expect(buildReadyHint({
       phase: "Waiting",
       isReady: false,
       heroEnabled: true,
       heroSelected: false,
+      lobbyStage: "preference",
       readyCount: 0,
       totalCount: 3,
-    })).toContain("Choose a hero first");
+    })).toContain("Press Ready");
   });
 
   test("waiting の ready hint は prep 開始前に Ready を先に促す", () => {

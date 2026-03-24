@@ -28,6 +28,11 @@ const FAST_TEST_ROOM_TIMINGS = {
   eliminationDurationMs: 35,
 } as const;
 
+const PREP_ACTION_TEST_ROOM_TIMINGS = {
+  ...FAST_TEST_ROOM_TIMINGS,
+  prepDurationMs: 750,
+} as const;
+
 type TestClient = {
   sessionId: string;
   send: (type: string, msg: unknown) => void;
@@ -291,7 +296,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test("Touhou unitId は buy -> bench -> board -> sell で共有プール返却まで維持される", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_FULL_MIGRATION, async () => {
-      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const serverRoom = await testServer.createRoom<GameRoom>("game", PREP_ACTION_TEST_ROOM_TIMINGS);
       const clients = await Promise.all([
         testServer.connectTo(serverRoom),
         testServer.connectTo(serverRoom),
@@ -343,7 +348,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test("Touhou roster only では shop metadata 付き offer から valid board state を作れる", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_ONLY, async () => {
-      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const serverRoom = await testServer.createRoom<GameRoom>("game", PREP_ACTION_TEST_ROOM_TIMINGS);
       const clients = await Promise.all([
         testServer.connectTo(serverRoom),
         testServer.connectTo(serverRoom),
@@ -390,7 +395,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test("MVP unit は unitId なしでも buy -> bench -> board が従来どおり動く", async () => {
     await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
-      const serverRoom = await testServer.createRoom<GameRoom>("game");
+      const serverRoom = await testServer.createRoom<GameRoom>("game", PREP_ACTION_TEST_ROOM_TIMINGS);
       const clients = await Promise.all([
         testServer.connectTo(serverRoom),
         testServer.connectTo(serverRoom),

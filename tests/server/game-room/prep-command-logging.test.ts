@@ -15,12 +15,6 @@ interface LoggedAction {
 describe("prep-command-logging", () => {
   let mockLogger: MatchLogger;
   let mockGetShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
-  let mockGetPlayerStatus: (sessionId: string) => {
-    gold: number;
-    itemShopOffers: Array<{ itemType: string; cost: number }>;
-    itemInventory: string[];
-    benchUnits: string[];
-  } | null;
   let mockRoundIndex: number;
   let deps: PrepCommandLoggingDeps;
   let loggedActions: LoggedAction[];
@@ -41,23 +35,12 @@ describe("prep-command-logging", () => {
       { unitType: "mage", cost: 4, isRumorUnit: false },
     ]);
 
-    mockGetPlayerStatus = vi.fn(() => ({
-      gold: 10,
-      itemShopOffers: [
-        { itemType: "sword", cost: 5 },
-        { itemType: "shield", cost: 3 },
-      ],
-      itemInventory: ["sword", "shield"],
-      benchUnits: ["unit1", "unit2"],
-    }));
-
     deps = {
       logger: mockLogger,
       getShopOffers: mockGetShopOffers,
       getBossShopOffers: vi.fn(() => [
         { unitType: "boss_vanguard", cost: 10 },
       ]),
-      getPlayerStatus: mockGetPlayerStatus,
       getRoundIndex: () => mockRoundIndex,
       getPlayerGold: () => 10,
     };
@@ -175,130 +158,6 @@ describe("prep-command-logging", () => {
         goldBefore: 10,
         goldAfter: 11,
       });
-    });
-
-    it("should log buy_item action when itemBuySlotIndex is provided", () => {
-      const payload = {
-        itemBuySlotIndex: 0,
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("buy_item");
-      expect(loggedActions[0]!.details).toMatchObject({
-        itemType: "sword",
-        cost: 5,
-        goldBefore: 10,
-        goldAfter: 5,
-      });
-    });
-
-    it("should not log buy_item when item offer is not found", () => {
-      mockGetPlayerStatus = vi.fn(() => ({
-        gold: 10,
-        itemShopOffers: [],
-        itemInventory: [],
-        benchUnits: [],
-      }));
-      deps.getPlayerStatus = mockGetPlayerStatus;
-
-      const payload = {
-        itemBuySlotIndex: 0,
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(0);
-    });
-
-    it("should log equip_item action when itemEquipToBench is provided", () => {
-      const payload = {
-        itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 1 },
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("equip_item");
-      expect(loggedActions[0]!.details).toMatchObject({
-        inventoryIndex: 0,
-        benchIndex: 1,
-        itemType: "sword",
-        goldBefore: 10,
-        goldAfter: 10,
-      });
-    });
-
-    it("should log equip_item without itemType when inventory index is out of bounds", () => {
-      const payload = {
-        itemEquipToBench: { inventoryItemIndex: 10, benchIndex: 1 },
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("equip_item");
-      expect(loggedActions[0]!.details).not.toHaveProperty("itemType");
-    });
-
-    it("should log unequip_item action when itemUnequipFromBench is provided", () => {
-      const payload = {
-        itemUnequipFromBench: { benchIndex: 0, itemSlotIndex: 1 },
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("unequip_item");
-      expect(loggedActions[0]!.details).toMatchObject({
-        benchIndex: 0,
-        itemSlotIndex: 1,
-        benchUnit: "unit1",
-        goldBefore: 10,
-        goldAfter: 10,
-      });
-    });
-
-    it("should log unequip_item without benchUnit when bench index is out of bounds", () => {
-      const payload = {
-        itemUnequipFromBench: { benchIndex: 10, itemSlotIndex: 0 },
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("unequip_item");
-      expect(loggedActions[0]!.details).not.toHaveProperty("benchUnit");
-    });
-
-    it("should log sell_item action when itemSellInventoryIndex is provided", () => {
-      const payload = {
-        itemSellInventoryIndex: 1,
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("sell_item");
-      expect(loggedActions[0]!.details).toMatchObject({
-        inventoryIndex: 1,
-        itemType: "shield",
-        goldBefore: 10,
-        goldAfter: 11,
-      });
-    });
-
-    it("should log sell_item without itemType when inventory index is out of bounds", () => {
-      const payload = {
-        itemSellInventoryIndex: 10,
-      };
-
-      logPrepCommandActions("player1", payload, deps);
-
-      expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("sell_item");
-      expect(loggedActions[0]!.details).not.toHaveProperty("itemType");
     });
 
     it("should log buy_boss_unit action when bossShopBuySlotIndex is provided", () => {
@@ -572,10 +431,6 @@ describe("prep-command-logging", () => {
         shopRefreshCount: 1,
         xpPurchaseCount: 1,
         boardSellIndex: 0,
-        itemBuySlotIndex: 0,
-        itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 0 },
-        itemUnequipFromBench: { benchIndex: 0, itemSlotIndex: 0 },
-        itemSellInventoryIndex: 0,
         bossShopBuySlotIndex: 0,
         shopLock: true,
         mergeUnits: { unitType: "vanguard", starLevel: 2, benchIndices: [0, 1, 2] },
@@ -583,7 +438,7 @@ describe("prep-command-logging", () => {
 
       logPrepCommandActions("player1", payload, deps);
 
-      expect(loggedActions).toHaveLength(13);
+      expect(loggedActions).toHaveLength(9);
     });
   });
 });

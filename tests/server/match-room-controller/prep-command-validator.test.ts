@@ -25,8 +25,6 @@ describe("PrepCommandValidator", () => {
     getBenchUnits: vi.fn().mockReturnValue([]),
     getBoardPlacements: vi.fn().mockReturnValue([]),
     getBoardUnitCount: vi.fn().mockReturnValue(4),
-    getItemInventory: vi.fn().mockReturnValue([]),
-    getItemShopOffers: vi.fn().mockReturnValue([]),
     getBossShopOffers: vi.fn().mockReturnValue([]),
     getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     isBossPlayer: vi.fn().mockReturnValue(false),
@@ -277,27 +275,6 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
-    test("itemBuySlotIndex and shopRefreshCount together returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies();
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemBuySlotIndex: 0,
-        shopRefreshCount: 1,
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemBuySlotIndex and shopBuySlotIndex together returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies();
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemBuySlotIndex: 0,
-        shopBuySlotIndex: 0,
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
   });
 
   describe("Precondition Validation", () => {
@@ -540,116 +517,6 @@ describe("PrepCommandValidator", () => {
 
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
       expect(internal.rejectReason).toBeUndefined();
-    });
-
-    test("itemBuySlotIndex with full inventory returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getItemInventory: vi.fn().mockReturnValue(new Array(9).fill("sword")),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, { itemBuySlotIndex: 0 }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemBuySlotIndex with non-existent offer returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getItemShopOffers: vi.fn().mockReturnValue([]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, { itemBuySlotIndex: 0 }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemEquipToBench with full item slots returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue([
-          { unitType: "vanguard", items: ["sword", "shield", "armor"] },
-        ]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 0 },
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemEquipToBench with non-existent inventory item returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getItemInventory: vi.fn().mockReturnValue([]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 0 },
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemEquipToBench with non-existent bench unit returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getItemInventory: vi.fn().mockReturnValue(["sword"]),
-        getBenchUnits: vi.fn().mockReturnValue([]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemEquipToBench: { inventoryItemIndex: 0, benchIndex: 0 },
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemUnequipFromBench with full inventory returns INVENTORY_FULL", () => {
-      const deps = createDependencies({
-        getItemInventory: vi.fn().mockReturnValue(new Array(9).fill("sword")),
-        getBenchUnits: vi.fn().mockReturnValue([
-          { unitType: "vanguard", items: ["sword"] },
-        ]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemUnequipFromBench: { benchIndex: 0, itemSlotIndex: 0 },
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVENTORY_FULL" });
-    });
-
-    test("itemUnequipFromBench with non-existent bench unit returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue([]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemUnequipFromBench: { benchIndex: 0, itemSlotIndex: 0 },
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemUnequipFromBench with invalid item slot returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue([
-          { unitType: "vanguard", items: ["sword"] },
-        ]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, {
-        itemUnequipFromBench: { benchIndex: 0, itemSlotIndex: 5 },
-      }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
-    });
-
-    test("itemSellInventoryIndex with non-existent item returns INVALID_PAYLOAD", () => {
-      const deps = createDependencies({
-        getItemInventory: vi.fn().mockReturnValue([]),
-      });
-
-      const result = validatePrepCommand("p1", 1, 1000, { itemSellInventoryIndex: 0 }, deps);
-
-      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
     test("bossShopBuySlotIndex for non-boss returns INVALID_PAYLOAD", () => {

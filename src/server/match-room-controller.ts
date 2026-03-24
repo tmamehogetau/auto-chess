@@ -46,7 +46,6 @@ import type {
   BattleTimelineEvent,
   CommandResult,
   SharedBattleReplayMessage,
-  ShopItemOffer,
 } from "../shared/room-messages";
 import { MatchLogger } from "./match-logger";
 import { ShopOfferBuilder, type ShopOfferBuilderDependencies } from "./match-room-controller/shop-offer-builder";
@@ -66,11 +65,6 @@ import {
   resolveBoardPowerFromState,
   resolveUnitCountFromState,
 } from "./combat/unit-effects";
-import {
-  ITEM_DEFINITIONS,
-  ITEM_TYPES,
-  type ItemType,
-} from "./combat/item-definitions";
 import {
   BattleSimulator,
   createBattleUnit,
@@ -207,9 +201,6 @@ const RAID_PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   12: 3000,
 };
 
-const ITEM_SHOP_SIZE = 5;
-const MAX_INVENTORY_SIZE = 9;
-const MAX_ITEMS_PER_UNIT = 3;
 const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   1: 2,
   2: 2,
@@ -246,7 +237,6 @@ interface BenchUnit {
   cost: number;
   starLevel: number;
   unitCount: number;
-  items?: ItemType[];
 }
 
 type ShopOfferKey = string;
@@ -390,10 +380,6 @@ export class MatchRoomController {
 
   private readonly ownedUnitsByPlayer: Map<string, OwnedUnits>;
 
-  private readonly itemInventoryByPlayer: Map<string, ItemType[]>;
-
-  private readonly itemShopOffersByPlayer: Map<string, ShopItemOffer[]>;
-
   private readonly kouRyuudouFreeRefreshConsumedByPlayer: Map<string, boolean>;
 
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
@@ -518,8 +504,6 @@ export class MatchRoomController {
     this.shopLockedByPlayer = new Map<string, boolean>();
     this.benchUnitsByPlayer = new Map<string, BenchUnit[]>();
     this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
-    this.itemInventoryByPlayer = new Map<string, ItemType[]>();
-    this.itemShopOffersByPlayer = new Map<string, ShopItemOffer[]>();
     this.kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
@@ -613,8 +597,6 @@ export class MatchRoomController {
         mage: 0,
         assassin: 0,
       });
-      this.itemInventoryByPlayer.set(playerId, []);
-      this.itemShopOffersByPlayer.set(playerId, []);
       this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
       this.heroPlacementByPlayer.set(playerId, -1);
@@ -1125,23 +1107,13 @@ export class MatchRoomController {
    * @param playerId プレイヤーID
    * @returns ベンチユニット配列
    */
-  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; starLevel: number; items?: string[] }> {
+  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; starLevel: number }> {
     this.ensureKnownPlayer(playerId);
     const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-    return benchUnits.map((unit) => {
-      if (unit.items === undefined) {
-        return {
-          unitType: unit.unitType,
-          starLevel: unit.starLevel,
-        };
-      }
-
-      return {
-        unitType: unit.unitType,
-        starLevel: unit.starLevel,
-        items: unit.items,
-      };
-    });
+    return benchUnits.map((unit) => ({
+      unitType: unit.unitType,
+      starLevel: unit.starLevel,
+    }));
   }
 
   public getPlayerStatus(playerId: string): ControllerPlayerStatus {
@@ -1151,8 +1123,6 @@ export class MatchRoomController {
     const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
     const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-    const itemInventory = this.itemInventoryByPlayer.get(playerId) ?? [];
-    const itemShopOffers = this.itemShopOffersByPlayer.get(playerId) ?? [];
     const bossShopOffers = this.bossShopOffersByPlayer.get(playerId) ?? [];
     const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
@@ -1217,8 +1187,6 @@ export class MatchRoomController {
         mage: ownedUnits?.mage ?? 0,
         assassin: ownedUnits?.assassin ?? 0,
       },
-      itemInventory: [...itemInventory],
-      itemShopOffers: [...itemShopOffers],
       bossShopOffers: [...bossShopOffers],
       lastBattleResult: this.battleResultsByPlayer.get(playerId),
       activeSynergies,
@@ -1500,8 +1468,6 @@ export class MatchRoomController {
       getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
       getBoardPlacements: (id) => this.boardPlacementsByPlayer.get(id) ?? [],
       getBoardUnitCount: (id) => this.resolveUnitCount(id),
-      getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
-      getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       isBossPlayer: (id) => this.isBossPlayer(id),
@@ -1538,101 +1504,15 @@ export class MatchRoomController {
       returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
       sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
       sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
-      addItemToInventory: (id, itemType) => this.addItemToInventory(id, itemType),
-      equipItemToBenchUnit: (id, inventoryItemIndex, benchIndex) =>
-        this.equipItemToBenchUnit(id, inventoryItemIndex, benchIndex),
-      unequipItemFromBenchUnit: (id, benchIndex, itemSlotIndex) =>
-        this.unequipItemFromBenchUnit(id, benchIndex, itemSlotIndex),
-      sellInventoryItem: (id, inventoryItemIndex) => this.sellInventoryItem(id, inventoryItemIndex),
       buyBossShopOffer: (id, slotIndex) => this.buyBossShopOffer(id, slotIndex),
       getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
       getOwnedUnits: (id) => this.ownedUnitsByPlayer.get(id) ?? { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
-      getItemInventory: (id) => this.itemInventoryByPlayer.get(id) ?? [],
       getBoardPlacements: (id) => this.boardPlacementsByPlayer.get(id) ?? [],
       getShopOffers: (id) => this.shopOffersByPlayer.get(id) ?? [],
-      getItemShopOffers: (id) => this.itemShopOffersByPlayer.get(id) ?? [],
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       getRosterFlags: () => this.rosterFlags,
       logBossShop: (id, offers, purchase) => this.logBossShopPurchase(id, offers, purchase),
     };
-  }
-
-  private addItemToInventory(playerId: string, itemType: ItemType): void {
-    const inventory = this.itemInventoryByPlayer.get(playerId);
-    if (!inventory) {
-      return;
-    }
-
-    inventory.push(itemType);
-  }
-
-  private equipItemToBenchUnit(
-    playerId: string,
-    inventoryItemIndex: number,
-    benchIndex: number,
-  ): void {
-    const inventory = this.itemInventoryByPlayer.get(playerId);
-    const benchUnits = this.benchUnitsByPlayer.get(playerId);
-    if (!inventory || !benchUnits) {
-      return;
-    }
-
-    const benchUnit = benchUnits[benchIndex];
-    if (!benchUnit) {
-      return;
-    }
-
-    const item = inventory[inventoryItemIndex];
-    if (item === undefined) {
-      return;
-    }
-
-    inventory.splice(inventoryItemIndex, 1);
-    benchUnit.items = benchUnit.items || [];
-    benchUnit.items.push(item);
-  }
-
-  private unequipItemFromBenchUnit(
-    playerId: string,
-    benchIndex: number,
-    itemSlotIndex: number,
-  ): void {
-    const benchUnits = this.benchUnitsByPlayer.get(playerId);
-    const inventory = this.itemInventoryByPlayer.get(playerId);
-    if (!benchUnits || !inventory) {
-      return;
-    }
-
-    const benchUnit = benchUnits[benchIndex];
-    if (!benchUnit?.items) {
-      return;
-    }
-
-    const item = benchUnit.items[itemSlotIndex];
-    if (item === undefined) {
-      return;
-    }
-
-    benchUnit.items.splice(itemSlotIndex, 1);
-    inventory.push(item);
-  }
-
-  private sellInventoryItem(playerId: string, inventoryItemIndex: number): void {
-    const inventory = this.itemInventoryByPlayer.get(playerId);
-    if (!inventory) {
-      return;
-    }
-
-    const item = inventory[inventoryItemIndex];
-    if (item === undefined) {
-      return;
-    }
-
-    const itemDef = ITEM_DEFINITIONS[item];
-    const sellValue = Math.floor(itemDef.cost / 2);
-    inventory.splice(inventoryItemIndex, 1);
-    const currentGold = this.goldByPlayer.get(playerId) || 0;
-    this.goldByPlayer.set(playerId, currentGold + sellValue);
   }
 
   private buyBossShopOffer(playerId: string, slotIndex: number): void {
@@ -1720,8 +1600,6 @@ export class MatchRoomController {
           purchaseCount,
           isRumorEligible,
         ),
-      buildItemShopOffers: () =>
-        this.shopOfferBuilder.buildItemShopOffers(ITEM_TYPES, ITEM_DEFINITIONS),
       buildBossShopOffers: () => this.shopOfferBuilder.buildBossShopOffers(),
       shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
       shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
@@ -1729,7 +1607,6 @@ export class MatchRoomController {
       kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
       rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
       shopOffersByPlayer: this.shopOffersByPlayer,
-      itemShopOffersByPlayer: this.itemShopOffersByPlayer,
       bossShopOffersByPlayer: this.bossShopOffersByPlayer,
       enableRumorInfluence: this.enableRumorInfluence,
       enableBossExclusiveShop: this.enableBossExclusiveShop,
@@ -1949,7 +1826,6 @@ export class MatchRoomController {
       starLevel: benchUnit.starLevel,
       sellValue: benchUnit.cost,
       unitCount: benchUnit.unitCount,
-      items: benchUnit.items || [],
     };
 
     if (benchUnit.unitId !== undefined) {
@@ -1986,7 +1862,6 @@ export class MatchRoomController {
       cost: returnedPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[returnedPlacement.unitType] ?? 1,
       starLevel: returnedPlacement.starLevel ?? 1,
       unitCount: returnedPlacement.unitCount ?? returnedPlacement.starLevel ?? 1,
-      items: [...(returnedPlacement.items ?? [])],
     };
 
     if (returnedPlacement.unitId !== undefined) {
@@ -2046,19 +1921,6 @@ export class MatchRoomController {
 
     if (!soldPlacement) {
       return;
-    }
-
-    // Return items to inventory if space available
-    const items = soldPlacement.items || [];
-    const inventory = this.itemInventoryByPlayer.get(playerId);
-
-    if (inventory && items.length > 0) {
-      for (const item of items) {
-        if (inventory.length < MAX_INVENTORY_SIZE) {
-          inventory.push(item);
-        }
-        // If inventory is full, items are lost (design decision)
-      }
     }
 
     boardPlacements.splice(targetIndex, 1);
@@ -2131,8 +1993,6 @@ export class MatchRoomController {
     this.shopLockedByPlayer.delete(playerId);
     this.benchUnitsByPlayer.delete(playerId);
     this.ownedUnitsByPlayer.delete(playerId);
-    this.itemInventoryByPlayer.delete(playerId);
-    this.itemShopOffersByPlayer.delete(playerId);
     this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
     this.selectedHeroByPlayer.delete(playerId);
     this.heroPlacementByPlayer.delete(playerId);

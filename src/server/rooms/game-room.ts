@@ -97,6 +97,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   public onCreate(options: GameRoomOptions = {}): void {
     this.maxClients = GameRoom.MAX_PLAYERS;
     this.state = new MatchRoomState();
+    this.state.maxPlayers = GameRoom.MAX_PLAYERS;
     const rawSetId = (options as { setId?: unknown }).setId;
 
     if (rawSetId !== undefined && !isUnitEffectSetId(rawSetId)) {
@@ -113,6 +114,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.setId = rawSetId ?? this.setId;
     this.sharedBoardRoomId = options.sharedBoardRoomId;
     this.state.setId = this.setId;
+    this.state.sharedBoardRoomId = this.sharedBoardRoomId ?? "";
 
     // Load feature flags
     const forcedFeatureFlags = options.forcedFeatureFlags;
@@ -748,7 +750,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       logger: this.matchLogger,
       getShopOffers: (sid) => this.controller?.getShopOffersForPlayer(sid),
       getBossShopOffers: (sid) => this.controller?.getBossShopOffersForPlayer(sid),
-      getPlayerStatus: (sid) => this.controller?.getPlayerStatus(sid) ?? null,
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
     }, { shopOffersSnapshot });
@@ -848,6 +849,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     this.state.phase = this.controller.phase;
     this.state.phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
+    this.state.sharedBoardRoomId = this.sharedBoardRoomId ?? "";
     this.state.prepDeadlineAtMs =
       this.controller.phase === "Prep" ? this.controller.prepDeadlineAtMs ?? 0 : 0;
     this.state.lobbyStage = this.controller.phase === "Waiting"
@@ -958,6 +960,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       phase: this.state.phase as RoundStateMessage["phase"],
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
+      sharedBoardRoomId: this.state.sharedBoardRoomId,
       lobbyStage: this.state.lobbyStage,
       selectionDeadlineAtMs: this.state.selectionDeadlineAtMs,
       ranking: Array.from(this.state.ranking),
@@ -1023,7 +1026,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           unitType: placement.unitType,
           starLevel: placement.starLevel ?? 1,
           cell: placement.cell,
-          items: placement.items ?? [],
         }));
 
         // Convert bench units to BenchUnitSnapshot format
@@ -1031,7 +1033,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           unitType: unit.unitType,
           starLevel: unit.starLevel ?? 1,
           benchIndex: index,
-          items: unit.items ?? [],
         }));
 
         this.matchLogger.updateFinalUnits(playerId, finalBoardUnits, finalBenchUnits);

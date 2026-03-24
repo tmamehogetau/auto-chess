@@ -12,6 +12,8 @@ describe("index.html contract", () => {
     const requiredAttributes = [
       "data-endpoint-input",
       "data-room-input",
+      "data-room-code-input",
+      "data-room-code-output",
       "data-setid-select",
       "data-autofill-input",
       "data-connect-button",
@@ -100,10 +102,10 @@ describe("index.html contract", () => {
     expect(html).toMatch(/data-set-id-display>-<\/strong>/);
   });
 
-  test("solo first-play 用に auto fill は 3 を既定値にする", () => {
+  test("solo first-play 用でも auto fill は 0 を既定値にする", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 
-    expect(html).toMatch(/data-autofill-input[^>]*value="3"/);
+    expect(html).toMatch(/data-autofill-input[^>]*value="0"/);
   });
 
   test("works-version presentation shell を示す stage banner と overlay kicker を持つ", () => {
@@ -135,5 +137,19 @@ describe("index.html contract", () => {
     expect(html.includes("Operator Console")).toBe(true);
     expect(html.includes("data-operator-guide")).toBe(true);
     expect(html.includes("./player.html")).toBe(true);
+  });
+
+  test("room code controls は accessible copy を持つ", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes('data-room-code-input')).toBe(true);
+    expect(html.includes('aria-label="Room code"')).toBe(true);
+    expect(html.includes('data-room-code-output aria-live="polite"')).toBe(true);
+  });
+
+  test("operator autofill は real player join を妨げない default になっている", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes('data-autofill-input type="number" min="0" max="3" value="0"')).toBe(true);
   });
 });

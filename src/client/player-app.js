@@ -12,7 +12,9 @@ import {
   getSharedBoardState,
   handleSharedCellClick,
   initSharedBoardClient,
+  leaveSharedBoardRoom,
   setSharedBoardGamePlayerId,
+  setSharedBoardRoomId,
 } from "./shared-board-client.js";
 import { buildCommandResultCopy } from "./ui/player-facing-copy.js";
 import { mapEntries, mapGet } from "./utils/pure-utils.js";
@@ -20,6 +22,9 @@ import { mapEntries, mapGet } from "./utils/pure-utils.js";
 const playerShell = document.querySelector("[data-player-shell]");
 const statusCopy = document.querySelector("[data-player-status-copy]");
 const connectButton = document.querySelector("[data-player-connect-btn]");
+const roomCodeInput = document.querySelector("[data-player-room-code-input]");
+const roomCopyElement = document.querySelector("[data-player-room-copy]");
+const deadlineCopyElement = document.querySelector("[data-player-deadline-copy]");
 const participantSummaryElement = document.querySelector("[data-player-participant-summary]");
 const participantCopyElement = document.querySelector("[data-player-participant-copy]");
 const preferenceCopyElement = document.querySelector("[data-player-preference-copy]");
@@ -38,6 +43,14 @@ const sharedCursorListElement = document.querySelector("[data-player-shared-curs
 const shopElement = document.querySelector("[data-player-unit-shop]");
 const shopCopyElement = document.querySelector("[data-player-shop-copy]");
 const shopSlotElements = Array.from(document.querySelectorAll("[data-player-shop-slot]"));
+const shopRefreshButton = document.querySelector("[data-player-shop-refresh-button]");
+const buyXpButton = document.querySelector("[data-player-buy-xp-button]");
+const bossShopElement = document.querySelector("[data-player-boss-shop]");
+const bossShopCopyElement = document.querySelector("[data-player-boss-shop-copy]");
+const bossShopSlotElements = Array.from(document.querySelectorAll("[data-player-boss-shop-slot]"));
+const specialUnitCopyElement = document.querySelector("[data-player-special-unit-copy]");
+const spellCopyElement = document.querySelector("[data-player-spell-copy]");
+const synergyCopyElement = document.querySelector("[data-player-synergy-copy]");
 const benchElement = document.querySelector("[data-player-bench]");
 const benchCopyElement = document.querySelector("[data-player-bench-copy]");
 const benchSlotElements = Array.from(document.querySelectorAll("[data-player-bench-slot]"));
@@ -61,13 +74,26 @@ const phaseSections = new Map([
 const gameRoomSession = createGameRoomSession();
 let latestPlayer = null;
 let latestState = null;
+let latestRoundState = null;
 let latestPhaseHpProgress = null;
+let latestSharedBoardRoomId = "";
 let selectedHeroId = null;
 let selectedBossId = "remilia";
 let selectedBenchIndex = null;
 let cmdSeqCounter = 0;
 let latestRawPhase = "Waiting";
 let battleStartSweepTimeoutId = null;
+
+function rememberSharedBoardRoomId(roomId) {
+  const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
+  if (normalizedRoomId.length === 0) {
+    // Keep the last non-empty room id so reconnect can fall back to it.
+    return;
+  }
+
+  latestSharedBoardRoomId = normalizedRoomId;
+  setSharedBoardRoomId(normalizedRoomId);
+}
 
 const PLAYER_BATTLE_START_SWEEP_MS = 900;
 
@@ -98,6 +124,12 @@ initSharedBoardClient(
       }
     },
     isTouhouRosterEnabled: () => latestState?.featureFlagsEnableTouhouRoster === true,
+    getPlayerPlacementSide: () => {
+      const sessionId = gameRoomSession.getRoom()?.sessionId ?? "";
+      return latestState?.bossPlayerId === sessionId || latestPlayer?.role === "boss"
+        ? "boss"
+        : "raid";
+    },
   },
 );
 
@@ -121,6 +153,7 @@ gameRoomSession.onConnectionState((connectionState) => {
       connectButton.textContent = "Connected";
     }
     statusCopy.textContent = "接続完了。現在の phase に合わせて player-facing surface を切り替えます。";
+    renderPlayerHeaderTruth();
     updateReadyButton(latestPlayer);
     return;
   }
@@ -129,10 +162,20 @@ gameRoomSession.onConnectionState((connectionState) => {
     connectButton.disabled = false;
     connectButton.textContent = "Join Session";
   }
+  latestPlayer = null;
+  latestState = null;
   latestPhaseHpProgress = null;
+  latestRoundState = null;
+  latestSharedBoardRoomId = "";
   latestRawPhase = "Waiting";
+  selectedBenchIndex = null;
   clearPlayerBattleStartSweep();
+  leaveSharedBoardRoom();
+  setSharedBoardRoomId("");
   statusCopy.textContent = "進行役がルームを準備したら、この画面の player flow が始まります。";
+  showPlayerPhase("lobby");
+  renderPlayerHeaderTruth();
+  renderPlayerPrepSurface();
   updateReadyButton(null);
 });
 
@@ -143,8 +186,15 @@ gameRoomSession.onStateChange((state) => {
   const player = mapGet(state?.players, gameRoomSession.getRoom()?.sessionId ?? "") ?? null;
   latestState = state;
   latestPlayer = player;
+  if (!Number.isInteger(selectedBenchIndex) || selectedBenchIndex < 0 || selectedBenchIndex >= Number(player?.benchUnits?.length ?? 0)) {
+    selectedBenchIndex = null;
+  }
+  if (typeof state?.sharedBoardRoomId === "string" && state.sharedBoardRoomId.length > 0) {
+    rememberSharedBoardRoomId(state.sharedBoardRoomId);
+  }
   showPlayerPhase(nextView);
   syncPlayerBattleStartSweep(previousPhase, state);
+  renderPlayerHeaderTruth();
   renderPlayerLobbySummary({ participantSummaryElement: participantCopyElement, state });
   renderPlayerLobbyPreferenceSummary({
     preferenceCopyElement,
@@ -177,7 +227,15 @@ gameRoomSession.onStateChange((state) => {
 });
 
 gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
+  latestRoundState = message;
+  const sharedBoardRoomId = typeof message?.sharedBoardRoomId === "string"
+    ? message.sharedBoardRoomId
+    : "";
   latestPhaseHpProgress = resolvePhaseHpProgress(message);
+  if (sharedBoardRoomId.length > 0) {
+    rememberSharedBoardRoomId(sharedBoardRoomId);
+  }
+  renderPlayerHeaderTruth();
   renderPlayerResultSummary({
     resultSurfaceElement,
     state: latestState,
@@ -185,6 +243,7 @@ gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
     phaseHpProgress: latestPhaseHpProgress,
     sessionId: gameRoomSession.getRoom()?.sessionId ?? "",
   });
+  void syncSharedBoardConnection();
 });
 
 gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
@@ -224,6 +283,20 @@ shopSlotElements.forEach((button, index) => {
   button.addEventListener("click", () => {
     handlePlayerShopBuy(index);
   });
+});
+
+bossShopSlotElements.forEach((button, index) => {
+  button.addEventListener("click", () => {
+    handlePlayerBossShopBuy(index);
+  });
+});
+
+shopRefreshButton?.addEventListener("click", () => {
+  handlePlayerShopRefresh();
+});
+
+buyXpButton?.addEventListener("click", () => {
+  handlePlayerBuyXp();
 });
 
 benchSlotElements.forEach((button, index) => {
@@ -375,6 +448,99 @@ function buildPlayerPhaseCopy(phase) {
   }
 }
 
+function resolveRequestedRoomCode() {
+  const inputValue = roomCodeInput instanceof HTMLInputElement
+    ? roomCodeInput.value.trim()
+    : "";
+  if (inputValue.length > 0) {
+    return inputValue;
+  }
+
+  return getSearchParam("roomId") ?? "";
+}
+
+function resolveSharedBoardRoomId(state, roundState, fallbackRoomId = latestSharedBoardRoomId) {
+  const stateRoomId = typeof state?.sharedBoardRoomId === "string" ? state.sharedBoardRoomId.trim() : "";
+  if (stateRoomId.length > 0) {
+    return stateRoomId;
+  }
+
+  const roundStateRoomId = typeof roundState?.sharedBoardRoomId === "string"
+    ? roundState.sharedBoardRoomId.trim()
+    : "";
+  if (roundStateRoomId.length > 0) {
+    return roundStateRoomId;
+  }
+
+  return typeof fallbackRoomId === "string" ? fallbackRoomId.trim() : "";
+}
+
+function buildDeadlineSummary(state, roundState) {
+  const phase = typeof state?.phase === "string" ? state.phase : "Waiting";
+  if (phase === "Waiting" && Number(state?.selectionDeadlineAtMs) > 0) {
+    return {
+      label: "Selection deadline",
+      valueText: formatDeadlineCountdown(state.selectionDeadlineAtMs),
+    };
+  }
+
+  const prepDeadline = Number(state?.prepDeadlineAtMs);
+  if (phase === "Prep" && Number.isFinite(prepDeadline) && prepDeadline > 0) {
+    return {
+      label: "Prep deadline",
+      valueText: formatDeadlineCountdown(prepDeadline),
+    };
+  }
+
+  const phaseDeadline = Number(roundState?.phaseDeadlineAtMs ?? state?.phaseDeadlineAtMs);
+  if (Number.isFinite(phaseDeadline) && phaseDeadline > 0) {
+    return {
+      label: `${phase} deadline`,
+      valueText: formatDeadlineCountdown(phaseDeadline),
+    };
+  }
+
+  return {
+    label: "Deadline",
+    valueText: "pending",
+  };
+}
+
+function formatDeadlineCountdown(deadlineAtMs) {
+  const remainingMs = Math.max(0, Math.round(Number(deadlineAtMs) - Date.now()));
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  return `${remainingSeconds}s remaining`;
+}
+
+function renderPlayerHeaderTruth() {
+  if (roomCopyElement instanceof HTMLElement) {
+    const roomId = typeof gameRoomSession.getRoom()?.roomId === "string"
+      ? gameRoomSession.getRoom().roomId
+      : resolveRequestedRoomCode() || "default";
+    const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState) || "unbound";
+    const phase = typeof latestState?.phase === "string" ? latestState.phase : "Waiting";
+    roomCopyElement.textContent = `Game ${roomId} / Shared board ${sharedBoardRoomId} / Phase ${phase}`;
+  }
+
+  if (deadlineCopyElement instanceof HTMLElement) {
+    const deadlineSummary = buildDeadlineSummary(latestState, latestRoundState);
+    deadlineCopyElement.textContent = `${deadlineSummary.label}: ${deadlineSummary.valueText}`;
+  }
+}
+
+async function syncSharedBoardConnection() {
+  const client = gameRoomSession.getClient();
+  if (!client) {
+    return;
+  }
+
+  const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState);
+  if (sharedBoardRoomId.length > 0) {
+    rememberSharedBoardRoomId(sharedBoardRoomId);
+  }
+  await connectSharedBoard(client, { roomId: sharedBoardRoomId });
+}
+
 function updateReadyButton(player) {
   if (!(readyButton instanceof HTMLButtonElement)) {
     return;
@@ -387,15 +553,41 @@ function updateReadyButton(player) {
 
 async function connectPlayerSession() {
   try {
-    const room = await gameRoomSession.connect();
+    const requestedRoomCode = resolveRequestedRoomCode();
+    const requestedSetId = getSearchParam("setId") ?? undefined;
+    const room = requestedRoomCode
+      ? await gameRoomSession.connect({ roomId: requestedRoomCode })
+      : await gameRoomSession.connect({
+        mode: "createPaired",
+        sharedBoardRoomName: "shared_board",
+        roomOptions: {
+          setId: requestedSetId,
+        },
+      });
     const client = gameRoomSession.getClient();
 
     if (room?.sessionId) {
       setSharedBoardGamePlayerId(room.sessionId);
     }
 
+    const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();
+    const initialSharedBoardRoomId = resolveSharedBoardRoomId(
+      latestState,
+      latestRoundState,
+      typeof room?.state?.sharedBoardRoomId === "string"
+        ? room.state.sharedBoardRoomId
+        : pairedSharedBoardRoom?.roomId,
+    );
+    if (initialSharedBoardRoomId.length > 0) {
+      rememberSharedBoardRoomId(initialSharedBoardRoomId);
+    }
+
     if (client) {
-      await connectSharedBoard(client);
+      const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState, initialSharedBoardRoomId);
+      await connectSharedBoard(client, {
+        roomId: sharedBoardRoomId,
+        existingRoom: pairedSharedBoardRoom,
+      });
     }
   } catch (_error) {
     if (statusCopy instanceof HTMLElement) {
@@ -412,6 +604,39 @@ function handlePlayerShopBuy(slotIndex) {
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
     shopBuySlotIndex: slotIndex,
+  });
+}
+
+function handlePlayerBossShopBuy(slotIndex) {
+  if (latestState?.phase !== "Prep") {
+    return;
+  }
+
+  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+    cmdSeq: nextCmdSeq(),
+    bossShopBuySlotIndex: slotIndex,
+  });
+}
+
+function handlePlayerShopRefresh() {
+  if (latestState?.phase !== "Prep") {
+    return;
+  }
+
+  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+    cmdSeq: nextCmdSeq(),
+    shopRefreshCount: 1,
+  });
+}
+
+function handlePlayerBuyXp() {
+  if (latestState?.phase !== "Prep") {
+    return;
+  }
+
+  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+    cmdSeq: nextCmdSeq(),
+    xpPurchaseCount: 1,
   });
 }
 
@@ -447,9 +672,15 @@ function handlePlayerBoardSell() {
     return;
   }
 
-  const cellIndex = resolveSelectedSharedBoardCellIndex();
+  const selectedCell = resolveSelectedSharedBoardCell();
+  const cellIndex = selectedCell?.cellIndex ?? null;
   if (cellIndex === null) {
     showPlayerStatus("shared-board で自分の unit を選んでから Sell を押してください。");
+    return;
+  }
+
+  if (isSpecialSharedUnitId(selectedCell?.unitId)) {
+    showPlayerStatus("主人公ユニットとボスユニットは売却できません。位置だけ調整できます。");
     return;
   }
 
@@ -464,9 +695,15 @@ function handlePlayerBoardReturn() {
     return;
   }
 
-  const cellIndex = resolveSelectedSharedBoardCellIndex();
+  const selectedCell = resolveSelectedSharedBoardCell();
+  const cellIndex = selectedCell?.cellIndex ?? null;
   if (cellIndex === null) {
     showPlayerStatus("shared-board で自分の unit を選んでから Return を押してください。");
+    return;
+  }
+
+  if (isSpecialSharedUnitId(selectedCell?.unitId)) {
+    showPlayerStatus("主人公ユニットとボスユニットは bench に戻せません。位置だけ調整できます。");
     return;
   }
 
@@ -488,7 +725,9 @@ function handlePlayerSharedCellClick(cellIndex) {
   }
 
   if (!Number.isInteger(cellIndex) || cellIndex < 0) {
-    showPlayerStatus("いま配置できるのは、下側の highlighted raid cells だけです。");
+    showPlayerStatus(latestPlayer?.role === "boss"
+      ? "いま配置できるのは、上側の boss 配置セルだけです。"
+      : "いま配置できるのは、下側の raid 配置セルだけです。");
     return;
   }
 
@@ -515,10 +754,18 @@ function renderPlayerPrepSurface() {
   renderPlayerPrepSummary({
     boardCopyElement,
     shopCopyElement,
+    bossShopCopyElement,
+    specialUnitCopyElement,
+    spellCopyElement,
+    synergyCopyElement,
     benchCopyElement,
+    roomCopyElement,
+    deadlineCopyElement,
     boardElement,
     shopElement,
     shopSlotElements,
+    bossShopElement,
+    bossShopSlotElements,
     benchElement,
     benchSlotElements,
     readyElement,
@@ -530,8 +777,15 @@ function renderPlayerPrepSurface() {
     currentPhase: typeof latestState?.phase === "string" ? latestState.phase : "Waiting",
     selectedBenchIndex,
     canSellBench: selectedBenchIndex !== null,
-    canSellBoard: resolveSelectedSharedBoardCellIndex() !== null,
-    canReturnBoard: resolveSelectedSharedBoardCellIndex() !== null,
+    canSellBoard: canManipulateSelectedBoardUnit(),
+    canReturnBoard: canManipulateSelectedBoardUnit(),
+    roomSummary: {
+      roomId: typeof gameRoomSession.getRoom()?.roomId === "string"
+        ? gameRoomSession.getRoom().roomId
+        : resolveRequestedRoomCode() || "",
+      sharedBoardRoomId: resolveSharedBoardRoomId(latestState, latestRoundState),
+    },
+    deadlineSummary: buildDeadlineSummary(latestState, latestRoundState),
     benchSellButton,
     boardReturnButton,
     boardSellButton,
@@ -539,7 +793,7 @@ function renderPlayerPrepSurface() {
   });
 }
 
-function resolveSelectedSharedBoardCellIndex() {
+function resolveSelectedSharedBoardCell() {
   const selectedUnitId = getSelectedSharedUnitId();
   if (!selectedUnitId) {
     return null;
@@ -551,10 +805,35 @@ function resolveSelectedSharedBoardCellIndex() {
       continue;
     }
 
-    return Number.parseInt(cellIndex, 10);
+    return {
+      cellIndex: Number.parseInt(cellIndex, 10),
+      unitId: cell.unitId,
+      ownerId: cell.ownerId,
+    };
   }
 
   return null;
+}
+
+function resolveSelectedSharedBoardCellIndex() {
+  return resolveSelectedSharedBoardCell()?.cellIndex ?? null;
+}
+
+function isSpecialSharedUnitId(unitId) {
+  return typeof unitId === "string" && (unitId.startsWith("hero:") || unitId.startsWith("boss:"));
+}
+
+function canManipulateSelectedBoardUnit() {
+  const selectedCell = resolveSelectedSharedBoardCell();
+  if (!selectedCell) {
+    return false;
+  }
+
+  if (isSpecialSharedUnitId(selectedCell.unitId)) {
+    return false;
+  }
+
+  return true;
 }
 
 function showPlayerStatus(message) {

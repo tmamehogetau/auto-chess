@@ -3,6 +3,7 @@ import type { PhaseHpProgress } from "./ui/player-facing-copy.js";
 export function renderPlayerLobbySummary(input: {
   participantSummaryElement?: HTMLElement | null;
   state?: {
+    maxPlayers?: number;
     players?: unknown;
   } | null;
 }): void;
@@ -36,10 +37,18 @@ export function renderPlayerSelectionSummary(input: {
 export function renderPlayerPrepSummary(input: {
   boardCopyElement?: HTMLElement | null;
   shopCopyElement?: HTMLElement | null;
+  bossShopCopyElement?: HTMLElement | null;
+  specialUnitCopyElement?: HTMLElement | null;
+  spellCopyElement?: HTMLElement | null;
+  synergyCopyElement?: HTMLElement | null;
   benchCopyElement?: HTMLElement | null;
+  roomCopyElement?: HTMLElement | null;
+  deadlineCopyElement?: HTMLElement | null;
   boardElement?: HTMLElement | null;
   shopElement?: HTMLElement | null;
   shopSlotElements?: HTMLButtonElement[];
+  bossShopElement?: HTMLElement | null;
+  bossShopSlotElements?: HTMLButtonElement[];
   benchElement?: HTMLElement | null;
   benchSlotElements?: HTMLButtonElement[];
   readyElement?: HTMLElement | null;
@@ -48,17 +57,46 @@ export function renderPlayerPrepSummary(input: {
   state?: {
     phase?: string;
     lobbyStage?: string;
+    prepDeadlineAtMs?: number;
+    selectionDeadlineAtMs?: number;
+    phaseDeadlineAtMs?: number;
+    sharedBoardMode?: string;
     featureFlagsEnableHeroSystem?: boolean;
+    featureFlagsEnableSpellCard?: boolean;
     featureFlagsEnableBossExclusiveShop?: boolean;
     bossPlayerId?: string;
+    declaredSpellId?: string;
+    usedSpellIds?: unknown[] | Iterable<unknown>;
     players?: unknown;
   } | null;
   player?: {
     ready?: boolean;
     role?: string;
     gold?: number;
+    hp?: number;
+    remainingLives?: number;
+    xp?: number;
+    level?: number;
     selectedHeroId?: string;
     selectedBossId?: string;
+    activeSynergies?: Array<{
+      unitType?: string;
+      count?: number;
+      tier?: number;
+    }> | Iterable<{
+      unitType?: string;
+      count?: number;
+      tier?: number;
+    }>;
+    bossShopOffers?: Array<{
+      unitType?: string;
+      cost?: number;
+      displayName?: string;
+    }> | Iterable<{
+      unitType?: string;
+      cost?: number;
+      displayName?: string;
+    }>;
     shopOffers?: Array<{
       unitType?: string;
       cost?: number;
@@ -77,6 +115,14 @@ export function renderPlayerPrepSummary(input: {
   canSellBench?: boolean;
   canSellBoard?: boolean;
   canReturnBoard?: boolean;
+  roomSummary?: {
+    roomId?: string;
+    sharedBoardRoomId?: string;
+  } | null;
+  deadlineSummary?: {
+    label?: string;
+    valueText?: string;
+  } | null;
   benchSellButton?: HTMLButtonElement | null;
   boardReturnButton?: HTMLButtonElement | null;
   boardSellButton?: HTMLButtonElement | null;

@@ -38,7 +38,6 @@ describe("prep-economy", () => {
     const kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>([["boss", true]]);
     const rumorInfluenceEligibleByPlayer = new Map<string, boolean>([["boss", true], ["raid", false]]);
     const shopOffersByPlayer = new Map<string, TestOffer[]>();
-    const itemShopOffersByPlayer = new Map<string, Array<{ itemType: string; cost: number }>>();
     const bossShopOffersByPlayer = new Map<string, Array<{ unitType: string; cost: number }>>();
 
     initializeShopsForPrep({
@@ -50,7 +49,6 @@ describe("prep-economy", () => {
         rarity: roundIndex,
         cost: refreshCount + purchaseCount + (isRumorEligible ? 1 : 0),
       }],
-      buildItemShopOffers: () => [{ itemType: "sword", cost: 3 }],
       buildBossShopOffers: () => [{ unitType: "boss-only", cost: 9 }],
       shopRefreshCountByPlayer,
       shopPurchaseCountByPlayer,
@@ -58,7 +56,6 @@ describe("prep-economy", () => {
       kouRyuudouFreeRefreshConsumedByPlayer,
       rumorInfluenceEligibleByPlayer,
       shopOffersByPlayer,
-      itemShopOffersByPlayer,
       bossShopOffersByPlayer,
       enableRumorInfluence: true,
       enableBossExclusiveShop: true,
@@ -70,8 +67,6 @@ describe("prep-economy", () => {
     expect(kouRyuudouFreeRefreshConsumedByPlayer.get("boss")).toBe(false);
     expect(shopOffersByPlayer.get("boss")).toEqual([{ unitType: "boss", rarity: 4, cost: 1 }]);
     expect(shopOffersByPlayer.get("raid")).toEqual([{ unitType: "raid", rarity: 4, cost: 0 }]);
-    expect(itemShopOffersByPlayer.get("boss")).toEqual([{ itemType: "sword", cost: 3 }]);
-    expect(itemShopOffersByPlayer.get("raid")).toEqual([{ itemType: "sword", cost: 3 }]);
     expect(bossShopOffersByPlayer.get("boss")).toEqual([{ unitType: "boss-only", cost: 9 }]);
     expect(bossShopOffersByPlayer.has("raid")).toBe(false);
     expect(rumorInfluenceEligibleByPlayer.get("boss")).toBe(false);

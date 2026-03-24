@@ -5,6 +5,7 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { buildServer } from "../../server";
 import { GameRoom } from "../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
+import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -218,5 +219,18 @@ describe("runtime shared_board server config", () => {
 
     expect(roundState?.phase).toBeDefined();
     expect(roundState?.sharedBoardRoomId).toBe(gameRoom.state.sharedBoardRoomId);
+    expect(gameRoom.state.featureFlagsEnableHeroSystem).toBe(DEFAULT_FLAGS.enableHeroSystem);
+    expect(gameRoom.state.featureFlagsEnableBossExclusiveShop).toBe(
+      DEFAULT_FLAGS.enableBossExclusiveShop,
+    );
+    expect(gameRoom.state.featureFlagsEnableTouhouRoster).toBe(DEFAULT_FLAGS.enableTouhouRoster);
+    expect(gameRoom.state.featureFlagsEnableTouhouFactions).toBe(
+      DEFAULT_FLAGS.enableTouhouFactions,
+    );
+    expect(gameRoom.state.featureFlagsEnableSharedPool).toBe(
+      DEFAULT_FLAGS.enableSharedPool || DEFAULT_FLAGS.enablePerUnitSharedPool,
+    );
+    expect(gameRoom.state.featureFlagsEnableSpellCard).toBe(DEFAULT_FLAGS.enableSpellCard);
+    expect(gameRoom.state.featureFlagsEnableSharedBoardShadow).toBe(true);
   });
 });

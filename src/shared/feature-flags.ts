@@ -15,17 +15,17 @@ export interface FeatureFlags {
 }
 
 export const DEFAULT_FLAGS: FeatureFlags = {
-  enableHeroSystem: false,
-  enableSharedPool: false,
-  enablePhaseExpansion: false,
+  enableHeroSystem: true,
+  enableSharedPool: true,
+  enablePhaseExpansion: true,
   enableSubUnitSystem: false,
   enableEmblemCells: false,
-  enableSpellCard: false,
+  enableSpellCard: true,
   enableRumorInfluence: false,
-  enableBossExclusiveShop: false,
+  enableBossExclusiveShop: true,
   enableSharedBoardShadow: false,
-  // Migration flags for Touhou roster switch (Phase 2)
-  enableTouhouRoster: false,
-  enableTouhouFactions: false,
+  // Touhou roster is now the primary product baseline.
+  enableTouhouRoster: true,
+  enableTouhouFactions: true,
   enablePerUnitSharedPool: false,
 };

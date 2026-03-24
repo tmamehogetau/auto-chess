@@ -8,15 +8,21 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
 import { GameRoom } from "../../../src/server/rooms/game-room";
+import { FeatureFlagService } from "../../../src/server/feature-flag-service";
 import {
   SERVER_MESSAGE_TYPES,
   type BoardUnitPlacement,
 } from "../../../src/shared/room-messages";
 import { waitForCondition } from "../shared-board-bridge/helpers/wait";
+import {
+  FLAG_CONFIGURATIONS,
+  FLAG_ENV_VARS,
+} from "../../server/feature-flag-test-helper";
 
 describe("E2E: Player Elimination Scenario", () => {
   let testServer: ColyseusTestServer;
   const TEST_SERVER_PORT = 4572;
+  const originalEnv = { ...process.env };
 
   const STRONG_PLACEMENTS: BoardUnitPlacement[] = [
     { cell: 0, unitType: "vanguard", starLevel: 3 },
@@ -30,6 +36,13 @@ describe("E2E: Player Elimination Scenario", () => {
   ];
 
   beforeAll(async () => {
+    for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+      process.env[envVarName] = String(
+        FLAG_CONFIGURATIONS.ALL_DISABLED[flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED],
+      );
+    }
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+
     const server = defineServer({
       rooms: {
         game: defineRoom(GameRoom, {
@@ -56,6 +69,8 @@ describe("E2E: Player Elimination Scenario", () => {
     if (testServer) {
       await testServer.shutdown();
     }
+    process.env = originalEnv;
+    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
   });
 
   async function waitForPhase(gameRoom: GameRoom, targetPhase: string, timeoutMs = 10_000) {

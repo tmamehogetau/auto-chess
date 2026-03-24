@@ -66,10 +66,14 @@ describe("Feature Flag Integration", () => {
       const service = FeatureFlagService.getInstance();
       const flags = service.getFlags();
 
-      expect(flags.enableHeroSystem).toBe(false);
-      expect(flags.enableSharedPool).toBe(false);
-      expect(flags.enablePhaseExpansion).toBe(false);
+      expect(flags.enableHeroSystem).toBe(true);
+      expect(flags.enableSharedPool).toBe(true);
+      expect(flags.enablePhaseExpansion).toBe(true);
       expect(flags.enableSubUnitSystem).toBe(false);
+      expect(flags.enableBossExclusiveShop).toBe(true);
+      expect(flags.enableSpellCard).toBe(true);
+      expect(flags.enableTouhouRoster).toBe(true);
+      expect(flags.enableTouhouFactions).toBe(true);
     });
 
     it("should override flags from env vars", () => {
@@ -107,6 +111,7 @@ describe("Feature Flag Integration", () => {
     it("should check feature enabled status", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
+      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "true";
 
       // Reset singleton instance to pick up new env vars
@@ -136,26 +141,27 @@ describe("Feature Flag Integration", () => {
       expect(() => service.validateFlagConfiguration()).not.toThrow();
     });
 
-    it("should reject unsupported multi-feature partial configuration", () => {
+    it("should accept the Touhou mainline default bundle", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "true";
       process.env.FEATURE_ENABLE_SHARED_POOL = "true";
-      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
+      process.env.FEATURE_ENABLE_PHASE_EXPANSION = "true";
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "false";
       process.env.FEATURE_ENABLE_EMBLEM_CELLS = "false";
-      process.env.FEATURE_ENABLE_SPELL_CARD = "false";
+      process.env.FEATURE_ENABLE_SPELL_CARD = "true";
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "false";
-      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "false";
+      process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
       process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "false";
+      process.env.FEATURE_ENABLE_TOUHOU_ROSTER = "true";
+      process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "true";
+      process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "false";
 
       (FeatureFlagService as any).instance = undefined;
       const service = FeatureFlagService.getInstance();
 
-      expect(() => service.validateFlagConfiguration()).toThrow(
-        /MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration/,
-      );
+      expect(() => service.validateFlagConfiguration()).not.toThrow();
     });
 
-    it("should reject emblem-only configuration", () => {
+    it("should reject emblem-only configuration without phase expansion", () => {
       process.env.FEATURE_ENABLE_HERO_SYSTEM = "false";
       process.env.FEATURE_ENABLE_SHARED_POOL = "false";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
@@ -170,7 +176,7 @@ describe("Feature Flag Integration", () => {
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).toThrow(
-        /enableEmblemCells is only allowed in ALL_ENABLED configuration/,
+        /enableEmblemCells requires enablePhaseExpansion/,
       );
     });
 
@@ -184,7 +190,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_RUMOR_INFLUENCE = "true";
       process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "true";
       process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "true";
-      // Migration flags should be false in ALL_ENABLED mode (MVP flags only)
+      // Explicit env values should override the Touhou-mainline defaults.
       process.env.FEATURE_ENABLE_TOUHOU_ROSTER = "false";
       process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "false";
       process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "false";
@@ -198,8 +204,8 @@ describe("Feature Flag Integration", () => {
     describe("Migration flags (enableTouhouRoster, enableTouhouFactions, enablePerUnitSharedPool)", () => {
       it("should have default values for migration flags", () => {
         const flags = DEFAULT_FLAGS;
-        expect(flags.enableTouhouRoster).toBe(false);
-        expect(flags.enableTouhouFactions).toBe(false);
+        expect(flags.enableTouhouRoster).toBe(true);
+        expect(flags.enableTouhouFactions).toBe(true);
         expect(flags.enablePerUnitSharedPool).toBe(false);
       });
 
@@ -335,13 +341,12 @@ describe("Feature Flag Integration", () => {
         (FeatureFlagService as any).instance = undefined;
         const service = FeatureFlagService.getInstance();
 
-        // Emblem-only restriction should NOT be weakened by migration flags
         expect(() => service.validateFlagConfiguration()).toThrow(
-          /enableEmblemCells is only allowed in ALL_ENABLED configuration/,
+          /enableEmblemCells requires enablePhaseExpansion/,
         );
       });
 
-      it("should reject partial MVP multi-feature with migration flags active", () => {
+      it("should accept partial Touhou mainline bundles with migration flags active", () => {
         // Use helper to set all flags, reducing duplication
         // Partial MVP config (hero + shared pool only), migration active
         setFlagEnvVars({
@@ -356,10 +361,7 @@ describe("Feature Flag Integration", () => {
         (FeatureFlagService as any).instance = undefined;
         const service = FeatureFlagService.getInstance();
 
-        // MVP partial multi-feature restriction should NOT be weakened
-        expect(() => service.validateFlagConfiguration()).toThrow(
-          /MVP mode allows only ALL_DISABLED, ALL_ENABLED, or single-feature configuration/,
-        );
+        expect(() => service.validateFlagConfiguration()).not.toThrow();
       });
     });
   });

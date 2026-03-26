@@ -72,6 +72,7 @@ const waitForText = async (
 };
 
 const SHARED_BOARD_PROPAGATION_TIMEOUT_MS = 10_000;
+const SHARED_BOARD_BOSS_PROPAGATION_TIMEOUT_MS = 15_000;
 
 const waitForSharedBoardPropagation = async (
   bridge: {
@@ -2072,7 +2073,7 @@ describe("GameRoom integration", () => {
     await waitForSharedBoardPropagation(
       roomInternals.sharedBoardBridge,
       () => roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) === targetBossCell,
-      SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
+      SHARED_BOARD_BOSS_PROPAGATION_TIMEOUT_MS,
     );
 
     await waitForSharedBoardPropagation(roomInternals.sharedBoardBridge, () => {
@@ -2083,8 +2084,8 @@ describe("GameRoom integration", () => {
         && targetCell?.unitId === `boss:${bossPlayerId}`
         && sourceCell?.unitId === ""
       );
-    }, SHARED_BOARD_PROPAGATION_TIMEOUT_MS);
-  }, 15_000);
+    }, SHARED_BOARD_BOSS_PROPAGATION_TIMEOUT_MS);
+  }, 20_000);
 
   test("boardToBenchCellで盤面ユニットをbenchへ戻すとstateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");

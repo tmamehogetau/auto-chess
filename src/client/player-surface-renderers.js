@@ -49,7 +49,9 @@ export function renderPlayerLobbySummary({ participantSummaryElement, state }) {
     return;
   }
 
-  const players = mapEntries(state?.players).map(([, player]) => player);
+  const players = mapEntries(state?.players)
+    .map(([, player]) => player)
+    .filter((player) => player?.isSpectator !== true);
   const totalPlayers = players.length;
   const expectedPlayers = Number.isInteger(state?.maxPlayers) && state.maxPlayers > 0
     ? state.maxPlayers
@@ -101,7 +103,7 @@ export function renderPlayerSelectionSummary({
 
   if (roleOptionsElement instanceof HTMLElement) {
     const wantsBossPlayers = mapEntries(state?.players)
-      .filter(([, currentPlayer]) => currentPlayer?.wantsBoss === true)
+      .filter(([, currentPlayer]) => currentPlayer?.isSpectator !== true && currentPlayer?.wantsBoss === true)
       .map(([playerId]) => shortPlayerId(playerId));
 
     const selectionCopy = buildLobbyRoleCopy({
@@ -338,7 +340,9 @@ export function renderPlayerPrepSummary({
   }
 
   if (readyCopyElement instanceof HTMLElement) {
-    const players = mapEntries(state?.players).map(([, currentPlayer]) => currentPlayer);
+    const players = mapEntries(state?.players)
+      .map(([, currentPlayer]) => currentPlayer)
+      .filter((currentPlayer) => currentPlayer?.isSpectator !== true);
     const readyCount = players.filter((currentPlayer) => currentPlayer?.ready === true).length;
     readyCopyElement.textContent = buildReadyHint({
       phase: currentPhase,

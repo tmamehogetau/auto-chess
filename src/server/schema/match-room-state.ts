@@ -113,11 +113,13 @@ export class PlayerPresenceState extends Schema {
 
   declare public connected: boolean;
 
+  declare public isSpectator: boolean;
+
   declare public wantsBoss: boolean;
 
   declare public selectedBossId: string;
 
-  declare public role: "unassigned" | "raid" | "boss";
+  declare public role: "unassigned" | "raid" | "boss" | "spectator";
 
   declare public hp: number;
 
@@ -167,6 +169,7 @@ export class PlayerPresenceState extends Schema {
     super();
     this.ready = false;
     this.connected = true;
+    this.isSpectator = false;
     this.wantsBoss = false;
     this.selectedBossId = "";
     this.role = "unassigned";
@@ -327,6 +330,7 @@ defineTypes(SynergySchema, {
 defineTypes(PlayerPresenceState, {
   ready: "boolean",
   connected: "boolean",
+  isSpectator: "boolean",
   wantsBoss: "boolean",
   selectedBossId: "string",
   role: "string",

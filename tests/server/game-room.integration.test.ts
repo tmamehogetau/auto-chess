@@ -259,7 +259,7 @@ describe("GameRoom integration", () => {
     expect(serverRoom.locked).toBe(true);
   });
 
-  test("4人目join前のready入力を保持したままPrepへ進める", async () => {
+  test("3人のreadyだけではPrepへ進まない", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const earlyClients = await Promise.all([
       testServer.connectTo(serverRoom),
@@ -271,12 +271,11 @@ describe("GameRoom integration", () => {
       client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
     }
 
-    const fourthClient = await testServer.connectTo(serverRoom);
-    fourthClient.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
-    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+    expect(serverRoom.state.phase).toBe("Waiting");
 
-    for (const client of [...earlyClients, fourthClient]) {
+    for (const client of earlyClients) {
       expect(serverRoom.state.players.get(client.sessionId)?.ready).toBe(true);
     }
   });
@@ -490,7 +489,53 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.players.get(raidClientC.sessionId)?.selectedHeroId).toBe("okina");
   });
 
-  test("4人目join前のboss希望を保持したままselectionのboss割り当てに使う", async () => {
+  test("spectator host does not block boss role selection for four active players", async () => {
+    const serverRoom = await createRoomWithForcedFlags(testServer, {
+      enableBossExclusiveShop: true,
+      enableHeroSystem: true,
+    });
+
+    const spectatorClient = await testServer.connectTo(serverRoom, { spectator: true });
+    const activeClients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    registerRoundStateListeners([spectatorClient, ...activeClients]);
+
+    const bossClient = activeClients[1]!;
+    const raidClientA = activeClients[0]!;
+    const raidClientB = activeClients[2]!;
+    const raidClientC = activeClients[3]!;
+
+    bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+    for (const client of activeClients) {
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
+
+    raidClientA.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "reimu" });
+    raidClientB.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "marisa" });
+    raidClientC.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: "okina" });
+    bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    expect(serverRoom.state.players.get(spectatorClient.sessionId)?.role).toBe("spectator");
+    expect(serverRoom.state.players.get(spectatorClient.sessionId)?.isSpectator).toBe(true);
+    expect(serverRoom.state.players.get(raidClientA.sessionId)?.selectedHeroId).toBe("reimu");
+    expect(serverRoom.state.players.get(raidClientB.sessionId)?.selectedHeroId).toBe("marisa");
+    expect(serverRoom.state.players.get(raidClientC.sessionId)?.selectedHeroId).toBe("okina");
+    expect(serverRoom.state.players.get(bossClient.sessionId)?.selectedBossId).toBe("remilia");
+    expect(Array.from(serverRoom.state.raidPlayerIds).sort()).toEqual(
+      [raidClientA.sessionId, raidClientB.sessionId, raidClientC.sessionId].sort(),
+    );
+  });
+
+  test("3人ではboss希望を保持したままselectionへ進まない", async () => {
     const serverRoom = await createRoomWithForcedFlags(
       testServer,
       {
@@ -510,14 +555,11 @@ describe("GameRoom integration", () => {
       client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
     }
 
-    const fourthClient = await testServer.connectTo(serverRoom);
-    registerRoundStateListeners([...earlyClients, fourthClient]);
-    fourthClient.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-
-    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(serverRoom.state.phase).toBe("Waiting");
-    expect(serverRoom.state.bossPlayerId).toBe(volunteerClient.sessionId);
+    expect(serverRoom.state.lobbyStage).toBe("preference");
+    expect(serverRoom.state.bossPlayerId).toBe("");
     expect(serverRoom.state.players.get(volunteerClient.sessionId)?.wantsBoss).toBe(true);
   });
 
@@ -2349,7 +2391,7 @@ describe("GameRoom integration", () => {
     expect(serverRoom.state.phase).toBe("Waiting");
   });
 
-  test("Waiting中の離脱はlobby ready deadlineを引き直して即時auto-startを防ぐ", async () => {
+  test("Waiting中に4人未満へ減ったらlobby ready deadlineをclearして即時auto-startを防ぐ", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game", {
       readyAutoStartMs: 300,
     });
@@ -2368,11 +2410,12 @@ describe("GameRoom integration", () => {
 
     await waitForCondition(() => serverRoom.state.players.size === 3, 1_000);
     expect(serverRoom.state.phase).toBe("Waiting");
-    expect(serverRoom["lobbyReadyDeadlineAtMs"]).toBeGreaterThan(initialLobbyDeadline);
+    expect(serverRoom["lobbyReadyDeadlineAtMs"]).toBe(0);
 
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(serverRoom.state.phase).toBe("Waiting");
+    expect(serverRoom["lobbyReadyDeadlineAtMs"]).toBe(0);
   });
 
   test("shared board shadow無効時のadmin_queryはnot availableを返す", async () => {

@@ -54,10 +54,13 @@ interface GameRoomOptions {
   setId?: UnitEffectSetId;
   sharedBoardRoomId?: string;
   forcedFeatureFlags?: FeatureFlags;
+  spectator?: boolean;
 }
 
 export class GameRoom extends Room<{ state: MatchRoomState }> {
   private static readonly MAX_PLAYERS = 4;
+  private static readonly MAX_SPECTATORS = 1;
+  private static readonly MIN_ACTIVE_PLAYERS_TO_START = GameRoom.MAX_PLAYERS;
 
   private static readonly RECONNECT_WINDOW_SECONDS = 90;
 
@@ -95,7 +98,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private lobbyReadyDeadlineAtMs = 0;
 
   public onCreate(options: GameRoomOptions = {}): void {
-    this.maxClients = GameRoom.MAX_PLAYERS;
+    this.maxClients = GameRoom.MAX_PLAYERS + GameRoom.MAX_SPECTATORS;
     this.state = new MatchRoomState();
     this.state.maxPlayers = GameRoom.MAX_PLAYERS;
     const rawSetId = (options as { setId?: unknown }).setId;
@@ -181,14 +184,23 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }, 50);
   }
 
-  public onJoin(client: Client): void {
-    this.state.players.set(client.sessionId, new PlayerPresenceState());
+  public onJoin(client: Client, options?: { spectator?: boolean }): void {
+    const playerState = new PlayerPresenceState();
+    playerState.isSpectator = options?.spectator === true;
+    playerState.role = playerState.isSpectator ? "spectator" : "unassigned";
+    this.state.players.set(client.sessionId, playerState);
 
-    if (this.clients.length !== GameRoom.MAX_PLAYERS) {
+    if (playerState.isSpectator) {
+      this.broadcastRoundState();
       return;
     }
 
     if (this.controller !== null && this.controller.phase !== "Waiting") {
+      return;
+    }
+
+    const activePlayerIds = this.getConnectedActivePlayerIds();
+    if (activePlayerIds.length < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
       return;
     }
 
@@ -201,6 +213,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private initializeController(): void {
     const createdAtMs = Date.now();
+    const activePlayerIds = this.getConnectedActivePlayerIds();
+
+    if (activePlayerIds.length < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
+      this.disposePreStartController();
+      return;
+    }
 
     if (this.sharedBoardBridge) {
       this.sharedBoardBridge.dispose();
@@ -208,7 +226,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     this.controller = new MatchRoomController(
-      this.clients.map((joinedClient) => joinedClient.sessionId),
+      activePlayerIds,
       createdAtMs,
       {
         readyAutoStartMs: this.readyAutoStartMs,
@@ -226,6 +244,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.selectionDeadlineAtMs = 0;
 
     for (const joinedClient of this.clients) {
+      const playerState = this.state.players.get(joinedClient.sessionId);
+      if (!playerState || playerState.isSpectator) {
+        continue;
+      }
       const player = this.state.players.get(joinedClient.sessionId);
       if (player?.ready === true) {
         this.controller.setReady(joinedClient.sessionId, true);
@@ -264,6 +286,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.lobbyReadyDeadlineAtMs = nowMs + this.readyAutoStartMs;
   }
 
+  private getConnectedActivePlayerIds(): string[] {
+    return this.clients
+      .map((client) => client.sessionId)
+      .filter((playerId) => this.state.players.get(playerId)?.isSpectator !== true);
+  }
+
   private clearRaidPlayerIds(): void {
     this.state.raidPlayerIds.splice(0, this.state.raidPlayerIds.length);
   }
@@ -285,7 +313,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private resetSelectionToPreference(nowMs: number): void {
-    const connectedPlayerIds = this.clients.map((client) => client.sessionId);
+    const connectedPlayerIds = this.getConnectedActivePlayerIds();
     const resetState = resetSelectionStage({
       connectedPlayerIds,
       players: this.state.players,
@@ -298,7 +326,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.prepDeadlineAtMs = 0;
     this.clearRaidPlayerIds();
 
-    if (connectedPlayerIds.length >= 2 && this.controller) {
+    if (connectedPlayerIds.length >= GameRoom.MIN_ACTIVE_PLAYERS_TO_START && this.controller) {
       this.restartLobbyReadyDeadline(nowMs);
       this.broadcastRoundState();
       return;
@@ -310,9 +338,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private maybeResolveBossSelectionStage(nowMs: number): void {
-    const connectedPlayerIds = this.clients.map((client) => client.sessionId);
+    const connectedPlayerIds = this.getConnectedActivePlayerIds();
 
-    if (connectedPlayerIds.length < 2) {
+    if (connectedPlayerIds.length < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
       return;
     }
 
@@ -434,7 +462,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     if (this.controller?.phase === "Waiting") {
       this.controller.removePlayer(sessionId);
 
-      if (this.clients.length < 2) {
+      if (this.getConnectedActivePlayerIds().length < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
         this.disposePreStartController();
       }
     }
@@ -454,7 +482,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.clearRaidPlayerIds();
     this.state.roundIndex = 0;
     syncRanking(this.state.ranking, []);
-    if (this.controller && this.clients.length >= 2) {
+    if (this.controller && this.getConnectedActivePlayerIds().length >= GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
       this.restartLobbyReadyDeadline(Date.now());
     } else {
       this.lobbyReadyDeadlineAtMs = 0;
@@ -466,6 +494,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     const player = this.state.players.get(client.sessionId);
 
     if (!player) {
+      return;
+    }
+
+    if (player.isSpectator) {
+      this.state.players.delete(client.sessionId);
+      this.broadcastRoundState();
       return;
     }
 
@@ -510,7 +544,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private async handleReady(client: Client, message: ReadyMessage): Promise<void> {
     const player = this.state.players.get(client.sessionId);
 
-    if (!player) {
+    if (!player || player.isSpectator) {
       return;
     }
 
@@ -540,7 +574,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     const player = this.state.players.get(client.sessionId);
-    if (!player || typeof message.wantsBoss !== "boolean") {
+    if (!player || player.isSpectator || typeof message.wantsBoss !== "boolean") {
       return;
     }
 
@@ -564,6 +598,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     const player = this.state.players.get(client.sessionId);
     if (
       !player
+      || player.isSpectator
       || !this.isBossRoleSelectionEnabled()
       || this.state.phase !== "Waiting"
       || this.state.lobbyStage !== "selection"
@@ -600,7 +635,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     const player = this.state.players.get(client.sessionId);
 
-    if (!player) {
+    if (!player || player.isSpectator) {
       return;
     }
 
@@ -768,11 +803,11 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
-    const connectedPlayerIds = this.clients.map((c) => c.sessionId);
+    const connectedPlayerIds = this.getConnectedActivePlayerIds();
 
     if (this.isBossRoleSelectionEnabled() && this.controller.phase === "Waiting") {
       if (this.state.lobbyStage === "selection") {
-        if (connectedPlayerIds.length < 2) {
+        if (connectedPlayerIds.length < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
           this.resetSelectionToPreference(nowMs);
           return;
         }
@@ -933,6 +968,15 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     const playerState = this.state.players.get(playerId);
     if (!playerState) {
+      return;
+    }
+
+    if (playerState.isSpectator) {
+      playerState.ready = false;
+      playerState.wantsBoss = false;
+      playerState.selectedBossId = "";
+      playerState.selectedHeroId = "";
+      playerState.role = "spectator";
       return;
     }
 

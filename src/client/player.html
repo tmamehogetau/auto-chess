@@ -703,7 +703,7 @@
   </head>
   <body>
     <main class="player-shell" data-player-shell>
-      <header class="player-header">
+      <header class="player-header player-shell-header">
         <p class="player-phase-tag">Boss Raid</p>
         <h1 class="player-title">Player Flow</h1>
         <p class="player-copy" data-player-status-copy>
@@ -730,6 +730,13 @@
             <strong>Deadline</strong>
             <div data-player-deadline-copy>phase ごとの締切をここに表示します。</div>
           </div>
+          <div class="player-card" data-player-ready-btn>
+            <strong>Ready</strong>
+            <div data-player-ready-copy>準備ができたら Ready を押します。</div>
+            <div class="player-inline-actions">
+              <button class="player-action-btn" type="button" data-player-ready-button>Ready</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -748,13 +755,6 @@
               <div class="player-inline-actions">
                 <button class="player-action-btn" type="button" data-player-boss-pref-on>Boss希望 ON</button>
                 <button class="player-action-btn" type="button" data-player-boss-pref-off>Boss希望 OFF</button>
-              </div>
-            </div>
-            <div class="player-card" data-player-ready-btn>
-              <strong>Ready</strong>
-              <div data-player-ready-copy>準備ができたら Ready を押します。</div>
-              <div class="player-inline-actions">
-                <button class="player-action-btn" type="button" data-player-ready-button>Ready</button>
               </div>
             </div>
           </div>

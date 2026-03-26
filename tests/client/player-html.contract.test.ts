@@ -22,6 +22,7 @@ describe("player.html contract", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
     const lobbySection = extractPhaseSection(html, "lobby");
     const selectionSection = extractPhaseSection(html, "selection");
+    const prepSection = extractPhaseSection(html, "prep");
 
     const requiredAttributes = [
       "data-player-shell",
@@ -78,8 +79,9 @@ describe("player.html contract", () => {
     }
 
     expect(lobbySection.includes("data-player-boss-pref-on")).toBe(true);
-    expect(lobbySection.includes("data-player-ready-button")).toBe(true);
+    expect(lobbySection.includes("data-player-ready-button")).toBe(false);
     expect(selectionSection.includes("data-player-boss-pref-on")).toBe(false);
+    expect(prepSection.includes("data-player-ready-button")).toBe(false);
 
     const operatorOnlyAttributes = [
       "data-endpoint-input",
@@ -113,6 +115,18 @@ describe("player.html contract", () => {
     expect(selectionSection).toMatch(/data-player-phase="selection"[^>]*hidden/);
     expect(prepSection).toMatch(/data-player-phase="prep"[^>]*hidden/);
     expect(resultSection).toMatch(/data-player-phase="result"[^>]*hidden/);
+  });
+
+  test("ready controls stay outside lobby-only section so prep can still finish from the player shell", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const lobbySection = extractPhaseSection(html, "lobby");
+    const shellHeaderMatch = html.match(
+      /<header class="[^"]*\bplayer-shell-header\b[^"]*">[\s\S]*?<\/header>/,
+    );
+
+    expect(shellHeaderMatch?.[0]?.includes("data-player-ready-btn")).toBe(true);
+    expect(shellHeaderMatch?.[0]?.includes("data-player-ready-button")).toBe(true);
+    expect(lobbySection.includes("data-player-ready-btn")).toBe(false);
   });
 
   test("player prep shell も shared-board help と status legend を持つ", () => {

@@ -47,6 +47,14 @@ export function resetSelectionStage(params: ResetSelectionStageParams): ResetSel
       continue;
     }
 
+    if (player.isSpectator) {
+      player.role = "spectator";
+      player.selectedBossId = "";
+      player.selectedHeroId = "";
+      player.ready = false;
+      continue;
+    }
+
     player.role = "unassigned";
     player.selectedBossId = "";
     player.selectedHeroId = "";

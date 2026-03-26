@@ -89,7 +89,7 @@ export interface ActiveSynergyView {
 export interface ControllerPlayerStatus {
   wantsBoss: boolean;
   selectedBossId: string;
-  role: "unassigned" | "raid" | "boss";
+  role: "unassigned" | "raid" | "boss" | "spectator";
   hp: number;
   remainingLives: number;
   eliminated: boolean;
@@ -121,7 +121,7 @@ export interface ControllerPlayerStatus {
 export interface CommandResultPayload {
   wantsBoss?: boolean;
   selectedBossId?: string;
-  role?: "unassigned" | "raid" | "boss";
+  role?: "unassigned" | "raid" | "boss" | "spectator";
   hp?: number;
   eliminated?: boolean;
   boardUnitCount: number;

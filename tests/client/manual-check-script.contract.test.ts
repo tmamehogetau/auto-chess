@@ -50,8 +50,18 @@ describe("manual-check script contract", () => {
     expect(source.includes("data-room-code-output")).toBe(true);
     expect(source.includes("client.create(\"shared_board\"")).toBe(true);
     expect(source.includes("sharedBoardRoomId: sharedBoardSeedRoom.roomId")).toBe(true);
+    expect(source.includes("spectator: true")).toBe(true);
     expect(source.includes("client.joinById(roomCode")).toBe(true);
     expect(source.includes("setSharedBoardRoomId(")).toBe(true);
+  });
+
+  test("spectator host keeps Ready disabled after syncButtonAvailability reruns", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const isSpectator = player?.isSpectator === true;")).toBe(true);
+    expect(source.includes("readyBtn.disabled = connecting || !connected || isSpectator;")).toBe(true);
+    expect(source.includes("currentGameState?.players?.get?.(sessionId)")).toBe(true);
+    expect(source.includes("latestState?.players")).toBe(false);
   });
 
   test("boss role selection uses explicit preference and selection actions", () => {
@@ -184,5 +194,13 @@ describe("manual-check script contract", () => {
     expect(source.includes("id: 'sakuya'")).toBe(false);
     expect(source.includes('balance: "⚖️"')).toBe(true);
     expect(source.includes('economy: "💰"')).toBe(true);
+  });
+
+  test("spell selection does not depend on missing roundRange metadata in the inline operator roster", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("s.roundRange[0]")).toBe(false);
+    expect(source.includes("instant-1")).toBe(true);
+    expect(source.includes("last-word")).toBe(true);
   });
 });

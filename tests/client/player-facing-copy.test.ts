@@ -66,6 +66,21 @@ describe("player-facing copy", () => {
     })).toContain("Choose a hero while the boss locks in");
   });
 
+  test("prep の ready hint は boss 側で hero 未選択文に落ちない", () => {
+    expect(buildReadyHint({
+      phase: "Prep",
+      isReady: true,
+      heroEnabled: true,
+      heroSelected: false,
+      bossRoleSelectionEnabled: true,
+      lobbyStage: "started",
+      isBossPlayer: true,
+      bossSelected: true,
+      readyCount: 4,
+      totalCount: 4,
+    })).toContain("Locked in");
+  });
+
   test("entry flow status は未接続時に 4 段階の主導線を返す", () => {
     expect(buildEntryFlowStatus({
       connected: false,

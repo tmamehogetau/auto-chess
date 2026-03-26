@@ -50,6 +50,18 @@ npx lefthook run pre-commit
 - If sandboxed localhost binding is blocked, rerun the server start with escalated permissions.
 - Open `http://127.0.0.1:54321` in Playwright or the user's browser and use that URL for the review step.
 
+## Local Play Startup On This Windows Setup
+
+- `npm run server` may fail inside the sandbox with `Error: spawn EPERM` because `tsx`/`esbuild` spawns a child process.
+- When that happens, rerun the game server with Administrator privileges on Windows. This bypasses sandbox protections, so use it only in trusted local development and never in production.
+- Prefer launching the game server through `cmd.exe` so temporary env vars stick reliably on this setup:
+  - `cmd.exe /c "set PORT=2568 && npm.cmd run server"`
+- Prefer launching the static client check server the same way:
+  - `cmd.exe /c "set CLIENT_CHECK_PORT=8081 && npm.cmd run client:check"`
+- Use `http://localhost:8081/src/client/index.html?endpoint=ws://localhost:2568&setId=set2` for operator checks.
+- Use `http://localhost:8081/src/client/player.html?endpoint=ws://localhost:2568` for player checks.
+- If both servers are already running, reuse them instead of starting duplicate processes.
+
 ## Done Criteria
 
 - `npm run verify:ci` passes.

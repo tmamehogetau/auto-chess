@@ -161,6 +161,15 @@ const SPELL_CARDS = [
   { id: 'last-word', name: '「紅色の幻想郷」', description: 'レイドメンバー全員に100ダメージを与える' },
 ];
 
+const SPELL_SET_IDS_BY_ROUND_START = {
+  1: ["instant-1", "area-1", "rush-1"],
+  5: ["instant-2", "area-2", "rush-2"],
+  9: ["instant-3", "area-3", "rush-3"],
+  12: ["last-word"],
+};
+
+const SPELL_CARD_MAP = new Map(SPELL_CARDS.map((spell) => [spell.id, spell]));
+
 const SCARLET_MANSION_DATA = {
   displayNames: {
     vanguard: "紅美鈴",
@@ -190,16 +199,16 @@ const SCARLET_MANSION_DATA = {
 // ラウンドに応じたスペルカードセットを取得
 function getSpellSetForRound(roundIndex) {
   if (roundIndex >= 1 && roundIndex <= 4) {
-    return SPELL_CARDS.filter(s => s.roundRange[0] === 1);
+    return SPELL_SET_IDS_BY_ROUND_START[1].map((spellId) => SPELL_CARD_MAP.get(spellId)).filter(Boolean);
   }
   if (roundIndex >= 5 && roundIndex <= 8) {
-    return SPELL_CARDS.filter(s => s.roundRange[0] === 5);
+    return SPELL_SET_IDS_BY_ROUND_START[5].map((spellId) => SPELL_CARD_MAP.get(spellId)).filter(Boolean);
   }
   if (roundIndex >= 9 && roundIndex <= 11) {
-    return SPELL_CARDS.filter(s => s.roundRange[0] === 9);
+    return SPELL_SET_IDS_BY_ROUND_START[9].map((spellId) => SPELL_CARD_MAP.get(spellId)).filter(Boolean);
   }
   if (roundIndex === 12) {
-    return SPELL_CARDS.filter(s => s.id === 'last-word');
+    return SPELL_SET_IDS_BY_ROUND_START[12].map((spellId) => SPELL_CARD_MAP.get(spellId)).filter(Boolean);
   }
   return [];
 }
@@ -564,7 +573,7 @@ async function connect() {
 
     if (roomCodeValue.length > 0) {
       room = await withTimeout(
-        client.joinById(roomCodeValue),
+        client.joinById(roomCodeValue, { spectator: true }),
         8_000,
         "Room connection",
       );
@@ -578,6 +587,7 @@ async function connect() {
         client.create(roomName, {
           ...roomOptions,
           sharedBoardRoomId: sharedBoardSeedRoom.roomId,
+          spectator: true,
         }),
         8_000,
         "Room connection",
@@ -1150,6 +1160,9 @@ function updateGameUI(state) {
   let readyCount = 0;
   let totalCount = 0;
   players.forEach((p) => {
+    if (p.isSpectator) {
+      return;
+    }
     totalCount++;
     if (p.ready) readyCount++;
   });
@@ -1160,6 +1173,7 @@ function updateGameUI(state) {
   // Update ready button
   const isReady = Boolean(player.ready);
   if (readyBtn) {
+    readyBtn.disabled = player.isSpectator === true;
     if (isReady) {
       readyBtn.classList.remove("not-ready");
       readyBtn.classList.add("ready");
@@ -2194,7 +2208,7 @@ function renderBossRoleSelectionState(state, player) {
   }
 
   const wantsBossPlayers = mapEntries(state?.players)
-    .filter(([, currentPlayer]) => currentPlayer?.wantsBoss === true)
+    .filter(([, currentPlayer]) => currentPlayer?.isSpectator !== true && currentPlayer?.wantsBoss === true)
     .map(([playerId]) => shortPlayerId(playerId));
   const wantsBoss = player?.wantsBoss === true;
   const isBossPlayer = state.bossPlayerId === sessionId;
@@ -2322,6 +2336,11 @@ function syncButtonAvailability() {
 
   const connected = Boolean(activeRoom);
   const prepPhase = currentPhase === "Prep";
+  const player =
+    sessionId
+      ? currentGameState?.players?.get?.(sessionId) ?? currentGameState?.players?.[sessionId]
+      : null;
+  const isSpectator = player?.isSpectator === true;
 
   if (connectButton) {
     connectButton.disabled = connecting || connected;
@@ -2332,7 +2351,7 @@ function syncButtonAvailability() {
   }
 
   if (readyBtn) {
-    readyBtn.disabled = connecting || !connected;
+    readyBtn.disabled = connecting || !connected || isSpectator;
   }
 
   if (sellBtn) {

@@ -1,4 +1,5 @@
 import { CloseCode, type Client, Room } from "colyseus";
+import { ServerError } from "@colyseus/core";
 
 import { MatchRoomController } from "../match-room-controller";
 import { isBossCharacterId } from "../../shared/boss-characters";
@@ -185,8 +186,22 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   public onJoin(client: Client, options?: { spectator?: boolean }): void {
+    const isSpectator = options?.spectator === true;
+    const trackedActivePlayerIds = this.getTrackedActivePlayerIds()
+      .filter((playerId) => playerId !== client.sessionId);
+    const trackedSpectatorIds = this.getTrackedSpectatorIds()
+      .filter((playerId) => playerId !== client.sessionId);
+
+    if (isSpectator) {
+      if (trackedSpectatorIds.length >= GameRoom.MAX_SPECTATORS) {
+        throw new ServerError(4004, "Spectator capacity reached");
+      }
+    } else if (trackedActivePlayerIds.length >= GameRoom.MAX_PLAYERS) {
+      throw new ServerError(4004, "Active player capacity reached");
+    }
+
     const playerState = new PlayerPresenceState();
-    playerState.isSpectator = options?.spectator === true;
+    playerState.isSpectator = isSpectator;
     playerState.role = playerState.isSpectator ? "spectator" : "unassigned";
     this.state.players.set(client.sessionId, playerState);
 
@@ -199,8 +214,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
-    const activePlayerIds = this.getConnectedActivePlayerIds();
-    if (activePlayerIds.length < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
+    if (trackedActivePlayerIds.length + 1 < GameRoom.MIN_ACTIVE_PLAYERS_TO_START) {
       return;
     }
 
@@ -290,6 +304,24 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     return this.clients
       .map((client) => client.sessionId)
       .filter((playerId) => this.state.players.get(playerId)?.isSpectator !== true);
+  }
+
+  private getConnectedSpectatorIds(): string[] {
+    return this.clients
+      .map((client) => client.sessionId)
+      .filter((playerId) => this.state.players.get(playerId)?.isSpectator === true);
+  }
+
+  private getTrackedActivePlayerIds(): string[] {
+    return Array.from(this.state.players.entries())
+      .filter(([, playerState]) => playerState.isSpectator !== true)
+      .map(([playerId]) => playerId);
+  }
+
+  private getTrackedSpectatorIds(): string[] {
+    return Array.from(this.state.players.entries())
+      .filter(([, playerState]) => playerState.isSpectator === true)
+      .map(([playerId]) => playerId);
   }
 
   private clearRaidPlayerIds(): void {
@@ -468,6 +500,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     for (const [playerId, player] of this.state.players.entries()) {
+      if (player.isSpectator) {
+        continue;
+      }
       player.ready = false;
       player.lastCmdSeq = 0;
       this.controller?.setReady(playerId, false);
@@ -946,7 +981,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     // Track rounds survived for logging after state sync
     if (this.state.roundIndex > this.lastRoundIndex) {
-      for (const playerId of this.state.players.keys()) {
+      for (const playerId of this.getTrackedActivePlayerIds()) {
         const status = this.controller.getPlayerStatus(playerId);
         if (!status.eliminated) {
           this.matchLogger?.incrementRoundsSurvived(playerId);
@@ -1061,7 +1096,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
       // W6-3 Task 3: Capture final board state for all players before outputting summaries
       // This ensures top1CompositionSignature is populated in gameplay_kpi_summary
-      for (const playerId of this.state.players.keys()) {
+      for (const playerId of this.getTrackedActivePlayerIds()) {
         const boardPlacements = this.controller.getBoardPlacementsForPlayer(playerId);
         const benchUnits = this.controller.getBenchUnitsForPlayer?.(playerId) ?? [];
 

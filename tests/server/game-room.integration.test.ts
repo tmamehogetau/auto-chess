@@ -535,6 +535,34 @@ describe("GameRoom integration", () => {
     );
   });
 
+  test("5人目のactive player joinは拒否される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+
+    await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await expect(testServer.connectTo(serverRoom)).rejects.toThrow("Active player capacity reached");
+    expect(Array.from(serverRoom.state.players.values()).filter((player) => player.isSpectator !== true)).toHaveLength(4);
+  });
+
+  test("2人目のspectator joinは拒否される", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+
+    await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+    await testServer.connectTo(serverRoom, { spectator: true });
+
+    await expect(testServer.connectTo(serverRoom, { spectator: true })).rejects.toThrow("Spectator capacity reached");
+    expect(Array.from(serverRoom.state.players.values()).filter((player) => player.isSpectator === true)).toHaveLength(1);
+  });
+
   test("3人ではboss希望を保持したままselectionへ進まない", async () => {
     const serverRoom = await createRoomWithForcedFlags(
       testServer,

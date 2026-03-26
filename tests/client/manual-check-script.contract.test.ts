@@ -55,6 +55,13 @@ describe("manual-check script contract", () => {
     expect(source.includes("setSharedBoardRoomId(")).toBe(true);
   });
 
+  test("spectator host keeps Ready disabled after syncButtonAvailability reruns", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const isSpectator = player?.isSpectator === true;")).toBe(true);
+    expect(source.includes("readyBtn.disabled = connecting || !connected || isSpectator;")).toBe(true);
+  });
+
   test("boss role selection uses explicit preference and selection actions", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 

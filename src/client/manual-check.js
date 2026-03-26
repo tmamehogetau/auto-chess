@@ -2336,6 +2336,11 @@ function syncButtonAvailability() {
 
   const connected = Boolean(activeRoom);
   const prepPhase = currentPhase === "Prep";
+  const player =
+    sessionId
+      ? latestState?.players?.get?.(sessionId) ?? latestState?.players?.[sessionId]
+      : null;
+  const isSpectator = player?.isSpectator === true;
 
   if (connectButton) {
     connectButton.disabled = connecting || connected;
@@ -2346,7 +2351,7 @@ function syncButtonAvailability() {
   }
 
   if (readyBtn) {
-    readyBtn.disabled = connecting || !connected;
+    readyBtn.disabled = connecting || !connected || isSpectator;
   }
 
   if (sellBtn) {

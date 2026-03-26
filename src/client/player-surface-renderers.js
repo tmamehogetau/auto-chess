@@ -44,14 +44,18 @@ const SPELL_DETAILS = {
 const RESULT_IMPRINT_BOARD_WIDTH = 6;
 const RESULT_IMPRINT_BOARD_HEIGHT = 6;
 
+function getActivePlayers(state) {
+  return mapEntries(state?.players)
+    .map(([, player]) => player)
+    .filter((player) => player?.isSpectator !== true);
+}
+
 export function renderPlayerLobbySummary({ participantSummaryElement, state }) {
   if (!(participantSummaryElement instanceof HTMLElement)) {
     return;
   }
 
-  const players = mapEntries(state?.players)
-    .map(([, player]) => player)
-    .filter((player) => player?.isSpectator !== true);
+  const players = getActivePlayers(state);
   const totalPlayers = players.length;
   const expectedPlayers = Number.isInteger(state?.maxPlayers) && state.maxPlayers > 0
     ? state.maxPlayers
@@ -340,9 +344,7 @@ export function renderPlayerPrepSummary({
   }
 
   if (readyCopyElement instanceof HTMLElement) {
-    const players = mapEntries(state?.players)
-      .map(([, currentPlayer]) => currentPlayer)
-      .filter((currentPlayer) => currentPlayer?.isSpectator !== true);
+    const players = getActivePlayers(state);
     const readyCount = players.filter((currentPlayer) => currentPlayer?.ready === true).length;
     readyCopyElement.textContent = buildReadyHint({
       phase: currentPhase,

@@ -73,6 +73,32 @@ const waitForText = async (
 
 const SHARED_BOARD_PROPAGATION_TIMEOUT_MS = 10_000;
 
+const waitForSharedBoardPropagation = async (
+  bridge: {
+    flushPlacementChangeBatch?: () => Promise<void>;
+    syncSharedBoardViewFromController?: (forcePrepSync?: boolean) => void;
+  } | undefined,
+  predicate: () => boolean,
+  timeoutMs: number,
+): Promise<void> => {
+  const startMs = Date.now();
+
+  while (Date.now() - startMs < timeoutMs) {
+    await bridge?.flushPlacementChangeBatch?.();
+    bridge?.syncSharedBoardViewFromController?.(true);
+
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 15);
+    });
+  }
+
+  throw new Error("Timed out while waiting for shared board propagation");
+};
+
 const registerRoundStateListeners = (clients: Array<{ onMessage: (type: string, handler: (_message: unknown) => void) => void }>): void => {
   for (const client of clients) {
     client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
@@ -1964,18 +1990,13 @@ describe("GameRoom integration", () => {
       action: "place_unit",
     });
 
-    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
-    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
-
-    await waitForCondition(
+    await waitForSharedBoardPropagation(
+      roomInternals.sharedBoardBridge,
       () => roomInternals.controller?.getHeroPlacementForPlayer(raidPlayerId) === targetHeroCell,
       SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
     );
-    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
-    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
-    await waitForCondition(() => {
-      roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
+    await waitForSharedBoardPropagation(roomInternals.sharedBoardBridge, () => {
       const targetCell = sharedBoardRoom.state.cells.get(String(targetHeroCell));
       const sourceCell = sharedBoardRoom.state.cells.get(String(initialHeroCell));
       return (
@@ -2048,18 +2069,13 @@ describe("GameRoom integration", () => {
       accepted: true,
       action: "place_unit",
     });
-    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
-    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
-
-    await waitForCondition(
+    await waitForSharedBoardPropagation(
+      roomInternals.sharedBoardBridge,
       () => roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) === targetBossCell,
       SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
     );
-    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
-    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
-    await waitForCondition(() => {
-      roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
+    await waitForSharedBoardPropagation(roomInternals.sharedBoardBridge, () => {
       const targetCell = sharedBoardRoom.state.cells.get(String(targetBossCell));
       const sourceCell = sharedBoardRoom.state.cells.get(String(initialBossCell));
       return (

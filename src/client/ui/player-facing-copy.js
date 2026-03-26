@@ -42,7 +42,7 @@ export function buildReadyHint({
     return "Press Ready to open the first prep phase. Buying and placement unlock as soon as Prep begins.";
   }
 
-  if (phase === "Prep" && heroEnabled && !heroSelected) {
+  if (phase === "Prep" && heroEnabled && !isBossPlayer && !heroSelected) {
     return "Choose a hero first. Then finish your prep setup.";
   }
 

@@ -35,7 +35,6 @@ describe("player.html contract", () => {
       "data-player-status-copy",
       "data-player-room-code-input",
       "data-player-connect-btn",
-      "data-player-room-code-input",
       "data-player-room-summary",
       "data-player-room-copy",
       "data-player-deadline-summary",
@@ -136,11 +135,14 @@ describe("player.html contract", () => {
       'data-player-bench-sell-button',
       'data-player-board-return-button',
       'placeholder="Room code"',
+      'data-player-connect-btn',
     ];
 
     for (const attribute of requiredAttributes) {
       expect(html.includes(attribute)).toBe(true);
     }
+
+    expect(html).toMatch(/<button[^>]*(?:data-player-connect-btn[^>]*disabled|disabled[^>]*data-player-connect-btn)[^>]*>/);
   });
 
   test("player prep shell seeds a 6x6 shared-board placeholder without legacy 4x2 copy", () => {

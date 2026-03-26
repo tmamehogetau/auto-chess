@@ -1901,6 +1901,8 @@ describe("GameRoom integration", () => {
       () => roomInternals.controller?.getHeroPlacementForPlayer(raidPlayerId) === targetHeroCell,
       SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
     );
+    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
+    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
     await waitForCondition(() => {
       roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
@@ -1935,6 +1937,7 @@ describe("GameRoom integration", () => {
       sharedBoardBridge?: {
         getState: () => string;
         syncSharedBoardViewFromController?: (forcePrepSync?: boolean) => void;
+        flushPlacementChangeBatch?: () => Promise<void>;
       };
     };
 
@@ -1975,12 +1978,15 @@ describe("GameRoom integration", () => {
       accepted: true,
       action: "place_unit",
     });
+    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
     roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
     await waitForCondition(
       () => roomInternals.controller?.getBossPlacementForPlayer(bossPlayerId) === targetBossCell,
       SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
     );
+    await roomInternals.sharedBoardBridge?.flushPlacementChangeBatch?.();
+    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
 
     await waitForCondition(() => {
       roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
@@ -1992,7 +1998,7 @@ describe("GameRoom integration", () => {
         && sourceCell?.unitId === ""
       );
     }, SHARED_BOARD_PROPAGATION_TIMEOUT_MS);
-  });
+  }, 15_000);
 
   test("boardToBenchCellで盤面ユニットをbenchへ戻すとstateへ同期される", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");

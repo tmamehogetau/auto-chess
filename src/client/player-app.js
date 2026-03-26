@@ -158,10 +158,7 @@ gameRoomSession.onConnectionState((connectionState) => {
     return;
   }
 
-  if (connectButton instanceof HTMLButtonElement) {
-    connectButton.disabled = false;
-    connectButton.textContent = "Join Session";
-  }
+  syncPlayerConnectButton();
   latestPlayer = null;
   latestState = null;
   latestPhaseHpProgress = null;
@@ -266,6 +263,10 @@ connectButton?.addEventListener("click", () => {
   void connectPlayerSession();
 });
 
+roomCodeInput?.addEventListener("input", () => {
+  syncPlayerConnectButton();
+});
+
 bossPreferenceOnButton?.addEventListener("click", () => {
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
 });
@@ -331,7 +332,10 @@ boardGridElement?.addEventListener("click", (event) => {
   handlePlayerSharedCellClick(cellIndex);
 });
 
-if (getSearchParam("autoconnect") === "1") {
+hydrateRequestedRoomCodeInput();
+syncPlayerConnectButton();
+
+if (getSearchParam("autoconnect") === "1" && resolveRequestedRoomCode().length > 0) {
   void connectPlayerSession();
 }
 
@@ -459,6 +463,39 @@ function resolveRequestedRoomCode() {
   return getSearchParam("roomId") ?? "";
 }
 
+function hydrateRequestedRoomCodeInput() {
+  if (!(roomCodeInput instanceof HTMLInputElement) || roomCodeInput.value.trim().length > 0) {
+    return;
+  }
+
+  const requestedRoomCode = getSearchParam("roomId") ?? "";
+  if (requestedRoomCode.length > 0) {
+    roomCodeInput.value = requestedRoomCode;
+  }
+}
+
+function syncPlayerConnectButton() {
+  if (!(connectButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const connectionState = gameRoomSession.getConnectionState();
+  if (connectionState === "connecting") {
+    connectButton.disabled = true;
+    connectButton.textContent = "Joining...";
+    return;
+  }
+
+  if (connectionState === "connected") {
+    connectButton.disabled = true;
+    connectButton.textContent = "Connected";
+    return;
+  }
+
+  connectButton.disabled = resolveRequestedRoomCode().length === 0;
+  connectButton.textContent = "Join Session";
+}
+
 function resolveSharedBoardRoomId(state, roundState, fallbackRoomId = latestSharedBoardRoomId) {
   const stateRoomId = typeof state?.sharedBoardRoomId === "string" ? state.sharedBoardRoomId.trim() : "";
   if (stateRoomId.length > 0) {
@@ -516,7 +553,7 @@ function renderPlayerHeaderTruth() {
   if (roomCopyElement instanceof HTMLElement) {
     const roomId = typeof gameRoomSession.getRoom()?.roomId === "string"
       ? gameRoomSession.getRoom().roomId
-      : resolveRequestedRoomCode() || "default";
+      : resolveRequestedRoomCode() || "pending";
     const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState) || "unbound";
     const phase = typeof latestState?.phase === "string" ? latestState.phase : "Waiting";
     roomCopyElement.textContent = `Game ${roomId} / Shared board ${sharedBoardRoomId} / Phase ${phase}`;
@@ -554,29 +591,26 @@ function updateReadyButton(player) {
 async function connectPlayerSession() {
   try {
     const requestedRoomCode = resolveRequestedRoomCode();
-    const requestedSetId = getSearchParam("setId") ?? undefined;
-    const room = requestedRoomCode
-      ? await gameRoomSession.connect({ roomId: requestedRoomCode })
-      : await gameRoomSession.connect({
-        mode: "createPaired",
-        sharedBoardRoomName: "shared_board",
-        roomOptions: {
-          setId: requestedSetId,
-        },
-      });
+    const roomCodeRequired = requestedRoomCode.length === 0;
+    if (roomCodeRequired) {
+      showPlayerStatus("ルームコードを入力してから Join してください。");
+      syncPlayerConnectButton();
+      return;
+    }
+
+    const room = await gameRoomSession.connect({ roomId: requestedRoomCode });
     const client = gameRoomSession.getClient();
 
     if (room?.sessionId) {
       setSharedBoardGamePlayerId(room.sessionId);
     }
 
-    const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();
     const initialSharedBoardRoomId = resolveSharedBoardRoomId(
       latestState,
       latestRoundState,
       typeof room?.state?.sharedBoardRoomId === "string"
         ? room.state.sharedBoardRoomId
-        : pairedSharedBoardRoom?.roomId,
+        : "",
     );
     if (initialSharedBoardRoomId.length > 0) {
       rememberSharedBoardRoomId(initialSharedBoardRoomId);
@@ -584,10 +618,7 @@ async function connectPlayerSession() {
 
     if (client) {
       const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState, initialSharedBoardRoomId);
-      await connectSharedBoard(client, {
-        roomId: sharedBoardRoomId,
-        existingRoom: pairedSharedBoardRoom,
-      });
+      await connectSharedBoard(client, { roomId: sharedBoardRoomId });
     }
   } catch (_error) {
     if (statusCopy instanceof HTMLElement) {

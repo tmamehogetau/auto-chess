@@ -115,17 +115,26 @@ describe("player-app script contract", () => {
     expect(source.includes('let latestSharedBoardRoomId = "";')).toBe(true);
     expect(source.includes("function rememberSharedBoardRoomId(")).toBe(true);
     expect(source.includes("gameRoomSession.connect({ roomId: requestedRoomCode })")).toBe(true);
-    expect(source.includes('mode: "createPaired"')).toBe(true);
-    expect(source.includes('sharedBoardRoomName: "shared_board"')).toBe(true);
-    expect(source.includes('const requestedSetId = getSearchParam("setId") ?? undefined;')).toBe(true);
-    expect(source.includes("setId: requestedSetId,")).toBe(true);
+    expect(source.includes('mode: "createPaired"')).toBe(false);
+    expect(source.includes('sharedBoardRoomName: "shared_board"')).toBe(false);
+    expect(source.includes('const requestedSetId = getSearchParam("setId") ?? undefined;')).toBe(false);
+    expect(source.includes("setId: requestedSetId,")).toBe(false);
     expect(source.includes("latestRoundState = message;")).toBe(true);
     expect(source.includes("message?.sharedBoardRoomId")).toBe(true);
     expect(source.includes("state?.sharedBoardRoomId")).toBe(true);
-    expect(source.includes("const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();")).toBe(true);
-    expect(source.includes("pairedSharedBoardRoom?.roomId")).toBe(true);
-    expect(source.includes("existingRoom: pairedSharedBoardRoom,")).toBe(true);
+    expect(source.includes("const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();")).toBe(false);
+    expect(source.includes("pairedSharedBoardRoom?.roomId")).toBe(false);
+    expect(source.includes("existingRoom: pairedSharedBoardRoom,")).toBe(false);
     expect(source.includes("latestPlayer = null;")).toBe(true);
     expect(source.includes("latestState = null;")).toBe(true);
+  });
+
+  test("player app requires a room code before join or autoconnect", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes('if (getSearchParam("autoconnect") === "1" && resolveRequestedRoomCode().length > 0)')).toBe(true);
+    expect(source.includes("roomCodeRequired")).toBe(true);
+    expect(source.includes("ルームコードを入力してから Join してください。")).toBe(true);
+    expect(source.includes('resolveRequestedRoomCode() || "pending"')).toBe(true);
   });
 });

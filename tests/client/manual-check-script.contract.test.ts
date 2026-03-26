@@ -60,6 +60,8 @@ describe("manual-check script contract", () => {
 
     expect(source.includes("const isSpectator = player?.isSpectator === true;")).toBe(true);
     expect(source.includes("readyBtn.disabled = connecting || !connected || isSpectator;")).toBe(true);
+    expect(source.includes("currentGameState?.players?.get?.(sessionId)")).toBe(true);
+    expect(source.includes("latestState?.players")).toBe(false);
   });
 
   test("boss role selection uses explicit preference and selection actions", () => {

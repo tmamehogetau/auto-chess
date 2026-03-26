@@ -2338,7 +2338,7 @@ function syncButtonAvailability() {
   const prepPhase = currentPhase === "Prep";
   const player =
     sessionId
-      ? latestState?.players?.get?.(sessionId) ?? latestState?.players?.[sessionId]
+      ? currentGameState?.players?.get?.(sessionId) ?? currentGameState?.players?.[sessionId]
       : null;
   const isSpectator = player?.isSpectator === true;
 

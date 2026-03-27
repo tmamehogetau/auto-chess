@@ -103,6 +103,7 @@ export class SharedBoardBridge {
   private sharedBoardRoom: SharedBoardRoom | null = null;
   private shadowObserver: SharedBoardShadowObserver | null = null;
   private unsubscribeHandle: (() => void) | null = null;
+  private placementChangeListener: PlacementChangeListener | null = null;
   
   private seq = 0;
   private lastObservationTime = 0;
@@ -205,7 +206,7 @@ export class SharedBoardBridge {
       }
 
       if (this.sharedBoardRoom) {
-        this.sharedBoardRoom.offPlacementChange();
+        this.sharedBoardRoom.offPlacementChange(this.placementChangeListener ?? undefined);
       }
 
       this.sharedBoardRoom = sharedBoardRoom;
@@ -295,11 +296,11 @@ export class SharedBoardBridge {
   private setupPlacementChangeListener(): void {
     if (!this.sharedBoardRoom) return;
 
-    const listener: PlacementChangeListener = (playerId, cells) => {
+    this.placementChangeListener = (playerId, cells) => {
       this.enqueuePlacementChange(playerId, cells);
     };
 
-    this.sharedBoardRoom.onPlacementChange(listener);
+    this.sharedBoardRoom.onPlacementChange(this.placementChangeListener);
   }
 
   /**
@@ -679,9 +680,14 @@ export class SharedBoardBridge {
     }
 
     const playerIds = this.controller.getPlayerIds?.() ?? [];
+    const bossPlayerId = this.controller.getBossPlayerId?.() ?? null;
     for (const playerId of playerIds) {
       const placements = this.controller.getBoardPlacementsForPlayer?.(playerId) ?? [];
-      this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
+      this.sharedBoardRoom.applyPlacementsFromGame(
+        playerId,
+        placements,
+        playerId === bossPlayerId ? "boss" : "raid",
+      );
 
       const heroId = this.controller.getSelectedHero?.(playerId) ?? "";
       const heroCellIndex = this.controller.getHeroPlacementForPlayer?.(playerId) ?? null;
@@ -947,7 +953,11 @@ export class SharedBoardBridge {
     }
 
     try {
-      this.sharedBoardRoom.applyPlacementsFromGame(playerId, placements);
+      this.sharedBoardRoom.applyPlacementsFromGame(
+        playerId,
+        placements,
+        playerId === (this.controller.getBossPlayerId?.() ?? null) ? "boss" : "raid",
+      );
     } catch (error) {
       console.error("[SharedBoardBridge] Send placement failed:", error);
       // fail-open: エラー時もGameRoom動作は継続
@@ -1110,8 +1120,9 @@ export class SharedBoardBridge {
 
     // 配置変更リスナー解除
     if (this.sharedBoardRoom) {
-      this.sharedBoardRoom.offPlacementChange();
+      this.sharedBoardRoom.offPlacementChange(this.placementChangeListener ?? undefined);
     }
+    this.placementChangeListener = null;
 
     if (this.shadowObserver) {
       this.shadowObserver.detachSharedBoard();

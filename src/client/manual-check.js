@@ -27,6 +27,7 @@ import {
   buildRoundSummaryTip,
 } from "./ui/player-facing-copy.js";
 import { playUiCue } from "./ui/audio-cues.js";
+import { buildAutoFillHelperActions } from "./autofill-helper-automation.js";
 
 import {
   initAdminMonitor,
@@ -295,6 +296,7 @@ const monitorTraceValue = document.querySelector("[data-monitor-trace]");
 const monitorSummaryValue = document.querySelector("[data-monitor-summary]");
 const monitorShadowDetailsValue = document.querySelector("[data-monitor-shadow-details]");
 const monitorLogList = document.querySelector("[data-monitor-log]");
+const monitorPlayerSnapshotValue = document.querySelector("[data-monitor-player-snapshot]");
 
 // Hero selection elements
 const heroSelectionOverlay = document.querySelector("[data-hero-selection-overlay]");
@@ -398,6 +400,7 @@ initAdminMonitor(
     monitorSummaryValue,
     monitorShadowDetailsValue,
     monitorLogList,
+    monitorPlayerSnapshotValue,
   },
   {
     getActiveRoom: () => activeRoom,
@@ -579,7 +582,7 @@ async function connect() {
       );
     } else {
       sharedBoardSeedRoom = await withTimeout(
-        client.create("shared_board"),
+        client.create("shared_board", { spectator: true }),
         8_000,
         "Shared board room creation",
       );
@@ -666,7 +669,12 @@ async function connect() {
       handleAdminResponse(response);
     });
 
-    await connectSharedBoard(client, sharedBoardSeedRoom ? { existingRoom: sharedBoardSeedRoom } : undefined);
+    await connectSharedBoard(
+      client,
+      sharedBoardSeedRoom
+        ? { existingRoom: sharedBoardSeedRoom, spectator: true }
+        : { spectator: true },
+    );
 
     await connectAutoFillRooms(client, roomName, roomOptions, room.roomId ?? roomCodeValue);
 
@@ -2271,10 +2279,6 @@ function initializeDefaults() {
   }
 
   if (autoFillInput) {
-    const parsedAutoFillBots = parseAutoFillBots(autoFillInput.value);
-    if (parsedAutoFillBots !== autoConfig.autoFillBots) {
-      autoConfig.autoFillBots = parsedAutoFillBots;
-    }
     autoFillInput.value = String(autoConfig.autoFillBots);
   }
 
@@ -2507,6 +2511,7 @@ async function connectAutoFillRooms(client, roomName, roomOptions, roomCode = ""
       const helperRoom = roomCode
         ? await client.joinById(roomCode)
         : await client.joinOrCreate(roomName, roomOptions);
+      attachAutoFillRoomAutomation(helperRoom, index);
       joinedHelperRooms.push(helperRoom);
       autoFillRooms.push(helperRoom);
     } catch (error) {
@@ -2518,6 +2523,83 @@ async function connectAutoFillRooms(client, roomName, roomOptions, roomCode = ""
 
   for (const helperRoom of joinedHelperRooms) {
     helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+  }
+}
+
+function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
+  if (!helperRoom || typeof helperRoom.onStateChange !== "function") {
+    return;
+  }
+
+  let helperCmdSeq = 1;
+  let lastAutomationStateKey = "";
+
+  const buildAutomationStateKey = (state, helperPlayer) => JSON.stringify({
+    bossOffers: Array.isArray(helperPlayer?.bossShopOffers)
+      ? helperPlayer.bossShopOffers.map((offer) => offer?.unitType ?? offer)
+      : Array.from(helperPlayer?.bossShopOffers ?? [], (offer) => offer?.unitType ?? offer),
+    boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
+    benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
+    lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
+    lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
+    phase: typeof state?.phase === "string" ? state.phase : "",
+    ready: helperPlayer?.ready === true,
+    role: helperPlayer?.role ?? "",
+    selectedBossId: helperPlayer?.selectedBossId ?? null,
+    selectedHeroId: helperPlayer?.selectedHeroId ?? null,
+    shopOffers: Array.isArray(helperPlayer?.shopOffers)
+      ? helperPlayer.shopOffers.map((offer) => offer?.unitType ?? offer)
+      : Array.from(helperPlayer?.shopOffers ?? [], (offer) => offer?.unitType ?? offer),
+  });
+
+  const applyAutomation = (state) => {
+    const helperPlayer = mapGet(state?.players, helperRoom.sessionId);
+    const automationStateKey = buildAutomationStateKey(state, helperPlayer);
+
+    if (automationStateKey === lastAutomationStateKey) {
+      return;
+    }
+
+    lastAutomationStateKey = automationStateKey;
+    if (Number.isInteger(helperPlayer?.lastCmdSeq) && helperPlayer.lastCmdSeq >= helperCmdSeq) {
+      helperCmdSeq = helperPlayer.lastCmdSeq + 1;
+    }
+
+    const actions = buildAutoFillHelperActions({
+      helperIndex,
+      player: helperPlayer,
+      state,
+    });
+
+    for (const action of actions) {
+      if (action.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {
+        const cmdSeq = helperCmdSeq;
+        helperRoom.send(action.type, {
+          cmdSeq,
+          correlationId: createCorrelationId(`helper_${helperIndex}`, cmdSeq),
+          ...action.payload,
+        });
+        helperCmdSeq += 1;
+        continue;
+      }
+
+      helperRoom.send(action.type, action.payload);
+    }
+  };
+
+  if (typeof helperRoom.onMessage === "function") {
+    helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+    helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {});
+    helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});
+    helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});
+  }
+
+  helperRoom.onStateChange((state) => {
+    applyAutomation(state);
+  });
+
+  if (helperRoom.state) {
+    applyAutomation(helperRoom.state);
   }
 }
 

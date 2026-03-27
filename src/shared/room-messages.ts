@@ -309,7 +309,23 @@ export type AdminQueryKind =
   | "dashboard"
   | "alerts"
   | "top_errors"
-  | "logs";
+  | "logs"
+  | "player_snapshot";
+
+export interface AdminPlayerSnapshot {
+  sessionId: string;
+  name: string;
+  role: "unassigned" | "raid" | "boss" | "spectator";
+  ready: boolean;
+  connected: boolean;
+  isSpectator: boolean;
+  wantsBoss: boolean;
+  gold: number;
+  boardUnitCount: number;
+  benchUnits: string[];
+  selectedHeroId: string | null;
+  selectedBossId: string | null;
+}
 
 export interface AdminQueryMessage {
   kind: AdminQueryKind;

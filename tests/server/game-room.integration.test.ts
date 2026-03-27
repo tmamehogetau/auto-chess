@@ -9,6 +9,7 @@ import {
   type BrowserClient,
   type BrowserRoom,
 } from "../../src/client/main";
+import { buildAutoFillHelperActions } from "../../src/client/autofill-helper-automation.js";
 import { GameRoom } from "../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
 import { resolveSharedBoardUnitPresentation } from "../../src/server/shared-board-unit-presentation";
@@ -187,6 +188,90 @@ const resolveBossRoleSelectionToPrep = async (
   bossClient.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
 
   await waitForCondition(() => serverRoom.state.phase === "Prep", timeoutMs);
+};
+
+type AutoFillHelperPlayer = NonNullable<
+  Parameters<typeof buildAutoFillHelperActions>[0]["player"]
+>;
+type AutoFillHelperState = NonNullable<
+  Parameters<typeof buildAutoFillHelperActions>[0]["state"]
+> & {
+  players?:
+    | { get: (key: string) => AutoFillHelperPlayer | null | undefined }
+    | Record<string, AutoFillHelperPlayer>
+    | null;
+};
+
+const mapGetStatePlayer = (
+  mapLike: AutoFillHelperState["players"],
+  key: string,
+): AutoFillHelperPlayer | null => {
+  if (!mapLike) {
+    return null;
+  }
+
+  if ("get" in mapLike && typeof mapLike.get === "function") {
+    return mapLike.get(key) ?? null;
+  }
+
+  return (mapLike as Record<string, AutoFillHelperPlayer>)[key] ?? null;
+};
+
+const attachAutoFillHelperAutomationForTest = (
+  helperRoom: {
+    sessionId: string;
+    state?: unknown;
+    send: (type: string, message?: unknown) => void;
+    onStateChange: (handler: (state: unknown) => void) => void;
+    onMessage: (type: string, handler: (_message: unknown) => void) => void;
+  },
+  helperIndex: number,
+): {
+  getResults: () => unknown[];
+} => {
+  let helperCmdSeq = 1;
+  const results: unknown[] = [];
+
+  const applyAutomation = (state: unknown) => {
+    const helperState = state as AutoFillHelperState | null;
+    const helperPlayer = mapGetStatePlayer(helperState?.players, helperRoom.sessionId);
+    const actions = buildAutoFillHelperActions({
+      helperIndex,
+      player: helperPlayer,
+      state: helperState,
+    });
+
+    for (const action of actions) {
+      if (action.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {
+        const cmdSeq = helperCmdSeq;
+        helperRoom.send(action.type, {
+          cmdSeq,
+          correlationId: `test_helper_${helperIndex}_${cmdSeq}`,
+          ...action.payload,
+        });
+        helperCmdSeq += 1;
+        continue;
+      }
+
+      helperRoom.send(action.type, action.payload);
+    }
+  };
+
+  helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
+    results.push(message);
+  });
+
+  helperRoom.onStateChange((state) => {
+    applyAutomation(state);
+  });
+
+  if (helperRoom.state) {
+    applyAutomation(helperRoom.state);
+  }
+
+  return {
+    getResults: () => [...results],
+  };
 };
 
 class FakeRoot {
@@ -849,12 +934,12 @@ describe("GameRoom integration", () => {
         timestamp: Date.now(),
         actorId: raidPlayerId,
         playerId: raidPlayerId,
-        placements: [{ cell: 4, unitType: "ranger" }],
+        placements: [{ cell: 18, unitType: "ranger" }],
       });
 
       expect(bridgeResult).toMatchObject({ success: true, code: "success" });
       expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([
-        expect.objectContaining({ cell: 4, unitType: "ranger" }),
+        expect.objectContaining({ cell: 18, unitType: "ranger" }),
       ]);
       expect(serverRoom.state.sharedBoardAuthorityEnabled).toBe(true);
       expect(serverRoom.state.sharedBoardMode).toBe("half-shared");
@@ -985,7 +1070,7 @@ describe("GameRoom integration", () => {
       if (!bossClient) {
         throw new Error("Expected boss client after Prep start");
       }
-      const targetBossCell = combatCellToRaidBoardIndex(1);
+      const targetBossCell = sharedBoardCoordinateToIndex({ x: 1, y: 1 });
 
       const expectedOffer = serverRoom.state.players.get(bossPlayerId)?.bossShopOffers[0];
       if (!expectedOffer) {
@@ -1038,6 +1123,99 @@ describe("GameRoom integration", () => {
       expect(reflectedCell?.unitId).not.toBe("");
       expect(reflectedCell?.displayName).toBe(expectedPresentation.displayName);
       expect(reflectedCell?.portraitKey).toBe(expectedPresentation.portraitKey);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test("boss role-selection prep keeps boss bench units on shared board upper half", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+      const { serverRoom, clients } = await connectBossRoleSelectionRoom(
+        testServer,
+        undefined,
+        {
+          enableSharedBoardShadow: true,
+        },
+      );
+
+      const roomInternals = serverRoom as unknown as {
+        sharedBoardBridge?: {
+          getState: () => string;
+          flushPlacementChangeBatch?: () => Promise<void>;
+          syncSharedBoardViewFromController?: (forcePrepSync?: boolean) => void;
+        };
+      };
+
+      await waitForCondition(
+        () => roomInternals.sharedBoardBridge?.getState() === "READY",
+        500,
+      );
+
+      await resolveBossRoleSelectionToPrep(serverRoom, clients, 1_000);
+
+      const bossPlayerId = serverRoom.state.bossPlayerId;
+      const bossClient = clients.find((client) => client.sessionId === bossPlayerId);
+      expect(bossClient).toBeDefined();
+      if (!bossClient || !bossPlayerId) {
+        throw new Error("Expected boss client after role selection");
+      }
+
+      const expectedOffer = serverRoom.state.players.get(bossPlayerId)?.bossShopOffers[0];
+      if (!expectedOffer) {
+        throw new Error("Expected boss shop offer at slot 0");
+      }
+
+      const targetBossCell = sharedBoardCoordinateToIndex({ x: 4, y: 1 });
+
+      bossClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 1,
+        bossShopBuySlotIndex: 0,
+      });
+      expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      bossClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 2,
+        benchToBoardCell: {
+          benchIndex: 0,
+          cell: targetBossCell,
+        },
+      });
+      expect(await bossClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      await waitForSharedBoardPropagation(
+        roomInternals.sharedBoardBridge,
+        () => {
+          const sharedCell = sharedBoardRoom.state.cells.get(String(targetBossCell)) as {
+            ownerId?: string;
+            unitId?: string;
+            displayName?: string;
+          } | undefined;
+          return sharedCell?.ownerId === bossPlayerId && (sharedCell.unitId?.length ?? 0) > 0;
+        },
+        SHARED_BOARD_BOSS_PROPAGATION_TIMEOUT_MS,
+      );
+
+      const reflectedCell = sharedBoardRoom.state.cells.get(String(targetBossCell)) as {
+        ownerId?: string;
+        unitId?: string;
+        displayName?: string;
+      } | undefined;
+
+      expect(reflectedCell?.ownerId).toBe(bossPlayerId);
+      expect(reflectedCell?.unitId).not.toBe("");
+      expect(reflectedCell?.displayName).toBe(
+        resolveSharedBoardUnitPresentation(
+          expectedOffer.unitId,
+          expectedOffer.unitType,
+        )?.displayName ?? "",
+      );
     } finally {
       randomSpy.mockRestore();
     }
@@ -1873,8 +2051,8 @@ describe("GameRoom integration", () => {
   test("role-resolved Prep reflects raid heroes onto fixed shared-board cells", async () => {
     const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer, {
-      prepDurationMs: 4_000,
-      battleDurationMs: 4_000,
+      prepDurationMs: 12_000,
+      battleDurationMs: 12_000,
       settleDurationMs: 1_000,
       eliminationDurationMs: 1_000,
       sharedBoardRoomId: sharedBoardRoom.roomId,
@@ -1925,13 +2103,91 @@ describe("GameRoom integration", () => {
       return cell?.ownerId ?? "";
     }).sort();
 
-    expect(heroOwnerIds).toEqual(raidPlayerIds);
-  });
+      expect(heroOwnerIds).toEqual(raidPlayerIds);
+    });
 
-  test("shared board hero move updates hero placement outside the old raid footprint", async () => {
-    const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
-    const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer, {
-      prepDurationMs: 4_000,
+    test("3 helper bots and 1 real player can auto-buy and auto-place helper units during Prep", async () => {
+      const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+      const serverRoom = await createRoomWithForcedFlags(testServer, {
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+        enableSharedBoardShadow: true,
+      }, {
+        prepDurationMs: 4_000,
+        battleDurationMs: 4_000,
+        settleDurationMs: 1_000,
+        eliminationDurationMs: 1_000,
+        sharedBoardRoomId: sharedBoardRoom.roomId,
+      });
+      const clients = await Promise.all([
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+        testServer.connectTo(serverRoom),
+      ]);
+
+      const helperClients = [clients[0]!, clients[1]!, clients[2]!];
+      const realPlayer = clients[3]!;
+      const helperMonitors = helperClients.map((helperClient, helperIndex) =>
+        attachAutoFillHelperAutomationForTest(helperClient, helperIndex));
+      const roomInternals = serverRoom as unknown as {
+        controller?: {
+          getBoardPlacementsForPlayer: (playerId: string) => Array<{ cell: number; unitType: string }>;
+        };
+        sharedBoardBridge?: {
+          getState: () => string;
+          syncSharedBoardViewFromController?: (forcePrepSync?: boolean) => void;
+        };
+      };
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      }
+
+      realPlayer.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
+
+      for (const helperClient of helperClients) {
+        helperClient.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+      realPlayer.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+
+      await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
+
+      realPlayer.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: "remilia" });
+
+      await waitForCondition(
+        () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
+        1_500,
+      );
+
+      await waitForCondition(() => helperClients.every((helperClient) => {
+        const placements = roomInternals.controller?.getBoardPlacementsForPlayer(helperClient.sessionId) ?? [];
+        return placements.length >= 1;
+      }), 1_500);
+
+      roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
+
+      for (const helperClient of helperClients) {
+        const placements = roomInternals.controller?.getBoardPlacementsForPlayer(helperClient.sessionId) ?? [];
+        expect(placements.length).toBeGreaterThanOrEqual(1);
+        expect(placements.every((placement) => placement.cell >= 18)).toBe(true);
+      }
+
+      const helperOccupiedCells = Array.from(sharedBoardRoom.state.cells.values())
+        .filter((cell) => helperClients.some((helperClient) => cell.ownerId === helperClient.sessionId))
+        .map((cell) => cell.index)
+        .sort((left, right) => left - right);
+
+      expect(helperOccupiedCells).toEqual(expect.arrayContaining([31, 33, 35]));
+
+      const helperResults = helperMonitors.flatMap((monitor) => monitor.getResults());
+      expect(helperResults).toEqual(expect.arrayContaining([{ accepted: true }]));
+    });
+
+    test("shared board hero move updates hero placement outside the old raid footprint", async () => {
+      const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+      const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer, {
+        prepDurationMs: 4_000,
       battleDurationMs: 4_000,
       settleDurationMs: 1_000,
       eliminationDurationMs: 1_000,
@@ -1979,6 +2235,12 @@ describe("GameRoom integration", () => {
     const sharedClient = await testServer.connectTo(sharedBoardRoom, {
       gamePlayerId: raidPlayerId,
     });
+    sharedClient.onMessage("shared_role", (_message: unknown) => {});
+
+    await waitForCondition(() => {
+      const sharedPlayer = sharedBoardRoom.state.players.get(sharedClient.sessionId);
+      return sharedPlayer?.isSpectator === false;
+    }, 1_000);
 
     sharedClient.send("shared_place_unit", {
       unitId: `hero:${raidPlayerId}`,
@@ -2011,8 +2273,8 @@ describe("GameRoom integration", () => {
   test("shared board boss move updates boss placement from its fixed top-row cell", async () => {
     const sharedBoardRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const { serverRoom, clients } = await connectBossRoleSelectionRoom(testServer, {
-      prepDurationMs: 4_000,
-      battleDurationMs: 4_000,
+      prepDurationMs: 12_000,
+      battleDurationMs: 12_000,
       settleDurationMs: 1_000,
       eliminationDurationMs: 1_000,
       sharedBoardRoomId: sharedBoardRoom.roomId,
@@ -2020,7 +2282,6 @@ describe("GameRoom integration", () => {
       enableSharedBoardShadow: true,
     });
 
-    const bossPlayerId = clients[1]!.sessionId;
     const targetBossCell = sharedBoardCoordinateToIndex({ x: 4, y: 2 });
     const roomInternals = serverRoom as unknown as {
       controller?: {
@@ -2034,6 +2295,10 @@ describe("GameRoom integration", () => {
     };
 
     await resolveBossRoleSelectionToPrep(serverRoom, clients, 1_000);
+    const bossPlayerId = serverRoom.state.bossPlayerId;
+    if (!bossPlayerId) {
+      throw new Error("Expected boss player after role selection");
+    }
 
     await waitForCondition(
       () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
@@ -2059,6 +2324,12 @@ describe("GameRoom integration", () => {
     const sharedClient = await testServer.connectTo(sharedBoardRoom, {
       gamePlayerId: bossPlayerId,
     });
+    sharedClient.onMessage("shared_role", (_message: unknown) => {});
+
+    await waitForCondition(() => {
+      const sharedPlayer = sharedBoardRoom.state.players.get(sharedClient.sessionId);
+      return sharedPlayer?.isSpectator === false;
+    }, 1_000);
 
     sharedClient.send("shared_place_unit", {
       unitId: `boss:${bossPlayerId}`,
@@ -2480,6 +2751,43 @@ describe("GameRoom integration", () => {
     expect(response.kind).toBe("metrics");
     expect(response.correlationId).toBe("corr_admin_disabled");
     expect(response.error).toContain("SharedBoardBridge is not available");
+  });
+
+  test("player_snapshot admin_query は shared board shadow 無効でも player state を返す", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await waitForCondition(() => serverRoom.state.players.size === 4, 1_000);
+
+    const responsePromise = clients[0].waitForMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE);
+
+    clients[0].send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
+      kind: "player_snapshot",
+      correlationId: "corr_admin_player_snapshot",
+    });
+
+    const response = (await responsePromise) as AdminResponseMessage;
+
+    expect(response.ok).toBe(true);
+    expect(response.kind).toBe("player_snapshot");
+    expect(response.correlationId).toBe("corr_admin_player_snapshot");
+    expect(response.data).toHaveLength(4);
+    expect(response.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sessionId: clients[0].sessionId,
+          isSpectator: false,
+          benchUnits: expect.any(Array),
+          boardUnitCount: expect.any(Number),
+          gold: expect.any(Number),
+        }),
+      ]),
+    );
   });
 
   test("shared board shadow有効時のadmin_queryはdashboard/alerts/logsを返す", async () => {

@@ -3,10 +3,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
-import { SharedBoardRoom } from "../../src/server/rooms/shared-board-room";
+import {
+  SharedBoardRoom,
+  type PlacementChangeListener,
+} from "../../src/server/rooms/shared-board-room";
 import { combatCellToRaidBoardIndex, raidBoardIndexToCombatCell } from "../../src/shared/board-geometry";
 import {
   DEFAULT_SHARED_BOARD_CONFIG,
+  sharedBoardCoordinateToIndex,
 } from "../../src/shared/shared-board-config";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
 import {
@@ -263,6 +267,36 @@ describe("SharedBoardRoom integration", () => {
       .map((role) => role.slotIndex)
       .sort((left, right) => left - right);
     expect(activeSlots).toEqual([0, 1, 2, 3]);
+  });
+
+  test("spectator join option は active 枠を消費せず operator を観戦専用にする", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+
+    const operatorClient = await testServer.connectTo(serverRoom, { spectator: true });
+    const activeClients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await waitForCondition(() => serverRoom.state.players.size === 5, 1_000);
+
+    const operatorState = serverRoom.state.players.get(operatorClient.sessionId);
+    expect(operatorState).toMatchObject({
+      isSpectator: true,
+      slotIndex: -1,
+    });
+
+    const activeStates = activeClients
+      .map((client) => serverRoom.state.players.get(client.sessionId))
+      .filter((player): player is NonNullable<typeof player> => player !== undefined);
+
+    expect(activeStates).toHaveLength(4);
+    expect(activeStates.every((player) => player.isSpectator === false)).toBe(true);
+    expect(
+      activeStates.map((player) => player.slotIndex).sort((left, right) => left - right),
+    ).toEqual([0, 1, 2, 3]);
   });
 
   test("join時にdummy-boss以外の初期トークンを生成しない", async () => {
@@ -1035,6 +1069,29 @@ describe("SharedBoardRoom integration", () => {
     expect(targetCell?.unitId.startsWith("vanguard-")).toBe(true);
   });
 
+  test("server sync API keeps boss-side placements on the upper half", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    const bossCellIndex = sharedBoardCoordinateToIndex({ x: 4, y: 1 });
+    const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
+      {
+        cell: bossCellIndex,
+        unitType: "mage",
+      },
+    ], "boss");
+
+    expect(result.applied).toBe(1);
+    expect(result.skipped).toBe(0);
+
+    const targetCell = serverRoom.state.cells.get(String(bossCellIndex));
+    expect(targetCell?.ownerId).toBe(client.sessionId);
+    expect(targetCell?.unitId.startsWith("mage-")).toBe(true);
+  });
+
   test("server sync API derives Touhou display metadata from unitId", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const client = await testServer.connectTo(serverRoom);
@@ -1097,5 +1154,50 @@ describe("SharedBoardRoom integration", () => {
 
     await waitForCondition(() => emittedPlayerId !== null, 1_000);
     expect(emittedPlayerId).toBe(mappedGamePlayerId);
+  });
+
+  test("offPlacementChange は指定 listener だけを解除して他 listener を残す", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const mappedGamePlayerId = "game-player-2";
+    const client = await testServer.connectTo(serverRoom, {
+      gamePlayerId: mappedGamePlayerId,
+    });
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    const { unitId, cellIndex: sourceCellIndex } = seedSharedBoardUnit(
+      serverRoom,
+      mappedGamePlayerId,
+      combatCellToRaidBoardIndex(0),
+    );
+    const targetCellIndex = findFirstEmptyCellIndex(serverRoom, [sourceCellIndex]);
+
+    let removedListenerCalls = 0;
+    let retainedListenerPlayerId: string | null = null;
+    const removedListener: PlacementChangeListener = () => {
+      removedListenerCalls += 1;
+    };
+    const retainedListener: PlacementChangeListener = (playerId) => {
+      retainedListenerPlayerId = playerId;
+    };
+
+    serverRoom.onPlacementChange(removedListener);
+    serverRoom.onPlacementChange(retainedListener);
+    serverRoom.offPlacementChange(removedListener);
+
+    client.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, { unitId });
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId,
+      toCell: targetCellIndex,
+    });
+    const placeResult = await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT);
+    expect(placeResult).toEqual({ accepted: true, action: "place_unit" });
+
+    await waitForCondition(() => retainedListenerPlayerId !== null, 1_000);
+    expect(removedListenerCalls).toBe(0);
+    expect(retainedListenerPlayerId).toBe(mappedGamePlayerId);
   });
 });

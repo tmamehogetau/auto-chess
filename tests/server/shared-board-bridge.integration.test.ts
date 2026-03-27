@@ -120,7 +120,7 @@ describe("SharedBoardBridge integration", () => {
             timestamp: Date.now(),
             actorId: "p2",
             playerId: "p2",
-            placements: [{ cell: 4, unitType: "vanguard" }],
+            placements: [{ cell: 18, unitType: "vanguard" }],
           }),
         ).resolves.toMatchObject({
           success: false,
@@ -135,7 +135,7 @@ describe("SharedBoardBridge integration", () => {
             timestamp: Date.now(),
             actorId: "p1",
             playerId: "p1",
-            placements: [{ cell: 0, unitType: "ranger" }],
+            placements: [{ cell: 17, unitType: "ranger" }],
           }),
         ).resolves.toMatchObject({
           success: false,
@@ -165,7 +165,7 @@ describe("SharedBoardBridge integration", () => {
             timestamp: Date.now(),
             actorId: "p1",
             playerId: "p1",
-            placements: [{ cell: 4, unitType: "ranger" }],
+            placements: [{ cell: 18, unitType: "ranger" }],
           }),
         ).resolves.toMatchObject({
           success: true,

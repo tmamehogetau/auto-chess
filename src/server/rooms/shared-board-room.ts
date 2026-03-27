@@ -32,6 +32,7 @@ interface SharedBoardRoomOptions {
 
 interface SharedBoardJoinOptions {
   gamePlayerId?: string;
+  spectator?: boolean;
 }
 
 /**
@@ -120,7 +121,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   private readonly gamePlayerIdBySharedSessionId = new Map<string, string>();
 
-  private placementChangeListener: PlacementChangeListener | null = null;
+  private readonly placementChangeListeners = new Set<PlacementChangeListener>();
 
   private latestBattleReplayMessage: SharedBattleReplayMessage | null = null;
 
@@ -174,8 +175,9 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       this.gamePlayerIdBySharedSessionId.set(sessionId, options.gamePlayerId);
     }
 
-    const slotIndex = this.findNextActiveSlot();
-    const isSpectator = slotIndex < 0;
+    const requestedSpectator = options.spectator === true;
+    const slotIndex = requestedSpectator ? -1 : this.findNextActiveSlot();
+    const isSpectator = requestedSpectator || slotIndex < 0;
     const color = isSpectator
       ? SharedBoardRoom.SPECTATOR_COLOR
       : this.getActiveColorBySlot(slotIndex);
@@ -198,7 +200,6 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     cursor.updatedAtMs = Date.now();
     this.state.cursors.set(sessionId, cursor);
 
-    this.sendRole(client);
     this.sendBattleReplay(client);
 
     if (!isSpectator) {
@@ -595,24 +596,35 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   }
 
   private isPlayablePlacementCellIndex(cellIndex: number): boolean {
+    return this.isPlacementCellIndexForSide(cellIndex, "raid");
+  }
+
+  private isPlacementCellIndexForSide(
+    cellIndex: number,
+    side: "boss" | "raid",
+  ): boolean {
     if (!this.isValidCellIndex(cellIndex)) {
       return false;
     }
 
-    const coordinate = sharedBoardIndexToCoordinate(cellIndex, {
+    const config = {
       ...DEFAULT_SHARED_BOARD_CONFIG,
       width: this.boardWidth,
       height: this.boardHeight,
-    });
-    return getDeploymentZoneForRow(DEFAULT_SHARED_BOARD_CONFIG, coordinate.y) === "raid";
+    };
+    const coordinate = sharedBoardIndexToCoordinate(cellIndex, config);
+    return getDeploymentZoneForRow(config, coordinate.y) === side;
   }
 
-  private resolvePlacementCellIndex(cellIndex: number): number | null {
+  private resolvePlacementCellIndex(
+    cellIndex: number,
+    side: "boss" | "raid",
+  ): number | null {
     if (!Number.isInteger(cellIndex)) {
       return null;
     }
 
-    return this.isPlayablePlacementCellIndex(cellIndex) ? cellIndex : null;
+    return this.isPlacementCellIndexForSide(cellIndex, side) ? cellIndex : null;
   }
 
   private isHeroPlacementCellIndex(cellIndex: number): boolean {
@@ -660,14 +672,19 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
    * @param listener コールバック関数
    */
   public onPlacementChange(listener: PlacementChangeListener): void {
-    this.placementChangeListener = listener;
+    this.placementChangeListeners.add(listener);
   }
 
   /**
    * 配置変更リスナーを解除
    */
-  public offPlacementChange(): void {
-    this.placementChangeListener = null;
+  public offPlacementChange(listener?: PlacementChangeListener): void {
+    if (listener) {
+      this.placementChangeListeners.delete(listener);
+      return;
+    }
+
+    this.placementChangeListeners.clear();
   }
 
   /**
@@ -677,6 +694,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   public applyPlacementsFromGame(
     playerId: string,
     placements: BoardUnitPlacement[],
+    placementSide: "boss" | "raid" = "raid",
   ): { applied: number; skipped: number } {
     if (this.state.mode !== "prep") {
       return { applied: 0, skipped: placements?.length ?? 0 };
@@ -693,7 +711,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
         continue;
       }
 
-      const resolvedCellIndex = this.resolvePlacementCellIndex(placement.cell);
+      const resolvedCellIndex = this.resolvePlacementCellIndex(placement.cell, placementSide);
       if (resolvedCellIndex === null) {
         continue;
       }
@@ -935,7 +953,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
    * @param playerId SharedBoard側プレイヤーID
    */
   private emitPlacementChange(playerId: string): void {
-    if (!this.placementChangeListener) {
+    if (this.placementChangeListeners.size === 0) {
       return;
     }
 
@@ -949,11 +967,19 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       }
     }
 
-    try {
-      this.placementChangeListener(this.resolveBridgePlayerId(playerId), cellsWithUnits);
-    } catch (error) {
-      console.error("[SharedBoardRoom] Placement change listener error:", error);
+    const resolvedPlayerId = this.resolveBridgePlayerId(playerId);
+
+    for (const listener of this.placementChangeListeners) {
+      try {
+        listener(resolvedPlayerId, cellsWithUnits);
+      } catch (error) {
+        console.error("[SharedBoardRoom] Placement change listener error:", error);
+      }
     }
+  }
+
+  public onDispose(): void {
+    this.placementChangeListeners.clear();
   }
 
   private resolveBridgePlayerId(sharedPlayerId: string): string {

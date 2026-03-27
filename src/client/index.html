@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
     <title>Auto Chess - Playable UI</title>
     <style>
       :root {
@@ -1547,6 +1548,12 @@
         color: #c8d2e5;
       }
 
+      .monitor-snapshot {
+        display: block;
+        white-space: pre-wrap;
+        line-height: 1.5;
+      }
+
       .combat-log-title {
         font-size: 14px;
         color: #888;
@@ -2753,11 +2760,14 @@
         <div class="monitor-meta">
           Summary: <strong data-monitor-summary>Waiting for shared-board monitor snapshot.</strong>
         </div>
-        <div class="monitor-meta">
-          Compare: <code data-monitor-shadow-details>Waiting for shadow comparison.</code>
-        </div>
+          <div class="monitor-meta">
+            Compare: <code data-monitor-shadow-details>Waiting for shadow comparison.</code>
+          </div>
+          <div class="monitor-meta">
+            Players: <code class="monitor-snapshot" data-monitor-player-snapshot>Waiting for player snapshot.</code>
+          </div>
 
-        <div class="combat-log" style="margin-top: 10px; max-height: 170px;">
+          <div class="combat-log" style="margin-top: 10px; max-height: 170px;">
           <div class="combat-log-title">Monitor Logs</div>
           <div data-monitor-log>
             <div class="log-entry">No monitor logs yet.</div>

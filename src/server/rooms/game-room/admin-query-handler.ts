@@ -1,5 +1,6 @@
 import type { Client } from "colyseus";
 import type {
+  AdminPlayerSnapshot,
   AdminQueryMessage,
   AdminQueryKind,
   AdminResponseMessage,
@@ -9,6 +10,7 @@ import { SERVER_MESSAGE_TYPES } from "../../../shared/room-messages";
 
 export interface AdminQueryDependencies {
   bridge: SharedBoardBridge | null;
+  getPlayerSnapshots?: () => AdminPlayerSnapshot[];
 }
 
 /**
@@ -27,6 +29,17 @@ export function handleAdminQuery(
       ? message.correlationId.trim()
       : undefined;
   const correlationMeta = correlationId ? { correlationId } : {};
+
+  if (message?.kind === "player_snapshot") {
+    sendAdminResponse(client, {
+      ok: true,
+      kind: "player_snapshot",
+      timestamp: Date.now(),
+      ...correlationMeta,
+      data: deps.getPlayerSnapshots?.() ?? [],
+    });
+    return;
+  }
 
   if (!deps.bridge) {
     sendAdminResponse(client, {

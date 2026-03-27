@@ -72,12 +72,14 @@ describe("T4: SharedBoard → Battle → Settle E2E", () => {
     })) as unknown as TestClient;
 
     client.onMessage("shared_action_result", () => {});
+    client.onMessage("shared_battle_replay", () => {});
 
     const rolePromise = new Promise<{ isSpectator: boolean; slotIndex: number }>((resolve) => {
       client.onMessage("shared_role", (msg: unknown) => {
         resolve(msg as { isSpectator: boolean; slotIndex: number });
       });
     });
+    client.send("shared_request_role");
 
     const role = await rolePromise;
     expect(role.isSpectator).toBe(false);

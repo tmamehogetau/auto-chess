@@ -20,6 +20,7 @@ import { createCorrelationId, shortPlayerId } from "./utils/pure-utils.js";
  * @property {HTMLElement|null} monitorSummaryValue
  * @property {HTMLElement|null} monitorShadowDetailsValue
  * @property {HTMLElement|null} monitorLogList
+ * @property {HTMLElement|null} monitorPlayerSnapshotValue
  */
 
 /**
@@ -48,6 +49,7 @@ let domRefs = {
   monitorSummaryValue: null,
   monitorShadowDetailsValue: null,
   monitorLogList: null,
+  monitorPlayerSnapshotValue: null,
 };
 
 /** @type {MonitorDependencies} */
@@ -133,6 +135,7 @@ export function requestAdminMonitorSnapshot() {
     limit: 3,
   });
   sendAdminQuery("logs", { limit: 8 });
+  sendAdminQuery("player_snapshot");
 }
 
 /**
@@ -195,6 +198,9 @@ export function handleAdminResponse(response) {
       break;
     case "logs":
       renderMonitorLogs(response.data);
+      break;
+    case "player_snapshot":
+      renderPlayerSnapshot(response.data);
       break;
     default:
       break;
@@ -371,6 +377,50 @@ function renderMonitorLogs(data) {
     entry.textContent = `${timeLabel} ${eventType} player=${playerLabel} corr=${correlation}${errorLabel}`;
     domRefs.monitorLogList.appendChild(entry);
   }
+}
+
+function renderPlayerSnapshot(data) {
+  if (!domRefs.monitorPlayerSnapshotValue) {
+    return;
+  }
+
+  if (!Array.isArray(data) || data.length === 0) {
+    setMonitorText(domRefs.monitorPlayerSnapshotValue, "No player snapshot yet.");
+    return;
+  }
+
+  const lines = data
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+
+      const name = typeof entry.name === "string" && entry.name.length > 0 ? entry.name : shortPlayerId(entry.sessionId);
+      const role = typeof entry.role === "string" && entry.role.length > 0 ? entry.role : "unassigned";
+      const ready = entry.ready === true ? "Y" : "N";
+      const gold = Number(entry.gold);
+      const boardUnitCount = Number(entry.boardUnitCount);
+      const benchUnits = Array.isArray(entry.benchUnits)
+        ? entry.benchUnits.filter((unit) => typeof unit === "string" && unit.length > 0)
+        : [];
+      const benchLabel = benchUnits.length > 0 ? benchUnits.join(", ") : "empty";
+      const snapshotBits = [
+        name,
+        role,
+        `ready=${ready}`,
+        Number.isFinite(gold) ? `gold=${gold}` : null,
+        Number.isFinite(boardUnitCount) ? `board=${boardUnitCount}` : null,
+        `bench=${benchLabel}`,
+      ].filter(Boolean);
+
+      return snapshotBits.join(" | ");
+    })
+    .filter((line) => line.length > 0);
+
+  setMonitorText(
+    domRefs.monitorPlayerSnapshotValue,
+    lines.length > 0 ? lines.join("\n") : "No player snapshot yet.",
+  );
 }
 
 function renderShadowDetails(message, status, mismatchCount) {

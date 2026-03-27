@@ -31,6 +31,7 @@ import {
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
+  type AdminPlayerSnapshot,
   type AdminQueryMessage,
   type BossPreferenceMessage,
   type BossSelectMessage,
@@ -828,7 +829,25 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
     handleAdminQuery(client, message, {
       bridge: this.sharedBoardBridge,
+      getPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
     });
+  }
+
+  private buildAdminPlayerSnapshots(): AdminPlayerSnapshot[] {
+    return Array.from(this.state.players.entries()).map(([sessionId, playerState]) => ({
+      sessionId,
+      name: sessionId,
+      role: playerState.role,
+      ready: playerState.ready,
+      connected: playerState.connected,
+      isSpectator: playerState.isSpectator,
+      wantsBoss: playerState.wantsBoss,
+      gold: playerState.gold,
+      boardUnitCount: playerState.boardUnitCount,
+      benchUnits: Array.from(playerState.benchUnits),
+      selectedHeroId: playerState.selectedHeroId || null,
+      selectedBossId: playerState.selectedBossId || null,
+    }));
   }
 
 

@@ -26,6 +26,7 @@ import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
 
 const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 const SHARED_BOARD_BATTLE_REPLAY_MESSAGE = "shared_battle_replay";
+const SHARED_BOARD_REQUEST_ROLE_MESSAGE = "shared_request_role";
 let currentSharedBoardRoomId = "";
 
 /** @type {SharedBoardDOMRefs} */
@@ -140,19 +141,26 @@ export async function connectSharedBoard(client, options = {}) {
   }
 
   try {
-    const sharedBoardJoinOptions = deps.gamePlayerId
-      ? { gamePlayerId: deps.gamePlayerId }
+    const sharedBoardJoinOptions = {};
+    if (deps.gamePlayerId) {
+      sharedBoardJoinOptions.gamePlayerId = deps.gamePlayerId;
+    }
+    if (options?.spectator === true) {
+      sharedBoardJoinOptions.spectator = true;
+    }
+    const normalizedJoinOptions = Object.keys(sharedBoardJoinOptions).length > 0
+      ? sharedBoardJoinOptions
       : undefined;
 
     const existingRoom = options?.existingRoom ?? null;
     if (existingRoom) {
       sharedBoardRoom = existingRoom;
     } else if (requestedRoomId !== DEFAULT_SHARED_BOARD_ROOM_NAME && typeof client.joinById === "function") {
-      sharedBoardRoom = await client.joinById(requestedRoomId, sharedBoardJoinOptions);
+      sharedBoardRoom = await client.joinById(requestedRoomId, normalizedJoinOptions);
     } else {
       sharedBoardRoom = await client.joinOrCreate(
         DEFAULT_SHARED_BOARD_ROOM_NAME,
-        sharedBoardJoinOptions,
+        normalizedJoinOptions,
       );
     }
     currentSharedBoardState = null;
@@ -162,6 +170,9 @@ export async function connectSharedBoard(client, options = {}) {
     clearSharedBattleReplay();
 
     bindSharedBoardRoomListeners(sharedBoardRoom);
+    if (typeof sharedBoardRoom.send === "function") {
+      sharedBoardRoom.send(SHARED_BOARD_REQUEST_ROLE_MESSAGE);
+    }
   } catch (error) {
     currentSharedBoardState = null;
     renderSharedBoardState(null);

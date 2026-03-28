@@ -147,6 +147,26 @@ export interface RoundStateMessage {
   }[];
 }
 
+export interface ShopOfferMessage {
+  cost: number;
+  displayName?: string;
+  factionId?: string | null;
+  isRumorUnit?: boolean;
+  purchased?: boolean;
+  rarity: number;
+  starLevel?: number;
+  unitId?: string;
+  unitType: string;
+}
+
+export interface OwnedUnitsMessage {
+  assassin: number;
+  mage: number;
+  ranger: number;
+  vanguard: number;
+  [key: string]: number;
+}
+
 export interface PlayerMatchStatus {
   hp: number;
   eliminated: boolean;
@@ -154,12 +174,12 @@ export interface PlayerMatchStatus {
   gold: number;
   xp: number;
   level: number;
-  shopOffers: any[];
+  shopOffers: ShopOfferMessage[];
   shopLocked: boolean;
   benchUnits: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
-  ownedUnits: any;
+  ownedUnits: OwnedUnitsMessage;
   lastBattleResult?: {
     opponentId: string;
     won: boolean;

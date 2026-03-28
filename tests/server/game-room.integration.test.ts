@@ -2236,6 +2236,16 @@ describe("GameRoom integration", () => {
       }), 1_500);
 
       roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
+      await waitForSharedBoardPropagation(
+        roomInternals.sharedBoardBridge,
+        () =>
+          helperClients.every((helperClient) => {
+            const placements =
+              roomInternals.controller?.getBoardPlacementsForPlayer(helperClient.sessionId) ?? [];
+            return placements.length >= 1;
+          }),
+        SHARED_BOARD_PROPAGATION_TIMEOUT_MS,
+      );
 
       for (const helperClient of helperClients) {
         const placements = roomInternals.controller?.getBoardPlacementsForPlayer(helperClient.sessionId) ?? [];

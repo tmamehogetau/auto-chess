@@ -171,13 +171,16 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
   public onJoin(client: Client, options: SharedBoardJoinOptions = {}): void {
     const sessionId = client.sessionId;
-    if (typeof options.gamePlayerId === "string" && options.gamePlayerId.length > 0) {
-      this.gamePlayerIdBySharedSessionId.set(sessionId, options.gamePlayerId);
-    }
-
     const requestedSpectator = options.spectator === true;
     const slotIndex = requestedSpectator ? -1 : this.findNextActiveSlot();
     const isSpectator = requestedSpectator || slotIndex < 0;
+    if (
+      !isSpectator
+      && typeof options.gamePlayerId === "string"
+      && options.gamePlayerId.length > 0
+    ) {
+      this.gamePlayerIdBySharedSessionId.set(sessionId, options.gamePlayerId);
+    }
     const color = isSpectator
       ? SharedBoardRoom.SPECTATOR_COLOR
       : this.getActiveColorBySlot(slotIndex);
@@ -562,6 +565,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   }
 
   private removePlayerCompletely(playerId: string): void {
+    const player = this.state.players.get(playerId);
     const activeIndex = this.activePlayerIds.indexOf(playerId);
     if (activeIndex >= 0) {
       this.activePlayerIds.splice(activeIndex, 1);
@@ -573,12 +577,14 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
     this.gamePlayerIdBySharedSessionId.delete(playerId);
 
-    for (const cell of this.state.cells.values()) {
-      if (cell.ownerId === this.resolveOwnerId(playerId)) {
-        cell.unitId = "";
-        cell.ownerId = "";
-        cell.displayName = "";
-        cell.portraitKey = "";
+    if (player?.isSpectator !== true) {
+      for (const cell of this.state.cells.values()) {
+        if (cell.ownerId === this.resolveOwnerId(playerId)) {
+          cell.unitId = "";
+          cell.ownerId = "";
+          cell.displayName = "";
+          cell.portraitKey = "";
+        }
       }
     }
 

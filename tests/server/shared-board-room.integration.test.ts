@@ -299,6 +299,32 @@ describe("SharedBoardRoom integration", () => {
     ).toEqual([0, 1, 2, 3]);
   });
 
+  test("spectator leave does not clear the live owner's units", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const activeClient = await testServer.connectTo(serverRoom, { gamePlayerId: "raid-player-1" });
+    const seededUnit = seedSharedBoardUnit(serverRoom, activeClient.sessionId, 18);
+
+    const spectatorClient = await testServer.connectTo(serverRoom, {
+      gamePlayerId: "raid-player-1",
+      spectator: true,
+    });
+
+    spectatorClient.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    const spectatorRole = await spectatorClient.waitForMessage(SERVER_MESSAGE_TYPES.ROLE, 5_000);
+    expect(spectatorRole).toMatchObject({
+      isSpectator: true,
+      slotIndex: -1,
+    });
+
+    await spectatorClient.leave(true);
+    await waitForCondition(() => !serverRoom.state.players.has(spectatorClient.sessionId), 1_000);
+
+    expect(serverRoom.state.cells.get(String(seededUnit.cellIndex))).toMatchObject({
+      ownerId: activeClient.sessionId,
+      unitId: seededUnit.unitId,
+    });
+  });
+
   test("join時にdummy-boss以外の初期トークンを生成しない", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
 

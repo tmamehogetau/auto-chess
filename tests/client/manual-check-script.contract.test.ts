@@ -131,6 +131,19 @@ describe("manual-check script contract", () => {
     expect(source.includes("lastShownBattleRound !== state.roundIndex")).toBe(true);
   });
 
+  test("UI presentation updates do not depend on lastCmdSeq being present", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+    const normalizedSource = source.replace(/\r\n/g, "\n");
+    const nextCmdSeqIndex = normalizedSource.indexOf("nextCmdSeq = player.lastCmdSeq + 1;");
+    const raidPresentationIndex = normalizedSource.indexOf("updateRaidBoardPresentation(state);");
+    const guardStartIndex = normalizedSource.indexOf("if (typeof player.lastCmdSeq === \"number\") {");
+
+    expect(guardStartIndex).toBeGreaterThan(-1);
+    expect(nextCmdSeqIndex).toBeGreaterThan(guardStartIndex);
+    expect(raidPresentationIndex).toBeGreaterThan(nextCmdSeqIndex);
+    expect(normalizedSource.includes("if (typeof player.lastCmdSeq === \"number\") {\n    nextCmdSeq = player.lastCmdSeq + 1;\n  }\n\n  if (state.phase === \"Waiting\"")).toBe(true);
+  });
+
   test("prep command trace update does not depend on admin-monitor private helpers", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 

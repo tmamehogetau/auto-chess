@@ -1267,6 +1267,8 @@ function updateGameUI(state) {
 
   // Update next command sequence
   if (typeof player.lastCmdSeq === "number") {
+    nextCmdSeq = player.lastCmdSeq + 1;
+  }
 
   if (state.phase === "Waiting" && state.lobbyStage === "preference") {
     heroSelectionConfirmed = false;
@@ -1339,9 +1341,6 @@ function updateGameUI(state) {
   }
 
   updateRaidBoardPresentation(state);
-
-    nextCmdSeq = player.lastCmdSeq + 1;
-  }
 }
 
 function updateRaidBoardPresentation(state) {

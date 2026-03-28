@@ -209,6 +209,10 @@ export function buildAutoFillHelperActions({ state, player, helperIndex = 0 }) {
     }
 
     const nextDeployCell = getNextDeployCell(player.role, helperIndex, player.boardUnits);
+    const placedPurchasedUnitCount = getPlacedPurchasedUnitCount(
+      player.role,
+      player.boardUnits,
+    );
 
     if (hasUnits(player.benchUnits)) {
       if (nextDeployCell === null) {
@@ -243,7 +247,7 @@ export function buildAutoFillHelperActions({ state, player, helperIndex = 0 }) {
     }
 
     if (
-      getPlacedPurchasedUnitCount(player.role, player.boardUnits) === 0
+      placedPurchasedUnitCount === 0
       && !Number.isFinite(player.gold)
     ) {
       if (player.role === "boss" && hasOffers(player.bossShopOffers)) {
@@ -270,6 +274,10 @@ export function buildAutoFillHelperActions({ state, player, helperIndex = 0 }) {
       if (reserveBuyAction) {
         return [reserveBuyAction];
       }
+    }
+
+    if (!Number.isFinite(player.gold) && placedPurchasedUnitCount > 0) {
+      return [];
     }
 
     if (player.ready !== true) {

@@ -388,7 +388,10 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return;
     }
 
-    const sourceCellIndex = this.findCellIndexByUnitId(payload.unitId);
+    const sourceCellIndex = this.findOwnedCellIndexByUnitId(
+      client.sessionId,
+      payload.unitId,
+    );
 
     if (sourceCellIndex < 0) {
       this.sendActionResult(client, "place_unit", false, "INVALID_PAYLOAD");
@@ -677,6 +680,18 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
   private findCellIndexByUnitId(unitId: string): number {
     for (const [key, cell] of this.state.cells.entries()) {
       if (cell.unitId === unitId) {
+        return Number.parseInt(key, 10);
+      }
+    }
+
+    return -1;
+  }
+
+  private findOwnedCellIndexByUnitId(playerId: string, unitId: string): number {
+    const ownerId = this.resolveOwnerId(playerId);
+
+    for (const [key, cell] of this.state.cells.entries()) {
+      if (cell.ownerId === ownerId && cell.unitId === unitId) {
         return Number.parseInt(key, 10);
       }
     }

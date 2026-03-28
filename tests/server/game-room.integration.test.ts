@@ -264,19 +264,25 @@ const attachAutoFillHelperAutomationForTest = (
   let lastAutomationStateKey = "";
   const results: unknown[] = [];
 
-  const buildAutomationStateKey = (state: AutoFillHelperState | null, helperPlayer: AutoFillHelperPlayer | null) => JSON.stringify({
-    bossOffers: mapOfferUnitTypes(helperPlayer?.bossShopOffers),
-    boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
-    benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
-    lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
-    lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
-    phase: typeof state?.phase === "string" ? state.phase : "",
-    ready: helperPlayer?.ready === true,
-    role: helperPlayer?.role ?? "",
-    selectedBossId: helperPlayer?.selectedBossId ?? null,
-    selectedHeroId: helperPlayer?.selectedHeroId ?? null,
-    shopOffers: mapOfferUnitTypes(helperPlayer?.shopOffers),
-  });
+  const buildAutomationStateKey = (state: AutoFillHelperState | null, helperPlayer: AutoFillHelperPlayer | null) => {
+    const helperGold = typeof helperPlayer?.gold === "number" ? helperPlayer.gold : null;
+
+    return JSON.stringify({
+      bossOffers: mapOfferUnitTypes(helperPlayer?.bossShopOffers),
+      boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
+      benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
+      featureFlagsEnableTouhouRoster: state?.featureFlagsEnableTouhouRoster === true,
+      gold: Number.isFinite(helperGold) ? helperGold : null,
+      lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
+      lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
+      phase: typeof state?.phase === "string" ? state.phase : "",
+      ready: helperPlayer?.ready === true,
+      role: helperPlayer?.role ?? "",
+      selectedBossId: helperPlayer?.selectedBossId ?? null,
+      selectedHeroId: helperPlayer?.selectedHeroId ?? null,
+      shopOffers: mapOfferUnitTypes(helperPlayer?.shopOffers),
+    });
+  };
 
   const applyAutomation = (state: unknown) => {
     const helperState = state as AutoFillHelperState | null;
@@ -2300,6 +2306,11 @@ describe("GameRoom integration", () => {
       gamePlayerId: raidPlayerId,
     });
     sharedClient.onMessage("shared_role", (_message: unknown) => {});
+    sharedClient.send("shared_request_role");
+    const sharedRole = await sharedClient.waitForMessage("shared_role");
+    expect(sharedRole).toMatchObject({
+      isSpectator: false,
+    });
 
     await waitForCondition(() => {
       const sharedPlayer = sharedBoardRoom.state.players.get(sharedClient.sessionId);
@@ -2389,6 +2400,11 @@ describe("GameRoom integration", () => {
       gamePlayerId: bossPlayerId,
     });
     sharedClient.onMessage("shared_role", (_message: unknown) => {});
+    sharedClient.send("shared_request_role");
+    const sharedRole = await sharedClient.waitForMessage("shared_role");
+    expect(sharedRole).toMatchObject({
+      isSpectator: false,
+    });
 
     await waitForCondition(() => {
       const sharedPlayer = sharedBoardRoom.state.players.get(sharedClient.sessionId);

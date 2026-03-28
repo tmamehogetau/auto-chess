@@ -463,6 +463,25 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase does not auto-ready after the first purchased unit when gold is still unknown", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: Number.NaN,
+        benchUnits: [],
+        boardUnits: ["30:reimu", "31:vanguard"],
+        shopOffers: [
+          { unitType: "mage", cost: 3 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([]);
+  });
+
   test("already-selected and ready helpers stay idle", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,

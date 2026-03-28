@@ -531,6 +531,40 @@ describe("SharedBoardRoom integration", () => {
     });
   });
 
+  test("place は unitId が衝突しても所有者の source cell を優先する", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const [firstClient, secondClient] = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    const firstSeed = seedSharedBoardUnit(serverRoom, firstClient.sessionId, 19, "vanguard");
+    const secondSeed = seedSharedBoardUnit(serverRoom, secondClient.sessionId, 31, "ranger");
+    const secondSourceCell = serverRoom.state.cells.get(String(secondSeed.cellIndex));
+
+    if (!secondSourceCell) {
+      throw new Error("Expected second source cell");
+    }
+
+    secondSourceCell.unitId = firstSeed.unitId;
+
+    const targetCellIndex = 33;
+
+    secondClient.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId: firstSeed.unitId,
+      toCell: targetCellIndex,
+    });
+
+    expect(await secondClient.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT)).toEqual({
+      accepted: true,
+      action: "place_unit",
+    });
+
+    expect(serverRoom.state.cells.get(String(firstSeed.cellIndex))?.ownerId).toBe(firstClient.sessionId);
+    expect(serverRoom.state.cells.get(String(secondSeed.cellIndex))?.unitId).toBe("");
+    expect(serverRoom.state.cells.get(String(targetCellIndex))?.ownerId).toBe(secondClient.sessionId);
+  });
+
   test("occupiedセルへのplaceでTARGET_OCCUPIED", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const clients = await Promise.all([

@@ -1,14 +1,21 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
+import type { MatchRoomController } from "../../../src/server/match-room-controller";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { FeatureFlagService } from "../../../src/server/feature-flag-service";
-import { FLAG_CONFIGURATIONS, withFlags } from "../../server/feature-flag-test-helper";
+import {
+  FLAG_CONFIGURATIONS,
+  captureManagedFlagEnv,
+  restoreManagedFlagEnv,
+  withFlags,
+} from "../../server/feature-flag-test-helper";
 import { waitForCondition } from "../shared-board-bridge/helpers/wait";
 
 describe("E2E: Boss Raid Core Loop", () => {
   let testServer: ColyseusTestServer;
+  let originalEnv = captureManagedFlagEnv();
   const TEST_SERVER_PORT = 4581;
 
   beforeAll(async () => {
@@ -28,13 +35,17 @@ describe("E2E: Boss Raid Core Loop", () => {
     testServer = new ColyseusTestServer(server);
   }, 15_000);
 
+  beforeEach(() => {
+    originalEnv = captureManagedFlagEnv();
+    FeatureFlagService.resetForTests();
+  });
+
   afterEach(async () => {
     if (testServer) {
       await testServer.cleanup();
     }
-    delete process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP;
-    delete process.env.FEATURE_ENABLE_PHASE_EXPANSION;
-    (FeatureFlagService as any).instance = undefined;
+    restoreManagedFlagEnv(originalEnv);
+    FeatureFlagService.resetForTests();
   });
 
   afterAll(async () => {
@@ -63,7 +74,7 @@ describe("E2E: Boss Raid Core Loop", () => {
   }
 
   function advanceRaidRound(
-    controller: { advanceByTime: (nowMs: number) => boolean; setPendingPhaseDamageForTest: (damageValue: number) => void },
+    controller: MatchRoomController,
     nowMs: number,
     damageValue: number,
     bossPlayerId: string,
@@ -72,14 +83,7 @@ describe("E2E: Boss Raid Core Loop", () => {
     controller.advanceByTime(nowMs + 100);
     controller.setPendingPhaseDamageForTest(damageValue);
     controller.advanceByTime(nowMs + 200);
-    const battleResultsByPlayer = Reflect.get(controller as object, "battleResultsByPlayer") as Map<string, {
-      opponentId: string;
-      won: boolean;
-      damageDealt: number;
-      damageTaken: number;
-      survivors: number;
-      opponentSurvivors: number;
-    }>;
+    const { battleResultsByPlayer } = controller.getTestAccess();
     for (const raidPlayerId of raidPlayerIds) {
       battleResultsByPlayer.set(raidPlayerId, {
         opponentId: bossPlayerId,
@@ -104,24 +108,14 @@ describe("E2E: Boss Raid Core Loop", () => {
         async () => {
           const { gameRoom, clients } = await setupRaidRoom();
           const roomInternals = gameRoom as unknown as {
-            controller?: {
-              advanceByTime: (nowMs: number) => boolean;
-              setPendingPhaseDamageForTest: (damageValue: number) => void;
-            };
+            controller?: MatchRoomController;
             syncStateFromController?: () => void;
           };
           const controller = roomInternals.controller;
           expect(controller).toBeDefined();
           const bossPlayerId = gameRoom.state.bossPlayerId;
           const raidPlayerIds = Array.from(gameRoom.state.raidPlayerIds);
-          const battleResultsByPlayer = Reflect.get(controller as object, "battleResultsByPlayer") as Map<string, {
-            opponentId: string;
-            won: boolean;
-            damageDealt: number;
-            damageTaken: number;
-            survivors: number;
-            opponentSurvivors: number;
-          }>;
+          const { battleResultsByPlayer } = controller!.getTestAccess();
 
           let nowMs = Date.now();
           for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
@@ -184,27 +178,17 @@ describe("E2E: Boss Raid Core Loop", () => {
         async () => {
           const { gameRoom, clients } = await setupRaidRoom();
           const roomInternals = gameRoom as unknown as {
-            controller?: {
-              advanceByTime: (nowMs: number) => boolean;
-              setPendingPhaseDamageForTest: (damageValue: number) => void;
-            };
+            controller?: MatchRoomController;
             syncStateFromController?: () => void;
           };
           const controller = roomInternals.controller;
           expect(controller).toBeDefined();
           const bossPlayerId = gameRoom.state.bossPlayerId;
           const raidPlayerIds = Array.from(gameRoom.state.raidPlayerIds);
-          const gameLoopState = Reflect.get(controller as object, "gameLoopState") as {
-            consumeLife: (playerId: string, amount?: number) => void;
-          };
-          const battleResultsByPlayer = Reflect.get(controller as object, "battleResultsByPlayer") as Map<string, {
-            opponentId: string;
-            won: boolean;
-            damageDealt: number;
-            damageTaken: number;
-            survivors: number;
-            opponentSurvivors: number;
-          }>;
+          const { gameLoopState, battleResultsByPlayer } = controller!.getTestAccess();
+          if (!gameLoopState) {
+            throw new Error("Expected gameLoopState");
+          }
 
           let nowMs = Date.now();
           for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {

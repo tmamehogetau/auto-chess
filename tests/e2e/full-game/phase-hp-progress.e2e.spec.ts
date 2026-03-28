@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { ColyseusTestServer } from "@colyseus/testing";
 import { defineRoom, defineServer } from "colyseus";
 
+import type { MatchRoomController } from "../../../src/server/match-room-controller";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { FeatureFlagService } from "../../../src/server/feature-flag-service";
 import { withFlags, FLAG_CONFIGURATIONS } from "../../server/feature-flag-test-helper";
@@ -249,9 +250,7 @@ describe("E2E: Phase HP Progress", () => {
           // controller internals so round-state exposure can be verified without depending on
           // battle RNG. If controller internals move, this fixture must move with them.
           const roomInternals = gameRoom as unknown as {
-            controller?: {
-              setPendingPhaseDamageForTest: (damageValue: number) => void;
-            };
+            controller?: MatchRoomController;
           };
           const controller = roomInternals.controller;
           expect(controller).toBeDefined();
@@ -268,14 +267,7 @@ describe("E2E: Phase HP Progress", () => {
 
           await waitForPhase(gameRoom, "Settle", 5_000);
 
-          const battleResultsByPlayer = Reflect.get(controller as object, "battleResultsByPlayer") as Map<string, {
-            opponentId: string;
-            won: boolean;
-            damageDealt: number;
-            damageTaken: number;
-            survivors: number;
-            opponentSurvivors: number;
-          }>;
+          const { battleResultsByPlayer } = controller!.getTestAccess();
 
           battleResultsByPlayer.set(raidClientA.sessionId, {
             opponentId: resolvedBossClient.sessionId,

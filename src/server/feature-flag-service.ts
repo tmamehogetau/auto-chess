@@ -16,6 +16,10 @@ class FeatureFlagService {
     return FeatureFlagService.instance;
   }
 
+  public static resetForTests(): void {
+    FeatureFlagService.instance = undefined as unknown as FeatureFlagService;
+  }
+
   private loadFlags(): FeatureFlags {
     return {
       enableHeroSystem: this.parseEnvBoolean("FEATURE_ENABLE_HERO_SYSTEM", DEFAULT_FLAGS.enableHeroSystem),

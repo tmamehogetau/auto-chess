@@ -4,12 +4,11 @@ import {
   seedToUnitFloat,
   pickRarity,
 } from "./match-room-controller/random-utils";
-import { comparePlayerIds } from "./match-room-controller/player-compare";
-import { buildLoserDamage } from "./match-room-controller/damage-calculator";
 import {
   BattleResolutionService,
   type BattleResolutionDependencies,
   type BattleResolutionResult,
+  type MatchupOutcome,
 } from "./match-room-controller/battle-resolution";
 import {
   buildBattleResultAssignments,
@@ -27,19 +26,7 @@ import {
 } from "./match-room-controller/synergy-helpers";
 import {
   applyPrepIncomeToPlayers,
-  initializeShopsForPrep,
-  refreshShopByCount,
-  refreshShopsForPrep,
 } from "./match-room-controller/prep-economy";
-import {
-  beginBattlePhaseWindow,
-  beginEliminationPhaseWindow,
-  beginPrepPhaseWindow,
-  beginSettlePhaseWindow,
-  clearPhaseTiming,
-  hasDeadlineElapsed,
-  type PhaseTimingUpdate,
-} from "./match-room-controller/phase-timing";
 import type {
   BoardUnitType,
   BoardUnitPlacement,
@@ -59,7 +46,6 @@ import {
   executePrepCommand,
   type ExecutionDependencies,
 } from "./match-room-controller/prep-command-executor";
-import { calculateDiscountedShopOfferCost } from "./match-room-controller/shop-cost-reduction";
 import {
   normalizeBoardPlacements,
   resolveBoardPowerFromState,
@@ -75,14 +61,6 @@ import {
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
 import {
-  calculateSynergyDetails,
-  getTouhouFactionTierEffect,
-} from "./combat/synergy-definitions";
-import {
-  STAR_LEVEL_MAX,
-  STAR_LEVEL_MIN,
-  STAR_MERGE_THRESHOLD,
-  UNIT_SELL_VALUE_BY_TYPE,
   calculateSellValue,
 } from "./star-level-config";
 import { HEROES } from "../data/heroes";
@@ -101,12 +79,21 @@ import {
   SpellCardHandler,
   type SpellCombatModifiers,
 } from "./match-room-controller/spell-card-handler";
+import { PlayerStateQueryService } from "./match-room-controller/player-state-query";
+import {
+  PhaseOrchestrator,
+  type PhaseProgressSnapshot,
+} from "./match-room-controller/phase-orchestrator";
+import { ShopManager } from "./match-room-controller/shop-manager";
+import {
+  BattleOrchestrator,
+  type BattlePairing,
+} from "./match-room-controller/battle-orchestrator";
 import { getRumorUnitForRound, type RumorUnit } from "../data/rumor-units";
 import { SCARLET_MANSION_UNITS, getRandomScarletMansionUnit, type ScarletMansionUnit } from "../data/scarlet-mansion-units";
 import mvpPhase1UnitsData from "../data/mvp_phase1_units.json";
 import type { SubUnitConfig } from "../shared/types";
 import type { ControllerPlayerStatus } from "./types/player-state-types";
-import { resolveBattlePlacements, resolveSharedPoolCost } from "./unit-id-resolver";
 import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
@@ -129,15 +116,7 @@ interface MatchRoomControllerOptions {
 
 
 
-type PhaseResult = "pending" | "success" | "failed";
-
 type RoundDamageByPlayer = Partial<Record<string, number>>;
-
-interface BattlePairing {
-  leftPlayerId: string;
-  rightPlayerId: string | null;
-  ghostSourcePlayerId: string | null;
-}
 
 const INITIAL_GOLD = 15;
 const INITIAL_XP = 0;
@@ -146,12 +125,10 @@ const PREP_BASE_INCOME = 5;
 const XP_PURCHASE_COST = 4;
 const XP_PURCHASE_GAIN = 4;
 const MAX_XP_PURCHASE_COUNT = 10;
-const SHOP_REFRESH_COST = 2;
 const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
 const BOSS_SHOP_SIZE = 2;
-const MAX_BENCH_SIZE = 9;
 const MIN_BOARD_CELL_INDEX = COMBAT_CELL_MIN_INDEX;
 const MAX_BOARD_CELL_INDEX = COMBAT_CELL_MAX_INDEX;
 const MAX_LEVEL = 6;
@@ -210,8 +187,6 @@ const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
 };
 
 type UnitRarity = 1 | 2 | 3 | 4 | 5;
-type LegacyRarity = 1 | 2 | 3;
-
 interface ShopOffer {
   unitType: BoardUnitType;
   unitId?: string;
@@ -239,22 +214,6 @@ interface BenchUnit {
   unitCount: number;
 }
 
-type ShopOfferKey = string;
-
-// ユニットタイプとコストのマッピング（コスト=レアリティ）
-const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
-  vanguard: 1,
-  ranger: 1,
-  mage: 2,
-  assassin: 3,
-};
-
-const SHOP_UNIT_POOL_BY_RARITY: Readonly<Record<LegacyRarity, readonly BoardUnitType[]>> = {
-  1: ["vanguard", "ranger"],
-  2: ["mage", "assassin"],
-  3: ["assassin", "mage"],
-};
-
 const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, number]>> = {
   1: [1, 0, 0],
   2: [0.8, 0.2, 0],
@@ -263,14 +222,6 @@ const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, numb
   5: [0.3, 0.45, 0.25],
   6: [0.2, 0.45, 0.35],
 };
-
-interface MatchupOutcome {
-  winnerId: string | null;
-  loserId: string | null;
-  winnerUnitCount: number;
-  loserUnitCount: number;
-  isDraw: boolean;
-}
 
 interface MvpPhase1UnitForSubUnit {
   unitId: string;
@@ -349,6 +300,33 @@ interface BattleResult {
   }>;
 }
 
+export interface MatchRoomControllerTestBattleResult {
+  opponentId: string;
+  won: boolean;
+  damageDealt: number;
+  damageTaken: number;
+  survivors: number;
+  opponentSurvivors: number;
+  timeline?: BattleTimelineEvent[];
+  survivorSnapshots?: Array<{
+    unitId: string;
+    displayName: string;
+    unitType: string;
+    hp: number;
+    maxHp: number;
+    sharedBoardCellIndex: number;
+  }>;
+}
+
+export interface MatchRoomControllerTestAccess {
+  battleResultsByPlayer: Map<string, MatchRoomControllerTestBattleResult>;
+  battleResolutionService: BattleResolutionService;
+  spellCardHandler: SpellCardHandler;
+  gameLoopState: Pick<GameLoopState, "consumeLife"> | null;
+  boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+  battleInputSnapshotByPlayer: Map<string, BoardUnitPlacement[]>;
+}
+
 export class MatchRoomController {
   private playerIds: string[];
 
@@ -406,14 +384,6 @@ export class MatchRoomController {
 
   private gameLoopState: GameLoopState | null;
 
-  public prepDeadlineAtMs: number | null;
-
-  private battleDeadlineAtMs: number | null;
-
-  private settleDeadlineAtMs: number | null;
-
-  private eliminationDeadlineAtMs: number | null;
-
   private readonly pendingRoundDamageByPlayer: Map<string, number>;
 
   private pendingPhaseDamageForTest: number | null;
@@ -429,14 +399,6 @@ export class MatchRoomController {
   private readonly eliminatedFromBottom: string[];
 
   private readonly setId: UnitEffectSetId;
-
-  private phaseHpTarget: number;
-
-  private phaseDamageDealt: number;
-
-  private phaseResult: PhaseResult;
-
-  private phaseCompletionRate: number;
 
   private readonly sharedPool: SharedPool | null;
 
@@ -472,6 +434,10 @@ export class MatchRoomController {
 
   private readonly shopOfferBuilder: ShopOfferBuilder;
   private readonly battleResolutionService: BattleResolutionService;
+  private readonly phaseOrchestrator: PhaseOrchestrator;
+  private readonly shopManager: ShopManager<BattleResult>;
+  private readonly battleOrchestrator: BattleOrchestrator<BattleResult>;
+  private readonly playerStateQuery: PlayerStateQueryService;
 
   private pendingRumorInfluence: {
     roundIndex: number;
@@ -518,10 +484,6 @@ export class MatchRoomController {
     this.settleDurationMs = options.settleDurationMs;
     this.eliminationDurationMs = options.eliminationDurationMs;
     this.gameLoopState = null;
-    this.prepDeadlineAtMs = null;
-    this.battleDeadlineAtMs = null;
-    this.settleDeadlineAtMs = null;
-    this.eliminationDeadlineAtMs = null;
     this.pendingRoundDamageByPlayer = new Map<string, number>();
     this.pendingPhaseDamageForTest = null;
     this.hpAtBattleStartByPlayer = new Map<string, number>();
@@ -572,10 +534,6 @@ export class MatchRoomController {
     };
     this.shopOfferBuilder = new ShopOfferBuilder(shopOfferDeps);
 
-    this.phaseHpTarget = this.resolvePhaseHpTarget(1);
-    this.phaseDamageDealt = 0;
-    this.phaseResult = "pending";
-    this.phaseCompletionRate = 0;
     this.finalRankingOverride = null;
     this.matchLogger = matchLogger;
 
@@ -646,43 +604,215 @@ export class MatchRoomController {
     // Feature Flagに基づいてボス専用ショップを初期化
     this.enableBossExclusiveShop = resolvedFeatureFlags.enableBossExclusiveShop;
     this.bossShopOffersByPlayer = new Map<string, ShopOffer[]>();
+    this.shopManager = new ShopManager<BattleResult>({
+      ensureStarted: () => this.ensureStarted(),
+      buildShopOffers: (playerId, roundIndex, refreshCount, purchaseCount, isRumorEligible) =>
+        this.shopOfferBuilder.buildShopOffers(
+          playerId,
+          roundIndex,
+          refreshCount,
+          purchaseCount,
+          isRumorEligible,
+        ),
+      buildBossShopOffers: () => this.shopOfferBuilder.buildBossShopOffers(),
+      buildReplacementOffer: (playerId, roundIndex, refreshCount, purchaseCount) =>
+        this.shopOfferBuilder.buildReplacementOffer(
+          playerId,
+          roundIndex,
+          refreshCount,
+          purchaseCount,
+        ),
+      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
+      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
+      shopLockedByPlayer: this.shopLockedByPlayer,
+      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
+      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
+      shopOffersByPlayer: this.shopOffersByPlayer,
+      bossShopOffersByPlayer: this.bossShopOffersByPlayer,
+      battleResultsByPlayer: this.battleResultsByPlayer,
+      benchUnitsByPlayer: this.benchUnitsByPlayer,
+      boardPlacementsByPlayer: this.boardPlacementsByPlayer,
+      boardUnitCountByPlayer: this.boardUnitCountByPlayer,
+      ownedUnitsByPlayer: this.ownedUnitsByPlayer,
+      goldByPlayer: this.goldByPlayer,
+      enableRumorInfluence: this.enableRumorInfluence,
+      enableBossExclusiveShop: this.enableBossExclusiveShop,
+      enableSharedPool: this.enableSharedPool,
+      sharedPool: this.sharedPool,
+      rosterFlags: this.rosterFlags,
+      initialGold: INITIAL_GOLD,
+      maxBenchSize: 9,
+    });
+    this.battleOrchestrator = new BattleOrchestrator<BattleResult>({
+      ensureStarted: () => this.ensureStarted(),
+      isRaidMode: () => this.isRaidMode(),
+      getPhaseResult: () => this.phaseOrchestrator.getPhaseProgress().result,
+      pendingRoundDamageByPlayer: this.pendingRoundDamageByPlayer,
+      battleResultsByPlayer: this.battleResultsByPlayer,
+      getCurrentRoundPairings: () => this.currentRoundPairings,
+      getBattleParticipantIds: () => this.battleParticipantIds,
+      getHpAtBattleStartByPlayer: () => this.hpAtBattleStartByPlayer,
+      getHpAfterBattleByPlayer: () => this.hpAfterBattleByPlayer,
+      eliminatedFromBottom: this.eliminatedFromBottom,
+      resolveMatchupOutcome: (leftPlayerId, rightPlayerId) =>
+        this.resolveMatchupOutcome(leftPlayerId, rightPlayerId),
+      setFinalRankingOverride: (ranking) => {
+        this.finalRankingOverride = ranking;
+      },
+    });
+    this.phaseOrchestrator = new PhaseOrchestrator({
+      getState: () => this.gameLoopState,
+      isRaidMode: () => this.isRaidMode(),
+      enablePhaseExpansion: this.featureFlags.enablePhaseExpansion,
+      prepDurationMs: this.prepDurationMs,
+      battleDurationMs: this.battleDurationMs,
+      settleDurationMs: this.settleDurationMs,
+      eliminationDurationMs: this.eliminationDurationMs,
+      resolvePhaseHpTarget: (roundIndex) => this.resolvePhaseHpTarget(roundIndex),
+      onPrepToBattle: () => {
+        this.captureBattleStartHp();
+        this.captureBattleInputSnapshot();
+        this.declareSpell();
+        this.applyPreBattleSpellEffect();
+      },
+      onBattleToSettle: () => {
+        this.battleOrchestrator.resolveMissingRoundDamage();
+        this.capturePhaseProgressFromPendingDamage();
+        this.applyPendingRoundDamage();
+        this.capturePostBattleHp();
+        this.applySpellEffect();
+      },
+      onBeforeSettleToElimination: () => {
+        this.battleOrchestrator.applyRaidRoundConsequences();
+      },
+      onAfterSettleToElimination: (aliveBeforeElimination) => {
+        this.battleOrchestrator.captureEliminationResult(aliveBeforeElimination);
+      },
+      onEliminationToPrep: () => this.resetForNextPrepRound(),
+      shouldEndAfterElimination: (maxRounds) => this.battleOrchestrator.shouldEndAfterElimination(maxRounds),
+      logRoundTransition: (phase, roundIndex, nowMs) =>
+        this.matchLogger?.logRoundTransition(phase, roundIndex, nowMs),
+    });
+
+    this.playerStateQuery = new PlayerStateQueryService({
+      ensureKnownPlayer: (playerId) => this.ensureKnownPlayer(playerId),
+      ensureStarted: () => this.ensureStarted(),
+      getCurrentPhase: () => this.gameLoopState?.phase ?? "Waiting",
+      getCurrentRoundIndex: () => this.gameLoopState?.roundIndex ?? 0,
+      getAlivePlayerIds: () => this.gameLoopState?.alivePlayerIds ?? [],
+      getCurrentPhaseDeadlineAtMs: () => {
+        if (!this.gameLoopState) {
+          return null;
+        }
+
+        switch (this.gameLoopState.phase) {
+          case "Prep":
+            return this.prepDeadlineAtMs;
+          case "Battle":
+            return this.battleDeadlineAtMs;
+          case "Settle":
+            return this.settleDeadlineAtMs;
+          case "Elimination":
+            return this.eliminationDeadlineAtMs;
+          case "End":
+            return null;
+          default:
+            return null;
+        }
+      },
+      getTrackedPlayerIds: () => this.playerIds,
+      getFinalRankingOverride: () => this.finalRankingOverride,
+      getEliminatedFromBottom: () => this.eliminatedFromBottom,
+      getCurrentRoundPairings: () => this.currentRoundPairings,
+      getCurrentPhaseProgress: () => this.phaseOrchestrator.getPhaseProgress(),
+      wantsBossByPlayer: this.wantsBossByPlayer,
+      selectedBossByPlayer: this.selectedBossByPlayer,
+      roleByPlayer: this.roleByPlayer,
+      goldByPlayer: this.goldByPlayer,
+      xpByPlayer: this.xpByPlayer,
+      levelByPlayer: this.levelByPlayer,
+      shopOffersByPlayer: this.shopOffersByPlayer,
+      shopLockedByPlayer: this.shopLockedByPlayer,
+      benchUnitsByPlayer: this.benchUnitsByPlayer,
+      ownedUnitsByPlayer: this.ownedUnitsByPlayer,
+      bossShopOffersByPlayer: this.bossShopOffersByPlayer,
+      battleResultsByPlayer: this.battleResultsByPlayer,
+      selectedHeroByPlayer: this.selectedHeroByPlayer,
+      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
+      boardUnitCountByPlayer: this.boardUnitCountByPlayer,
+      boardPlacementsByPlayer: this.boardPlacementsByPlayer,
+      heroPlacementByPlayer: this.heroPlacementByPlayer,
+      bossPlacementByPlayer: this.bossPlacementByPlayer,
+      enableBossExclusiveShop: this.enableBossExclusiveShop,
+      enableSharedPool: this.enableSharedPool,
+      sharedPool: this.sharedPool,
+      initialGold: INITIAL_GOLD,
+      initialXp: INITIAL_XP,
+      initialLevel: INITIAL_LEVEL,
+      buildActiveSynergies: (playerId, boardPlacements) => {
+        const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
+        return this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
+      },
+      resolveBenchUnitDisplayName: (benchUnit) =>
+        this.resolveBenchUnitDisplayName(benchUnit as BenchUnit),
+      formatBoardUnitToken: (placement) => {
+        const starLevel = placement.starLevel ?? 1;
+        const hasSubUnitAssist =
+          this.enableSubUnitSystem &&
+          (() => {
+            const config = this.subUnitAssistConfigByType.get(placement.unitType);
+            if (!config) {
+              return false;
+            }
+            if (!config.parentUnitId) {
+              return true;
+            }
+            return placement.unitId === config.parentUnitId;
+          })();
+
+        if (starLevel > 1 || hasSubUnitAssist) {
+          const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;
+          if (hasSubUnitAssist) {
+            return `${tokenWithStarLevel}:sub`;
+          }
+          return tokenWithStarLevel;
+        }
+
+        return `${placement.cell}:${placement.unitType}`;
+      },
+    });
   }
 
   public get phase(): Phase | "Waiting" {
-    if (!this.gameLoopState) {
-      return "Waiting";
-    }
+    return this.playerStateQuery.getPhase();
+  }
 
-    return this.gameLoopState.phase;
+  public get prepDeadlineAtMs(): number | null {
+    return this.phaseOrchestrator.getPrepDeadlineAtMs();
+  }
+
+  private get battleDeadlineAtMs(): number | null {
+    return this.phaseOrchestrator.getBattleDeadlineAtMs();
+  }
+
+  private get settleDeadlineAtMs(): number | null {
+    return this.phaseOrchestrator.getSettleDeadlineAtMs();
+  }
+
+  private get eliminationDeadlineAtMs(): number | null {
+    return this.phaseOrchestrator.getEliminationDeadlineAtMs();
   }
 
   public get roundIndex(): number {
-    return this.gameLoopState?.roundIndex ?? 0;
+    return this.playerStateQuery.getRoundIndex();
   }
 
   public get alivePlayerIds(): string[] {
-    return this.gameLoopState?.alivePlayerIds ?? [];
+    return this.playerStateQuery.getAlivePlayerIds();
   }
 
   public get phaseDeadlineAtMs(): number | null {
-    if (!this.gameLoopState) {
-      return null;
-    }
-
-    switch (this.gameLoopState.phase) {
-      case "Prep":
-        return this.prepDeadlineAtMs;
-      case "Battle":
-        return this.battleDeadlineAtMs;
-      case "Settle":
-        return this.settleDeadlineAtMs;
-      case "Elimination":
-        return this.eliminationDeadlineAtMs;
-      case "End":
-        return null;
-      default:
-        return null;
-    }
+    return this.playerStateQuery.getPhaseDeadlineAtMs();
   }
 
   /**
@@ -690,13 +820,7 @@ export class MatchRoomController {
    * @returns ゲーム状態（未開始時はnull）
    */
   public getGameState(): { phase: string; roundIndex: number } | null {
-    if (!this.gameLoopState) {
-      return null;
-    }
-    return {
-      phase: this.gameLoopState.phase,
-      roundIndex: this.gameLoopState.roundIndex,
-    };
+    return this.playerStateQuery.getGameState();
   }
 
   /**
@@ -754,30 +878,11 @@ export class MatchRoomController {
   }
 
   public get rankingTopToBottom(): string[] {
-    if (this.finalRankingOverride) {
-      return [...this.finalRankingOverride];
-    }
-
-    const state = this.gameLoopState;
-
-    if (!state) {
-      return [];
-    }
-
-    const alivePlayers = [...state.alivePlayerIds].sort((left, right) =>
-      comparePlayerIds(left, right),
-    );
-    const eliminatedBestToWorst = [...this.eliminatedFromBottom].reverse();
-
-    return [...alivePlayers, ...eliminatedBestToWorst];
+    return this.playerStateQuery.getRankingTopToBottom();
   }
 
   public get roundPairings(): BattlePairing[] {
-    return this.currentRoundPairings.map((pairing) => ({
-      leftPlayerId: pairing.leftPlayerId,
-      rightPlayerId: pairing.rightPlayerId,
-      ghostSourcePlayerId: pairing.ghostSourcePlayerId,
-    }));
+    return this.playerStateQuery.getRoundPairings();
   }
 
   public setReady(playerId: string, ready: boolean): void {
@@ -802,25 +907,19 @@ export class MatchRoomController {
   }
 
   public getSelectedHero(playerId: string): string {
-    this.ensureKnownPlayer(playerId);
-    return this.selectedHeroByPlayer.get(playerId) ?? "";
+    return this.playerStateQuery.getSelectedHero(playerId);
   }
 
   public getSelectedBoss(playerId: string): string {
-    this.ensureKnownPlayer(playerId);
-    return this.selectedBossByPlayer.get(playerId) ?? "";
+    return this.playerStateQuery.getSelectedBoss(playerId);
   }
 
   public getHeroPlacementForPlayer(playerId: string): number | null {
-    this.ensureKnownPlayer(playerId);
-    const placement = this.heroPlacementByPlayer.get(playerId) ?? -1;
-    return Number.isInteger(placement) && placement >= 0 ? placement : null;
+    return this.playerStateQuery.getHeroPlacementForPlayer(playerId);
   }
 
   public getBossPlacementForPlayer(playerId: string): number | null {
-    this.ensureKnownPlayer(playerId);
-    const placement = this.bossPlacementByPlayer.get(playerId) ?? -1;
-    return Number.isInteger(placement) && placement >= 0 ? placement : null;
+    return this.playerStateQuery.getBossPlacementForPlayer(playerId);
   }
 
   public applyHeroPlacementForPlayer(
@@ -1013,13 +1112,11 @@ export class MatchRoomController {
   }
 
   public getPlayerHp(playerId: string): number {
-    const state = this.ensureStarted();
-    return state.getPlayerHp(playerId);
+    return this.playerStateQuery.getPlayerHp(playerId);
   }
 
   public getShopOffersForPlayer(playerId: string): ShopOffer[] {
-    this.ensureKnownPlayer(playerId);
-    return [...(this.shopOffersByPlayer.get(playerId) ?? [])];
+    return this.playerStateQuery.getShopOffersForPlayer(playerId);
   }
 
   /**
@@ -1028,15 +1125,7 @@ export class MatchRoomController {
    * @returns ボスショップオファー、ボスでない場合は空配列
    */
   public getBossShopOffersForPlayer(playerId: string): ShopOffer[] {
-    this.ensureKnownPlayer(playerId);
-    if (!this.enableBossExclusiveShop) {
-      return [];
-    }
-    const state = this.ensureStarted();
-    if (!state.isBoss(playerId)) {
-      return [];
-    }
-    return [...(this.bossShopOffersByPlayer.get(playerId) ?? [])];
+    return this.playerStateQuery.getBossShopOffersForPlayer(playerId);
   }
 
   /**
@@ -1056,9 +1145,7 @@ export class MatchRoomController {
    * @returns ボスの場合true
    */
   public isBossPlayer(playerId: string): boolean {
-    this.ensureKnownPlayer(playerId);
-    const state = this.ensureStarted();
-    return state.isBoss(playerId);
+    return this.playerStateQuery.isBossPlayer(playerId);
   }
 
   /**
@@ -1066,13 +1153,11 @@ export class MatchRoomController {
    * @returns ボスプレイヤーID、未設定の場合はnull
    */
   public getBossPlayerId(): string | null {
-    const state = this.ensureStarted();
-    return state.bossPlayerId;
+    return this.playerStateQuery.getBossPlayerId();
   }
 
   public getRaidPlayerIds(): string[] {
-    const state = this.ensureStarted();
-    return [...state.raidPlayerIds];
+    return this.playerStateQuery.getRaidPlayerIds();
   }
 
   /**
@@ -1080,8 +1165,7 @@ export class MatchRoomController {
    * @returns 支配カウント
    */
   public getDominationCount(): number {
-    const state = this.ensureStarted();
-    return state.dominationCount;
+    return this.playerStateQuery.getDominationCount();
   }
 
   /**
@@ -1089,7 +1173,7 @@ export class MatchRoomController {
    * @returns プレイヤーID配列
    */
   public getPlayerIds(): string[] {
-    return [...this.playerIds];
+    return this.playerStateQuery.getPlayerIds();
   }
 
   /**
@@ -1098,8 +1182,7 @@ export class MatchRoomController {
    * @returns 盤面配置配列
    */
   public getBoardPlacementsForPlayer(playerId: string): BoardUnitPlacement[] {
-    this.ensureKnownPlayer(playerId);
-    return [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    return this.playerStateQuery.getBoardPlacementsForPlayer(playerId);
   }
 
   /**
@@ -1108,153 +1191,24 @@ export class MatchRoomController {
    * @returns ベンチユニット配列
    */
   public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; starLevel: number }> {
-    this.ensureKnownPlayer(playerId);
-    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-    return benchUnits.map((unit) => ({
-      unitType: unit.unitType,
-      starLevel: unit.starLevel,
-    }));
+    return this.playerStateQuery.getBenchUnitsForPlayer(playerId);
   }
 
   public getPlayerStatus(playerId: string): ControllerPlayerStatus {
-    this.ensureKnownPlayer(playerId);
-    const state = this.ensureStarted();
-    const isActivePlayer = state.playerIds.includes(playerId);
-    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
-    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-    const bossShopOffers = this.bossShopOffersByPlayer.get(playerId) ?? [];
-    const isRumorEligible = this.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
-
-    // Debug log for shop offers (enabled only when MATCH_DEBUG_LOGS=1)
-    const shopOffers = this.shopOffersByPlayer.get(playerId) ?? [];
-    if (process.env.MATCH_DEBUG_LOGS === "1") {
-      // eslint-disable-next-line no-console
-      console.log(`Shop offers for ${playerId}:`, shopOffers);
-    }
-
-    // Calculate active synergies
-    const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
-    const activeSynergies = this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
-
-    const baseStatus: ControllerPlayerStatus = {
-      wantsBoss: this.wantsBossByPlayer.get(playerId) ?? false,
-      selectedBossId: this.selectedBossByPlayer.get(playerId) ?? "",
-      role: this.roleByPlayer.get(playerId) ?? "unassigned",
-      hp: isActivePlayer ? state.getPlayerHp(playerId) : 100,
-      remainingLives: isActivePlayer ? state.getRemainingLives(playerId) : 0,
-      eliminated: isActivePlayer ? state.isPlayerEliminated(playerId) : false,
-      boardUnitCount: this.boardUnitCountByPlayer.get(playerId) ?? 4,
-      gold: this.goldByPlayer.get(playerId) ?? INITIAL_GOLD,
-      xp: this.xpByPlayer.get(playerId) ?? INITIAL_XP,
-      level: this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
-      shopOffers: shopOffers,
-      shopLocked: this.shopLockedByPlayer.get(playerId) ?? false,
-      benchUnits: benchUnits.map((benchUnit) =>
-        benchUnit.starLevel > 1
-          ? `${benchUnit.unitType}:${benchUnit.starLevel}`
-          : benchUnit.unitType,
-      ),
-      benchDisplayNames: benchUnits.map((benchUnit) => this.resolveBenchUnitDisplayName(benchUnit)),
-      boardUnits: boardPlacements.map((placement) => {
-        const starLevel = placement.starLevel ?? 1;
-        const hasSubUnitAssist =
-          this.enableSubUnitSystem &&
-          (() => {
-            const config = this.subUnitAssistConfigByType.get(placement.unitType);
-            if (!config) {
-              return false;
-            }
-            if (!config.parentUnitId) {
-              return true;
-            }
-            return placement.unitId === config.parentUnitId;
-          })();
-
-        if (starLevel > 1 || hasSubUnitAssist) {
-          const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;
-          if (hasSubUnitAssist) {
-            return `${tokenWithStarLevel}:sub`;
-          }
-          return tokenWithStarLevel;
-        }
-
-        return `${placement.cell}:${placement.unitType}`;
-      }),
-      ownedUnits: {
-        vanguard: ownedUnits?.vanguard ?? 0,
-        ranger: ownedUnits?.ranger ?? 0,
-        mage: ownedUnits?.mage ?? 0,
-        assassin: ownedUnits?.assassin ?? 0,
-      },
-      bossShopOffers: [...bossShopOffers],
-      lastBattleResult: this.battleResultsByPlayer.get(playerId),
-      activeSynergies,
-      selectedHeroId: this.selectedHeroByPlayer.get(playerId) ?? "",
-      isRumorEligible,
-    };
-
-    // 共有プールの在庫情報を追加（Feature Flagが有効な場合のみ）
-    if (this.enableSharedPool && this.sharedPool) {
-      return {
-        ...baseStatus,
-        sharedPoolInventory: this.sharedPool.getAllInventory(),
-      };
-    }
-
-    return baseStatus;
+    return this.playerStateQuery.getPlayerStatus(playerId);
   }
 
   public getSharedBattleReplay(phase: "Battle" | "Settle"): SharedBattleReplayMessage | null {
-    const state = this.ensureStarted();
-    const candidatePlayerIds = [
-      state.bossPlayerId,
-      ...state.raidPlayerIds,
-      ...this.playerIds,
-    ].filter((playerId): playerId is string => typeof playerId === "string" && playerId.length > 0);
-
-    for (const playerId of candidatePlayerIds) {
-      const timeline = this.battleResultsByPlayer.get(playerId)?.timeline;
-      const battleId = this.resolveBattleIdFromTimeline(timeline);
-
-      if (!battleId || !timeline || timeline.length === 0) {
-        continue;
-      }
-
-      return {
-        type: "shared_battle_replay",
-        battleId,
-        phase,
-        timeline,
-      };
-    }
-
-    return null;
+    return this.playerStateQuery.getSharedBattleReplay(phase);
   }
 
   public getPhaseProgress(): {
     targetHp: number;
     damageDealt: number;
-    result: PhaseResult;
+    result: PhaseProgressSnapshot["result"];
     completionRate: number;
   } {
-    this.ensureStarted();
-
-    return {
-      targetHp: this.phaseHpTarget,
-      damageDealt: this.phaseDamageDealt,
-      result: this.phaseResult,
-      completionRate: this.phaseCompletionRate,
-    };
-  }
-
-  private resolveBattleIdFromTimeline(timeline: BattleTimelineEvent[] | undefined): string | null {
-    if (!Array.isArray(timeline) || timeline.length === 0) {
-      return null;
-    }
-
-    const firstEvent = timeline.find((event) => typeof event?.battleId === "string");
-    return firstEvent?.battleId ?? null;
+    return this.playerStateQuery.getPhaseProgress();
   }
 
   public setPendingRoundDamage(damageByPlayer: RoundDamageByPlayer): void {
@@ -1289,110 +1243,23 @@ export class MatchRoomController {
     this.pendingPhaseDamageForTest = Math.floor(damageValue);
   }
 
+  public getTestAccess(): MatchRoomControllerTestAccess {
+    return {
+      battleResultsByPlayer: this.battleResultsByPlayer,
+      battleResolutionService: this.battleResolutionService,
+      spellCardHandler: this.spellCardHandler,
+      gameLoopState: this.gameLoopState,
+      boardPlacementsByPlayer: this.boardPlacementsByPlayer,
+      battleInputSnapshotByPlayer: this.battleInputSnapshotByPlayer,
+    };
+  }
+
   private isRaidMode(): boolean {
     return this.enableBossExclusiveShop && this.gameLoopState?.bossPlayerId !== null;
   }
 
   public advanceByTime(nowMs: number): boolean {
-    if (!this.gameLoopState) {
-      return false;
-    }
-
-    switch (this.gameLoopState.phase) {
-      case "Prep":
-        return this.advancePrepPhase(nowMs);
-      case "Battle":
-        return this.advanceBattlePhase(nowMs);
-      case "Settle":
-        return this.advanceSettlePhase(nowMs);
-      case "Elimination":
-        return this.advanceEliminationPhase(nowMs);
-      case "End":
-        return false;
-      default:
-        return false;
-    }
-  }
-
-  private advancePrepPhase(nowMs: number): boolean {
-    if (!hasDeadlineElapsed(this.prepDeadlineAtMs, nowMs)) {
-      return false;
-    }
-
-    const state = this.ensureStarted();
-    this.captureBattleStartHp();
-    this.captureBattleInputSnapshot();
-    this.declareSpell();
-    this.applyPreBattleSpellEffect();
-    state.transitionTo("Battle");
-    this.applyPhaseTimingUpdate(beginBattlePhaseWindow(nowMs, this.battleDurationMs));
-    this.matchLogger?.logRoundTransition("Battle", state.roundIndex, nowMs);
-    return true;
-  }
-
-  private advanceBattlePhase(nowMs: number): boolean {
-    if (!hasDeadlineElapsed(this.battleDeadlineAtMs, nowMs)) {
-      return false;
-    }
-
-    const state = this.ensureStarted();
-    this.resolveMissingRoundDamage();
-    this.capturePhaseProgressFromPendingDamage();
-    this.applyPendingRoundDamage();
-    this.capturePostBattleHp();
-    this.applySpellEffect();
-    state.transitionTo("Settle");
-    this.applyPhaseTimingUpdate(beginSettlePhaseWindow(nowMs, this.settleDurationMs));
-    this.matchLogger?.logRoundTransition("Settle", state.roundIndex, nowMs);
-    return true;
-  }
-
-  private advanceSettlePhase(nowMs: number): boolean {
-    if (!hasDeadlineElapsed(this.settleDeadlineAtMs, nowMs)) {
-      return false;
-    }
-
-    const state = this.ensureStarted();
-    this.applyRaidRoundConsequences();
-    const aliveBeforeElimination = new Set(state.alivePlayerIds);
-    state.transitionTo("Elimination");
-    this.captureEliminationResult(aliveBeforeElimination);
-    this.applyPhaseTimingUpdate(beginEliminationPhaseWindow(nowMs, this.eliminationDurationMs));
-    this.matchLogger?.logRoundTransition("Elimination", state.roundIndex, nowMs);
-    return true;
-  }
-
-  private advanceEliminationPhase(nowMs: number): boolean {
-    if (!hasDeadlineElapsed(this.eliminationDeadlineAtMs, nowMs)) {
-      return false;
-    }
-
-    const state = this.ensureStarted();
-    this.eliminationDeadlineAtMs = null;
-
-    if (this.shouldEndAfterElimination(this.resolveMaxRounds())) {
-      state.transitionTo("End");
-      this.applyPhaseTimingUpdate(clearPhaseTiming());
-      return true;
-    }
-
-    this.resetForNextPrepRound();
-    state.transitionTo("Prep");
-    this.resetPhaseProgressForRound(state.roundIndex);
-    this.applyPhaseTimingUpdate(beginPrepPhaseWindow(nowMs, this.prepDurationMs));
-    this.matchLogger?.logRoundTransition("Prep", state.roundIndex, nowMs);
-    return true;
-  }
-
-  private resolveMaxRounds(): number {
-    return this.isRaidMode() || this.featureFlags.enablePhaseExpansion ? 12 : 8;
-  }
-
-  private applyPhaseTimingUpdate(update: PhaseTimingUpdate): void {
-    this.prepDeadlineAtMs = update.prepDeadlineAtMs;
-    this.battleDeadlineAtMs = update.battleDeadlineAtMs;
-    this.settleDeadlineAtMs = update.settleDeadlineAtMs;
-    this.eliminationDeadlineAtMs = update.eliminationDeadlineAtMs;
+    return this.phaseOrchestrator.advanceByTime(nowMs);
   }
 
   private resetForNextPrepRound(): void {
@@ -1516,31 +1383,7 @@ export class MatchRoomController {
   }
 
   private buyBossShopOffer(playerId: string, slotIndex: number): void {
-    const bossOffers = this.getBossShopOffersForPlayer(playerId);
-    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
-    if (!bossOffers || slotIndex >= bossOffers.length) {
-      return;
-    }
-
-    const bossOffer = bossOffers[slotIndex];
-    if (!bossOffer || bossOffer.purchased) {
-      return;
-    }
-
-    const benchUnit: BenchUnit = {
-      unitType: bossOffer.unitType,
-      cost: bossOffer.cost,
-      starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
-      unitCount: 1,
-    };
-
-    if (bossOffer.unitId !== undefined) {
-      benchUnit.unitId = bossOffer.unitId;
-    }
-
-    benchUnits.push(benchUnit);
-    this.benchUnitsByPlayer.set(playerId, benchUnits);
-    bossOffer.purchased = true;
+    this.shopManager.buyBossShopOffer(playerId, slotIndex);
   }
 
   private logBossShopPurchase(
@@ -1587,368 +1430,35 @@ export class MatchRoomController {
   }
 
   private initializeShopsForPrep(): void {
-    const state = this.ensureStarted();
-    initializeShopsForPrep({
-      playerIds: state.playerIds,
-      roundIndex: state.roundIndex,
-      isBossPlayer: (playerId) => state.isBoss(playerId),
-      buildShopOffers: (playerId, roundIndex, refreshCount, purchaseCount, isRumorEligible) =>
-        this.shopOfferBuilder.buildShopOffers(
-          playerId,
-          roundIndex,
-          refreshCount,
-          purchaseCount,
-          isRumorEligible,
-        ),
-      buildBossShopOffers: () => this.shopOfferBuilder.buildBossShopOffers(),
-      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
-      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
-      shopLockedByPlayer: this.shopLockedByPlayer,
-      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
-      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
-      shopOffersByPlayer: this.shopOffersByPlayer,
-      bossShopOffersByPlayer: this.bossShopOffersByPlayer,
-      enableRumorInfluence: this.enableRumorInfluence,
-      enableBossExclusiveShop: this.enableBossExclusiveShop,
-    });
+    this.shopManager.initializeShopsForPrep();
   }
 
   private refreshShopsForPrep(): void {
-    const state = this.ensureStarted();
-    refreshShopsForPrep({
-      alivePlayerIds: state.alivePlayerIds,
-      roundIndex: state.roundIndex,
-      isBossPlayer: (playerId) => state.isBoss(playerId),
-      buildShopOffers: (playerId, roundIndex, refreshCount, purchaseCount, isRumorEligible) =>
-        this.shopOfferBuilder.buildShopOffers(
-          playerId,
-          roundIndex,
-          refreshCount,
-          purchaseCount,
-          isRumorEligible,
-        ),
-      buildBossShopOffers: () => this.shopOfferBuilder.buildBossShopOffers(),
-      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
-      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
-      shopLockedByPlayer: this.shopLockedByPlayer,
-      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
-      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
-      shopOffersByPlayer: this.shopOffersByPlayer,
-      bossShopOffersByPlayer: this.bossShopOffersByPlayer,
-      battleResultsByPlayer: this.battleResultsByPlayer,
-      enableRumorInfluence: this.enableRumorInfluence,
-      enableBossExclusiveShop: this.enableBossExclusiveShop,
-    });
+    this.shopManager.refreshShopsForPrep();
   }
 
   private refreshShopByCount(playerId: string, refreshCount: number): void {
-    const state = this.ensureStarted();
-    refreshShopByCount({
-      playerId,
-      roundIndex: state.roundIndex,
-      refreshCount,
-      buildShopOffers: (targetPlayerId, roundIndex, nextRefreshCount, purchaseCount, isRumorEligible) =>
-        this.shopOfferBuilder.buildShopOffers(
-          targetPlayerId,
-          roundIndex,
-          nextRefreshCount,
-          purchaseCount,
-          isRumorEligible,
-        ),
-      shopRefreshCountByPlayer: this.shopRefreshCountByPlayer,
-      shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
-      kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
-      rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
-      shopOffersByPlayer: this.shopOffersByPlayer,
-      enableRumorInfluence: this.enableRumorInfluence,
-      getAvailableFreeRefreshes: (targetPlayerId) =>
-        this.getAvailableKouRyuudouFreeRefreshes(targetPlayerId),
-    });
+    this.shopManager.refreshShopByCount(playerId, refreshCount);
   }
 
   private buyShopOfferBySlot(playerId: string, slotIndex: number): void {
-    const state = this.ensureStarted();
-    const offers = [...(this.shopOffersByPlayer.get(playerId) ?? [])];
-    const refreshCount = this.shopRefreshCountByPlayer.get(playerId) ?? 0;
-    const purchaseCount = (this.shopPurchaseCountByPlayer.get(playerId) ?? 0) + 1;
-    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
-
-    if (!offers[slotIndex]) {
-      return;
-    }
-
-    const boughtOffer = offers[slotIndex];
-
-    if (!boughtOffer || !ownedUnits) {
-      return;
-    }
-
-    // 共有プールから在庫を減らす（Feature Flagが有効な場合）
-    this.decreaseSharedPoolForOffer(boughtOffer);
-
-    offers.splice(slotIndex, 1);
-    offers.push(
-      this.shopOfferBuilder.buildReplacementOffer(
-        playerId,
-        state.roundIndex,
-        refreshCount,
-        purchaseCount,
-      ),
-    );
-
-    this.shopPurchaseCountByPlayer.set(playerId, purchaseCount);
-    this.shopOffersByPlayer.set(playerId, offers);
-
-    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
-    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-    const purchasedUnitCost = calculateDiscountedShopOfferCost(
-      boughtOffer,
-      boardPlacements,
-      this.rosterFlags,
-    );
-
-    const purchasedBenchUnit: BenchUnit = {
-      unitType: boughtOffer.unitType,
-      cost: purchasedUnitCost,
-      starLevel: STAR_LEVEL_MIN,
-      unitCount: 1,
-    };
-
-    if (boughtOffer.unitId !== undefined) {
-      purchasedBenchUnit.unitId = boughtOffer.unitId;
-    }
-
-    benchUnits.push(purchasedBenchUnit);
-    this.benchUnitsByPlayer.set(playerId, benchUnits);
-    this.tryMergeBenchUnits(playerId);
-
-    const nextOwnedUnits: OwnedUnits = {
-      vanguard: ownedUnits.vanguard,
-      ranger: ownedUnits.ranger,
-      mage: ownedUnits.mage,
-      assassin: ownedUnits.assassin,
-    };
-
-    nextOwnedUnits[boughtOffer.unitType] += 1;
-    this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
-  }
-
-  private tryMergeBenchUnits(playerId: string): void {
-    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
-
-    let mergedAny = true;
-
-    while (mergedAny) {
-      mergedAny = false;
-
-      for (const unitType of ["vanguard", "ranger", "mage", "assassin"] as const) {
-        for (const starLevel of [STAR_LEVEL_MIN, STAR_LEVEL_MAX - 1] as const) {
-          const mergeKeys = new Set(
-            benchUnits
-              .filter((unit) => unit.unitType === unitType && unit.starLevel === starLevel)
-              .map((unit) => unit.unitId ?? ""),
-          );
-
-          for (const mergeUnitId of mergeKeys) {
-            const mergeCandidates: number[] = [];
-
-            for (let index = 0; index < benchUnits.length; index += 1) {
-              const unit = benchUnits[index];
-
-              if (
-                !unit ||
-                unit.unitType !== unitType ||
-                unit.starLevel !== starLevel ||
-                (unit.unitId ?? "") !== mergeUnitId
-              ) {
-                continue;
-              }
-
-              mergeCandidates.push(index);
-            }
-
-            if (mergeCandidates.length < STAR_MERGE_THRESHOLD) {
-              continue;
-            }
-
-            const consumedIndexes = mergeCandidates
-              .slice(0, STAR_MERGE_THRESHOLD)
-              .sort((left, right) => right - left);
-            let mergedCost = 0;
-            let mergedCount = 0;
-
-            for (const index of consumedIndexes) {
-              const unit = benchUnits[index];
-
-              if (!unit) {
-                continue;
-              }
-
-              mergedCost += unit.cost;
-              mergedCount += unit.unitCount;
-              benchUnits.splice(index, 1);
-            }
-
-            const mergedBenchUnit: BenchUnit = {
-              unitType,
-              cost: mergedCost,
-              starLevel: starLevel + 1,
-              unitCount: mergedCount,
-            };
-
-            if (mergeUnitId !== "") {
-              mergedBenchUnit.unitId = mergeUnitId;
-            }
-
-            benchUnits.push(mergedBenchUnit);
-            mergedAny = true;
-          }
-        }
-      }
-    }
-
-    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.shopManager.buyShopOfferBySlot(playerId, slotIndex);
   }
 
   private deployBenchUnitToBoard(playerId: string, benchIndex: number, cell: number): void {
-    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
-    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
-    const benchUnit = benchUnits[benchIndex];
-
-    if (!benchUnit || boardPlacements.length >= 8) {
-      return;
-    }
-
-    benchUnits.splice(benchIndex, 1);
-    const boardPlacement: BoardUnitPlacement = {
-      cell,
-      unitType: benchUnit.unitType,
-      starLevel: benchUnit.starLevel,
-      sellValue: benchUnit.cost,
-      unitCount: benchUnit.unitCount,
-    };
-
-    if (benchUnit.unitId !== undefined) {
-      boardPlacement.unitId = benchUnit.unitId;
-    }
-
-    boardPlacements.push(boardPlacement);
-    boardPlacements.sort((left, right) => left.cell - right.cell);
-
-    this.benchUnitsByPlayer.set(playerId, benchUnits);
-    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
-    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    this.shopManager.deployBenchUnitToBoard(playerId, benchIndex, cell);
   }
 
   private returnBoardUnitToBench(playerId: string, cell: number): void {
-    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
-    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
-    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
-
-    if (targetIndex < 0 || benchUnits.length >= MAX_BENCH_SIZE) {
-      return;
-    }
-
-    const returnedPlacement = boardPlacements[targetIndex];
-
-    if (!returnedPlacement) {
-      return;
-    }
-
-    boardPlacements.splice(targetIndex, 1);
-
-    const benchUnit: BenchUnit = {
-      unitType: returnedPlacement.unitType,
-      cost: returnedPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[returnedPlacement.unitType] ?? 1,
-      starLevel: returnedPlacement.starLevel ?? 1,
-      unitCount: returnedPlacement.unitCount ?? returnedPlacement.starLevel ?? 1,
-    };
-
-    if (returnedPlacement.unitId !== undefined) {
-      benchUnit.unitId = returnedPlacement.unitId;
-    }
-
-    benchUnits.push(benchUnit);
-
-    this.benchUnitsByPlayer.set(playerId, benchUnits);
-    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
-    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    this.shopManager.returnBoardUnitToBench(playerId, cell);
   }
 
   private sellBenchUnit(playerId: string, benchIndex: number): void {
-    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
-    const benchUnit = benchUnits[benchIndex];
-    const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
-    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
-
-    if (!benchUnit || !ownedUnits) {
-      return;
-    }
-
-    benchUnits.splice(benchIndex, 1);
-
-    const nextOwnedUnits: OwnedUnits = {
-      vanguard: ownedUnits.vanguard,
-      ranger: ownedUnits.ranger,
-      mage: ownedUnits.mage,
-      assassin: ownedUnits.assassin,
-    };
-
-    nextOwnedUnits[benchUnit.unitType] = Math.max(
-      0,
-      nextOwnedUnits[benchUnit.unitType] - benchUnit.unitCount,
-    );
-
-    this.benchUnitsByPlayer.set(playerId, benchUnits);
-    this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
-    this.goldByPlayer.set(playerId, currentGold + benchUnit.cost);
-
-    // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
-    this.increaseSharedPoolForUnit(benchUnit.unitId, benchUnit.cost, benchUnit.unitCount);
+    this.shopManager.sellBenchUnit(playerId, benchIndex);
   }
 
   private sellBoardUnit(playerId: string, cell: number): void {
-    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
-    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
-    const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
-    const ownedUnits = this.ownedUnitsByPlayer.get(playerId);
-
-    if (targetIndex < 0 || !ownedUnits) {
-      return;
-    }
-
-    const soldPlacement = boardPlacements[targetIndex];
-
-    if (!soldPlacement) {
-      return;
-    }
-
-    boardPlacements.splice(targetIndex, 1);
-
-    const nextOwnedUnits: OwnedUnits = {
-      vanguard: ownedUnits.vanguard,
-      ranger: ownedUnits.ranger,
-      mage: ownedUnits.mage,
-      assassin: ownedUnits.assassin,
-    };
-
-    const unitCount = soldPlacement.unitCount ?? soldPlacement.starLevel ?? 1;
-
-    nextOwnedUnits[soldPlacement.unitType] = Math.max(0, nextOwnedUnits[soldPlacement.unitType] - unitCount);
-
-    const sellValue = soldPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[soldPlacement.unitType] ?? 1;
-
-    this.boardPlacementsByPlayer.set(playerId, boardPlacements);
-    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
-    this.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
-    this.goldByPlayer.set(playerId, currentGold + sellValue);
-
-    // 共有プールへ在庫を戻す（Feature Flagが有効な場合）
-    this.increaseSharedPoolForUnit(
-      soldPlacement.unitId,
-      sellValue,
-      soldPlacement.unitCount ?? soldPlacement.starLevel ?? 1,
-    );
+    this.shopManager.sellBoardUnit(playerId, cell);
   }
 
   private resolveBenchUnitDisplayName(benchUnit: BenchUnit): string {
@@ -1976,8 +1486,7 @@ export class MatchRoomController {
   }
 
   public removePlayer(playerId: string): void {
-    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-    const benchUnits = this.benchUnitsByPlayer.get(playerId) ?? [];
+    this.shopManager.releasePlayerInventoryToSharedPool(playerId);
 
     this.playerIds = this.playerIds.filter((id) => id !== playerId);
     this.readyPlayers.delete(playerId);
@@ -2004,23 +1513,6 @@ export class MatchRoomController {
     this.pendingRoundDamageByPlayer.delete(playerId);
     this.hpAtBattleStartByPlayer.delete(playerId);
     this.hpAfterBattleByPlayer.delete(playerId);
-
-    // 共有プールへ全ユニットを返却（Feature Flagが有効な場合）
-    if (this.enableSharedPool && this.sharedPool) {
-      // 盤面のユニットを返却
-      for (const placement of boardPlacements) {
-        const unitCost = placement.sellValue ?? UNIT_TYPE_TO_COST[placement.unitType] ?? 1;
-        const unitCount = placement.unitCount ?? placement.starLevel ?? 1;
-        this.increaseSharedPoolForUnit(placement.unitId, unitCost, unitCount);
-      }
-
-      // ベンチのユニットを返却
-      for (const benchUnit of benchUnits) {
-        const unitCost = benchUnit.cost ?? 1;
-        const unitCount = benchUnit.unitCount ?? 1;
-        this.increaseSharedPoolForUnit(benchUnit.unitId, unitCost, unitCount);
-      }
-    }
   }
 
   private startMatch(nowMs: number, activePlayerIds: string[], bossPlayerId?: string): void {
@@ -2039,72 +1531,11 @@ export class MatchRoomController {
     this.ensureInitialBossPlacements(activePlayerIds);
 
     this.initializeShopsForPrep();
-    this.resetPhaseProgressForRound(this.gameLoopState.roundIndex);
-    this.prepDeadlineAtMs = nowMs + this.prepDurationMs;
-    this.battleDeadlineAtMs = null;
-    this.settleDeadlineAtMs = null;
-    this.eliminationDeadlineAtMs = null;
-  }
-
-  private decreaseSharedPoolForOffer(offer: ShopOffer): void {
-    if (!this.enableSharedPool || !this.sharedPool) {
-      return;
-    }
-
-    if (this.rosterFlags.enablePerUnitSharedPool && offer.unitId) {
-      this.sharedPool.decreaseByUnitId(offer.unitId, offer.cost);
-      return;
-    }
-
-    this.sharedPool.decrease(offer.cost);
-  }
-
-  private increaseSharedPoolForUnit(unitId: string | undefined, cost: number, count: number): void {
-    if (!this.enableSharedPool || !this.sharedPool) {
-      return;
-    }
-
-    const resolvedPoolCost = resolveSharedPoolCost(unitId, cost, this.rosterFlags);
-
-    for (let i = 0; i < count; i += 1) {
-      if (this.rosterFlags.enablePerUnitSharedPool && unitId) {
-        this.sharedPool.increaseByUnitId(unitId, resolvedPoolCost);
-      } else {
-        this.sharedPool.increase(resolvedPoolCost);
-      }
-    }
+    this.phaseOrchestrator.startPrepRound(nowMs);
   }
 
   private getShopRefreshGoldCost(playerId: string, refreshCount: number): number {
-    if (refreshCount <= 0) {
-      return 0;
-    }
-
-    const freeRefreshes = this.getAvailableKouRyuudouFreeRefreshes(playerId);
-    const paidRefreshCount = Math.max(0, refreshCount - freeRefreshes);
-    return paidRefreshCount * SHOP_REFRESH_COST;
-  }
-
-  private getAvailableKouRyuudouFreeRefreshes(playerId: string): number {
-    if (!this.rosterFlags.enableTouhouFactions) {
-      return 0;
-    }
-
-    if (this.kouRyuudouFreeRefreshConsumedByPlayer.get(playerId)) {
-      return 0;
-    }
-
-    const placements = this.boardPlacementsByPlayer.get(playerId) ?? [];
-    const resolvedPlacements = resolveBattlePlacements(placements, this.rosterFlags);
-    const synergyDetails = calculateSynergyDetails(
-      resolvedPlacements,
-      null,
-      { enableTouhouFactions: true },
-    );
-    const tier = synergyDetails.factionActiveTiers.kou_ryuudou ?? 0;
-    const factionEffect = getTouhouFactionTierEffect("kou_ryuudou", tier);
-
-    return factionEffect?.special?.firstFreeRefreshes ?? 0;
+    return this.shopManager.getShopRefreshGoldCost(playerId, refreshCount);
   }
 
   private calculateActiveSynergies(
@@ -2171,7 +1602,7 @@ export class MatchRoomController {
     }
 
     this.battleParticipantIds = battleParticipants;
-    this.currentRoundPairings = this.buildPairingsForRound(
+    this.currentRoundPairings = this.battleOrchestrator.buildPairingsForRound(
       battleParticipants,
       state.roundIndex,
     );
@@ -2299,7 +1730,6 @@ export class MatchRoomController {
 
   private capturePhaseProgressFromPendingDamage(): void {
     const state = this.ensureStarted();
-    const targetHp = this.resolvePhaseHpTarget(state.roundIndex);
     const totalDamage = this.pendingPhaseDamageForTest
       ?? (this.isRaidMode()
         ? this.pendingRoundDamageByPlayer.get(state.bossPlayerId ?? "") ?? 0
@@ -2308,21 +1738,17 @@ export class MatchRoomController {
           0,
         ));
     this.pendingPhaseDamageForTest = null;
-
-    this.phaseHpTarget = targetHp;
-    this.phaseDamageDealt = totalDamage;
-    this.phaseResult = totalDamage >= targetHp ? "success" : "failed";
-    this.phaseCompletionRate = targetHp > 0 ? totalDamage / targetHp : 0;
+    const phaseProgress = this.phaseOrchestrator.recordPhaseProgress(state.roundIndex, totalDamage);
 
     // 支配カウント: ボス優勢（フェーズ失敗）時にカウントアップ（R12以外）
-    if (this.phaseResult === "failed" && state.roundIndex < 12) {
+    if (phaseProgress.result === "failed" && state.roundIndex < 12) {
       state.dominationCount += 1;
     }
 
     const nextRoundRumorUnit = getRumorUnitForRound(state.roundIndex + 1);
     const guaranteedRumorSlotApplied =
       this.enableRumorInfluence &&
-      this.phaseResult === "success" &&
+      phaseProgress.result === "success" &&
       nextRoundRumorUnit !== null;
     const rumorFactions = guaranteedRumorSlotApplied && nextRoundRumorUnit
       ? [nextRoundRumorUnit.unitType]
@@ -2342,7 +1768,7 @@ export class MatchRoomController {
     // 噂勢力: フェーズ成功時、全レイドプレイヤーを次ラウンド eligible に設定
     // 注意: この時点では elimination 解決前なので、elimination されるプレイヤーも含まれる
     // 実際の eligibility は elimination 解決後に適用される
-    if (this.enableRumorInfluence && this.phaseResult === "success") {
+    if (this.enableRumorInfluence && phaseProgress.result === "success") {
       const bossPlayerId = state.bossPlayerId;
       for (const playerId of state.alivePlayerIds) {
         // ボス以外（レイド側）全員が対象
@@ -2387,13 +1813,6 @@ export class MatchRoomController {
     this.pendingRumorInfluence = null;
   }
 
-  private resetPhaseProgressForRound(roundIndex: number): void {
-    this.phaseHpTarget = this.resolvePhaseHpTarget(roundIndex);
-    this.phaseDamageDealt = 0;
-    this.phaseResult = "pending";
-    this.phaseCompletionRate = 0;
-  }
-
   private resolvePhaseHpTarget(roundIndex: number): number {
     if (this.isRaidMode()) {
       return RAID_PHASE_HP_TARGET_BY_ROUND[roundIndex] ?? RAID_PHASE_HP_TARGET_BY_ROUND[12] ?? 3000;
@@ -2412,141 +1831,6 @@ export class MatchRoomController {
     }
 
     return phaseTargets[12] ?? 0;
-  }
-
-  private resolveMissingRoundDamage(): void {
-    if (this.currentRoundPairings.length === 0) {
-      return;
-    }
-
-    for (const pairing of this.currentRoundPairings) {
-      if (pairing.rightPlayerId && pairing.ghostSourcePlayerId === null) {
-        this.resolveMissingDamageForPair(pairing.leftPlayerId, pairing.rightPlayerId);
-        continue;
-      }
-
-      if (!pairing.rightPlayerId && pairing.ghostSourcePlayerId) {
-        this.resolveMissingDamageForGhost(
-          pairing.leftPlayerId,
-          pairing.ghostSourcePlayerId,
-        );
-      }
-    }
-  }
-
-  private resolveMissingDamageForPair(leftPlayerId: string, rightPlayerId: string): void {
-    const leftAlreadySet = this.pendingRoundDamageByPlayer.has(leftPlayerId);
-    const rightAlreadySet = this.pendingRoundDamageByPlayer.has(rightPlayerId);
-
-    if (leftAlreadySet || rightAlreadySet) {
-      return;
-    }
-
-    const outcome = this.resolveMatchupOutcome(leftPlayerId, rightPlayerId);
-
-    // 引き分けの場合は両方ダメージなし
-    if (outcome.isDraw) {
-      this.pendingRoundDamageByPlayer.set(leftPlayerId, 0);
-      this.pendingRoundDamageByPlayer.set(rightPlayerId, 0);
-      return;
-    }
-
-    const loserDamage = buildLoserDamage(
-      outcome.winnerUnitCount,
-      outcome.loserUnitCount,
-    );
-
-    if (!this.pendingRoundDamageByPlayer.has(outcome.winnerId!)) {
-      this.pendingRoundDamageByPlayer.set(outcome.winnerId!, 0);
-    }
-
-    if (!this.pendingRoundDamageByPlayer.has(outcome.loserId!)) {
-      this.pendingRoundDamageByPlayer.set(outcome.loserId!, loserDamage);
-    }
-  }
-
-  private resolveMissingDamageForGhost(
-    challengerPlayerId: string,
-    ghostSourcePlayerId: string,
-  ): void {
-    if (this.pendingRoundDamageByPlayer.has(challengerPlayerId)) {
-      return;
-    }
-
-    const outcome = this.resolveMatchupOutcome(challengerPlayerId, ghostSourcePlayerId);
-
-    // 引き分けまたはチャレンジャーが勝つ場合: チャレンジャーのダメージは0
-    if (outcome.isDraw || outcome.winnerId === challengerPlayerId) {
-      this.pendingRoundDamageByPlayer.set(challengerPlayerId, 0);
-      return;
-    }
-
-    const challengerDamage = buildLoserDamage(
-      outcome.winnerUnitCount,
-      outcome.loserUnitCount,
-    );
-    this.pendingRoundDamageByPlayer.set(challengerPlayerId, challengerDamage);
-  }
-
-  private applyRaidRoundConsequences(): void {
-    if (!this.isRaidMode()) {
-      return;
-    }
-
-    const state = this.ensureStarted();
-
-    for (const playerId of state.raidPlayerIds) {
-      const battleResult = this.battleResultsByPlayer.get(playerId);
-      if (battleResult === undefined) {
-        continue;
-      }
-
-      if (battleResult.survivors > 0) {
-        continue;
-      }
-
-      state.consumeLife(playerId);
-    }
-  }
-
-  private buildRaidFinalRanking(winner: "raid" | "boss"): string[] {
-    const state = this.ensureStarted();
-    const bossPlayerId = state.bossPlayerId;
-    const survivingRaidPlayerIds = state.raidPlayerIds.filter((playerId) => !state.isPlayerEliminated(playerId));
-    const eliminatedRaidPlayerIds = state.raidPlayerIds.filter((playerId) => state.isPlayerEliminated(playerId));
-
-    if (!bossPlayerId) {
-      return [];
-    }
-
-    if (winner === "raid") {
-      return [...survivingRaidPlayerIds, ...eliminatedRaidPlayerIds, bossPlayerId];
-    }
-
-    return [bossPlayerId, ...survivingRaidPlayerIds, ...eliminatedRaidPlayerIds];
-  }
-
-  private shouldEndAfterElimination(maxRounds: number): boolean {
-    const state = this.ensureStarted();
-
-    if (!this.isRaidMode()) {
-      return state.alivePlayerIds.length <= 1 || state.roundIndex === maxRounds || state.dominationCount >= 5;
-    }
-
-    const survivingRaidPlayerIds = state.raidPlayerIds.filter((playerId) => !state.isPlayerEliminated(playerId));
-    if (survivingRaidPlayerIds.length === 0 || state.dominationCount >= 5) {
-      this.finalRankingOverride = this.buildRaidFinalRanking("boss");
-      return true;
-    }
-
-    if (state.roundIndex < maxRounds) {
-      return false;
-    }
-
-    this.finalRankingOverride = this.buildRaidFinalRanking(
-      this.phaseResult === "success" && survivingRaidPlayerIds.length > 0 ? "raid" : "boss",
-    );
-    return true;
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
@@ -2830,177 +2114,6 @@ export class MatchRoomController {
     return Math.max(1, Math.min(8, unitGap + 1));
   }
 
-  private captureEliminationResult(aliveBeforeElimination: Set<string>): void {
-    const state = this.ensureStarted();
-    const aliveAfterElimination = new Set(state.alivePlayerIds);
-    const newlyEliminated: string[] = [];
-    const eliminationCandidates =
-      this.battleParticipantIds.length > 0
-        ? this.battleParticipantIds
-        : Array.from(aliveBeforeElimination);
-
-    for (const playerId of eliminationCandidates) {
-      if (this.eliminatedFromBottom.includes(playerId)) {
-        continue;
-      }
-
-      if (aliveAfterElimination.has(playerId)) {
-        continue;
-      }
-
-      newlyEliminated.push(playerId);
-    }
-
-    if (newlyEliminated.length === 0) {
-      return;
-    }
-
-    const bestToWorst = [...newlyEliminated].sort((left, right) =>
-      this.compareEliminatedPlayers(left, right),
-    );
-
-    for (const playerId of bestToWorst.reverse()) {
-      if (this.eliminatedFromBottom.includes(playerId)) {
-        continue;
-      }
-
-      this.eliminatedFromBottom.push(playerId);
-    }
-  }
-
-  private compareEliminatedPlayers(left: string, right: string): number {
-    const leftPostBattleHp = this.hpAfterBattleByPlayer.get(left) ?? Number.NEGATIVE_INFINITY;
-    const rightPostBattleHp = this.hpAfterBattleByPlayer.get(right) ?? Number.NEGATIVE_INFINITY;
-
-    if (leftPostBattleHp !== rightPostBattleHp) {
-      return rightPostBattleHp - leftPostBattleHp;
-    }
-
-    const leftRoundStartHp =
-      this.hpAtBattleStartByPlayer.get(left) ?? this.ensureStarted().getPlayerHp(left);
-    const rightRoundStartHp =
-      this.hpAtBattleStartByPlayer.get(right) ?? this.ensureStarted().getPlayerHp(right);
-
-    if (leftRoundStartHp !== rightRoundStartHp) {
-      return rightRoundStartHp - leftRoundStartHp;
-    }
-
-    return comparePlayerIds(left, right);
-  }
-
-  private buildPairingsForRound(
-    battleParticipants: string[],
-    roundIndex: number,
-  ): BattlePairing[] {
-    if (battleParticipants.length < 2) {
-      return [];
-    }
-
-    const state = this.ensureStarted();
-    if (state.bossPlayerId) {
-      const bossPlayerId = state.bossPlayerId;
-      const raidPlayerIds = state.raidPlayerIds.filter((playerId) =>
-        battleParticipants.includes(playerId),
-      );
-      const firstRaidPlayerId = raidPlayerIds[0];
-
-      if (battleParticipants.includes(bossPlayerId) && firstRaidPlayerId) {
-        return [
-          {
-            leftPlayerId: bossPlayerId,
-            rightPlayerId: firstRaidPlayerId,
-            ghostSourcePlayerId: null,
-          },
-        ];
-      }
-    }
-
-    const orderedParticipants = [...battleParticipants].sort((left, right) =>
-      comparePlayerIds(left, right),
-    );
-
-    if (orderedParticipants.length === 2) {
-      const leftPlayerId = orderedParticipants[0];
-      const rightPlayerId = orderedParticipants[1];
-
-      if (!leftPlayerId || !rightPlayerId) {
-        return [];
-      }
-
-      return [
-        {
-          leftPlayerId,
-          rightPlayerId,
-          ghostSourcePlayerId: null,
-        },
-      ];
-    }
-
-    const fixedPlayerId = orderedParticipants[0];
-
-    if (!fixedPlayerId) {
-      return [];
-    }
-
-    const rotating = orderedParticipants.slice(1);
-    const rotateCount = (roundIndex - 1) % rotating.length;
-    let rotated = [...rotating];
-
-    for (let index = 0; index < rotateCount; index += 1) {
-      const tailPlayerId = rotated.pop();
-
-      if (!tailPlayerId) {
-        break;
-      }
-
-      rotated = [tailPlayerId, ...rotated];
-    }
-
-    const arrangement = [fixedPlayerId, ...rotated];
-    let ghostPlayerId: string | null = null;
-    let pairableArrangement = arrangement;
-
-    if (arrangement.length % 2 === 1) {
-      const ghostCandidate = arrangement[arrangement.length - 1];
-
-      if (ghostCandidate) {
-        ghostPlayerId = ghostCandidate;
-      }
-
-      pairableArrangement = arrangement.slice(0, -1);
-    }
-
-    const pairingCount = Math.floor(pairableArrangement.length / 2);
-    const pairings: BattlePairing[] = [];
-
-    for (let index = 0; index < pairingCount; index += 1) {
-      const leftPlayerId = pairableArrangement[index];
-      const rightPlayerId =
-        pairableArrangement[pairableArrangement.length - 1 - index];
-
-      if (!leftPlayerId || !rightPlayerId || leftPlayerId === rightPlayerId) {
-        continue;
-      }
-
-      pairings.push({
-        leftPlayerId,
-        rightPlayerId,
-        ghostSourcePlayerId: null,
-      });
-    }
-
-    if (ghostPlayerId) {
-      const ghostSourcePlayerId = pairableArrangement[0] ?? fixedPlayerId;
-
-      pairings.push({
-        leftPlayerId: ghostPlayerId,
-        rightPlayerId: null,
-        ghostSourcePlayerId,
-      });
-    }
-
-    return pairings;
-  }
 
   /**
    * ラウンド開始時にスペルを宣言

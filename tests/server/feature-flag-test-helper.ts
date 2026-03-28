@@ -46,6 +46,29 @@ export const MVP_FLAGS: (keyof FeatureFlags)[] = [
   "enableSharedBoardShadow",
 ];
 
+export type ManagedFlagEnvSnapshot = Partial<Record<keyof typeof FLAG_ENV_VARS, string | undefined>>;
+
+export function captureManagedFlagEnv(): ManagedFlagEnvSnapshot {
+  const snapshot: ManagedFlagEnvSnapshot = {};
+
+  for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+    snapshot[flagName as keyof typeof FLAG_ENV_VARS] = process.env[envVarName];
+  }
+
+  return snapshot;
+}
+
+export function restoreManagedFlagEnv(snapshot: ManagedFlagEnvSnapshot): void {
+  for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
+    const originalValue = snapshot[flagName as keyof typeof FLAG_ENV_VARS];
+    if (originalValue === undefined) {
+      delete process.env[envVarName];
+    } else {
+      process.env[envVarName] = originalValue;
+    }
+  }
+}
+
 /**
  * Set environment variables for feature flags and execute a test function.
  * After execution, the environment variables and singleton instance are restored.
@@ -58,7 +81,7 @@ export async function withFlags(
   flags: Partial<FeatureFlags>,
   testFn: () => Promise<void>,
 ): Promise<void> {
-  const originalEnv = { ...process.env };
+  const originalEnv = captureManagedFlagEnv();
 
   try {
     // Set environment variables for specified flags using centralized mapping
@@ -70,16 +93,16 @@ export async function withFlags(
     }
 
     // Reset singleton instance to pick up new environment variables
-    (FeatureFlagService as any).instance = undefined;
+    FeatureFlagService.resetForTests();
 
     // Execute test function
     await testFn();
   } finally {
     // Restore original environment variables
-    process.env = originalEnv;
+    restoreManagedFlagEnv(originalEnv);
 
     // Reset singleton instance again
-    (FeatureFlagService as any).instance = undefined;
+    FeatureFlagService.resetForTests();
   }
 }
 
@@ -97,7 +120,7 @@ export async function createRoomWithFlags(
   flags: FeatureFlags,
   roomOptions?: Record<string, unknown>,
 ): Promise<GameRoom> {
-  const originalEnv = { ...process.env };
+  const originalEnv = captureManagedFlagEnv();
 
   try {
     // Set all environment variables for feature flags using centralized mapping
@@ -106,7 +129,7 @@ export async function createRoomWithFlags(
     }
 
     // Reset singleton instance to pick up new environment variables
-    (FeatureFlagService as any).instance = undefined;
+    FeatureFlagService.resetForTests();
 
     // Create room
     const serverRoom = await testServer.createRoom<GameRoom>("game", roomOptions);
@@ -114,10 +137,10 @@ export async function createRoomWithFlags(
     return serverRoom;
   } finally {
     // Restore original environment variables
-    process.env = originalEnv;
+    restoreManagedFlagEnv(originalEnv);
 
     // Reset singleton instance again
-    (FeatureFlagService as any).instance = undefined;
+    FeatureFlagService.resetForTests();
   }
 }
 
@@ -131,7 +154,7 @@ let originalGetInstance: (() => FeatureFlagService) | undefined;
  * Store the original environment variables for restoration after tests.
  * Used by createRoomWithForcedFlags to prevent env leakage.
  */
-let originalEnv: NodeJS.ProcessEnv | undefined;
+let originalEnv: ManagedFlagEnvSnapshot | undefined;
 
 /**
  * Create a mock FeatureFlagService that returns forced flags.
@@ -211,7 +234,7 @@ export async function createRoomWithForcedFlags(
 
   // Store original env (if not already stored)
   if (!originalEnv) {
-    originalEnv = { ...process.env };
+    originalEnv = captureManagedFlagEnv();
   }
 
   // Set ALL env vars to false first (clean slate)
@@ -264,9 +287,11 @@ export function restoreForcedFlagFixtures(): void {
 
   // Restore original environment variables
   if (originalEnv) {
-    process.env = originalEnv;
+    restoreManagedFlagEnv(originalEnv);
     originalEnv = undefined;
   }
+
+  FeatureFlagService.resetForTests();
 }
 
 /**

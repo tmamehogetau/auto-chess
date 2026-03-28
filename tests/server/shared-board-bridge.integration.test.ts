@@ -6,20 +6,13 @@ import { MatchRoomController } from "../../src/server/match-room-controller";
 import { SharedBoardBridge } from "../../src/server/shared-board-bridge";
 import { BridgeMonitor } from "../../src/server/shared-board-bridge-monitor";
 import type { SharedBoardCellState } from "../../src/server/schema/shared-board-state";
-import { waitForCondition } from "../e2e/shared-board-bridge/helpers/wait";
+import { createStartedMatchRoomController } from "../helpers/controller-factory";
+import { waitForCondition } from "../helpers/wait-helpers";
 import { withFlags } from "./feature-flag-test-helper";
 
 interface BatchSyncGameRoom extends Room {
   syncPlayersFromController: (playerIds: string[]) => void;
 }
-
-const controllerOptions = {
-  readyAutoStartMs: 60_000,
-  prepDurationMs: 30_000,
-  battleDurationMs: 10_000,
-  settleDurationMs: 5_000,
-  eliminationDurationMs: 2_000,
-};
 
 describe("SharedBoardBridge integration", () => {
   const createdBridges: SharedBoardBridge[] = [];
@@ -37,15 +30,7 @@ describe("SharedBoardBridge integration", () => {
     playerId: string,
     cells: SharedBoardCellState[],
   ): void => {
-    const enqueue = Reflect.get(bridge, "enqueuePlacementChange") as
-      | ((targetPlayerId: string, targetCells: SharedBoardCellState[]) => void)
-      | undefined;
-
-    if (!enqueue) {
-      throw new Error("Expected enqueuePlacementChange to be available");
-    }
-
-    enqueue.call(bridge, playerId, cells);
+    bridge.getTestAccess().enqueuePlacementChange(playerId, cells);
   };
 
   const createReadyBridge = async () => {
@@ -57,16 +42,7 @@ describe("SharedBoardBridge integration", () => {
     } as unknown as BatchSyncGameRoom;
 
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
-    const controller = new MatchRoomController(
-      ["p1", "p2", "p3", "p4"],
-      1_000,
-      controllerOptions,
-    );
-    controller.setReady("p1", true);
-    controller.setReady("p2", true);
-    controller.setReady("p3", true);
-    controller.setReady("p4", true);
-    controller.startIfReady(2_000);
+    const controller = createStartedMatchRoomController();
     randomSpy.mockRestore();
 
     const bridge = new SharedBoardBridge(
@@ -75,8 +51,8 @@ describe("SharedBoardBridge integration", () => {
       false,
     );
 
-    Reflect.set(bridge, "state", "READY");
-    Reflect.set(bridge, "monitor", new BridgeMonitor("test-game-room"));
+    bridge.getTestAccess().setRuntimeState({ state: "READY" });
+    bridge.getTestAccess().setResources({ monitor: new BridgeMonitor("test-game-room") });
     createdBridges.push(bridge);
 
     return { bridge, controller, syncPlayersFromController };
@@ -210,10 +186,14 @@ describe("SharedBoardBridge integration", () => {
     const unsubscribeHandle = vi.fn();
     const detachSharedBoard = vi.fn();
 
-    Reflect.set(bridge, "sharedBoardRoom", { offPlacementChange } as unknown);
-    Reflect.set(bridge, "unsubscribeHandle", unsubscribeHandle);
-    Reflect.set(bridge, "shadowObserver", { detachSharedBoard } as unknown);
-    Reflect.set(bridge, "monitor", new BridgeMonitor("test-game-room"));
+    bridge.getTestAccess().setResources({
+      sharedBoardRoom: { offPlacementChange } as unknown as {
+        offPlacementChange: (listener?: unknown) => void;
+      },
+      unsubscribeHandle,
+      shadowObserver: { detachSharedBoard },
+      monitor: new BridgeMonitor("test-game-room"),
+    });
 
     bridge.dispose();
 
@@ -221,9 +201,11 @@ describe("SharedBoardBridge integration", () => {
     expect(offPlacementChange).toHaveBeenCalledTimes(1);
     expect(unsubscribeHandle).toHaveBeenCalledTimes(1);
     expect(detachSharedBoard).toHaveBeenCalledTimes(1);
-    expect(Reflect.get(bridge, "sharedBoardRoom")).toBeNull();
-    expect(Reflect.get(bridge, "shadowObserver")).toBeNull();
-    expect(Reflect.get(bridge, "unsubscribeHandle")).toBeNull();
-    expect(Reflect.get(bridge, "monitor")).toBeNull();
+    expect(bridge.getTestAccess().getResources()).toMatchObject({
+      sharedBoardRoom: null,
+      shadowObserver: null,
+      unsubscribeHandle: null,
+      monitor: null,
+    });
   });
 });

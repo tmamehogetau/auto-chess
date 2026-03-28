@@ -1,25 +1,5 @@
 import type { ShadowDiffMessage } from "../../../../src/shared/room-messages";
-
-/**
- * Wait for a condition to be met with polling
- * @param predicate Function that returns true when condition is met
- * @param timeoutMs Maximum time to wait
- */
-export const waitForCondition = async (
-  predicate: () => boolean,
-  timeoutMs: number,
-): Promise<void> => {
-  const startMs = Date.now();
-  while (Date.now() - startMs < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-    await new Promise((resolve) => {
-      setTimeout(resolve, 15);
-    });
-  }
-  throw new Error(`Timed out while waiting for condition (${timeoutMs}ms)`);
-};
+export { waitForCondition } from "../../../helpers/wait-helpers";
 
 /**
  * Wait for a specific message type from a client

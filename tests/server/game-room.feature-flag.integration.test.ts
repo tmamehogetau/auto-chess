@@ -41,8 +41,9 @@ describe("GameRoom Integration with Feature Flags", () => {
     cmdSeq: number,
     payload: Record<string, unknown>,
   ): Promise<{ accepted: boolean; code?: string }> {
+    const resultPromise = client.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
     client.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, { cmdSeq, ...payload });
-    return (await client.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)) as {
+    return (await resultPromise) as {
       accepted: boolean;
       code?: string;
     };
@@ -576,6 +577,11 @@ describe("GameRoom Integration with Feature Flags", () => {
             throw new Error("Expected clients for strongest players");
           }
 
+          const strongestAResultPromise =
+            strongestAClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+          const strongestBResultPromise =
+            strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+
           strongestAClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
             cmdSeq: 1,
             boardUnitCount: 8,
@@ -585,10 +591,10 @@ describe("GameRoom Integration with Feature Flags", () => {
             boardUnitCount: 8,
           });
 
-          const strongestAResult =
-            await strongestAClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
-          const strongestBResult =
-            await strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+          const [strongestAResult, strongestBResult] = await Promise.all([
+            strongestAResultPromise,
+            strongestBResultPromise,
+          ]);
 
           expect(strongestAResult).toEqual({ accepted: true });
           expect(strongestBResult).toEqual({ accepted: true });
@@ -627,6 +633,11 @@ describe("GameRoom Integration with Feature Flags", () => {
             throw new Error("Expected clients for strongest players");
           }
 
+          const strongestAResultPromise =
+            strongestAClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+          const strongestBResultPromise =
+            strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+
           strongestAClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
             cmdSeq: 1,
             boardUnitCount: 8,
@@ -636,10 +647,10 @@ describe("GameRoom Integration with Feature Flags", () => {
             boardUnitCount: 8,
           });
 
-          const strongestAResult =
-            await strongestAClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
-          const strongestBResult =
-            await strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+          const [strongestAResult, strongestBResult] = await Promise.all([
+            strongestAResultPromise,
+            strongestBResultPromise,
+          ]);
 
           expect(strongestAResult).toEqual({ accepted: true });
           expect(strongestBResult).toEqual({ accepted: true });
@@ -827,10 +838,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           ]);
 
           const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
-          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-            cmdSeq: 1,
-            shopBuySlotIndex: 0,
-          });
+          const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
 
           await waitForCondition(
             () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
@@ -838,6 +846,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           );
 
           const player = serverRoom.state.players.get(sessionId);
+          expect(buyResult).toEqual({ accepted: true });
           expect(player?.gold).toBe(goldBefore - 1);
         });
       });
@@ -877,10 +886,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           ]);
 
           const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
-          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-            cmdSeq: 1,
-            shopBuySlotIndex: 0,
-          });
+          const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
 
           await waitForCondition(
             () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 1,
@@ -888,6 +894,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           );
 
           const player = serverRoom.state.players.get(sessionId);
+          expect(buyResult).toEqual({ accepted: true });
           expect(player?.gold).toBe(goldBefore - 1);
           expect(player?.benchUnits.length).toBe(1);
         });
@@ -995,10 +1002,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           ]);
 
           const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
-          clients[0]!.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-            cmdSeq: 1,
-            shopBuySlotIndex: 0,
-          });
+          const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
 
           await waitForCondition(
             () => (serverRoom.state.players.get(sessionId)?.gold ?? 0) === goldBefore - 2,
@@ -1006,6 +1010,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           );
 
           const player = serverRoom.state.players.get(sessionId);
+          expect(buyResult).toEqual({ accepted: true });
           expect(player?.gold).toBe(goldBefore - 2);
           expect(player?.benchUnits.length).toBe(1);
         });

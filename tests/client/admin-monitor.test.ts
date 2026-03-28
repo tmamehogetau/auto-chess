@@ -153,6 +153,72 @@ describe("admin monitor", () => {
     expect(monitorLogList.children[0]?.textContent).toContain("err=ignored");
   });
 
+  test("player_snapshot の正常レスポンスを helper state summary へ反映する", () => {
+    const monitorPlayerSnapshotValue = new FakeElement();
+
+    initAdminMonitor(
+      {
+        monitorRefreshBtn: new FakeElement() as unknown as HTMLElement,
+        monitorEventsValue: null,
+        monitorFailureValue: null,
+        monitorConflictValue: null,
+        monitorLatencyValue: null,
+        monitorShadowStatusValue: null,
+        monitorShadowMismatchValue: null,
+        monitorAlertValue: null,
+        monitorTopErrorsValue: null,
+        monitorTraceValue: null,
+        monitorSummaryValue: null,
+        monitorShadowDetailsValue: null,
+        monitorLogList: null,
+        monitorPlayerSnapshotValue: monitorPlayerSnapshotValue as unknown as HTMLElement,
+      },
+      {
+        getActiveRoom: () => null,
+        addCombatLogEntry: () => {},
+        setTraceId: () => {},
+      },
+    );
+
+    handleAdminResponse({
+      ok: true,
+      kind: "player_snapshot",
+      data: [
+        {
+          sessionId: "helper-raid-1",
+          name: "helper-1",
+          role: "raid",
+          ready: true,
+          connected: true,
+          isSpectator: false,
+          wantsBoss: false,
+          gold: 14,
+          boardUnitCount: 3,
+          benchUnits: ["vanguard:2", "mage:1"],
+        },
+        {
+          sessionId: "helper-boss-1",
+          name: "helper-boss",
+          role: "boss",
+          ready: false,
+          connected: true,
+          isSpectator: false,
+          wantsBoss: true,
+          gold: 8,
+          boardUnitCount: 2,
+          benchUnits: [],
+        },
+      ],
+    });
+
+    expect(monitorPlayerSnapshotValue.textContent).toContain("helper-1");
+    expect(monitorPlayerSnapshotValue.textContent).toContain("raid");
+    expect(monitorPlayerSnapshotValue.textContent).toContain("bench=vanguard:2, mage:1");
+    expect(monitorPlayerSnapshotValue.textContent).toContain("helper-boss");
+    expect(monitorPlayerSnapshotValue.textContent).toContain("boss");
+    expect(monitorPlayerSnapshotValue.textContent).toContain("bench=empty");
+  });
+
   test("alert and shadow status use explicit monitor-friendly labels", async () => {
     const logs: Array<{ message: string; type: string }> = [];
     const monitorAlertValue = new FakeElement();
@@ -176,6 +242,7 @@ describe("admin monitor", () => {
         monitorSummaryValue: monitorSummaryValue as unknown as HTMLElement,
         monitorShadowDetailsValue: monitorShadowDetailsValue as unknown as HTMLElement,
         monitorLogList: null,
+        monitorPlayerSnapshotValue: null,
       },
       {
         getActiveRoom: () => null,
@@ -227,6 +294,7 @@ describe("admin monitor", () => {
         monitorSummaryValue: monitorSummaryValue as unknown as HTMLElement,
         monitorShadowDetailsValue: monitorShadowDetailsValue as unknown as HTMLElement,
         monitorLogList: null,
+        monitorPlayerSnapshotValue: null,
       },
       {
         getActiveRoom: () => null,

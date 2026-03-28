@@ -61,6 +61,7 @@ describe("index.html contract", () => {
       "data-combat-log",
       "data-monitor-summary",
       "data-monitor-shadow-details",
+      "data-monitor-player-snapshot",
       "data-message-bar",
       "data-selection-mode",
       "data-entry-flow-status",

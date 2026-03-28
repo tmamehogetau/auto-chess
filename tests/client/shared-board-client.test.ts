@@ -230,6 +230,58 @@ describe("shared-board client", () => {
     expect(joinCalls).toEqual(["shared-room-123"]);
   });
 
+  test("shared board 接続後は listener 登録後に shared_request_role を送る", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+    const callOrder: string[] = [];
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string) => {
+        callOrder.push(`send:${type}`);
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        callOrder.push(`onMessage:${type}`);
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (_handler: (state: unknown) => void) => {
+        callOrder.push("onStateChange");
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+
+    expect(messageHandlers.has("shared_role")).toBe(true);
+    expect(callOrder).toEqual(expect.arrayContaining([
+      "onMessage:shared_role",
+      "onMessage:shared_action_result",
+      "onMessage:shared_battle_replay",
+      "onStateChange",
+      "send:shared_request_role",
+    ]));
+    expect(callOrder.indexOf("onMessage:shared_role")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
+    expect(callOrder.indexOf("onMessage:shared_action_result")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
+    expect(callOrder.indexOf("onMessage:shared_battle_replay")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
+    expect(callOrder.indexOf("onStateChange")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
+  });
+
   test("MapSchema 内部キーを cursor 一覧へ表示しない", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();

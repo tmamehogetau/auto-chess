@@ -5,6 +5,7 @@ import {
   type AdminQueryDependencies,
 } from "../../../src/server/rooms/game-room/admin-query-handler";
 import {
+  type AdminPlayerSnapshot,
   type AdminQueryMessage,
   type AdminResponseMessage,
   SERVER_MESSAGE_TYPES,
@@ -50,6 +51,22 @@ describe("admin-query-handler", () => {
 
     deps = {
       bridge: mockBridge,
+      getPlayerSnapshots: vi.fn<() => AdminPlayerSnapshot[]>(() => ([
+        {
+          sessionId: "player-1",
+          name: "helper-1",
+          role: "raid",
+          ready: true,
+          connected: true,
+          isSpectator: false,
+          wantsBoss: false,
+          gold: 14,
+          boardUnitCount: 3,
+          benchUnits: ["vanguard:2"],
+          selectedHeroId: "reimu",
+          selectedBossId: null,
+        },
+      ])),
     };
   });
 
@@ -133,6 +150,32 @@ describe("admin-query-handler", () => {
       const firstMessage = sentMessages[0]!;
       expect(firstMessage.payload.ok).toBe(true);
       expect(firstMessage.payload.kind).toBe("logs");
+    });
+
+    it("should return player snapshots for 'player_snapshot' query without bridge metrics", () => {
+      const message = {
+        kind: "player_snapshot",
+        correlationId: "corr-player-snapshot",
+      } as AdminQueryMessage;
+
+      handleAdminQuery(mockClient, message, {
+        bridge: null,
+        getPlayerSnapshots: deps.getPlayerSnapshots!,
+      });
+
+      expect(deps.getPlayerSnapshots).toHaveBeenCalled();
+      const firstMessage = sentMessages[0]!;
+      expect(firstMessage.payload.ok).toBe(true);
+      expect(firstMessage.payload.kind).toBe("player_snapshot");
+      expect(firstMessage.payload.correlationId).toBe("corr-player-snapshot");
+      expect(firstMessage.payload.data).toEqual([
+        expect.objectContaining({
+          sessionId: "player-1",
+          name: "helper-1",
+          role: "raid",
+          benchUnits: ["vanguard:2"],
+        }),
+      ]);
     });
 
     it("should include correlationId when provided", () => {

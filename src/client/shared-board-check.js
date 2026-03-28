@@ -4,6 +4,7 @@ const CLIENT_MESSAGE_TYPES = {
   DRAG_STATE: "shared_drag_state",
   PLACE_UNIT: "shared_place_unit",
   RESET: "shared_reset",
+  REQUEST_ROLE: "shared_request_role",
 };
 
 const SERVER_MESSAGE_TYPES = {
@@ -667,6 +668,8 @@ async function connectRoom() {
       const errorMessage = ACTION_ERROR_MESSAGES[payload.code] || payload.code;
       appendLog(`操作失敗: ${errorMessage} (${payload.action})`, "warn");
     });
+
+    room.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
 
     room.onError((...args) => {
       appendLog(`room error: ${JSON.stringify(args)}`, "error");

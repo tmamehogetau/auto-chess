@@ -97,9 +97,11 @@ describe("manual-check script contract", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("setSharedBoardGamePlayerId(room.sessionId);")).toBe(true);
-    expect(source.includes("await connectSharedBoard(client, sharedBoardSeedRoom ? { existingRoom: sharedBoardSeedRoom } : undefined);")).toBe(true);
+    expect(source.includes("await connectSharedBoard(")).toBe(true);
+    expect(source.includes("existingRoom: sharedBoardSeedRoom, spectator: true")).toBe(true);
+    expect(source.includes(": { spectator: true },")).toBe(true);
     expect(source.indexOf("setSharedBoardGamePlayerId(room.sessionId);"))
-      .toBeLessThan(source.indexOf("await connectSharedBoard(client, sharedBoardSeedRoom ? { existingRoom: sharedBoardSeedRoom } : undefined);"));
+      .toBeLessThan(source.indexOf("await connectSharedBoard("));
   });
 
   test("phase hp と battle result は読み切れる表示時間と待機説明を持つ", () => {
@@ -127,6 +129,19 @@ describe("manual-check script contract", () => {
     expect(source.includes("const hasBattleResult = Boolean(")).toBe(true);
     expect(source.includes("battleResult?.opponentId")).toBe(true);
     expect(source.includes("lastShownBattleRound !== state.roundIndex")).toBe(true);
+  });
+
+  test("UI presentation updates do not depend on lastCmdSeq being present", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+    const normalizedSource = source.replace(/\r\n/g, "\n");
+    const nextCmdSeqIndex = normalizedSource.indexOf("nextCmdSeq = player.lastCmdSeq + 1;");
+    const raidPresentationIndex = normalizedSource.indexOf("updateRaidBoardPresentation(state);");
+    const guardStartIndex = normalizedSource.indexOf("if (typeof player.lastCmdSeq === \"number\") {");
+
+    expect(guardStartIndex).toBeGreaterThan(-1);
+    expect(nextCmdSeqIndex).toBeGreaterThan(guardStartIndex);
+    expect(raidPresentationIndex).toBeGreaterThan(nextCmdSeqIndex);
+    expect(normalizedSource.includes("if (typeof player.lastCmdSeq === \"number\") {\n    nextCmdSeq = player.lastCmdSeq + 1;\n  }\n\n  if (state.phase === \"Waiting\"")).toBe(true);
   });
 
   test("prep command trace update does not depend on admin-monitor private helpers", () => {
@@ -168,6 +183,42 @@ describe("manual-check script contract", () => {
     expect(source.includes("helperRoom.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });")).toBe(true);
     expect(source.indexOf("joinedHelperRooms.push(helperRoom);"))
       .toBeLessThan(source.indexOf("for (const helperRoom of joinedHelperRooms) {"));
+  });
+
+  test("initializeDefaults keeps autoFillBots from URL params instead of overwriting them with the DOM default", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+    const normalizedSource = source.replace(/\r\n/g, "\n");
+    const initializeDefaultsStart = normalizedSource.indexOf("function initializeDefaults() {");
+    const readConfigStart = normalizedSource.indexOf("function readConfig() {");
+
+    expect(initializeDefaultsStart).toBeGreaterThan(-1);
+    expect(readConfigStart).toBeGreaterThan(initializeDefaultsStart);
+
+    const initializeDefaultsBlock = normalizedSource.slice(initializeDefaultsStart, readConfigStart);
+
+    expect(initializeDefaultsBlock.includes("autoConfig.autoFillBots = parseAutoFillBots(params.get(\"autoFillBots\"));")).toBe(true);
+    expect(initializeDefaultsBlock.includes("const parsedAutoFillBots = parseAutoFillBots(autoFillInput.value);")).toBe(false);
+    expect(initializeDefaultsBlock.includes("autoFillInput.value = String(autoConfig.autoFillBots);")).toBe(true);
+  });
+
+  test("autofill helper prep commands carry helper-local cmdSeq and skip duplicate snapshots", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("let helperCmdSeq = 1;")).toBe(true);
+    expect(source.includes("let lastAutomationStateKey = \"\";")).toBe(true);
+    expect(source.includes("if (automationStateKey === lastAutomationStateKey) {")).toBe(true);
+    expect(source.includes("if (action.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {")).toBe(true);
+    expect(source.includes("correlationId: createCorrelationId(`helper_${helperIndex}`, cmdSeq),")).toBe(true);
+    expect(source.includes("helperCmdSeq += 1;")).toBe(true);
+  });
+
+  test("autofill helper rooms register known server messages to avoid Colyseus warning noise", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});")).toBe(true);
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {});")).toBe(true);
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});")).toBe(true);
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});")).toBe(true);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

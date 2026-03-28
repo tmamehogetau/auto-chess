@@ -318,7 +318,7 @@ describe("SharedBoardBridge batch sync", () => {
       await bridge.sendPlacementToSharedBoard("player-a", placements);
 
       // 実際にapplyPlacementsFromGameが呼ばれたことを確認（no-op化防止）
-      expect(mockApplyPlacementsFromGame).toHaveBeenCalledWith("player-a", placements);
+      expect(mockApplyPlacementsFromGame).toHaveBeenCalledWith("player-a", placements, "raid");
 
       // placements を持つ object が console.log に渡されていないことを構造的に検証
       const hasPlacementPayload = consoleLogSpy.mock.calls.some((call: unknown[]) =>

@@ -31,6 +31,7 @@ import {
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
+  type AdminPlayerSnapshot,
   type AdminQueryMessage,
   type BossPreferenceMessage,
   type BossSelectMessage,
@@ -826,9 +827,59 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
+    const kind = typeof message?.kind === "string" ? message.kind : "";
+    const correlationId =
+      typeof message?.correlationId === "string"
+        ? message.correlationId.trim() || undefined
+        : undefined;
+
+    if (kind.length === 0) {
+      client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
+        ok: false,
+        kind: "dashboard",
+        timestamp: Date.now(),
+        correlationId,
+        error: "INVALID_KIND",
+      });
+      return;
+    }
+
+    if (kind === "player_snapshot" && !this.isAdminQueryClient(client)) {
+      client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
+        ok: false,
+        kind,
+        timestamp: Date.now(),
+        correlationId,
+        error: "FORBIDDEN",
+      });
+      return;
+    }
+
     handleAdminQuery(client, message, {
       bridge: this.sharedBoardBridge,
+      getPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
     });
+  }
+
+  private isAdminQueryClient(client: Client): boolean {
+    return this.state.players.get(client.sessionId)?.isSpectator === true;
+  }
+
+  private buildAdminPlayerSnapshots(): AdminPlayerSnapshot[] {
+    return Array.from(this.state.players.entries()).map(([sessionId, playerState]) => ({
+      sessionId,
+      name: sessionId,
+      role: playerState.role,
+      ready: playerState.ready,
+      connected: playerState.connected,
+      isSpectator: playerState.isSpectator,
+      wantsBoss: playerState.wantsBoss,
+      gold: playerState.gold,
+      boardUnitCount: playerState.boardUnitCount,
+      benchUnits: Array.from(playerState.benchUnits),
+      selectedHeroId: playerState.selectedHeroId || null,
+      selectedBossId: playerState.selectedBossId || null,
+    }));
   }
 
 

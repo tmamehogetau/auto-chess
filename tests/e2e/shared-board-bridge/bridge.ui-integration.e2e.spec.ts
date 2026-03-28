@@ -68,6 +68,7 @@ async function joinAsActivePlayer(
 
     // 未登録警告抑制（place前に reject が返るケースに備える）
     client.onMessage("shared_action_result", () => {});
+    client.onMessage("shared_battle_replay", () => {});
 
     // roleメッセージを待機
     const rolePromise = new Promise<{ isSpectator: boolean; slotIndex: number }>((resolve) => {
@@ -75,6 +76,7 @@ async function joinAsActivePlayer(
         resolve(msg as { isSpectator: boolean; slotIndex: number });
       });
     });
+    client.send("shared_request_role");
 
     const role = await rolePromise;
     expect(role.isSpectator).toBe(false);

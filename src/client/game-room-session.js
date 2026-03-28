@@ -99,6 +99,25 @@ export function createGameRoomSession(options = {}) {
     }
   }
 
+  function bindServerMessageHandlers(activeRoom) {
+    if (!activeRoom || typeof activeRoom.onMessage !== "function") {
+      return;
+    }
+
+    activeRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (payload) => {
+      notifyMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, payload);
+    });
+    activeRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (payload) => {
+      notifyMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, payload);
+    });
+    activeRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, (payload) => {
+      notifyMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, payload);
+    });
+    activeRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, (payload) => {
+      notifyMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, payload);
+    });
+  }
+
   async function leaveRoomQuietly(roomToLeave, consented = true) {
     if (!roomToLeave || typeof roomToLeave.leave !== "function") {
       return;
@@ -145,9 +164,7 @@ export function createGameRoomSession(options = {}) {
         notifyState(nextState);
       });
 
-      room.onMessage("*", (type, payload) => {
-        notifyMessage(type, payload);
-      });
+      bindServerMessageHandlers(room);
 
       if (room.state) {
         notifyState(room.state);

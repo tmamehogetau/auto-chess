@@ -380,4 +380,46 @@ describe("game-room session", () => {
       },
     ]);
   });
+
+  test("connect は known server messages を room.onMessage で明示登録する", async () => {
+    const registeredHandlers = new Map<string, (payload: unknown) => void>();
+    const session = createGameRoomSession({
+      endpoint: "ws://localhost:9999",
+      roomName: "game",
+      loadSdk: async () => ({
+        Client: class FakeClient {
+          public constructor(_endpoint: string) {}
+
+          public async joinOrCreate() {
+            return {
+              leave: async () => {},
+              onMessage: (type: string, handler: (payload: unknown) => void) => {
+                registeredHandlers.set(type, handler);
+              },
+              onStateChange: () => {},
+              sessionId: "player-1",
+              state: {},
+            };
+          }
+        },
+      }),
+    });
+
+    await session.connect();
+
+    const seen: unknown[] = [];
+    session.onMessage("round_state", (payload) => {
+      seen.push(payload);
+    });
+    registeredHandlers.get("round_state")?.({ phase: "Prep" });
+
+    expect(seen).toEqual([{ phase: "Prep" }]);
+    expect([...registeredHandlers.keys()].sort()).toEqual([
+      "command_result",
+      "round_state",
+      "shadow_diff",
+      "admin_response",
+    ].sort());
+    expect(registeredHandlers.has("*")).toBe(false);
+  });
 });

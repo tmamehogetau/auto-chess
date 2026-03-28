@@ -1,4 +1,9 @@
 import type { BoardUnitPlacement } from "../../shared/room-messages";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+  getDeploymentZoneForRow,
+  sharedBoardIndexToCoordinate,
+} from "../../shared/shared-board-config";
 
 export function validateRolePlacements(
   playerId: string,
@@ -10,11 +15,23 @@ export function validateRolePlacements(
   }
 
   const invalidPlacement = placements.find((placement) => {
-    if (bossPlayerId === playerId) {
-      return placement.cell >= 4;
+    let zone = null;
+
+    try {
+      const coordinate = sharedBoardIndexToCoordinate(
+        placement.cell,
+        DEFAULT_SHARED_BOARD_CONFIG,
+      );
+      zone = getDeploymentZoneForRow(DEFAULT_SHARED_BOARD_CONFIG, coordinate.y);
+    } catch {
+      return true;
     }
 
-    return placement.cell < 4;
+    if (bossPlayerId === playerId) {
+      return zone !== "boss";
+    }
+
+    return zone !== "raid";
   });
 
   if (!invalidPlacement) {

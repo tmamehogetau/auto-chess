@@ -827,12 +827,29 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
-    if (message.kind === "player_snapshot" && !this.isAdminQueryClient(client)) {
+    const kind = typeof message?.kind === "string" ? message.kind : "";
+    const correlationId =
+      typeof message?.correlationId === "string"
+        ? message.correlationId.trim() || undefined
+        : undefined;
+
+    if (kind.length === 0) {
       client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
         ok: false,
-        kind: message.kind,
+        kind: "dashboard",
         timestamp: Date.now(),
-        correlationId: typeof message.correlationId === "string" ? message.correlationId.trim() || undefined : undefined,
+        correlationId,
+        error: "INVALID_KIND",
+      });
+      return;
+    }
+
+    if (kind === "player_snapshot" && !this.isAdminQueryClient(client)) {
+      client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
+        ok: false,
+        kind,
+        timestamp: Date.now(),
+        correlationId,
         error: "FORBIDDEN",
       });
       return;

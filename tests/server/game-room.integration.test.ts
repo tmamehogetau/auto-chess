@@ -2912,6 +2912,24 @@ describe("GameRoom integration", () => {
     expect(response.error).toBe("FORBIDDEN");
   });
 
+  test("malformed admin_query payload は INVALID_KIND を返して room を壊さない", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const operator = await testServer.connectTo(serverRoom, { spectator: true });
+
+    await waitForCondition(() => serverRoom.state.players.size === 1, 1_000);
+
+    const responsePromise = operator.waitForMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE);
+
+    operator.send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, null);
+
+    const response = (await responsePromise) as AdminResponseMessage;
+
+    expect(response.ok).toBe(false);
+    expect(response.kind).toBe("dashboard");
+    expect(response.error).toBe("INVALID_KIND");
+    expect(serverRoom.state.players.get(operator.sessionId)?.isSpectator).toBe(true);
+  });
+
   test("shared board shadow有効時のadmin_queryはdashboard/alerts/logsを返す", async () => {
     await withFlags(FLAG_CONFIGURATIONS.SHARED_BOARD_SHADOW_ONLY, async () => {
       const serverRoom = await testServer.createRoom<GameRoom>("game");

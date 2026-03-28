@@ -827,10 +827,25 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   }
 
   private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
+    if (message.kind === "player_snapshot" && !this.isAdminQueryClient(client)) {
+      client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
+        ok: false,
+        kind: message.kind,
+        timestamp: Date.now(),
+        correlationId: typeof message.correlationId === "string" ? message.correlationId.trim() || undefined : undefined,
+        error: "FORBIDDEN",
+      });
+      return;
+    }
+
     handleAdminQuery(client, message, {
       bridge: this.sharedBoardBridge,
       getPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
     });
+  }
+
+  private isAdminQueryClient(client: Client): boolean {
+    return this.state.players.get(client.sessionId)?.isSpectator === true;
   }
 
   private buildAdminPlayerSnapshots(): AdminPlayerSnapshot[] {

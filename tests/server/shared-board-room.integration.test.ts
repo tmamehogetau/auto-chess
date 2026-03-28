@@ -1092,6 +1092,90 @@ describe("SharedBoardRoom integration", () => {
     expect(targetCell?.unitId.startsWith("mage-")).toBe(true);
   });
 
+  test("server sync API derives deployment rows from the live board height", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board", {
+      boardWidth: 6,
+      boardHeight: 8,
+    });
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    const raidCellIndex = sharedBoardCoordinateToIndex(
+      { x: 2, y: 6 },
+      {
+        ...DEFAULT_SHARED_BOARD_CONFIG,
+        width: 6,
+        height: 8,
+        deploymentRows: {
+          boss: [0, 1, 2, 3],
+          raid: [4, 5, 6, 7],
+        },
+      },
+    );
+    const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
+      {
+        cell: raidCellIndex,
+        unitType: "vanguard",
+      },
+    ]);
+
+    expect(result).toEqual({ applied: 1, skipped: 0 });
+
+    const targetCell = serverRoom.state.cells.get(String(raidCellIndex));
+    expect(targetCell?.ownerId).toBe(client.sessionId);
+  });
+
+  test("boss purchased unit can be repositioned across the upper half via shared-board direct moves", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    const bossAnchorCell = sharedBoardCoordinateToIndex({ x: 1, y: 1 });
+    const genericBossCell = sharedBoardCoordinateToIndex({ x: 4, y: 1 });
+    const targetBossCell = sharedBoardCoordinateToIndex({ x: 4, y: 2 });
+
+    serverRoom.applyBossPlacementFromGame({
+      playerId: client.sessionId,
+      bossId: "remilia",
+      cellIndex: bossAnchorCell,
+    });
+    const result = serverRoom.applyPlacementsFromGame(client.sessionId, [
+      {
+        cell: genericBossCell,
+        unitType: "mage",
+      },
+    ], "boss");
+
+    expect(result).toEqual({ applied: 1, skipped: 0 });
+
+    const sourceCell = serverRoom.state.cells.get(String(genericBossCell));
+    if (!sourceCell?.unitId) {
+      throw new Error("Expected boss-side purchased unit");
+    }
+
+    client.send(CLIENT_MESSAGE_TYPES.SELECT_UNIT, { unitId: sourceCell.unitId });
+    expect(await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT)).toEqual({
+      accepted: true,
+      action: "select_unit",
+    });
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId: sourceCell.unitId,
+      toCell: targetBossCell,
+    });
+    expect(await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT)).toEqual({
+      accepted: true,
+      action: "place_unit",
+    });
+
+    expect(serverRoom.state.cells.get(String(genericBossCell))?.unitId).toBe("");
+    expect(serverRoom.state.cells.get(String(targetBossCell))?.ownerId).toBe(client.sessionId);
+  });
+
   test("server sync API derives Touhou display metadata from unitId", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const client = await testServer.connectTo(serverRoom);

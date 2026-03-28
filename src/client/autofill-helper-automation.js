@@ -17,6 +17,10 @@ const AUTO_FILL_RAID_DEPLOY_SEQUENCES = [
   [35, 29, 23],
 ];
 
+function isTouhouAutoPickEnabled(state) {
+  return state?.featureFlagsEnableTouhouRoster === true;
+}
+
 function toArray(value) {
   if (!value) {
     return [];
@@ -53,9 +57,15 @@ function getRaidDeploySequence(helperIndex) {
 }
 
 function getDeploySequence(role, helperIndex) {
-  return role === "boss"
-    ? getBossDeploySequence(helperIndex)
-    : getRaidDeploySequence(helperIndex);
+  if (role === "boss") {
+    return getBossDeploySequence(helperIndex);
+  }
+
+  if (role === "raid") {
+    return getRaidDeploySequence(helperIndex);
+  }
+
+  return null;
 }
 
 function parseBoardCell(value) {
@@ -93,6 +103,10 @@ function getNextDeployCell(role, helperIndex, boardUnits) {
   const occupiedCells = getOccupiedBoardCells(boardUnits);
   const deploySequence = getDeploySequence(role, helperIndex);
 
+  if (!deploySequence) {
+    return null;
+  }
+
   return deploySequence.find((cell) => !occupiedCells.has(cell)) ?? null;
 }
 
@@ -110,7 +124,7 @@ function pickAffordableOfferIndex(offers, gold) {
   }
 
   if (!Number.isFinite(gold)) {
-    return 0;
+    return null;
   }
 
   for (let index = 0; index < offerList.length; index += 1) {
@@ -162,6 +176,10 @@ export function buildAutoFillHelperActions({ state, player, helperIndex = 0 }) {
   const lobbyStage = typeof state.lobbyStage === "string" ? state.lobbyStage : "";
 
   if (phase === "Waiting" && lobbyStage === "selection") {
+    if (!isTouhouAutoPickEnabled(state)) {
+      return [];
+    }
+
     if (player.role === "boss" && !player.selectedBossId) {
       return [
         {
@@ -186,6 +204,10 @@ export function buildAutoFillHelperActions({ state, player, helperIndex = 0 }) {
   }
 
   if (phase === "Prep") {
+    if (player.role !== "boss" && player.role !== "raid") {
+      return [];
+    }
+
     const nextDeployCell = getNextDeployCell(player.role, helperIndex, player.boardUnits);
 
     if (hasUnits(player.benchUnits)) {

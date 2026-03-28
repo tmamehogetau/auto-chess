@@ -29,4 +29,10 @@ describe("shared-board-bridge placement-sync", () => {
       validateRolePlacements("raid", "boss", [{ cell: bossHalfCell, unitType: "ranger" }]),
     ).toBe(`Raid placement must stay in bottom half: cell ${bossHalfCell}`);
   });
+
+  it("keeps malformed cells in the validation path instead of throwing", () => {
+    expect(
+      validateRolePlacements("raid", "boss", [{ cell: -1, unitType: "ranger" }]),
+    ).toBe("Raid placement must stay in bottom half: cell -1");
+  });
 });

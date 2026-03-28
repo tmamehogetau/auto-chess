@@ -16,6 +16,7 @@ describe("autofill helper automation", () => {
         selectedBossId: null,
       },
       state: {
+        featureFlagsEnableTouhouRoster: true,
         lobbyStage: "selection",
         phase: "Waiting",
       },
@@ -28,23 +29,42 @@ describe("autofill helper automation", () => {
   });
 
   test("selection phase auto-selects a deterministic hero for a raid helper", () => {
+    const helperIndex = 3;
+
     expect(buildAutoFillHelperActions({
-      helperIndex: 3,
+      helperIndex,
       player: {
         ready: true,
         role: "raid",
         selectedHeroId: null,
       },
       state: {
+        featureFlagsEnableTouhouRoster: true,
         lobbyStage: "selection",
         phase: "Waiting",
       },
     })).toEqual([
       {
-        payload: { heroId: AUTO_FILL_HERO_IDS[3]! },
+        payload: { heroId: AUTO_FILL_HERO_IDS[helperIndex % AUTO_FILL_HERO_IDS.length]! },
         type: "HERO_SELECT",
       },
     ]);
+  });
+
+  test("selection phase stays neutral when Touhou roster is disabled", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: true,
+        role: "raid",
+        selectedHeroId: null,
+      },
+      state: {
+        featureFlagsEnableTouhouRoster: false,
+        lobbyStage: "selection",
+        phase: "Waiting",
+      },
+    })).toEqual([]);
   });
 
   test("prep phase auto-readies a helper after selection resolves", () => {
@@ -356,6 +376,21 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase waits until the helper role is known", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "unassigned",
+        benchUnits: ["assassin"],
+        boardUnits: [],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([]);
+  });
+
   test("prep phase raid helper buys one reserve unit when its deploy lane is full and bench is empty", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -404,6 +439,30 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase bootstrap owns the unknown-gold first buy path", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: Number.NaN,
+        benchUnits: [],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitType: "vanguard", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("already-selected and ready helpers stay idle", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,
@@ -413,6 +472,7 @@ describe("autofill helper automation", () => {
         selectedHeroId: AUTO_FILL_HERO_IDS[2]!,
       },
       state: {
+        featureFlagsEnableTouhouRoster: true,
         lobbyStage: "selection",
         phase: "Waiting",
       },

@@ -388,15 +388,27 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return;
     }
 
+    const sourceCellIndex = this.findCellIndexByUnitId(payload.unitId);
+
+    if (sourceCellIndex < 0) {
+      this.sendActionResult(client, "place_unit", false, "INVALID_PAYLOAD");
+      return;
+    }
+
     const isHeroUnit = this.isHeroUnitId(payload.unitId);
     const isBossUnit = this.isBossUnitId(payload.unitId);
+    const placementSide = this.resolvePlacementSideForUnit(
+      client.sessionId,
+      payload.unitId,
+      sourceCellIndex,
+    );
 
     if (
       !this.isValidCellIndex(payload.toCell) ||
       !((isBossUnit && this.isBossPlacementCellIndex(payload.toCell))
         || (isHeroUnit
         ? this.isHeroPlacementCellIndex(payload.toCell)
-        : this.isPlayablePlacementCellIndex(payload.toCell)))
+        : this.isPlacementCellIndexForSide(payload.toCell, placementSide)))
     ) {
       this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
       return;
@@ -417,13 +429,6 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       targetCell.lockUntilMs > nowMs
     ) {
       this.sendActionResult(client, "place_unit", false, "TARGET_LOCKED");
-      return;
-    }
-
-    const sourceCellIndex = this.findCellIndexByUnitId(payload.unitId);
-
-    if (sourceCellIndex < 0) {
-      this.sendActionResult(client, "place_unit", false, "INVALID_PAYLOAD");
       return;
     }
 
@@ -599,6 +604,22 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     return this.isPlacementCellIndexForSide(cellIndex, "raid");
   }
 
+  private buildPlacementConfig() {
+    const raidStartRow = Math.floor(this.boardHeight / 2);
+    return {
+      ...DEFAULT_SHARED_BOARD_CONFIG,
+      width: this.boardWidth,
+      height: this.boardHeight,
+      deploymentRows: {
+        boss: Array.from({ length: raidStartRow }, (_, index) => index),
+        raid: Array.from(
+          { length: Math.max(0, this.boardHeight - raidStartRow) },
+          (_, index) => raidStartRow + index,
+        ),
+      },
+    };
+  }
+
   private isPlacementCellIndexForSide(
     cellIndex: number,
     side: "boss" | "raid",
@@ -607,11 +628,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       return false;
     }
 
-    const config = {
-      ...DEFAULT_SHARED_BOARD_CONFIG,
-      width: this.boardWidth,
-      height: this.boardHeight,
-    };
+    const config = this.buildPlacementConfig();
     const coordinate = sharedBoardIndexToCoordinate(cellIndex, config);
     return getDeploymentZoneForRow(config, coordinate.y) === side;
   }
@@ -665,6 +682,37 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     }
 
     return -1;
+  }
+
+  private resolvePlacementSideForUnit(
+    playerId: string,
+    unitId: string,
+    sourceCellIndex: number,
+  ): "boss" | "raid" {
+    if (this.isBossUnitId(unitId)) {
+      return "boss";
+    }
+
+    if (this.isHeroUnitId(unitId)) {
+      return "raid";
+    }
+
+    if (this.isBossPlacementCellIndex(sourceCellIndex)) {
+      return "boss";
+    }
+
+    if (this.isPlayablePlacementCellIndex(sourceCellIndex)) {
+      return "raid";
+    }
+
+    const bossUnitId = this.buildBossUnitId(this.resolveOwnerId(playerId));
+    for (const cell of this.state.cells.values()) {
+      if (cell.unitId === bossUnitId) {
+        return "boss";
+      }
+    }
+
+    return "raid";
   }
 
   /**

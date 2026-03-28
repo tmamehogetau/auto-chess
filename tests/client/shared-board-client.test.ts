@@ -277,6 +277,8 @@ describe("shared-board client", () => {
       "send:shared_request_role",
     ]));
     expect(callOrder.indexOf("onMessage:shared_role")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
+    expect(callOrder.indexOf("onMessage:shared_action_result")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
+    expect(callOrder.indexOf("onMessage:shared_battle_replay")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
     expect(callOrder.indexOf("onStateChange")).toBeLessThan(callOrder.indexOf("send:shared_request_role"));
   });
 

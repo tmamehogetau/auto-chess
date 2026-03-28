@@ -15,8 +15,18 @@ export function validateRolePlacements(
   }
 
   const invalidPlacement = placements.find((placement) => {
-    const coordinate = sharedBoardIndexToCoordinate(placement.cell, DEFAULT_SHARED_BOARD_CONFIG);
-    const zone = getDeploymentZoneForRow(DEFAULT_SHARED_BOARD_CONFIG, coordinate.y);
+    let zone = null;
+
+    try {
+      const coordinate = sharedBoardIndexToCoordinate(
+        placement.cell,
+        DEFAULT_SHARED_BOARD_CONFIG,
+      );
+      zone = getDeploymentZoneForRow(DEFAULT_SHARED_BOARD_CONFIG, coordinate.y);
+    } catch {
+      return true;
+    }
+
     if (bossPlayerId === playerId) {
       return zone !== "boss";
     }

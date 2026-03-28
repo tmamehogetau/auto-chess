@@ -34,6 +34,7 @@ export function buildAutoFillHelperActions(input: {
     ready?: boolean;
     role?: string | null;
     gold?: number | null;
+    lastCmdSeq?: number | null;
     selectedBossId?: string | null;
     selectedHeroId?: string | null;
     benchUnits?: unknown[] | Iterable<unknown> | null;
@@ -48,6 +49,7 @@ export function buildAutoFillHelperActions(input: {
       | null;
   } | null;
   state?: {
+    featureFlagsEnableTouhouRoster?: boolean | null;
     lobbyStage?: string | null;
     phase?: string | null;
   } | null;

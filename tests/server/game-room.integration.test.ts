@@ -217,6 +217,37 @@ const mapGetStatePlayer = (
   return (mapLike as Record<string, AutoFillHelperPlayer>)[key] ?? null;
 };
 
+const buildHelperCorrelationId = (helperIndex: number, cmdSeq: number): string => {
+  const nowMs = Date.now();
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `corr_helper_${helperIndex}_${cmdSeq}_${nowMs}_${suffix}`;
+};
+
+const toUnknownArray = (value: unknown): unknown[] => {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "object" && Symbol.iterator in value) {
+    return Array.from(value as Iterable<unknown>);
+  }
+
+  return [];
+};
+
+const mapOfferUnitTypes = (offers: unknown): unknown[] =>
+  toUnknownArray(offers).map((offer) => {
+    if (offer && typeof offer === "object" && "unitType" in offer) {
+      return (offer as { unitType?: unknown }).unitType ?? offer;
+    }
+
+    return offer;
+  });
+
 const attachAutoFillHelperAutomationForTest = (
   helperRoom: {
     sessionId: string;
@@ -230,11 +261,40 @@ const attachAutoFillHelperAutomationForTest = (
   getResults: () => unknown[];
 } => {
   let helperCmdSeq = 1;
+  let lastAutomationStateKey = "";
   const results: unknown[] = [];
+
+  const buildAutomationStateKey = (state: AutoFillHelperState | null, helperPlayer: AutoFillHelperPlayer | null) => JSON.stringify({
+    bossOffers: mapOfferUnitTypes(helperPlayer?.bossShopOffers),
+    boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
+    benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
+    lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
+    lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
+    phase: typeof state?.phase === "string" ? state.phase : "",
+    ready: helperPlayer?.ready === true,
+    role: helperPlayer?.role ?? "",
+    selectedBossId: helperPlayer?.selectedBossId ?? null,
+    selectedHeroId: helperPlayer?.selectedHeroId ?? null,
+    shopOffers: mapOfferUnitTypes(helperPlayer?.shopOffers),
+  });
 
   const applyAutomation = (state: unknown) => {
     const helperState = state as AutoFillHelperState | null;
     const helperPlayer = mapGetStatePlayer(helperState?.players, helperRoom.sessionId);
+    const automationStateKey = buildAutomationStateKey(helperState, helperPlayer);
+
+    if (automationStateKey === lastAutomationStateKey) {
+      return;
+    }
+
+    lastAutomationStateKey = automationStateKey;
+    const helperLastCmdSeq = typeof helperPlayer?.lastCmdSeq === "number"
+      ? helperPlayer.lastCmdSeq
+      : null;
+    if (typeof helperLastCmdSeq === "number" && Number.isInteger(helperLastCmdSeq) && helperLastCmdSeq >= helperCmdSeq) {
+      helperCmdSeq = helperLastCmdSeq + 1;
+    }
+
     const actions = buildAutoFillHelperActions({
       helperIndex,
       player: helperPlayer,
@@ -246,7 +306,7 @@ const attachAutoFillHelperAutomationForTest = (
         const cmdSeq = helperCmdSeq;
         helperRoom.send(action.type, {
           cmdSeq,
-          correlationId: `test_helper_${helperIndex}_${cmdSeq}`,
+          correlationId: buildHelperCorrelationId(helperIndex, cmdSeq),
           ...action.payload,
         });
         helperCmdSeq += 1;
@@ -257,9 +317,12 @@ const attachAutoFillHelperAutomationForTest = (
     }
   };
 
+  helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
     results.push(message);
   });
+  helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});
+  helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});
 
   helperRoom.onStateChange((state) => {
     applyAutomation(state);
@@ -2112,6 +2175,7 @@ describe("GameRoom integration", () => {
         enableBossExclusiveShop: true,
         enableHeroSystem: true,
         enableSharedBoardShadow: true,
+        enableTouhouRoster: true,
       }, {
         prepDurationMs: 4_000,
         battleDurationMs: 4_000,
@@ -2753,7 +2817,50 @@ describe("GameRoom integration", () => {
     expect(response.error).toContain("SharedBoardBridge is not available");
   });
 
-  test("player_snapshot admin_query は shared board shadow 無効でも player state を返す", async () => {
+  test("spectator host の player_snapshot admin_query は shared board shadow 無効でも player state を返す", async () => {
+    const serverRoom = await testServer.createRoom<GameRoom>("game");
+    const spectatorClient = await testServer.connectTo(serverRoom, { spectator: true });
+    const activeClients = await Promise.all([
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+      testServer.connectTo(serverRoom),
+    ]);
+
+    await waitForCondition(() => serverRoom.state.players.size === 5, 1_000);
+
+    const responsePromise = spectatorClient.waitForMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE);
+
+    spectatorClient.send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
+      kind: "player_snapshot",
+      correlationId: "corr_admin_player_snapshot",
+    });
+
+    const response = (await responsePromise) as AdminResponseMessage;
+
+    expect(response.ok).toBe(true);
+    expect(response.kind).toBe("player_snapshot");
+    expect(response.correlationId).toBe("corr_admin_player_snapshot");
+    expect(response.data).toHaveLength(5);
+    expect(response.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sessionId: spectatorClient.sessionId,
+          isSpectator: true,
+          benchUnits: expect.any(Array),
+        }),
+        expect.objectContaining({
+          sessionId: activeClients[0].sessionId,
+          isSpectator: false,
+          benchUnits: expect.any(Array),
+          boardUnitCount: expect.any(Number),
+          gold: expect.any(Number),
+        }),
+      ]),
+    );
+  });
+
+  test("active player の player_snapshot admin_query は FORBIDDEN を返す", async () => {
     const serverRoom = await testServer.createRoom<GameRoom>("game");
     const clients = await Promise.all([
       testServer.connectTo(serverRoom),
@@ -2768,26 +2875,15 @@ describe("GameRoom integration", () => {
 
     clients[0].send(CLIENT_MESSAGE_TYPES.ADMIN_QUERY, {
       kind: "player_snapshot",
-      correlationId: "corr_admin_player_snapshot",
+      correlationId: "corr_admin_forbidden",
     });
 
     const response = (await responsePromise) as AdminResponseMessage;
 
-    expect(response.ok).toBe(true);
+    expect(response.ok).toBe(false);
     expect(response.kind).toBe("player_snapshot");
-    expect(response.correlationId).toBe("corr_admin_player_snapshot");
-    expect(response.data).toHaveLength(4);
-    expect(response.data).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          sessionId: clients[0].sessionId,
-          isSpectator: false,
-          benchUnits: expect.any(Array),
-          boardUnitCount: expect.any(Number),
-          gold: expect.any(Number),
-        }),
-      ]),
-    );
+    expect(response.correlationId).toBe("corr_admin_forbidden");
+    expect(response.error).toBe("FORBIDDEN");
   });
 
   test("shared board shadow有効時のadmin_queryはdashboard/alerts/logsを返す", async () => {

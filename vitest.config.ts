@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
@@ -7,6 +7,7 @@ export default defineConfig({
     root: "./",
     setupFiles: ["./vitest.setup.ts"],
     exclude: [
+      ...configDefaults.exclude,
       ".worktrees/**",
       "**/.worktrees/**",
     ],

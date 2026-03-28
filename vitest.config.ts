@@ -6,6 +6,10 @@ export default defineConfig({
     globals: true,
     root: "./",
     setupFiles: ["./vitest.setup.ts"],
+    exclude: [
+      ".worktrees/**",
+      "**/.worktrees/**",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

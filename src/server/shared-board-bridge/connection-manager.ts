@@ -60,7 +60,7 @@ export class BridgeConnectionManager {
   }
 
   public async connect(): Promise<void> {
-    if (!this.deps.isEnabled() || this.deps.getState() === "CLOSED") {
+    if (this.shouldAbort()) {
       return;
     }
 
@@ -71,7 +71,15 @@ export class BridgeConnectionManager {
         const roomId = this.deps.getFindSharedBoardRoomIdWithRetryOverride()
           ? await this.deps.getFindSharedBoardRoomIdWithRetryOverride()!()
           : await this.findSharedBoardRoomIdWithRetry();
+
+        if (this.shouldAbort()) {
+          return;
+        }
         this.deps.setSharedBoardRoomId(roomId);
+      }
+
+      if (this.shouldAbort()) {
+        return;
       }
 
       const resolvedRoomId = this.deps.getSharedBoardRoomId();
@@ -113,12 +121,20 @@ export class BridgeConnectionManager {
         console.error("[SharedBoardBridge] Connection failed:", error);
       }
 
+      if (this.shouldAbort()) {
+        return;
+      }
+
       this.scheduleReconnect({ silent: shouldSuppressConnectLogs });
     }
   }
 
   public scheduleReconnect(options: { silent?: boolean } = {}): void {
     const silent = options.silent ?? false;
+
+    if (this.shouldAbort()) {
+      return;
+    }
 
     if (this.deps.getReconnectTimer()) {
       return;
@@ -196,6 +212,13 @@ export class BridgeConnectionManager {
     if (sharedBoardRoom) {
       sharedBoardRoom.offPlacementChange(this.deps.getPlacementChangeListener() ?? undefined);
     }
+    this.deps.setPlacementChangeListener(null);
+
+    const shadowObserver = this.deps.getShadowObserver();
+    if (shadowObserver) {
+      shadowObserver.detachSharedBoard();
+      this.deps.setShadowObserver(null);
+    }
   }
 
   private setupStateChangeListener(): void {
@@ -249,5 +272,9 @@ export class BridgeConnectionManager {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, ms);
     });
+  }
+
+  private shouldAbort(): boolean {
+    return !this.deps.isEnabled() || this.deps.getState() === "CLOSED";
   }
 }

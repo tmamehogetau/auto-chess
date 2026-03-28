@@ -52,9 +52,7 @@ describeGameRoomIntegration("GameRoom integration / boss selection", (context) =
         getTestServer().connectTo(serverRoom),
       ]);
 
-      for (const client of clients.slice(1)) {
-        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
-      }
+      registerRoundStateListeners(clients);
 
       clients[1]?.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: true });
 

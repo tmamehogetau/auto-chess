@@ -265,7 +265,7 @@ export class PlayerStateQueryService {
     const bossShopOffers = this.deps.bossShopOffersByPlayer.get(playerId) ?? [];
     const isRumorEligible = this.deps.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
-    const shopOffers = this.deps.shopOffersByPlayer.get(playerId) ?? [];
+    const shopOffers = [...(this.deps.shopOffersByPlayer.get(playerId) ?? [])];
     if (process.env.MATCH_DEBUG_LOGS === "1") {
       // eslint-disable-next-line no-console
       console.log(`Shop offers for ${playerId}:`, shopOffers);

@@ -508,8 +508,8 @@ describeGameRoomIntegration("GameRoom integration / shared board", (context) => 
       return cell?.ownerId ?? "";
     }).sort();
 
-      expect(heroOwnerIds).toEqual(raidPlayerIds);
-    });
+    expect(heroOwnerIds).toEqual(raidPlayerIds);
+  });
 
 
     test("3 helper bots and 1 real player can auto-buy and auto-place helper units during Prep", async () => {

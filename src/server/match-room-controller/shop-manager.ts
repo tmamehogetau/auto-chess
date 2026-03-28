@@ -162,6 +162,11 @@ export class ShopManager<TBattleResult = unknown> {
       return;
     }
 
+    const benchUnits = [...(this.deps.benchUnitsByPlayer.get(playerId) ?? [])];
+    if (benchUnits.length >= this.deps.maxBenchSize) {
+      return;
+    }
+
     this.decreaseSharedPoolForOffer(boughtOffer);
 
     offers.splice(slotIndex, 1);
@@ -177,7 +182,6 @@ export class ShopManager<TBattleResult = unknown> {
     this.deps.shopPurchaseCountByPlayer.set(playerId, purchaseCount);
     this.deps.shopOffersByPlayer.set(playerId, offers);
 
-    const benchUnits = [...(this.deps.benchUnitsByPlayer.get(playerId) ?? [])];
     const boardPlacements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
     const purchasedUnitCost = calculateDiscountedShopOfferCost(
       boughtOffer,
@@ -212,13 +216,17 @@ export class ShopManager<TBattleResult = unknown> {
 
   public buyBossShopOffer(playerId: string, slotIndex: number): void {
     const bossOffers = this.deps.bossShopOffersByPlayer.get(playerId) ?? [];
-    const benchUnits = this.deps.benchUnitsByPlayer.get(playerId) ?? [];
+    const benchUnits = [...(this.deps.benchUnitsByPlayer.get(playerId) ?? [])];
     if (slotIndex >= bossOffers.length) {
       return;
     }
 
     const bossOffer = bossOffers[slotIndex];
     if (!bossOffer || bossOffer.purchased) {
+      return;
+    }
+
+    if (benchUnits.length >= this.deps.maxBenchSize) {
       return;
     }
 

@@ -121,24 +121,24 @@ describeGameRoomIntegration("GameRoom integration / round state sync", (context)
     );
 
     const sortedPlayerIds = clients.map((client) => client.sessionId).sort();
-    const firstWinnerId = sortedPlayerIds[0];
-    const secondWinnerId = sortedPlayerIds[1];
-    const firstLoserId = sortedPlayerIds[2];
-    const secondLoserId = sortedPlayerIds[3];
+    const observedPlayerIdA = sortedPlayerIds[0];
+    const observedPlayerIdB = sortedPlayerIds[1];
+    const observedPlayerIdC = sortedPlayerIds[2];
+    const observedPlayerIdD = sortedPlayerIds[3];
 
     if (
-      !firstWinnerId ||
-      !firstLoserId ||
-      !secondWinnerId ||
-      !secondLoserId
+      !observedPlayerIdA ||
+      !observedPlayerIdB ||
+      !observedPlayerIdC ||
+      !observedPlayerIdD
     ) {
       throw new Error("Expected 4 player session ids");
     }
 
-    expect(serverRoom.state.players.get(firstLoserId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(secondLoserId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(firstWinnerId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(secondWinnerId)?.hp).toBe(100);
+    expect(serverRoom.state.players.get(observedPlayerIdA)?.hp).toBe(100);
+    expect(serverRoom.state.players.get(observedPlayerIdB)?.hp).toBe(100);
+    expect(serverRoom.state.players.get(observedPlayerIdC)?.hp).toBe(100);
+    expect(serverRoom.state.players.get(observedPlayerIdD)?.hp).toBe(100);
   });
 
 });

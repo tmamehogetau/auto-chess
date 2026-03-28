@@ -126,6 +126,92 @@ describe("BattleOrchestrator", () => {
     ]);
   });
 
+  it("covers every unique matchup across odd-player round-robin rotations", () => {
+    const harness = createHarness(["p1", "p2", "p3", "p4", "p5"]);
+    const matchups = new Set<string>();
+
+    for (let roundIndex = 1; roundIndex <= 5; roundIndex += 1) {
+      const pairings =
+        harness.orchestrator?.buildPairingsForRound(
+          ["p1", "p2", "p3", "p4", "p5"],
+          roundIndex,
+        ) ?? [];
+
+      const ghostPairings = pairings.filter(
+        (pairing) => pairing.rightPlayerId === null,
+      );
+      expect(ghostPairings).toHaveLength(1);
+
+      for (const pairing of pairings) {
+        if (!pairing.rightPlayerId) {
+          continue;
+        }
+
+        const matchupKey = [pairing.leftPlayerId, pairing.rightPlayerId]
+          .sort()
+          .join(":");
+        matchups.add(matchupKey);
+      }
+    }
+
+    expect(matchups).toEqual(new Set([
+      "p1:p2",
+      "p1:p3",
+      "p1:p4",
+      "p1:p5",
+      "p2:p3",
+      "p2:p4",
+      "p2:p5",
+      "p3:p4",
+      "p3:p5",
+      "p4:p5",
+    ]));
+  });
+
+  it("fills only the missing side when pair damage is partially recorded", () => {
+    const harness = createHarness(["p1", "p2"]);
+    harness.currentRoundPairings = [
+      { leftPlayerId: "p1", rightPlayerId: "p2", ghostSourcePlayerId: null },
+    ];
+    harness.pendingRoundDamageByPlayer.set("p1", 0);
+    harness.outcomeResolver = () => ({
+      winnerId: "p1",
+      loserId: "p2",
+      winnerUnitCount: 4,
+      loserUnitCount: 1,
+      isDraw: false,
+    });
+
+    harness.orchestrator?.resolveMissingRoundDamage();
+
+    expect(Array.from(harness.pendingRoundDamageByPlayer.entries())).toEqual([
+      ["p1", 0],
+      ["p2", 13],
+    ]);
+  });
+
+  it("preserves existing manual damage when the unresolved side draws", () => {
+    const harness = createHarness(["p1", "p2"]);
+    harness.currentRoundPairings = [
+      { leftPlayerId: "p1", rightPlayerId: "p2", ghostSourcePlayerId: null },
+    ];
+    harness.pendingRoundDamageByPlayer.set("p1", 600);
+    harness.outcomeResolver = () => ({
+      winnerId: null,
+      loserId: null,
+      winnerUnitCount: 0,
+      loserUnitCount: 0,
+      isDraw: true,
+    });
+
+    harness.orchestrator?.resolveMissingRoundDamage();
+
+    expect(Array.from(harness.pendingRoundDamageByPlayer.entries())).toEqual([
+      ["p1", 600],
+      ["p2", 0],
+    ]);
+  });
+
   it("orders simultaneous eliminations from worst to best for bottom ranking", () => {
     const harness = createHarness(["p1", "p2", "p3"]);
     harness.battleParticipantIds = ["p1", "p2", "p3"];

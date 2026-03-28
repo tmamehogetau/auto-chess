@@ -180,8 +180,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       },
     );
 
-    this.onMessage(CLIENT_MESSAGE_TYPES.HERO_SELECT, (client, message) => {
-      void handleHeroSelectMessage(
+    this.onMessage(CLIENT_MESSAGE_TYPES.HERO_SELECT, async (client, message) => {
+      await handleHeroSelectMessage(
         client,
         message as { heroId: string },
         this.createMessageHandlerDeps(),

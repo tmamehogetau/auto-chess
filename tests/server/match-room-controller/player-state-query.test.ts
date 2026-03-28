@@ -195,7 +195,7 @@ describe("PlayerStateQueryService", () => {
       sharedPoolInventory: new Map([[1, 20]]),
     });
     expect(status.shopOffers).toEqual([{ unitType: "vanguard", cost: 1, rarity: 1, unitId: "warrior_a" }]);
-    expect(service.getShopOffersForPlayer("p1")).not.toBe(deps.shopOffersByPlayer.get("p1"));
+    expect(status.shopOffers).not.toBe(deps.shopOffersByPlayer.get("p1"));
     expect(status.lastBattleResult?.timeline?.[0]?.battleId).toBe("battle-1");
   });
 

@@ -6,15 +6,24 @@ import { createFakeDocument, FakeElement, findDescendantByClass } from "../helpe
 import { disableFakeTimers, enableFakeTimers } from "../helpers/fake-timers";
 
 describe("shared-board client", () => {
+  let originalDocument: typeof globalThis.document;
+
   beforeEach(() => {
-    leaveSharedBoardRoom();
-    setSharedBoardRoomId("");
+    originalDocument = globalThis.document;
     enableFakeTimers();
     globalThis.document = createFakeDocument();
+    leaveSharedBoardRoom();
+    setSharedBoardRoomId("");
   });
 
   afterEach(() => {
     disableFakeTimers();
+    if (originalDocument === undefined) {
+      delete (globalThis as { document?: typeof globalThis.document }).document;
+      return;
+    }
+
+    globalThis.document = originalDocument;
   });
 
   test("undefined cursor entry を含む shared board state change でも落ちない", async () => {

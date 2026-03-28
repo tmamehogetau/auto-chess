@@ -4,6 +4,7 @@ import type { Client } from "colyseus";
 import {
   handleAdminQueryMessage,
   handleBossPreferenceMessage,
+  handleReadyMessage,
   type GameRoomMessageHandlerDeps,
 } from "../../../src/server/rooms/game-room/message-handler";
 import {
@@ -82,5 +83,17 @@ describe("game-room/message-handler", () => {
         },
       },
     ]);
+  });
+
+  it("ignores malformed ready payloads instead of mutating player readiness", async () => {
+    await handleReadyMessage(
+      client,
+      { ready: "yes" } as unknown as { ready?: boolean },
+      deps,
+    );
+
+    expect(deps.state.players.get(client.sessionId)?.ready).toBe(false);
+    expect(deps.setPlayerReady).not.toHaveBeenCalled();
+    expect(deps.tryStartMatch).not.toHaveBeenCalled();
   });
 });

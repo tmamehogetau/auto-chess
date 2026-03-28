@@ -176,4 +176,54 @@ describe("ShopManager", () => {
     expect(sharedPool.getAvailableByUnitId("nazrin", 1)).toBe(nazrinBefore + 1);
     expect(sharedPool.getAvailableByUnitId("rin", 1)).toBe(rinBefore + 1);
   });
+
+  it("does not mutate shop state when a regular shop buy would overflow a full bench", () => {
+    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+      unitType: "vanguard" as const,
+      unitId: `bench-${index}`,
+      cost: 1,
+      starLevel: 1,
+      unitCount: 1,
+    }));
+    const { manager, deps } = createHarness({
+      initialOffers: [{ unitType: "ranger", unitId: "nazrin", rarity: 1, cost: 1 }],
+      benchUnits: fullBench,
+    });
+
+    manager.buyShopOfferBySlot("p1", 0);
+
+    expect(deps.shopPurchaseCountByPlayer.get("p1")).toBe(0);
+    expect(deps.shopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "ranger", unitId: "nazrin", rarity: 1, cost: 1 },
+    ]);
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual(fullBench);
+    expect(deps.ownedUnitsByPlayer.get("p1")).toEqual({
+      vanguard: 0,
+      ranger: 0,
+      mage: 0,
+      assassin: 0,
+    });
+  });
+
+  it("does not mutate boss shop state when a boss buy would overflow a full bench", () => {
+    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+      unitType: "vanguard" as const,
+      unitId: `bench-${index}`,
+      cost: 1,
+      starLevel: 1,
+      unitCount: 1,
+    }));
+    const { manager, deps } = createHarness({
+      enableBossExclusiveShop: true,
+      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 }],
+      benchUnits: fullBench,
+    });
+
+    manager.buyBossShopOffer("p1", 0);
+
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual(fullBench);
+    expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 },
+    ]);
+  });
 });

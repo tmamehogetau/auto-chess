@@ -95,6 +95,57 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
       ];
     }
 
+    if (orderedParticipants.length % 2 === 1) {
+      const rotateCount = (roundIndex - 1) % orderedParticipants.length;
+      let rotated = [...orderedParticipants];
+
+      for (let index = 0; index < rotateCount; index += 1) {
+        const tailPlayerId = rotated.pop();
+
+        if (!tailPlayerId) {
+          break;
+        }
+
+        rotated = [tailPlayerId, ...rotated];
+      }
+
+      const arrangement = [null, ...rotated];
+      const pairingCount = Math.floor(arrangement.length / 2);
+      const pairings: BattlePairing[] = [];
+      let ghostPairing: BattlePairing | null = null;
+
+      for (let index = 0; index < pairingCount; index += 1) {
+        const leftPlayerId = arrangement[index];
+        const rightPlayerId = arrangement[arrangement.length - 1 - index];
+
+        if (leftPlayerId && rightPlayerId) {
+          pairings.push({
+            leftPlayerId,
+            rightPlayerId,
+            ghostSourcePlayerId: null,
+          });
+          continue;
+        }
+
+        const challengerPlayerId = leftPlayerId ?? rightPlayerId;
+        if (!challengerPlayerId) {
+          continue;
+        }
+
+        ghostPairing = {
+          leftPlayerId: challengerPlayerId,
+          rightPlayerId: null,
+          ghostSourcePlayerId: rotated[0] ?? challengerPlayerId,
+        };
+      }
+
+      if (ghostPairing) {
+        pairings.push(ghostPairing);
+      }
+
+      return pairings;
+    }
+
     const fixedPlayerId = orderedParticipants[0];
 
     if (!fixedPlayerId) {
@@ -270,15 +321,21 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
     const leftAlreadySet = this.deps.pendingRoundDamageByPlayer.has(leftPlayerId);
     const rightAlreadySet = this.deps.pendingRoundDamageByPlayer.has(rightPlayerId);
 
-    if (leftAlreadySet || rightAlreadySet) {
+    if (leftAlreadySet && rightAlreadySet) {
       return;
     }
 
     const outcome = this.deps.resolveMatchupOutcome(leftPlayerId, rightPlayerId);
 
     if (outcome.isDraw) {
-      this.deps.pendingRoundDamageByPlayer.set(leftPlayerId, 0);
-      this.deps.pendingRoundDamageByPlayer.set(rightPlayerId, 0);
+      if (!leftAlreadySet) {
+        this.deps.pendingRoundDamageByPlayer.set(leftPlayerId, 0);
+      }
+
+      if (!rightAlreadySet) {
+        this.deps.pendingRoundDamageByPlayer.set(rightPlayerId, 0);
+      }
+
       return;
     }
 

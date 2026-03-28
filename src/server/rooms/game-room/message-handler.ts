@@ -50,12 +50,20 @@ export interface GameRoomMessageHandlerDeps {
 
 export async function handleReadyMessage(
   client: Client,
-  message: ReadyMessage,
+  message: ReadyMessage | null | undefined,
   deps: GameRoomMessageHandlerDeps,
 ): Promise<void> {
   const player = deps.getPlayer(client.sessionId);
 
   if (!player || player.isSpectator) {
+    return;
+  }
+
+  if (!isRecordMessage(message)) {
+    return;
+  }
+
+  if (message.ready !== undefined && typeof message.ready !== "boolean") {
     return;
   }
 

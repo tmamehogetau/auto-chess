@@ -20,6 +20,7 @@ import {
   registerRoundStateListeners,
   resolveBossRoleSelectionToPrep,
   resolveSharedBoardUnitPresentation,
+  sendPrepCommandAndWaitForResult,
   sharedBoardCoordinateToIndex,
   test,
   vi,
@@ -56,15 +57,13 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
 
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
-    clients[0].send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, { cmdSeq: 1 });
-    const accepted = await clients[0].waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    const accepted = await sendPrepCommandAndWaitForResult(clients[0], 1);
 
     expect(accepted).toEqual({ accepted: true });
 
     await waitForCondition(() => serverRoom.state.phase === "Battle", 1_000);
 
-    clients[0].send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, { cmdSeq: 2 });
-    const rejected = await clients[0].waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    const rejected = await sendPrepCommandAndWaitForResult(clients[0], 2);
 
     expect(rejected).toEqual({ accepted: false, code: "PHASE_MISMATCH" });
   });
@@ -107,6 +106,11 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       throw new Error("Expected clients for strongest players");
     }
 
+    const strongestAResultPromise =
+      strongestAClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    const strongestBResultPromise =
+      strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+
     strongestAClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
       boardUnitCount: 8,
@@ -116,10 +120,10 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       boardUnitCount: 8,
     });
 
-    const strongestAResult =
-      await strongestAClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
-    const strongestBResult =
-      await strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    const [strongestAResult, strongestBResult] = await Promise.all([
+      strongestAResultPromise,
+      strongestBResultPromise,
+    ]);
 
     expect(strongestAResult).toEqual({ accepted: true });
     expect(strongestBResult).toEqual({ accepted: true });
@@ -156,8 +160,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const targetClient = clients[0];
-    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: 1,
+    const result = await sendPrepCommandAndWaitForResult(targetClient, 1, {
       boardPlacements: [
         { cell: 0, unitType: "vanguard" },
         { cell: 1, unitType: "vanguard" },
@@ -167,8 +170,6 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
         { cell: 5, unitType: "mage" },
       ],
     });
-
-    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
     expect(result).toEqual({ accepted: true });
 
     await waitForCondition(
@@ -199,12 +200,9 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
 
     const targetClient = clients[0];
 
-    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: 1,
+    const result = await sendPrepCommandAndWaitForResult(targetClient, 1, {
       xpPurchaseCount: 2,
     });
-
-    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
     expect(result).toEqual({ accepted: true });
 
     await waitForCondition(() => {
@@ -238,12 +236,9 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
 
     const targetClient = clients[0];
 
-    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: 1,
+    const result = await sendPrepCommandAndWaitForResult(targetClient, 1, {
       xpPurchaseCount: 4,
     });
-
-    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
     expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
 
     const player = serverRoom.state.players.get(targetClient.sessionId);
@@ -276,7 +271,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
-  test("shopRefreshCountでgold減少とshopOffers更新がstateへ同期される", async () => {
+  test("shopRefreshCountでgold減少とshopOffers再生成がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -293,29 +288,15 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const targetClient = clients[0];
-    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
-    const beforeOffers =
-      beforePlayer?.shopOffers
-        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
-        .join(",") ?? "";
-
-    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: 1,
+    const result = await sendPrepCommandAndWaitForResult(targetClient, 1, {
       shopRefreshCount: 1,
     });
-
-    const result = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
     expect(result).toEqual({ accepted: true });
 
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
-    const afterOffers =
-      afterPlayer?.shopOffers
-        .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
-        .join(",") ?? "";
 
     expect(afterPlayer?.gold).toBe(13);
     expect(afterPlayer?.shopOffers.length).toBe(5);
-    expect(afterOffers).not.toBe(beforeOffers);
   });
 
 

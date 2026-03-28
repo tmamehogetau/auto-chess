@@ -162,6 +162,21 @@ export const registerRoundStateListeners = (
   }
 };
 
+type PrepCommandTestClient = {
+  send: (type: string, message?: unknown) => void;
+  waitForMessage: (type: string, rejectTimeout?: number) => Promise<unknown>;
+};
+
+export const sendPrepCommandAndWaitForResult = async (
+  client: PrepCommandTestClient,
+  cmdSeq: number,
+  payload: Record<string, unknown> = {},
+): Promise<{ accepted: boolean; code?: string }> => {
+  const resultPromise = client.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+  client.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, { cmdSeq, ...payload });
+  return (await resultPromise) as { accepted: boolean; code?: string };
+};
+
 export const connectBossRoleSelectionRoom = async (
   testServer: ColyseusTestServer,
   roomOptions?: Record<string, unknown>,

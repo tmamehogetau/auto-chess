@@ -10,6 +10,7 @@ import {
   FLAG_ENV_VARS,
   withFlags,
 } from "./feature-flag-test-helper";
+import { waitForCondition } from "../helpers/wait-helpers";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -59,25 +60,6 @@ type BoardPlacementView = {
   unitId?: string;
   sellValue?: number;
   unitCount?: number;
-};
-
-const waitForCondition = async (
-  predicate: () => boolean,
-  timeoutMs: number,
-): Promise<void> => {
-  const startMs = Date.now();
-
-  while (Date.now() - startMs < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 15);
-    });
-  }
-
-  throw new Error("Timed out while waiting for condition");
 };
 
 async function sendPrepCommand(

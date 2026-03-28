@@ -1,8 +1,8 @@
-import { type Room, matchMaker } from "colyseus";
+import { type Room } from "colyseus";
 import type { SharedBoardRoom, PlacementChangeListener } from "./rooms/shared-board-room";
 import type { SharedBoardCellState } from "./schema/shared-board-state";
 import type { MatchRoomController } from "./match-room-controller";
-import { SharedBoardShadowObserver, type ShadowDiffResult } from "./shared-board-shadow-observer";
+import { SharedBoardShadowObserver } from "./shared-board-shadow-observer";
 import type {
   BoardUnitPlacement,
   SharedBattleReplayMessage,
@@ -16,7 +16,11 @@ import {
   type DashboardMetrics,
   type ErrorSummary,
 } from "./shared-board-bridge-monitor";
-import { buildReconnectPlan } from "./shared-board-bridge/reconnect-policy";
+import {
+  BridgeConnectionManager,
+  type BridgeState,
+} from "./shared-board-bridge/connection-manager";
+import { BridgeDiffBroadcaster } from "./shared-board-bridge/diff-broadcaster";
 import { validateRolePlacements } from "./shared-board-bridge/placement-sync";
 import {
   getBridgeAlertStatus,
@@ -42,12 +46,47 @@ interface QueuedSharedBoardCellSnapshot {
 /**
  * SharedBoard接続状態
  */
-type BridgeState = 
-  | "DISABLED"      // Feature Flag OFF
-  | "CONNECTING"    // 接続試行中
-  | "READY"         // 接続完了・監視中
-  | "DEGRADED"      // 接続失敗・再試行中
-  | "CLOSED";       // 接続終了
+export type SharedBoardBridgeState = BridgeState;
+
+type SharedBoardBridgeShadowObserverLike = Pick<SharedBoardShadowObserver, "detachSharedBoard">;
+
+type SharedBoardBridgeRoomLike = {
+  offPlacementChange: (listener?: PlacementChangeListener) => void;
+  applyBattleReplayFromGame?: (input: SharedBattleReplayMessage) => { applied: number };
+  setModeFromGame?: (input: {
+    phase: string;
+    phaseDeadlineAtMs?: number;
+    mode?: "prep" | "battle";
+  }) => void;
+  applyPlacementsFromGame?: (
+    playerId: string,
+    placements: BoardUnitPlacement[],
+    placementSide?: "boss" | "raid",
+  ) => { applied: number; skipped: number };
+};
+
+export interface SharedBoardBridgeTestResources {
+  sharedBoardRoom: SharedBoardBridgeRoomLike | null;
+  shadowObserver: SharedBoardBridgeShadowObserverLike | null;
+  unsubscribeHandle: (() => void) | null;
+  monitor: BridgeMonitor | null;
+}
+
+export interface SharedBoardBridgeTestAccess {
+  enqueuePlacementChange: (playerId: string, cells: SharedBoardCellState[]) => void;
+  connect: () => Promise<void>;
+  syncSharedBoardViewFromController: (forcePrepSync?: boolean) => void;
+  setRuntimeState: (params: Partial<{
+    enabled: boolean;
+    state: SharedBoardBridgeState;
+    sharedBoardRoomId: string | null;
+    maxReconnectAttempts: number;
+    hasEverBeenReady: boolean;
+  }>) => void;
+  setFindSharedBoardRoomIdWithRetry: (fn: (() => Promise<string>) | null) => void;
+  setResources: (params: Partial<SharedBoardBridgeTestResources>) => void;
+  getResources: () => SharedBoardBridgeTestResources & { state: SharedBoardBridgeState };
+}
 
 /**
  * 同期操作リクエスト
@@ -96,7 +135,7 @@ export interface SyncOperationResult {
 export class SharedBoardBridge {
   private readonly gameRoom: PlacementBatchSyncTarget;
   private readonly controller: MatchRoomController;
-  private readonly enabled: boolean;
+  private enabled: boolean;
 
   private state: BridgeState = "DISABLED";
   private sharedBoardRoomId: string | null = null;
@@ -110,7 +149,7 @@ export class SharedBoardBridge {
   private readonly minObservationIntervalMs = 100;
   private reconnectAttempts = 0;
   private hasEverBeenReady = false;
-  private readonly maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 5;
   private readonly reconnectBaseDelayMs = 250;
   private readonly reconnectMaxDelayMs = 30_000;
   private readonly roomLookupRetryCount = 5;
@@ -132,6 +171,9 @@ export class SharedBoardBridge {
 
   // 監視用
   private monitor: BridgeMonitor | null = null;
+  private findSharedBoardRoomIdWithRetryOverride: (() => Promise<string>) | null = null;
+  private readonly connectionManager: BridgeConnectionManager;
+  private readonly diffBroadcaster: BridgeDiffBroadcaster;
 
   constructor(
     gameRoom: PlacementBatchSyncTarget,
@@ -147,17 +189,96 @@ export class SharedBoardBridge {
       this.sharedBoardRoomId = sharedBoardRoomId;
     }
 
-    if (!enabled) {
-      this.state = "DISABLED";
-      return;
+    // 監視初期化
+    if (enabled) {
+      this.monitor = new BridgeMonitor(gameRoom.roomId);
     }
 
-    // 監視初期化
-    this.monitor = new BridgeMonitor(gameRoom.roomId);
-
-    this.state = "CONNECTING";
-    // 非同期で接続開始（fail-openのためawaitしない）
-    void this.connect();
+    this.diffBroadcaster = new BridgeDiffBroadcaster({
+      gameRoom: this.gameRoom,
+      controller: this.controller,
+      getState: () => this.state,
+      getSharedBoardRoom: () => this.sharedBoardRoom,
+      getSharedBoardRoomId: () => this.sharedBoardRoomId,
+      getShadowObserver: () => this.shadowObserver,
+      getCurrentVersion: () => this.currentVersion,
+      getMonitor: () => this.monitor,
+      getSeq: () => this.seq,
+      setSeq: (value) => {
+        this.seq = value;
+      },
+      getLastObservationTime: () => this.lastObservationTime,
+      setLastObservationTime: (value) => {
+        this.lastObservationTime = value;
+      },
+      minObservationIntervalMs: this.minObservationIntervalMs,
+      getLastSharedBoardPhase: () => this.lastSharedBoardPhase,
+      setLastSharedBoardPhase: (value) => {
+        this.lastSharedBoardPhase = value;
+      },
+      getLastSharedBattleId: () => this.lastSharedBattleId,
+      setLastSharedBattleId: (value) => {
+        this.lastSharedBattleId = value;
+      },
+      onScheduleReconnect: () => {
+        this.connectionManager.scheduleReconnect();
+      },
+    });
+    this.connectionManager = new BridgeConnectionManager({
+      controller: this.controller,
+      isEnabled: () => this.enabled,
+      getState: () => this.state,
+      setState: (state) => {
+        this.state = state;
+      },
+      getSharedBoardRoomId: () => this.sharedBoardRoomId,
+      setSharedBoardRoomId: (roomId) => {
+        this.sharedBoardRoomId = roomId;
+      },
+      getSharedBoardRoom: () => this.sharedBoardRoom,
+      setSharedBoardRoom: (room) => {
+        this.sharedBoardRoom = room;
+      },
+      getShadowObserver: () => this.shadowObserver,
+      setShadowObserver: (observer) => {
+        this.shadowObserver = observer;
+      },
+      getUnsubscribeHandle: () => this.unsubscribeHandle,
+      setUnsubscribeHandle: (handle) => {
+        this.unsubscribeHandle = handle;
+      },
+      getPlacementChangeListener: () => this.placementChangeListener,
+      setPlacementChangeListener: (listener) => {
+        this.placementChangeListener = listener;
+      },
+      getReconnectAttempts: () => this.reconnectAttempts,
+      setReconnectAttempts: (attempts) => {
+        this.reconnectAttempts = attempts;
+      },
+      getHasEverBeenReady: () => this.hasEverBeenReady,
+      setHasEverBeenReady: (value) => {
+        this.hasEverBeenReady = value;
+      },
+      getMaxReconnectAttempts: () => this.maxReconnectAttempts,
+      getReconnectTimer: () => this.reconnectTimer,
+      setReconnectTimer: (timer) => {
+        this.reconnectTimer = timer;
+      },
+      getFindSharedBoardRoomIdWithRetryOverride: () => this.findSharedBoardRoomIdWithRetryOverride,
+      roomLookupRetryCount: this.roomLookupRetryCount,
+      roomLookupRetryDelayMs: this.roomLookupRetryDelayMs,
+      reconnectBaseDelayMs: this.reconnectBaseDelayMs,
+      reconnectMaxDelayMs: this.reconnectMaxDelayMs,
+      onPlacementChange: (playerId, cells) => {
+        this.enqueuePlacementChange(playerId, cells);
+      },
+      onDiffObservation: () => {
+        this.diffBroadcaster.checkAndBroadcastDiff();
+      },
+      onReadySync: () => {
+        this.diffBroadcaster.syncSharedBoardViewFromController();
+      },
+    }, enabled);
   }
 
   /**
@@ -174,133 +295,59 @@ export class SharedBoardBridge {
     return this.currentVersion;
   }
 
-  /**
-   * SharedBoardRoomへの接続
-   */
-  private async connect(): Promise<void> {
-    if (!this.enabled || this.state === "CLOSED") {
-      return;
-    }
-
-    this.state = "CONNECTING";
-
-    try {
-      // roomIdが未設定の場合は検索（デフォルトのshared_boardルーム）
-      if (!this.sharedBoardRoomId) {
-        this.sharedBoardRoomId = await this.findSharedBoardRoomIdWithRetry();
-      }
-
-      // 同じプロセス内でルームインスタンスを取得
-      const resolvedRoomId = this.sharedBoardRoomId;
-      const room = matchMaker.getLocalRoomById(resolvedRoomId);
-      if (!room) {
-        this.sharedBoardRoomId = null;
-        throw new Error(`SharedBoard room ${resolvedRoomId} not found in local process`);
-      }
-
-      const sharedBoardRoom = room as unknown as SharedBoardRoom;
-
-      if (this.unsubscribeHandle) {
-        this.unsubscribeHandle();
-        this.unsubscribeHandle = null;
-      }
-
-      if (this.sharedBoardRoom) {
-        this.sharedBoardRoom.offPlacementChange(this.placementChangeListener ?? undefined);
-      }
-
-      this.sharedBoardRoom = sharedBoardRoom;
-      this.shadowObserver = new SharedBoardShadowObserver(this.controller);
-      this.shadowObserver.attachSharedBoard(sharedBoardRoom);
-
-      // 配置変更イベント購読（双方向同期）
-      this.setupPlacementChangeListener();
-
-      // state change購読
-      this.setupStateChangeListener();
-
-      this.state = "READY";
-      this.hasEverBeenReady = true;
-      this.reconnectAttempts = 0;
-      this.syncSharedBoardViewFromController();
-
-      if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = null;
-      }
-    } catch (error) {
-      const shouldSuppressConnectLogs = !this.hasEverBeenReady && this.isExpectedSharedBoardUnavailableError(error);
-
-      if (!shouldSuppressConnectLogs) {
-        console.error("[SharedBoardBridge] Connection failed:", error);
-      }
-
-      this.scheduleReconnect({ silent: shouldSuppressConnectLogs });
-    }
-  }
-
-  private isExpectedSharedBoardUnavailableError(error: unknown): boolean {
-    if (!(error instanceof Error)) {
-      return false;
-    }
-
-    return (
-      error.message === "No shared_board room found"
-      || error.message.includes("not found in local process")
-    );
-  }
-
-  private async findSharedBoardRoomIdWithRetry(): Promise<string> {
-    for (let attempt = 1; attempt <= this.roomLookupRetryCount; attempt += 1) {
-      const rooms = await matchMaker.query<SharedBoardRoom>({ name: "shared_board" });
-      const roomId = rooms[0]?.roomId;
-
-      if (roomId) {
-        return roomId;
-      }
-
-      if (attempt < this.roomLookupRetryCount) {
-        await this.delay(this.roomLookupRetryDelayMs);
-      }
-    }
-
-    throw new Error("No shared_board room found");
-  }
-
-  private async delay(ms: number): Promise<void> {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, ms);
-    });
-  }
-
-  /**
-   * SharedBoard state changeリスナー設定
-   */
-  private setupStateChangeListener(): void {
-    if (!this.sharedBoardRoom) return;
-
-    // Colyseusのstate change購読（簡易実装）
-    // 実際の購読解除用にハンドラを保持
-    const checkInterval = setInterval(() => {
-      void this.checkAndBroadcastDiff();
-    }, 100);
-
-    this.unsubscribeHandle = () => {
-      clearInterval(checkInterval);
+  public getTestAccess(): SharedBoardBridgeTestAccess {
+    return {
+      enqueuePlacementChange: (playerId, cells) => {
+        this.enqueuePlacementChange(playerId, cells);
+      },
+      connect: async () => {
+        await this.connectionManager.connect();
+      },
+      syncSharedBoardViewFromController: (forcePrepSync = false) => {
+        this.diffBroadcaster.syncSharedBoardViewFromController(forcePrepSync);
+      },
+      setRuntimeState: (params) => {
+        if (params.enabled !== undefined) {
+          this.enabled = params.enabled;
+        }
+        if (params.state !== undefined) {
+          this.state = params.state;
+        }
+        if ("sharedBoardRoomId" in params) {
+          this.sharedBoardRoomId = params.sharedBoardRoomId ?? null;
+        }
+        if (params.maxReconnectAttempts !== undefined) {
+          this.maxReconnectAttempts = params.maxReconnectAttempts;
+        }
+        if (params.hasEverBeenReady !== undefined) {
+          this.hasEverBeenReady = params.hasEverBeenReady;
+        }
+      },
+      setFindSharedBoardRoomIdWithRetry: (fn) => {
+        this.findSharedBoardRoomIdWithRetryOverride = fn;
+      },
+      setResources: (params) => {
+        if ("sharedBoardRoom" in params) {
+          this.sharedBoardRoom = (params.sharedBoardRoom ?? null) as SharedBoardRoom | null;
+        }
+        if ("shadowObserver" in params) {
+          this.shadowObserver = (params.shadowObserver ?? null) as SharedBoardShadowObserver | null;
+        }
+        if ("unsubscribeHandle" in params) {
+          this.unsubscribeHandle = params.unsubscribeHandle ?? null;
+        }
+        if ("monitor" in params) {
+          this.monitor = params.monitor ?? null;
+        }
+      },
+      getResources: () => ({
+        sharedBoardRoom: this.sharedBoardRoom,
+        shadowObserver: this.shadowObserver,
+        unsubscribeHandle: this.unsubscribeHandle,
+        monitor: this.monitor,
+        state: this.state,
+      }),
     };
-  }
-
-  /**
-   * 配置変更リスナー設定（双方向同期・バッチ処理）
-   */
-  private setupPlacementChangeListener(): void {
-    if (!this.sharedBoardRoom) return;
-
-    this.placementChangeListener = (playerId, cells) => {
-      this.enqueuePlacementChange(playerId, cells);
-    };
-
-    this.sharedBoardRoom.onPlacementChange(this.placementChangeListener);
   }
 
   /**
@@ -571,45 +618,6 @@ export class SharedBoardBridge {
     return "unknown";
   }
 
-  /**
-   * 差分を検知して配信
-   */
-  private async checkAndBroadcastDiff(): Promise<void> {
-    const now = Date.now();
-    
-    // 最低観測間隔の制限
-    if (now - this.lastObservationTime < this.minObservationIntervalMs) {
-      return;
-    }
-    this.lastObservationTime = now;
-
-    if (!this.shadowObserver || this.state !== "READY") {
-      return;
-    }
-
-    this.syncSharedBoardViewFromController();
-
-    const gameState = this.controller.getGameState?.();
-    if (gameState?.phase !== "Prep") {
-      return;
-    }
-
-    try {
-      const diffResult = this.shadowObserver.observeAndCompare();
-      
-      // 差分があれば配信（または定期的に状態配信）
-      if (diffResult.status !== "ok" || this.seq === 0) {
-        this.broadcastDiff(diffResult);
-      }
-    } catch (error) {
-      console.error("[SharedBoardBridge] Diff observation failed:", error);
-      // fail-open: まずは再接続を試行し、上限到達時のみDEGRADEDへ遷移
-      if (this.state === "READY") {
-        this.scheduleReconnect();
-      }
-    }
-  }
-
   private isHeroUnitId(unitId: string): boolean {
     return unitId.startsWith("hero:");
   }
@@ -620,152 +628,6 @@ export class SharedBoardBridge {
 
   private isSpecialUnitId(unitId: string): boolean {
     return this.isHeroUnitId(unitId) || this.isBossUnitId(unitId);
-  }
-
-  private syncSharedBoardViewFromController(forcePrepSync = false): void {
-    if (this.state !== "READY" || !this.sharedBoardRoom) {
-      return;
-    }
-
-    const gameState = this.controller.getGameState?.();
-    if (!gameState) {
-      return;
-    }
-
-    const phase = gameState.phase;
-    const phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
-
-    if (phase === "Battle" || phase === "Settle") {
-      const replayMessage = this.controller.getSharedBattleReplay(phase);
-
-      if (replayMessage) {
-        if (replayMessage.battleId !== this.lastSharedBattleId) {
-          this.sharedBoardRoom.applyBattleReplayFromGame({
-            phase: replayMessage.phase,
-            phaseDeadlineAtMs,
-            battleId: replayMessage.battleId,
-            timeline: replayMessage.timeline,
-          });
-          this.lastSharedBattleId = replayMessage.battleId;
-        } else if (phase !== this.lastSharedBoardPhase) {
-          this.sharedBoardRoom.setModeFromGame({
-            phase,
-            phaseDeadlineAtMs,
-            mode: "battle",
-          });
-        }
-
-        this.lastSharedBoardPhase = phase;
-        return;
-      }
-    }
-
-    this.sharedBoardRoom.setModeFromGame({
-      phase,
-      phaseDeadlineAtMs,
-      mode: "prep",
-    });
-
-    if (forcePrepSync || this.lastSharedBoardPhase !== phase || this.lastSharedBattleId !== null) {
-      this.syncAllPrepPlacementsToSharedBoard();
-    }
-
-    this.lastSharedBoardPhase = phase;
-    this.lastSharedBattleId = null;
-  }
-
-  private syncAllPrepPlacementsToSharedBoard(): void {
-    if (!this.sharedBoardRoom) {
-      return;
-    }
-
-    const playerIds = this.controller.getPlayerIds?.() ?? [];
-    const bossPlayerId = this.controller.getBossPlayerId?.() ?? null;
-    for (const playerId of playerIds) {
-      const placements = this.controller.getBoardPlacementsForPlayer?.(playerId) ?? [];
-      this.sharedBoardRoom.applyPlacementsFromGame(
-        playerId,
-        placements,
-        playerId === bossPlayerId ? "boss" : "raid",
-      );
-
-      const heroId = this.controller.getSelectedHero?.(playerId) ?? "";
-      const heroCellIndex = this.controller.getHeroPlacementForPlayer?.(playerId) ?? null;
-      this.sharedBoardRoom.applyHeroPlacementFromGame({
-        playerId,
-        heroId,
-        cellIndex: heroCellIndex,
-      });
-
-      const bossId = this.controller.getSelectedBoss?.(playerId) ?? "";
-      const bossCellIndex = this.controller.getBossPlacementForPlayer?.(playerId) ?? null;
-      this.sharedBoardRoom.applyBossPlacementFromGame({
-        playerId,
-        bossId,
-        cellIndex: bossCellIndex,
-      });
-    }
-  }
-
-  /**
-   * 差分をクライアントへ配信
-   */
-  private broadcastDiff(diffResult: ShadowDiffResult): void {
-    this.seq += 1;
-    const timestamp = Date.now();
-
-    const message: ShadowDiffMessage = {
-      type: "shadow_diff",
-      seq: this.seq,
-      roomId: this.sharedBoardRoomId ?? "",
-      sourceVersion: this.currentVersion,
-      ts: timestamp,
-      status: diffResult.status,
-      mismatchCount: diffResult.mismatchCount,
-      mismatchedCells: diffResult.mismatchedCells,
-    };
-
-    const correlationId = `shadow_${this.seq}`;
-    const eventType: "apply_result" | "conflict" | "error" =
-      diffResult.status === "ok"
-        ? "apply_result"
-        : diffResult.status === "mismatch"
-          ? "conflict"
-          : "error";
-
-    const monitorEventBase = {
-      eventId: `shadow_${this.seq}_${timestamp}`,
-      eventType,
-      playerId: "system",
-      revision: this.currentVersion,
-      source: "shared_board",
-      latencyMs: 0,
-      success: diffResult.status === "ok",
-      correlationId,
-      timestamp,
-    };
-
-    if (diffResult.status === "ok") {
-      this.monitor?.logEvent(monitorEventBase);
-    } else {
-      const errorCode =
-        diffResult.status === "mismatch" ? "shadow_mismatch" : `shadow_${diffResult.status}`;
-      const fallbackMessage =
-        diffResult.status === "mismatch"
-          ? `mismatch_count=${diffResult.mismatchCount}`
-          : `shadow status=${diffResult.status}`;
-
-      this.monitor?.logEvent({
-        ...monitorEventBase,
-        errorCode,
-        ...(diffResult.lastError !== undefined
-          ? { errorMessage: diffResult.lastError }
-          : { errorMessage: fallbackMessage }),
-      });
-    }
-
-    // 全クライアントへブロードキャスト
-    this.gameRoom.broadcast("shadow_diff", message);
   }
 
   /**
@@ -965,51 +827,11 @@ export class SharedBoardBridge {
   }
 
   /**
-   * 再接続スケジュール
-   */
-  private scheduleReconnect(options: { silent?: boolean } = {}): void {
-    const silent = options.silent ?? false;
-
-    if (this.reconnectTimer) {
-      return;
-    }
-
-    const reconnectPlan = buildReconnectPlan({
-      reconnectAttempts: this.reconnectAttempts,
-      maxReconnectAttempts: this.maxReconnectAttempts,
-      reconnectBaseDelayMs: this.reconnectBaseDelayMs,
-      reconnectMaxDelayMs: this.reconnectMaxDelayMs,
-    });
-
-    this.state = reconnectPlan.nextState;
-
-    if (!reconnectPlan.shouldSchedule || reconnectPlan.delayMs === null) {
-      if (!silent) {
-        console.error("[SharedBoardBridge] Max reconnection attempts reached");
-      }
-      return;
-    }
-
-    this.reconnectAttempts = reconnectPlan.attempt;
-
-    if (!silent) {
-      console.log(
-        `[SharedBoardBridge] Reconnecting in ${reconnectPlan.delayMs}ms (attempt ${this.reconnectAttempts})`,
-      );
-    }
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      void this.connect();
-    }, reconnectPlan.delayMs);
-  }
-
-  /**
    * 手動で差分チェックをトリガー（外部から呼び出し用）
    */
   public forceCheck(): void {
     if (this.state === "READY") {
-      void this.checkAndBroadcastDiff();
+      this.diffBroadcaster.checkAndBroadcastDiff();
     }
   }
 
@@ -1099,37 +921,13 @@ export class SharedBoardBridge {
    * 接続を終了
    */
   public dispose(): void {
-    this.state = "CLOSED";
-
     this.pendingPlacementChanges.clear();
 
     if (this.placementBatchTimer) {
       clearTimeout(this.placementBatchTimer);
       this.placementBatchTimer = null;
     }
-
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-
-    if (this.unsubscribeHandle) {
-      this.unsubscribeHandle();
-      this.unsubscribeHandle = null;
-    }
-
-    // 配置変更リスナー解除
-    if (this.sharedBoardRoom) {
-      this.sharedBoardRoom.offPlacementChange(this.placementChangeListener ?? undefined);
-    }
-    this.placementChangeListener = null;
-
-    if (this.shadowObserver) {
-      this.shadowObserver.detachSharedBoard();
-      this.shadowObserver = null;
-    }
-
-    this.sharedBoardRoom = null;
+    this.connectionManager.dispose();
     this.monitor = null;
   }
 }

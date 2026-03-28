@@ -41,25 +41,11 @@ describe("SharedBoardBridge validation (T1-2)", () => {
     playerId: string,
     cells: SharedBoardCellState[],
   ): void => {
-    const enqueue = Reflect.get(bridge, "enqueuePlacementChange") as
-      | ((targetPlayerId: string, targetCells: SharedBoardCellState[]) => void)
-      | undefined;
-
-    if (!enqueue) {
-      throw new Error("Expected enqueuePlacementChange to be available");
-    }
-
-    enqueue.call(bridge, playerId, cells);
+    bridge.getTestAccess().enqueuePlacementChange(playerId, cells);
   };
 
   const invokeConnect = async (bridge: SharedBoardBridge): Promise<void> => {
-    const connect = Reflect.get(bridge, "connect") as (() => Promise<void>) | undefined;
-
-    if (!connect) {
-      throw new Error("Expected connect to be available");
-    }
-
-    await connect.call(bridge);
+    await bridge.getTestAccess().connect();
   };
 
   const createBridge = (): {
@@ -90,8 +76,8 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       false,
     );
 
-    Reflect.set(bridge, "state", "READY");
-    Reflect.set(bridge, "monitor", new BridgeMonitor("test-game-room"));
+    bridge.getTestAccess().setRuntimeState({ state: "READY" });
+    bridge.getTestAccess().setResources({ monitor: new BridgeMonitor("test-game-room") });
     createdBridges.push(bridge);
 
     return {
@@ -203,21 +189,13 @@ describe("SharedBoardBridge validation (T1-2)", () => {
         ],
       });
 
-      Reflect.set(bridge, "sharedBoardRoom", {
+      bridge.getTestAccess().setResources({ sharedBoardRoom: {
         applyBattleReplayFromGame,
         setModeFromGame,
         offPlacementChange: vi.fn(),
-      });
+      } });
 
-      const syncSharedBoardViewFromController = Reflect.get(bridge, "syncSharedBoardViewFromController") as
-        | (() => void)
-        | undefined;
-
-      if (!syncSharedBoardViewFromController) {
-        throw new Error("Expected syncSharedBoardViewFromController to be available");
-      }
-
-      syncSharedBoardViewFromController.call(bridge);
+      bridge.getTestAccess().syncSharedBoardViewFromController();
 
       expect(controller.getSharedBattleReplay).toHaveBeenCalledWith("Battle");
       expect(controller.getPlayerStatus).not.toHaveBeenCalled();
@@ -247,7 +225,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       const { bridge, controller } = createBridge();
 
       // CONNECTING状態に変更
-      Reflect.set(bridge, "state", "CONNECTING");
+      bridge.getTestAccess().setRuntimeState({ state: "CONNECTING" });
 
       enqueuePlacementChange(bridge, "player-a", []);
 
@@ -260,7 +238,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       const { bridge, controller } = createBridge();
 
       // DEGRADED状態に変更
-      Reflect.set(bridge, "state", "DEGRADED");
+      bridge.getTestAccess().setRuntimeState({ state: "DEGRADED" });
 
       enqueuePlacementChange(bridge, "player-a", []);
 
@@ -273,7 +251,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       const { bridge, controller } = createBridge();
 
       // CLOSED状態に変更
-      Reflect.set(bridge, "state", "CLOSED");
+      bridge.getTestAccess().setRuntimeState({ state: "CLOSED" });
 
       enqueuePlacementChange(bridge, "player-a", []);
 
@@ -405,11 +383,13 @@ describe("SharedBoardBridge validation (T1-2)", () => {
     it("想定外の接続失敗は従来どおり error ログを出す", async () => {
       const { bridge } = createBridge();
 
-      Reflect.set(bridge, "enabled", true);
-      Reflect.set(bridge, "state", "CONNECTING");
-      Reflect.set(bridge, "sharedBoardRoomId", null);
-      Reflect.set(bridge, "maxReconnectAttempts", 0);
-      Reflect.set(bridge, "findSharedBoardRoomIdWithRetry", vi.fn(async () => {
+      bridge.getTestAccess().setRuntimeState({
+        enabled: true,
+        state: "CONNECTING",
+        sharedBoardRoomId: null,
+        maxReconnectAttempts: 0,
+      });
+      bridge.getTestAccess().setFindSharedBoardRoomIdWithRetry(vi.fn(async () => {
         throw new Error("unexpected lookup failure");
       }));
 
@@ -425,12 +405,14 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       const { bridge } = createBridge();
 
       // まだREADYになったことがない状態をシミュレート
-      Reflect.set(bridge, "enabled", true);
-      Reflect.set(bridge, "state", "CONNECTING");
-      Reflect.set(bridge, "sharedBoardRoomId", null);
-      Reflect.set(bridge, "maxReconnectAttempts", 0);
+      bridge.getTestAccess().setRuntimeState({
+        enabled: true,
+        state: "CONNECTING",
+        sharedBoardRoomId: null,
+        maxReconnectAttempts: 0,
+      });
       // hasEverBeenReady はデフォルトで false
-      Reflect.set(bridge, "findSharedBoardRoomIdWithRetry", vi.fn(async () => {
+      bridge.getTestAccess().setFindSharedBoardRoomIdWithRetry(vi.fn(async () => {
         throw new Error("No shared_board room found");
       }));
 
@@ -444,12 +426,14 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       const { bridge } = createBridge();
 
       // 一度READYになった後の状態をシミュレート
-      Reflect.set(bridge, "enabled", true);
-      Reflect.set(bridge, "state", "CONNECTING");
-      Reflect.set(bridge, "sharedBoardRoomId", null);
-      Reflect.set(bridge, "maxReconnectAttempts", 0);
-      Reflect.set(bridge, "hasEverBeenReady", true); // READYになったことがある
-      Reflect.set(bridge, "findSharedBoardRoomIdWithRetry", vi.fn(async () => {
+      bridge.getTestAccess().setRuntimeState({
+        enabled: true,
+        state: "CONNECTING",
+        sharedBoardRoomId: null,
+        maxReconnectAttempts: 0,
+        hasEverBeenReady: true,
+      });
+      bridge.getTestAccess().setFindSharedBoardRoomIdWithRetry(vi.fn(async () => {
         throw new Error("No shared_board room found");
       }));
 

@@ -16,25 +16,7 @@ import {
   createRoomWithForcedFlags,
   restoreForcedFlagFixtures,
 } from "./feature-flag-test-helper";
-
-const waitForCondition = async (
-  predicate: () => boolean,
-  timeoutMs: number,
-): Promise<void> => {
-  const startMs = Date.now();
-
-  while (Date.now() - startMs < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 15);
-    });
-  }
-
-  throw new Error("Timed out while waiting for condition");
-};
+import { waitForCondition } from "../helpers/wait-helpers";
 
 describe("Feature Flag Regression Tests", () => {
   let testServer!: ColyseusTestServer;

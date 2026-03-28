@@ -35,15 +35,7 @@ describe("SharedBoardBridge batch sync", () => {
     playerId: string,
     cells: SharedBoardCellState[],
   ): void => {
-    const enqueue = Reflect.get(bridge, "enqueuePlacementChange") as
-      | ((targetPlayerId: string, targetCells: SharedBoardCellState[]) => void)
-      | undefined;
-
-    if (!enqueue) {
-      throw new Error("Expected enqueuePlacementChange to be available");
-    }
-
-    enqueue.call(bridge, playerId, cells);
+    bridge.getTestAccess().enqueuePlacementChange(playerId, cells);
   };
 
   const createBridge = (): {
@@ -71,8 +63,8 @@ describe("SharedBoardBridge batch sync", () => {
       false,
     );
 
-    Reflect.set(bridge, "state", "READY");
-    Reflect.set(bridge, "monitor", new BridgeMonitor("test-game-room"));
+    bridge.getTestAccess().setRuntimeState({ state: "READY" });
+    bridge.getTestAccess().setResources({ monitor: new BridgeMonitor("test-game-room") });
     createdBridges.push(bridge);
 
     return {
@@ -306,13 +298,13 @@ describe("SharedBoardBridge batch sync", () => {
       const { bridge } = createBridge();
 
       // sharedBoardRoomのモックを設定
-      const mockApplyPlacementsFromGame = vi.fn(() => ({ applied: true, skipped: 0 }));
+      const mockApplyPlacementsFromGame = vi.fn(() => ({ applied: 1, skipped: 0 }));
       const mockSharedBoardRoom = {
         applyPlacementsFromGame: mockApplyPlacementsFromGame,
         offPlacementChange: vi.fn(),
       };
-      Reflect.set(bridge, "sharedBoardRoom", mockSharedBoardRoom);
-      Reflect.set(bridge, "state", "READY");
+      bridge.getTestAccess().setResources({ sharedBoardRoom: mockSharedBoardRoom });
+      bridge.getTestAccess().setRuntimeState({ state: "READY" });
 
       const placements = [{ cell: 0, unitType: "vanguard" as const }];
       await bridge.sendPlacementToSharedBoard("player-a", placements);
@@ -350,8 +342,8 @@ describe("SharedBoardBridge batch sync", () => {
         }),
         offPlacementChange: vi.fn(),
       };
-      Reflect.set(bridge, "sharedBoardRoom", mockSharedBoardRoom);
-      Reflect.set(bridge, "state", "READY");
+      bridge.getTestAccess().setResources({ sharedBoardRoom: mockSharedBoardRoom });
+      bridge.getTestAccess().setRuntimeState({ state: "READY" });
 
       await bridge.sendPlacementToSharedBoard("player-a", [
         { cell: 0, unitType: "vanguard" },

@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MatchRoomState } from "../../src/server/schema/match-room-state";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
 import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
-import { MVP_FLAGS, MIGRATION_FLAGS, FLAG_ENV_VARS } from "./feature-flag-test-helper";
+import {
+  MVP_FLAGS,
+  MIGRATION_FLAGS,
+  FLAG_ENV_VARS,
+  captureManagedFlagEnv,
+  restoreManagedFlagEnv,
+} from "./feature-flag-test-helper";
 
 /**
  * Helper to set env vars from flag configuration.
@@ -34,31 +40,20 @@ function clearFlagEnvVars(): void {
 }
 
 describe("Feature Flag Integration", () => {
-  // Store original env vars for proper restoration
-  const originalEnvVars: Record<string, string | undefined> = {};
+  let originalEnvVars = captureManagedFlagEnv();
 
   beforeEach(() => {
-    // Save all flag env vars before each test
-    for (const envVarName of Object.values(FLAG_ENV_VARS)) {
-      originalEnvVars[envVarName] = process.env[envVarName];
-    }
+    originalEnvVars = captureManagedFlagEnv();
     // Clear all flag env vars for clean state
     clearFlagEnvVars();
     // Reset singleton instance
-    (FeatureFlagService as any).instance = undefined;
+    FeatureFlagService.resetForTests();
   });
 
   afterEach(() => {
-    // Restore original env vars individually (not process.env = originalEnv which is brittle)
-    for (const [envVarName, originalValue] of Object.entries(originalEnvVars)) {
-      if (originalValue === undefined) {
-        delete process.env[envVarName];
-      } else {
-        process.env[envVarName] = originalValue;
-      }
-    }
+    restoreManagedFlagEnv(originalEnvVars);
     // Reset singleton instance
-    (FeatureFlagService as any).instance = undefined;
+    FeatureFlagService.resetForTests();
   });
 
   describe("FeatureFlagService", () => {
@@ -83,7 +78,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "1";
 
       // Reset singleton instance to pick up new env vars
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       const flags = service.getFlags();
@@ -99,7 +94,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_SHARED_POOL = "FALSE";
 
       // Reset singleton instance to pick up new env vars
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       const flags = service.getFlags();
@@ -115,7 +110,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "true";
 
       // Reset singleton instance to pick up new env vars
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       expect(service.isFeatureEnabled("enableHeroSystem")).toBe(true);
@@ -135,7 +130,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "false";
       process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "false";
 
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -155,7 +150,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "true";
       process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "false";
 
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -172,7 +167,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_BOSS_EXCLUSIVE_SHOP = "false";
       process.env.FEATURE_ENABLE_SHARED_BOARD_SHADOW = "false";
 
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).toThrow(
@@ -195,7 +190,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "false";
       process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "false";
 
-      (FeatureFlagService as any).instance = undefined;
+      FeatureFlagService.resetForTests();
       const service = FeatureFlagService.getInstance();
 
       expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -214,7 +209,7 @@ describe("Feature Flag Integration", () => {
         process.env.FEATURE_ENABLE_TOUHOU_FACTIONS = "true";
         process.env.FEATURE_ENABLE_PER_UNIT_SHARED_POOL = "true";
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         const flags = service.getFlags();
@@ -231,7 +226,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: false,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -245,7 +240,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: false,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -259,7 +254,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: false,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -273,7 +268,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: true,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).not.toThrow();
@@ -287,7 +282,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: false,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).toThrow(
@@ -303,7 +298,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: true,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).toThrow(
@@ -319,7 +314,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: true,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).toThrow(
@@ -338,7 +333,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: false,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).toThrow(
@@ -358,7 +353,7 @@ describe("Feature Flag Integration", () => {
           enablePerUnitSharedPool: false,
         });
 
-        (FeatureFlagService as any).instance = undefined;
+        FeatureFlagService.resetForTests();
         const service = FeatureFlagService.getInstance();
 
         expect(() => service.validateFlagConfiguration()).not.toThrow();

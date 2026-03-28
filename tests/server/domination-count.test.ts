@@ -2,8 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import { GameLoopState } from "../../src/domain/game-loop-state";
 import { MatchRoomController } from "../../src/server/match-room-controller";
+import { createStartedMatchRoomController, type MatchRoomControllerOptions } from "../helpers/controller-factory";
 
-const controllerOptions = {
+const controllerOptions: Partial<MatchRoomControllerOptions> = {
   readyAutoStartMs: 60_000,
   prepDurationMs: 30_000,
   battleDurationMs: 10_000,
@@ -26,19 +27,9 @@ const controllerOptions = {
 };
 
 function createStartedController(): MatchRoomController {
-  const controller = new MatchRoomController(
-    ["p1", "p2", "p3", "p4"],
-    1_000,
-    controllerOptions,
-  );
-
-  controller.setReady("p1", true);
-  controller.setReady("p2", true);
-  controller.setReady("p3", true);
-  controller.setReady("p4", true);
-  controller.startIfReady(2_000);
-
-  return controller;
+  return createStartedMatchRoomController({
+    options: controllerOptions,
+  });
 }
 
 function getPhaseTarget(roundIndex: number): number {

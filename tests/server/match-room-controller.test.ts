@@ -11,8 +11,10 @@ import {
   combatCellToRaidBoardIndex,
 } from "../../src/shared/board-geometry";
 import {
+  captureManagedFlagEnv,
   FLAG_CONFIGURATIONS,
   FLAG_ENV_VARS,
+  restoreManagedFlagEnv,
   withFlags,
 } from "./feature-flag-test-helper";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
@@ -50,14 +52,7 @@ const advanceRaidRoundWithMinimalDurations = (
   const targetHp = getPhaseHpTarget(roundIndex);
   controller.setPendingPhaseDamageForTest(targetHp);
   controller.advanceByTime(startTimeMs + 2);
-  const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
-    opponentId: string;
-    won: boolean;
-    damageDealt: number;
-    damageTaken: number;
-    survivors: number;
-    opponentSurvivors: number;
-  }>;
+  const { battleResultsByPlayer } = controller.getTestAccess();
   for (const raidPlayerId of ["p1", "p3", "p4"]) {
     battleResultsByPlayer.set(raidPlayerId, {
       opponentId: "p2",
@@ -94,21 +89,21 @@ function getPhaseHpTarget(roundIndex: number): number {
 }
 
 describe("MatchRoomController", () => {
-  let originalEnv: NodeJS.ProcessEnv;
+  let originalEnv = captureManagedFlagEnv();
 
   beforeEach(() => {
-    originalEnv = { ...process.env };
+    originalEnv = captureManagedFlagEnv();
     for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
       process.env[envVarName] = String(
         FLAG_CONFIGURATIONS.ALL_DISABLED[flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED],
       );
     }
-    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+    FeatureFlagService.resetForTests();
   });
 
   afterEach(() => {
-    process.env = originalEnv;
-    (FeatureFlagService as unknown as { instance?: unknown }).instance = undefined;
+    restoreManagedFlagEnv(originalEnv);
+    FeatureFlagService.resetForTests();
   });
 
   test("4人全員Readyなら締切前でも試合開始できる", () => {
@@ -203,15 +198,7 @@ describe("MatchRoomController", () => {
     controller.setReady("p4", true);
     controller.startIfReady(2_000);
 
-    const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
-      opponentId: string;
-      won: boolean;
-      damageDealt: number;
-      damageTaken: number;
-      survivors: number;
-      opponentSurvivors: number;
-      timeline?: BattleTimelineEvent[];
-    }>;
+    const { battleResultsByPlayer } = controller.getTestAccess();
 
     battleResultsByPlayer.set("p1", {
       opponentId: "p4",
@@ -324,12 +311,7 @@ describe("MatchRoomController", () => {
             1_000,
             controllerOptions,
           );
-          const battleResolutionService = Reflect.get(controller, "battleResolutionService") as {
-            resolveMatchup: (input: {
-              leftPlacements: Array<{ cell: number; unitType: string }>;
-              rightPlacements: Array<{ cell: number; unitType: string }>;
-            }) => unknown;
-          };
+          const { battleResolutionService } = controller.getTestAccess();
           const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
 
           controller.setReady("p1", true);
@@ -593,25 +575,7 @@ describe("MatchRoomController", () => {
             1_000,
             controllerOptions,
           );
-          const battleResolutionService = Reflect.get(controller, "battleResolutionService") as {
-            resolveMatchup: (input: {
-              leftBattleUnits: Array<{
-                id: string;
-                buffModifiers: { attackMultiplier: number };
-              }>;
-              rightBattleUnits: Array<{
-                id: string;
-                buffModifiers: { attackMultiplier: number };
-              }>;
-            }) => unknown;
-          };
-          const spellCardHandler = Reflect.get(controller, "spellCardHandler") as {
-            getCombatModifiersForPlayer: (playerId: string) => {
-              attackMultiplier: number;
-              defenseMultiplier: number;
-              attackSpeedMultiplier: number;
-            } | null;
-          };
+          const { battleResolutionService, spellCardHandler } = controller.getTestAccess();
           const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
           vi.spyOn(spellCardHandler, "getCombatModifiersForPlayer").mockImplementation((playerId) => {
             const attackMultipliers: Record<string, number> = {
@@ -2047,14 +2011,7 @@ describe("MatchRoomController", () => {
           controller.setPendingPhaseDamageForTest(100);
 
           controller.advanceByTime(42_000);
-          const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
-            opponentId: string;
-            won: boolean;
-            damageDealt: number;
-            damageTaken: number;
-            survivors: number;
-            opponentSurvivors: number;
-          }>;
+          const { battleResultsByPlayer } = controller.getTestAccess();
           battleResultsByPlayer.set("p1", {
             opponentId: "p2",
             won: false,
@@ -2126,14 +2083,7 @@ describe("MatchRoomController", () => {
             nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
           }
 
-          const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
-            opponentId: string;
-            won: boolean;
-            damageDealt: number;
-            damageTaken: number;
-            survivors: number;
-            opponentSurvivors: number;
-          }>;
+          const { battleResultsByPlayer } = controller.getTestAccess();
 
           expect(controller.roundIndex).toBe(12);
           expect(controller.phase).toBe("Prep");
@@ -2209,21 +2159,13 @@ describe("MatchRoomController", () => {
             nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
           }
 
-          const gameLoopState = Reflect.get(controller, "gameLoopState") as {
-            consumeLife: (playerId: string, amount?: number) => void;
-          };
+          const { gameLoopState, battleResultsByPlayer } = controller.getTestAccess();
+          if (!gameLoopState) {
+            throw new Error("Expected gameLoopState");
+          }
           gameLoopState.consumeLife("p1", 2);
           gameLoopState.consumeLife("p3", 2);
           gameLoopState.consumeLife("p4", 2);
-
-          const battleResultsByPlayer = Reflect.get(controller, "battleResultsByPlayer") as Map<string, {
-            opponentId: string;
-            won: boolean;
-            damageDealt: number;
-            damageTaken: number;
-            survivors: number;
-            opponentSurvivors: number;
-          }>;
 
           controller.advanceByTime(nowMs + 1);
           battleResultsByPlayer.set("p1", {
@@ -2418,12 +2360,7 @@ describe("MatchRoomController", () => {
 
       controller.advanceByTime(32_000);
 
-      const livePlacements = Reflect.get(controller as object, "boardPlacementsByPlayer") as
-        | Map<string, Array<{ cell: number; unitType: string; starLevel?: number }>>
-        | undefined;
-      if (!livePlacements) {
-        throw new Error("Expected boardPlacementsByPlayer to exist");
-      }
+      const { boardPlacementsByPlayer: livePlacements } = controller.getTestAccess();
 
       livePlacements.set("p1", [{ cell: 0, unitType: "mage" }]);
 
@@ -2492,9 +2429,7 @@ describe("MatchRoomController", () => {
 
     controller.advanceByTime(32_000);
 
-    const snapshotMap = Reflect.get(controller as object, "battleInputSnapshotByPlayer") as
-      | Map<string, Array<{ cell: number; unitType: string; starLevel?: number }>>
-      | undefined;
+    const { battleInputSnapshotByPlayer: snapshotMap } = controller.getTestAccess();
 
     expect(snapshotMap?.get("p1")).toEqual(
       expect.arrayContaining([

@@ -3,23 +3,26 @@ import { ServerError } from "@colyseus/core";
 
 import { MatchRoomController } from "../match-room-controller";
 import { isBossCharacterId } from "../../shared/boss-characters";
-import { resolveCorrelationId } from "./game-room/correlation-id";
 import { syncRanking } from "./game-room/ranking-sync";
 import {
   syncPlayerStateFromController,
   syncPlayerStateFromCommandResult,
 } from "./game-room/player-state-sync";
 import {
-  canAcceptBossPreference,
   resetSelectionStage,
   resolveBossPlayerId,
 } from "./game-room/lobby-role-selection";
-import { handleAdminQuery } from "./game-room/admin-query-handler";
 import { logPrepCommandActions } from "./game-room/prep-command-logging";
+import type { LoggedPrepCommandPayload } from "./game-room/prep-command-payload";
 import {
-  buildPrepCommandPayload,
-  type LoggedPrepCommandPayload,
-} from "./game-room/prep-command-payload";
+  handleAdminQueryMessage,
+  handleBossPreferenceMessage,
+  handleBossSelectMessage,
+  handleHeroSelectMessage,
+  handlePrepCommandMessage,
+  handleReadyMessage,
+  type GameRoomMessageHandlerDeps,
+} from "./game-room/message-handler";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
@@ -146,39 +149,43 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     validateRosterAvailability(flags);
 
     this.onMessage<ReadyMessage>(CLIENT_MESSAGE_TYPES.READY, async (client, message) => {
-      await this.handleReady(client, message);
+      await handleReadyMessage(client, message, this.createMessageHandlerDeps());
     });
 
     this.onMessage<BossPreferenceMessage>(
       CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE,
       (client, message) => {
-        this.handleBossPreference(client, message);
+        handleBossPreferenceMessage(client, message, this.createMessageHandlerDeps());
       },
     );
 
     this.onMessage<BossSelectMessage>(
       CLIENT_MESSAGE_TYPES.BOSS_SELECT,
       async (client, message) => {
-        await this.handleBossSelect(client, message);
+        await handleBossSelectMessage(client, message, this.createMessageHandlerDeps());
       },
     );
 
     this.onMessage<PrepCommandMessage>(
       CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       (client, message) => {
-        this.handlePrepCommand(client, message);
+        handlePrepCommandMessage(client, message, this.createMessageHandlerDeps());
       },
     );
 
     this.onMessage<AdminQueryMessage>(
       CLIENT_MESSAGE_TYPES.ADMIN_QUERY,
       (client, message) => {
-        this.handleAdminQuery(client, message);
+        handleAdminQueryMessage(client, message, this.createMessageHandlerDeps());
       },
     );
 
     this.onMessage(CLIENT_MESSAGE_TYPES.HERO_SELECT, (client, message) => {
-      void this.handleHeroSelect(client, message as { heroId: string });
+      void handleHeroSelectMessage(
+        client,
+        message as { heroId: string },
+        this.createMessageHandlerDeps(),
+      );
     });
 
     this.clock.setInterval(() => {
@@ -577,229 +584,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     player.connected = true;
   }
 
-  private async handleReady(client: Client, message: ReadyMessage): Promise<void> {
-    const player = this.state.players.get(client.sessionId);
-
-    if (!player || player.isSpectator) {
-      return;
-    }
-
-    const nextReady = message.ready ?? true;
-    player.ready = nextReady;
-    this.controller?.setReady(client.sessionId, nextReady);
-
-    if (this.controller) {
-      await this.tryStartMatch(Date.now());
-    }
-  }
-
-  private handleBossPreference(client: Client, message: BossPreferenceMessage | null | undefined): void {
-    if (!this.isBossRoleSelectionEnabled()) {
-      return;
-    }
-
-    if (!canAcceptBossPreference({
-      phase: this.state.phase,
-      lobbyStage: this.state.lobbyStage,
-    })) {
-      return;
-    }
-
-    if (!isRecordMessage(message)) {
-      return;
-    }
-
-    const player = this.state.players.get(client.sessionId);
-    if (!player || player.isSpectator || typeof message.wantsBoss !== "boolean") {
-      return;
-    }
-
-    player.wantsBoss = message.wantsBoss;
-    this.broadcastRoundState();
-  }
-
-  private async handleBossSelect(client: Client, message: BossSelectMessage | null | undefined): Promise<void> {
-    if (!this.controller) {
-      return;
-    }
-
-    if (!isRecordMessage(message) || typeof message.bossId !== "string") {
-      client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
-        accepted: false,
-        code: "INVALID_PAYLOAD",
-      });
-      return;
-    }
-
-    const player = this.state.players.get(client.sessionId);
-    if (
-      !player
-      || player.isSpectator
-      || !this.isBossRoleSelectionEnabled()
-      || this.state.phase !== "Waiting"
-      || this.state.lobbyStage !== "selection"
-      || player.role !== "boss"
-      || !isBossCharacterId(message.bossId)
-      || client.sessionId !== this.state.bossPlayerId
-    ) {
-      client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
-        accepted: false,
-        code: "INVALID_PAYLOAD",
-      });
-      return;
-    }
-
-    player.selectedBossId = message.bossId;
-    this.broadcastRoundState();
-    await this.tryStartMatch(Date.now());
-  }
-
-  private async handleHeroSelect(client: Client, message: { heroId: string } | null | undefined): Promise<void> {
-    if (!this.controller) {
-      return;
-    }
-
-    if (!isRecordMessage(message)) {
-      if (this.isBossRoleSelectionEnabled()) {
-        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
-          accepted: false,
-          code: "INVALID_PAYLOAD",
-        });
-      }
-      return;
-    }
-
-    const player = this.state.players.get(client.sessionId);
-
-    if (!player || player.isSpectator) {
-      return;
-    }
-
-    // Check if hero system is enabled
-    if (!this.state.featureFlagsEnableHeroSystem) {
-      return;
-    }
-
-    if (this.isBossRoleSelectionEnabled()) {
-      if (
-        this.state.phase !== "Waiting"
-        || this.state.lobbyStage !== "selection"
-        || player.role !== "raid"
-      ) {
-        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
-          accepted: false,
-          code: "INVALID_PAYLOAD",
-        });
-        return;
-      }
-    }
-
-    const heroId = message.heroId;
-
-    if (!heroId || typeof heroId !== "string") {
-      if (this.isBossRoleSelectionEnabled()) {
-        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
-          accepted: false,
-          code: "INVALID_PAYLOAD",
-        });
-      }
-      return;
-    }
-
-    try {
-      this.controller.selectHero(client.sessionId, heroId);
-      player.selectedHeroId = heroId;
-      if (this.isBossRoleSelectionEnabled()) {
-        this.broadcastRoundState();
-        await this.tryStartMatch(Date.now());
-      }
-    } catch (error) {
-      if (this.isBossRoleSelectionEnabled()) {
-        client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, {
-          accepted: false,
-          code: "INVALID_PAYLOAD",
-        });
-        return;
-      }
-
-      console.error(`Hero selection error for ${client.sessionId}:`, error);
-    }
-  }
-
-  private handlePrepCommand(client: Client, message: PrepCommandMessage): void {
-    if (!this.controller) {
-      return;
-    }
-
-    const correlationId = resolveCorrelationId(
-      client.sessionId,
-      message.cmdSeq,
-      message.correlationId,
-    );
-
-    const commandPayload = buildPrepCommandPayload(message);
-
-    if (this.isSharedBoardAuthoritativePrep() && commandPayload?.boardPlacements !== undefined) {
-      delete commandPayload.boardPlacements;
-    }
-
-    // Capture shop offers snapshot before submit to preserve isRumorUnit info
-    const shopOffersSnapshot = commandPayload?.shopBuySlotIndex !== undefined
-      ? this.controller.getShopOffersForPlayer(client.sessionId)
-      : undefined;
-
-    this.sharedBoardBridge?.logGameCommandEvent({
-      playerId: client.sessionId,
-      eventType: "apply_request",
-      success: true,
-      latencyMs: 0,
-      correlationId,
-    });
-
-    const submitStartedAtMs = Date.now();
-
-    const result = this.controller.submitPrepCommand(
-      client.sessionId,
-      message.cmdSeq,
-      submitStartedAtMs,
-      commandPayload,
-    );
-
-    const submitLatencyMs = Date.now() - submitStartedAtMs;
-
-    if (result.accepted) {
-      this.sharedBoardBridge?.logGameCommandEvent({
-        playerId: client.sessionId,
-        eventType: "apply_result",
-        success: true,
-        latencyMs: submitLatencyMs,
-        correlationId,
-      });
-
-      this.logPrepCommandActions(client.sessionId, commandPayload, shopOffersSnapshot);
-    } else {
-      this.sharedBoardBridge?.logGameCommandEvent({
-        playerId: client.sessionId,
-        eventType: "error",
-        success: false,
-        latencyMs: submitLatencyMs,
-        correlationId,
-        errorCode: result.code,
-        errorMessage: result.code,
-      });
-    }
-
-    const player = this.state.players.get(client.sessionId);
-
-    if (result.accepted && player) {
-      this.syncPlayerFromCommandResult(player, client.sessionId, message.cmdSeq);
-      const latestBoardPlacements = this.controller.getBoardPlacementsForPlayer(client.sessionId);
-      void this.sharedBoardBridge?.sendPlacementToSharedBoard(client.sessionId, latestBoardPlacements);
-    }
-
-    client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);
-  }
-
   private syncPlayerFromCommandResult(
     player: PlayerPresenceState,
     sessionId: string,
@@ -824,41 +608,6 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
     }, { shopOffersSnapshot });
-  }
-
-  private handleAdminQuery(client: Client, message: AdminQueryMessage): void {
-    const kind = typeof message?.kind === "string" ? message.kind : "";
-    const correlationId =
-      typeof message?.correlationId === "string"
-        ? message.correlationId.trim() || undefined
-        : undefined;
-
-    if (kind.length === 0) {
-      client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
-        ok: false,
-        kind: "dashboard",
-        timestamp: Date.now(),
-        correlationId,
-        error: "INVALID_KIND",
-      });
-      return;
-    }
-
-    if (kind === "player_snapshot" && !this.isAdminQueryClient(client)) {
-      client.send(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, {
-        ok: false,
-        kind,
-        timestamp: Date.now(),
-        correlationId,
-        error: "FORBIDDEN",
-      });
-      return;
-    }
-
-    handleAdminQuery(client, message, {
-      bridge: this.sharedBoardBridge,
-      getPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
-    });
   }
 
   private isAdminQueryClient(client: Client): boolean {
@@ -1129,6 +878,34 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     return "local";
   }
 
+  private createMessageHandlerDeps(): GameRoomMessageHandlerDeps {
+    return {
+      state: this.state,
+      setPlayerReady: (sessionId, ready) => {
+        this.controller?.setReady(sessionId, ready);
+      },
+      tryStartMatch: async (nowMs) => {
+        await this.tryStartMatch(nowMs);
+      },
+      isBossRoleSelectionEnabled: () => this.isBossRoleSelectionEnabled(),
+      broadcastRoundState: () => {
+        this.broadcastRoundState();
+      },
+      isSharedBoardAuthoritativePrep: () => this.isSharedBoardAuthoritativePrep(),
+      syncPlayerFromCommandResult: (player, sessionId, cmdSeq) => {
+        this.syncPlayerFromCommandResult(player, sessionId, cmdSeq);
+      },
+      logPrepCommandActions: (sessionId, commandPayload, shopOffersSnapshot) => {
+        this.logPrepCommandActions(sessionId, commandPayload, shopOffersSnapshot);
+      },
+      buildAdminPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
+      isAdminQueryClient: (client) => this.isAdminQueryClient(client),
+      getPlayer: (sessionId) => this.state.players.get(sessionId) ?? null,
+      getController: () => this.controller,
+      getSharedBoardBridge: () => this.sharedBoardBridge,
+    };
+  }
+
   public onDispose(): void {
     // Output match summary log
     if (this.matchLogger && this.controller) {
@@ -1215,8 +992,4 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     this.controller.setPendingPhaseDamageForTest(damageValue);
   }
-}
-
-function isRecordMessage(message: unknown): message is Record<string, unknown> {
-  return message !== null && typeof message === "object";
 }

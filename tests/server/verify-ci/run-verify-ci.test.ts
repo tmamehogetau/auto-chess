@@ -17,6 +17,7 @@ describe("run-verify-ci", () => {
       { name: "e2e-b", elapsedMs: 20_000 },
     ]);
 
+    expect(output).toContain("reported-stage-total");
     expect(output).toContain("typecheck");
     expect(output).toContain("server-parallel");
     expect(output).toContain("e2e-a");
@@ -46,6 +47,23 @@ describe("run-verify-ci", () => {
     const stageNames = resolveRequestedStages("typecheck,e2e-a").map((stage: { name: string }) => stage.name);
 
     expect(stageNames).toEqual(["typecheck", "e2e-a"]);
+  });
+
+  test("groups compatible stages into parallel execution batches while preserving summary order", async () => {
+    const {
+      DEFAULT_VERIFY_CI_STAGES,
+      groupStagesForExecution,
+    } = await import("../../../scripts/run-verify-ci.mjs");
+
+    const groupedStageNames = groupStagesForExecution(DEFAULT_VERIFY_CI_STAGES)
+      .map((batch: Array<{ name: string }>) => batch.map((stage) => stage.name));
+
+    expect(groupedStageNames).toEqual([
+      ["typecheck", "client", "server-audit"],
+      ["server-parallel"],
+      ["server-serial"],
+      ["e2e-a", "e2e-b"],
+    ]);
   });
 
   test("workflow fans out verify:ci with VERIFY_CI_STAGES", async () => {

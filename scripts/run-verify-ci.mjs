@@ -8,9 +8,9 @@ const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 const NPM_COMMAND = process.platform === "win32" ? "npm.cmd" : "npm";
 
 export const DEFAULT_VERIFY_CI_STAGES = [
-  { name: "typecheck", command: NPM_COMMAND, args: ["run", "--silent", "typecheck"] },
-  { name: "client", command: NPM_COMMAND, args: ["run", "--silent", "test:client:ci"] },
-  { name: "server-audit", command: NPM_COMMAND, args: ["run", "--silent", "test:server:audit"] },
+  { name: "typecheck", command: NPM_COMMAND, args: ["run", "--silent", "typecheck"], parallelGroup: "preflight" },
+  { name: "client", command: NPM_COMMAND, args: ["run", "--silent", "test:client:ci"], parallelGroup: "preflight" },
+  { name: "server-audit", command: NPM_COMMAND, args: ["run", "--silent", "test:server:audit"], parallelGroup: "preflight" },
   {
     name: "server-parallel",
     command: NPM_COMMAND,
@@ -21,8 +21,8 @@ export const DEFAULT_VERIFY_CI_STAGES = [
     command: NPM_COMMAND,
     args: ["run", "--silent", "test:server:serial-required"],
   },
-  { name: "e2e-a", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:a"] },
-  { name: "e2e-b", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:b"] },
+  { name: "e2e-a", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:a"], parallelGroup: "e2e" },
+  { name: "e2e-b", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:b"], parallelGroup: "e2e" },
 ];
 
 function formatElapsedMs(elapsedMs) {
@@ -31,6 +31,9 @@ function formatElapsedMs(elapsedMs) {
 
 export function formatStageSummary(stageResults) {
   const lines = ["verify:ci elapsed summary"];
+  const totalElapsedMs = stageResults.reduce((sum, stage) => sum + stage.elapsedMs, 0);
+
+  lines.push(`- reported-stage-total: elapsed ${formatElapsedMs(totalElapsedMs)}`);
 
   for (const stage of stageResults) {
     lines.push(`- ${stage.name}: elapsed ${formatElapsedMs(stage.elapsedMs)}`);
@@ -60,6 +63,31 @@ export function resolveRequestedStages(requestedStageNames, stages = DEFAULT_VER
   }
 
   return requestedNames.map((name) => stageMap.get(name));
+}
+
+export function groupStagesForExecution(stages) {
+  const batches = [];
+
+  for (const stage of stages) {
+    const currentBatch = batches.at(-1);
+    const stageParallelGroup = stage.parallelGroup ?? null;
+
+    if (
+      currentBatch &&
+      currentBatch.parallelGroup !== null &&
+      currentBatch.parallelGroup === stageParallelGroup
+    ) {
+      currentBatch.stages.push(stage);
+      continue;
+    }
+
+    batches.push({
+      parallelGroup: stageParallelGroup,
+      stages: [stage],
+    });
+  }
+
+  return batches.map((batch) => batch.stages);
 }
 
 function quoteWindowsArg(arg) {
@@ -106,16 +134,22 @@ export async function runStage(stage, repoRoot = DEFAULT_REPO_ROOT) {
   };
 }
 
+export async function runStageBatch(stages, repoRoot = DEFAULT_REPO_ROOT) {
+  return Promise.all(stages.map((stage) => runStage(stage, repoRoot)));
+}
+
 export async function runVerifyCi(stages = DEFAULT_VERIFY_CI_STAGES, repoRoot = DEFAULT_REPO_ROOT) {
+  const startedAt = Date.now();
   const stageResults = [];
 
-  for (const stage of stages) {
-    const result = await runStage(stage, repoRoot);
-    stageResults.push(result);
+  for (const batch of groupStagesForExecution(stages)) {
+    const batchResults = await runStageBatch(batch, repoRoot);
+    stageResults.push(...batchResults);
 
-    if (result.exitCode !== 0) {
+    if (batchResults.some((result) => result.exitCode !== 0)) {
       return {
         ok: false,
+        totalElapsedMs: Date.now() - startedAt,
         stageResults,
       };
     }
@@ -123,6 +157,7 @@ export async function runVerifyCi(stages = DEFAULT_VERIFY_CI_STAGES, repoRoot = 
 
   return {
     ok: true,
+    totalElapsedMs: Date.now() - startedAt,
     stageResults,
   };
 }
@@ -130,7 +165,12 @@ export async function runVerifyCi(stages = DEFAULT_VERIFY_CI_STAGES, repoRoot = 
 async function main() {
   const selectedStages = resolveRequestedStages(process.env.VERIFY_CI_STAGES);
   const result = await runVerifyCi(selectedStages);
-  console.log(formatStageSummary(result.stageResults));
+  console.log(
+    [
+      `verify:ci wall time ${formatElapsedMs(result.totalElapsedMs)}`,
+      formatStageSummary(result.stageResults),
+    ].join("\n"),
+  );
 
   if (!result.ok) {
     process.exit(1);

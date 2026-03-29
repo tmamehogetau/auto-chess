@@ -95,6 +95,8 @@ describe("ShopOfferBuilder", () => {
       expect(mockDeps.getRumorUnitForRound).toHaveBeenCalledWith(1);
       expect(offers[0]).toMatchObject({
         unitType: "vanguard",
+        unitId: "rumor_test_vanguard_r1",
+        displayName: "テスト噂ユニット",
         rarity: 2,
         cost: 2,
         isRumorUnit: true,

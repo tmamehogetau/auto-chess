@@ -117,7 +117,7 @@ export const HEROES: Hero[] = [
   },
   // 経済型 - ゴールドボーナス（戦闘効果のみ、ゴールド加算は別途実装予定）
   {
-    id: 'megumu',
+    id: 'jyoon',
     name: '女苑',
     role: 'economy',
     synergyBonusType: 'assassin',

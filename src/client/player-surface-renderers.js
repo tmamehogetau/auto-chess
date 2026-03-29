@@ -21,7 +21,7 @@ const HERO_DETAILS = {
   marisa: { name: "魔理沙", role: "dps", hp: 100, attack: 25 },
   okina: { name: "隠岐奈", role: "support", hp: 110, attack: 16 },
   keiki: { name: "袿姫", role: "tank", hp: 180, attack: 12 },
-  megumu: { name: "女苑", role: "economy", hp: 90, attack: 14 },
+  jyoon: { name: "女苑", role: "economy", hp: 90, attack: 14 },
 };
 
 const BOSS_DETAILS = {

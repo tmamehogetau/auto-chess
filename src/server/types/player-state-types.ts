@@ -50,7 +50,7 @@ export interface BattleResultSurvivorSnapshot {
  */
 export interface ShopOfferView {
   unitType: string;
-  unitId?: string;
+  unitId: string;
   displayName?: string;
   factionId?: string;
   cost: number;

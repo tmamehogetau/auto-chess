@@ -1815,7 +1815,7 @@ describe("shared-board client", () => {
           unitId: "koishi-player-1-4",
           ownerId: "player-1",
           displayName: "古明地こいし",
-          portraitKey: "Koishi",
+          portraitKey: "koishi",
         },
       },
       cursors: {},
@@ -1829,7 +1829,7 @@ describe("shared-board client", () => {
 
     const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };
     expect(portrait?.className).toContain("shared-board-portrait");
-    expect(portrait?.src).toBe("/pics/Koishi.png");
+    expect(portrait?.src).toBe("/pics/processed/front/koishi.png");
     expect(portrait?.alt).toBe("古明地こいし");
 
     const nameplate = unit?.children[2];
@@ -1882,7 +1882,7 @@ describe("shared-board client", () => {
           unitId: "koishi-player-1-4",
           ownerId: "player-1",
           displayName: "古明地こいし",
-          portraitKey: "Koishi",
+          portraitKey: "koishi",
         },
       },
       cursors: {},
@@ -1895,7 +1895,7 @@ describe("shared-board client", () => {
     expect(unit?.className).toContain("shared-board-unit");
 
     const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };
-    expect(portrait?.src).not.toBe("/pics/Koishi.png");
+    expect(portrait?.src).not.toBe("/pics/processed/front/koishi.png");
     expect(portrait?.alt).not.toBe("古明地こいし");
 
     const nameplate = unit?.children[2];

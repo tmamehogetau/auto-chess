@@ -2,7 +2,6 @@ import {
   parseAutoDelayMs,
   parseAutoFillBots,
   parseAutoFlag,
-  parseBoardUnitToken,
   parsePlacementsSpec,
 } from "./manual-check-utils.js";
 
@@ -59,6 +58,7 @@ import {
   DEFAULT_ROOM_NAME,
   SERVER_MESSAGE_TYPES,
 } from "./game-room-session.js";
+import { resolveFrontPortraitUrl, resolveShopPortraitUrl } from "./portrait-resolver.js";
 
 const VALID_SET_IDS = new Set(["set1", "set2"]);
 
@@ -117,7 +117,7 @@ const HEROES = [
     },
   },
   {
-    id: 'megumu',
+    id: 'jyoon',
     name: '女苑',
     role: 'economy',
     hp: 90,
@@ -144,7 +144,7 @@ const BOSS_CHARACTERS = [
     id: "remilia",
     name: "レミリア",
     roleCopy: "紅魔館の主",
-    portraitSrc: "/pics/Remilia.png",
+    portraitKey: "remilia",
   },
 ];
 
@@ -343,10 +343,6 @@ let roundSummaryAutoHideTimeout = null;
 let currentSharedPoolInventory = null;
 let lastShownBattleRound = -1;
 let battleResultAutoHideTimeout = null;
-
-// Unit death animation state
-let previousBoardUnits = new Map(); // Track previous board state for death detection
-const DEFEATED_UNITS = new Set(); // Track units currently being animated as defeated
 
 // Hero selection state
 let selectedHeroId = null;
@@ -616,10 +612,6 @@ async function connect() {
     heroSelectionConfirmed = false;
     bossSelectionConfirmed = false;
 
-    // Reset unit death animation tracking
-    previousBoardUnits.clear();
-    DEFEATED_UNITS.clear();
-
     // Show game container
     gameContainer?.classList.add("connected");
 
@@ -699,9 +691,6 @@ async function connect() {
       hideHeroSelection();
       hideBossSelection();
       resetShadowDiffMonitor();
-      // Reset unit death animation tracking
-      previousBoardUnits.clear();
-      DEFEATED_UNITS.clear();
       gameContainer?.classList.remove("connected");
       showMessage("Disconnected. Press Connect when you are ready to start again.", "error");
       updateEntryFlowStatus(null, null);
@@ -753,9 +742,6 @@ async function leave() {
   hideHeroSelection();
   hideBossSelection();
   resetShadowDiffMonitor();
-  // Reset unit death animation tracking
-  previousBoardUnits.clear();
-  DEFEATED_UNITS.clear();
   syncButtonAvailability();
 
   try {
@@ -1460,15 +1446,7 @@ function triggerBattleStartAnimation() {
   // Show the overlay
   battleStartOverlay.classList.add('visible');
 
-  // Add shake effect to board sections
-  const boardSection = document.querySelector('.board-section');
   const sharedBoardSection = document.querySelector('.shared-board-section');
-
-  if (boardSection) {
-    boardSection.classList.remove('battle-start');
-    void boardSection.offsetWidth; // Trigger reflow
-    boardSection.classList.add('battle-start');
-  }
 
   if (sharedBoardSection) {
     sharedBoardSection.classList.remove('battle-start');
@@ -1479,11 +1457,7 @@ function triggerBattleStartAnimation() {
   // Auto-hide after animation completes (1.2s)
   setTimeout(() => {
     battleStartOverlay.classList.remove('visible');
-    
-    // Clean up board shake classes
-    if (boardSection) {
-      boardSection.classList.remove('battle-start');
-    }
+
     if (sharedBoardSection) {
       sharedBoardSection.classList.remove('battle-start');
     }
@@ -1842,10 +1816,11 @@ function updateUnitShop(offers) {
     if (!card) return;
 
     if (offer) {
-      const icon = UNIT_ICONS[offer.unitType] || "❓";
       const cost = offer.cost || 0;
       const canAfford = currentGold >= cost;
       const rumorBadge = offer.isRumorUnit === true ? '<div class="rumor-badge">Rumor</div>' : "";
+      const displayName = offer.displayName || offer.unitType;
+      const portraitUrl = resolveShopPortraitUrl(offer);
 
       // 共有プールの在庫チェック
       let isDepleted = false;
@@ -1856,8 +1831,10 @@ function updateUnitShop(offers) {
       }
 
       card.innerHTML = `
-        <div class="icon">${icon}</div>
-        <div class="name">${offer.unitType}</div>
+        <div class="shop-card-media">
+          <img class="shop-portrait" src="${portraitUrl}" alt="${displayName}" loading="lazy" />
+        </div>
+        <div class="name">${displayName}</div>
         <div class="cost">${cost}G</div>
         ${remainingCount !== null ? `<div class="pool-badge">残り${remainingCount}枚</div>` : ''}
         ${rumorBadge}
@@ -1866,7 +1843,9 @@ function updateUnitShop(offers) {
       card.classList.toggle("depleted", isDepleted);
     } else {
       card.innerHTML = `
-        <div class="icon">❓</div>
+        <div class="shop-card-media">
+          <img class="shop-portrait" src="${resolveShopPortraitUrl(null)}" alt="Unknown unit" loading="lazy" />
+        </div>
         <div class="name">-</div>
         <div class="cost">-</div>
       `;
@@ -1912,15 +1891,17 @@ function updateBossShop(offers, visible) {
       continue;
     }
 
-    const icon = UNIT_ICONS[offer.unitType] || "🦇";
     const cost = offer.cost || 0;
     const canAfford = currentGold >= cost && !isPurchased;
     const displayName = SCARLET_MANSION_DATA.displayNames[offer.unitType] || offer.unitType;
+    const portraitUrl = resolveShopPortraitUrl(offer, "Remilia");
     const details = SCARLET_MANSION_DATA.cardDetails[offer.unitType] || null;
     card.innerHTML = `
       <span class="boss-shop-badge">${badgeText}</span>
       <div class="scarlet-badge">紅魔館</div>
-      <div class="icon">${icon}</div>
+      <div class="shop-card-media">
+        <img class="shop-portrait" src="${portraitUrl}" alt="${displayName}" loading="lazy" />
+      </div>
       <div class="name">${displayName}</div>
       ${details ? `<div class="boss-shop-role">${details.role}</div>` : ''}
       <div class="cost">${cost}G</div>
@@ -1930,162 +1911,6 @@ function updateBossShop(offers, visible) {
     `;
     card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
   }
-}
-
-/**
- * Creates particle effects for unit death animation
- * @param {HTMLElement} element - The element to create particles around
- */
-function createDeathParticles(element) {
-  const rect = element.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  const particleCount = 8;
-
-  for (let i = 0; i < particleCount; i++) {
-    const particle = document.createElement('div');
-    particle.className = 'death-particle';
-
-    // Calculate random direction
-    const angle = (i / particleCount) * Math.PI * 2;
-    const distance = 30 + Math.random() * 20;
-    const tx = Math.cos(angle) * distance;
-    const ty = Math.sin(angle) * distance;
-
-    particle.style.setProperty('--tx', `${tx}px`);
-    particle.style.setProperty('--ty', `${ty}px`);
-    particle.style.left = `${centerX}px`;
-    particle.style.top = `${centerY}px`;
-
-    // Random color variation
-    const colors = ['#e74c3c', '#c0392b', '#e67e22', '#d35400'];
-    particle.style.background = colors[Math.floor(Math.random() * colors.length)];
-
-    document.body.appendChild(particle);
-
-    // Remove particle after animation
-    setTimeout(() => {
-      particle.remove();
-    }, 400);
-  }
-}
-
-/**
- * Applies death animation to a unit element
- * @param {HTMLElement} cellElement - The board cell containing the unit
- * @param {string} unitId - Unique identifier for the unit
- */
-function animateUnitDeath(cellElement, unitId) {
-  if (DEFEATED_UNITS.has(unitId)) {
-    return; // Already animating
-  }
-
-  DEFEATED_UNITS.add(unitId);
-
-  // Create particle effects
-  const unitIcon = cellElement.querySelector('.unit-icon');
-  if (unitIcon) {
-    createDeathParticles(unitIcon);
-  }
-
-  // Apply death animation class to the entire cell content
-  const content = cellElement.querySelector('.unit-icon, .unit-stars, .sub-unit-badge');
-  if (content) {
-    content.classList.add('unit-defeated');
-  }
-
-  // Remove from tracking after animation completes
-  setTimeout(() => {
-    DEFEATED_UNITS.delete(unitId);
-  }, 500);
-}
-
-/**
- * Detects removed units and triggers death animations
- * @param {Array} currentUnits - Current board units
- * @returns {Set} Set of cell indices that had units removed
- */
-function detectDefeatedUnits(currentUnits) {
-  const currentUnitMap = new Map();
-  const removedCells = new Set();
-
-  // Build map of current units by cell index
-  if (currentUnits) {
-    const units = Array.isArray(currentUnits) ? currentUnits : Array.from(currentUnits);
-    units.forEach((unit) => {
-      const unitStr = String(unit);
-      const parsedToken = parseBoardUnitToken(unitStr);
-      if (parsedToken) {
-        currentUnitMap.set(parsedToken.cell, parsedToken);
-      }
-    });
-  }
-
-  // Check previous units for removals
-  previousBoardUnits.forEach((prevUnit, cellIndex) => {
-    if (!currentUnitMap.has(cellIndex)) {
-      // Unit was removed - trigger death animation
-      const cellElement = document.querySelector(`[data-board-cell="${cellIndex}"]`);
-      if (cellElement && !cellElement.classList.contains('empty')) {
-        const unitId = `${cellIndex}-${prevUnit.unitType}-${Date.now()}`;
-        animateUnitDeath(cellElement, unitId);
-        removedCells.add(cellIndex);
-      }
-    }
-  });
-
-  return removedCells;
-}
-
-function updateBoard(boardUnits) {
-  // Detect defeated units before clearing
-  const removedCells = detectDefeatedUnits(boardUnits);
-
-  // Clear cells that don't have defeated units animating
-  document.querySelectorAll("[data-board-cell]").forEach((cell) => {
-    const cellIndex = Number.parseInt(cell.dataset.boardCell, 10);
-
-    // Skip cells with active death animation
-    if (!removedCells.has(cellIndex)) {
-      cell.innerHTML = `<span class="cell-number">${cell.dataset.boardCell}</span>`;
-      cell.classList.add("empty");
-    }
-  });
-
-  // Update previous board state
-  previousBoardUnits.clear();
-
-  if (!boardUnits) return;
-
-  // Convert to array if needed
-  const units = Array.isArray(boardUnits) ? boardUnits : Array.from(boardUnits);
-
-  units.forEach((unit) => {
-    const unitStr = String(unit);
-    const parsedToken = parseBoardUnitToken(unitStr);
-
-    if (!parsedToken) return;
-
-    const { cell: parsedCell, unitType, starLevel, subUnitActive } = parsedToken;
-    const cellIndex = parsedCell;
-
-    // Store in previous board state
-    previousBoardUnits.set(cellIndex, parsedToken);
-
-    const boardCell = document.querySelector(`[data-board-cell="${cellIndex}"]`);
-    if (!boardCell) return;
-
-    const icon = UNIT_ICONS[unitType] || "❓";
-    const starClass = `stars-${Math.min(starLevel, 3)}`;
-
-    boardCell.innerHTML = `
-      <span class="cell-number">${cellIndex}</span>
-      <div class="unit-icon">${icon}</div>
-      <div class="unit-stars ${starClass}">${"★".repeat(starLevel)}</div>
-      ${subUnitActive ? '<div class="sub-unit-badge">SUB</div>' : ''}
-    `;
-    boardCell.classList.remove("empty");
-  });
 }
 
 function updateBench(benchUnits) {
@@ -2696,7 +2521,7 @@ function showBossSelection() {
   bossSelectionOverlay?.classList.add("visible");
 
   if (bossSelectionPortrait) {
-    bossSelectionPortrait.src = boss.portraitSrc;
+    bossSelectionPortrait.src = resolveFrontPortraitUrl(boss.portraitKey, "Remilia");
   }
 
   if (bossSelectionName) {

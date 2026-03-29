@@ -1260,7 +1260,7 @@ describe("SharedBoardRoom integration", () => {
       portraitKey?: string;
     };
     expect(targetCell?.displayName).toBe("古明地こいし");
-    expect(targetCell?.portraitKey).toBe("Koishi");
+    expect(targetCell?.portraitKey).toBe("koishi");
   });
 
   test("join options の gamePlayerId を bridge向け配置イベントに反映する", async () => {

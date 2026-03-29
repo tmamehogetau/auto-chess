@@ -1,0 +1,992 @@
+{
+  "canvasSize": 512,
+  "reviewSheetColumns": 4,
+  "units": [
+    {
+      "name": "chimata",
+      "source": "chimata.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": -50,
+        "offsetY": -16,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.97,
+        "offsetX": 2,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "sekibanki",
+      "source": "sekibanki.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "clownpiece",
+      "source": "clownpiece.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "futo",
+      "source": "futo.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "hecatia",
+      "source": "hecatia.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.04,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.04,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "byakuren",
+      "source": "byakuren.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "meiling",
+      "source": "meiling.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "ichirin",
+      "source": "ichirin.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.95,
+        "offsetX": 8,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "junko",
+      "source": "junko.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.98,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.98,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "jyoon",
+      "source": "jyoon.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "kagerou",
+      "source": "kagerou.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "keiki",
+      "source": "keiki.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "koishi",
+      "source": "koishi.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "marisa",
+      "source": "marisa.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "okina",
+      "source": "okina.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "megumu",
+      "source": "megumu.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.03,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.03,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "miko",
+      "source": "miko.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "murasa",
+      "source": "murasa.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "nazrin",
+      "source": "nazrin.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "patchouli",
+      "source": "patchouli.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "reimu",
+      "source": "reimu.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.97,
+        "offsetX": 2,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "remilia",
+      "source": "remilia.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "rin",
+      "source": "rin.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "sakuya",
+      "source": "sakuya.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "satori",
+      "source": "satori.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "seiga",
+      "source": "seiga.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "shou",
+      "source": "shou.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "momoyo",
+      "source": "momoyo.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.95,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 0.97,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "tojiko",
+      "source": "tojiko.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "utsuho",
+      "source": "utsuho.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "wakasagihime",
+      "source": "wakasagihime.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "yoshika",
+      "source": "yoshika.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "tsukasa",
+      "source": "tsukasa.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.03,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.03,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    },
+    {
+      "name": "zanmu",
+      "source": "zanmu.png",
+      "front": {
+        "crop": {
+          "x": 0,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "back": {
+        "crop": {
+          "x": 1024,
+          "y": 0,
+          "width": 1024,
+          "height": 1024
+        },
+        "scale": 1.0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "anchor": "bottom-center"
+      },
+      "reviewStatus": "default"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ export const BOSS_CHARACTERS = [
   {
     id: "remilia",
     displayName: "レミリア",
-    portraitKey: "Remilia",
+    portraitKey: "remilia",
     flavor: "紅魔館の主。夜を支配する吸血鬼。",
   },
 ] as const;

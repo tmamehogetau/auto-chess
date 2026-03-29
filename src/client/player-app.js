@@ -102,7 +102,7 @@ const HERO_OPTIONS = [
   { id: "marisa", name: "魔理沙", role: "dps" },
   { id: "okina", name: "隠岐奈", role: "support" },
   { id: "keiki", name: "袿姫", role: "tank" },
-  { id: "megumu", name: "女苑", role: "economy" },
+  { id: "jyoon", name: "女苑", role: "economy" },
 ];
 
 const BOSS_OPTIONS = [

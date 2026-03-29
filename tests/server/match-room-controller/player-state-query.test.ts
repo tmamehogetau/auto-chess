@@ -199,6 +199,21 @@ describe("PlayerStateQueryService", () => {
     expect(status.lastBattleResult?.timeline?.[0]?.battleId).toBe("battle-1");
   });
 
+  it("normalizes missing shop offer unitIds into stable view ids", () => {
+    const deps = createDeps();
+    const shopOffersByPlayer = deps.shopOffersByPlayer as Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; rarity: 1 | 2 | 3 | 4 | 5; unitId?: string }>>;
+    const bossShopOffersByPlayer = deps.bossShopOffersByPlayer as Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; rarity: 1 | 2 | 3 | 4 | 5; unitId?: string }>>;
+    shopOffersByPlayer.set("p1", [{ unitType: "mage", cost: 2, rarity: 2 }]);
+    bossShopOffersByPlayer.set("p2", [{ unitType: "assassin", cost: 3, rarity: 3 }]);
+    const service = new PlayerStateQueryService(deps);
+
+    const raidStatus = service.getPlayerStatus("p1");
+    const bossStatus = service.getPlayerStatus("p2");
+
+    expect(raidStatus.shopOffers).toEqual([{ unitType: "mage", cost: 2, rarity: 2, unitId: "" }]);
+    expect(bossStatus.bossShopOffers).toEqual([{ unitType: "assassin", cost: 3, rarity: 3, unitId: "" }]);
+  });
+
   it("returns the first available shared battle replay from player battle results", () => {
     const service = new PlayerStateQueryService(createDeps());
 

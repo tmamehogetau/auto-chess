@@ -4,6 +4,7 @@
  */
 
 import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
+import { resolveFrontPortraitUrl } from "./portrait-resolver.js";
 
 /**
  * @typedef {Object} SharedBoardDOMRefs
@@ -46,21 +47,6 @@ let deps = {
   isTouhouRosterEnabled: () => false,
   getPlayerPlacementSide: () => "raid",
   joinOrCreate: async () => null,
-};
-
-// These keys must stay aligned with deployed `/pics/{Key}.png` assets.
-const PORTRAIT_URL_BY_KEY = {
-  Cirno: "/pics/Cirno.png",
-  Flandre: "/pics/Flandre.png",
-  Hong: "/pics/Hong.png",
-  Koishi: "/pics/Koishi.png",
-  Marisa: "/pics/Marisa.png",
-  Patchouli: "/pics/Patchouli.png",
-  Reimu: "/pics/Reimu.png",
-  Remilia: "/pics/Remilia.png",
-  Rumia: "/pics/Rumia.png",
-  Sakuya: "/pics/Sakuya.png",
-  Satori: "/pics/Satori.png",
 };
 
 /** @type {object|null} */
@@ -507,7 +493,7 @@ function renderSharedBoard(state) {
       if (shouldRenderTouhouPresentation(cell)) {
         const portrait = document.createElement("img");
         portrait.className = "shared-board-portrait";
-        portrait.src = PORTRAIT_URL_BY_KEY[cell.portraitKey] ?? PORTRAIT_URL_BY_KEY.Hong;
+        portrait.src = resolveFrontPortraitUrl(cell.portraitKey, "meiling");
         portrait.alt = cell.displayName;
 
         const displayName = document.createElement("span");

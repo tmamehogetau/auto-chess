@@ -122,6 +122,8 @@ export class ShopOfferBuilder {
       if (rumorUnit) {
         offers.push({
           unitType: rumorUnit.unitType,
+          unitId: rumorUnit.unitId,
+          displayName: rumorUnit.displayName,
           rarity: rumorUnit.rarity,
           cost: rumorUnit.rarity,
           isRumorUnit: true,

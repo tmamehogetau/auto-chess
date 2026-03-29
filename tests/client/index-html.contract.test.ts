@@ -119,6 +119,18 @@ describe("index.html contract", () => {
     expect(html.includes(".shared-board-section.raid-stage")).toBe(true);
   });
 
+  test("legacy local board shell and styling are removed from the operator page", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes(".board-section {")).toBe(false);
+    expect(html.includes(".board-grid {")).toBe(false);
+    expect(html.includes(".board-cell {")).toBe(false);
+    expect(html.includes(".board-cell .unit-icon {")).toBe(false);
+    expect(html.includes(".board-section.battle-start")).toBe(false);
+    expect(html.includes("data-board-cell")).toBe(false);
+    expect(html.includes("data-local-board-section")).toBe(false);
+  });
+
   test("operator shared-board copy is aligned to the 6x6 live battle spec", () => {
     const html = readFileSync(indexHtmlPath, "utf-8");
 

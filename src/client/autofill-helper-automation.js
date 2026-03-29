@@ -4,7 +4,7 @@ export const AUTO_FILL_HERO_IDS = [
   "marisa",
   "okina",
   "keiki",
-  "megumu",
+  "jyoon",
 ];
 const AUTO_FILL_BOSS_DEPLOY_SEQUENCES = [
   [4, 10, 16],

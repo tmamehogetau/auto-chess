@@ -23,6 +23,18 @@ export interface PlayerStateQueryShopOffer {
   starLevel?: number;
 }
 
+function normalizeShopOfferUnitId(offer: PlayerStateQueryShopOffer): string {
+  const normalizedUnitId = typeof offer.unitId === "string" ? offer.unitId.trim() : "";
+  return normalizedUnitId;
+}
+
+function toShopOfferView(offer: PlayerStateQueryShopOffer): PlayerStateQueryShopOffer & { unitId: string } {
+  return {
+    ...offer,
+    unitId: normalizeShopOfferUnitId(offer),
+  };
+}
+
 export interface PlayerStateQueryOwnedUnits {
   vanguard: number;
   ranger: number;
@@ -199,7 +211,7 @@ export class PlayerStateQueryService {
 
   public getShopOffersForPlayer(playerId: string): PlayerStateQueryShopOffer[] {
     this.deps.ensureKnownPlayer(playerId);
-    return [...(this.deps.shopOffersByPlayer.get(playerId) ?? [])];
+    return (this.deps.shopOffersByPlayer.get(playerId) ?? []).map((offer) => toShopOfferView(offer));
   }
 
   public getBossShopOffersForPlayer(playerId: string): PlayerStateQueryShopOffer[] {
@@ -213,7 +225,7 @@ export class PlayerStateQueryService {
       return [];
     }
 
-    return [...(this.deps.bossShopOffersByPlayer.get(playerId) ?? [])];
+    return (this.deps.bossShopOffersByPlayer.get(playerId) ?? []).map((offer) => toShopOfferView(offer));
   }
 
   public isBossPlayer(playerId: string): boolean {
@@ -265,7 +277,7 @@ export class PlayerStateQueryService {
     const bossShopOffers = this.deps.bossShopOffersByPlayer.get(playerId) ?? [];
     const isRumorEligible = this.deps.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
-    const shopOffers = [...(this.deps.shopOffersByPlayer.get(playerId) ?? [])];
+    const shopOffers = (this.deps.shopOffersByPlayer.get(playerId) ?? []).map((offer) => toShopOfferView(offer));
     if (process.env.MATCH_DEBUG_LOGS === "1") {
       // eslint-disable-next-line no-console
       console.log(`Shop offers for ${playerId}:`, shopOffers);
@@ -299,7 +311,7 @@ export class PlayerStateQueryService {
         mage: ownedUnits?.mage ?? 0,
         assassin: ownedUnits?.assassin ?? 0,
       },
-      bossShopOffers: [...bossShopOffers],
+      bossShopOffers: bossShopOffers.map((offer) => toShopOfferView(offer)),
       lastBattleResult: this.deps.battleResultsByPlayer.get(playerId),
       activeSynergies,
       selectedHeroId: this.deps.selectedHeroByPlayer.get(playerId) ?? "",

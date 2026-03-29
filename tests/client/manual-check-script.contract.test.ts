@@ -74,6 +74,36 @@ describe("manual-check script contract", () => {
     expect(source.includes("hideHeroSelection()")).toBe(true);
   });
 
+  test("portrait resolver drives processed front portraits for boss selection", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes('from "./portrait-resolver.js"')).toBe(true);
+    expect(source.includes("portraitKey: \"remilia\"")).toBe(true);
+    expect(source.includes("bossSelectionPortrait.src = resolveFrontPortraitUrl(")).toBe(true);
+    expect(source.includes('portraitSrc: "/pics/Remilia.png"')).toBe(false);
+  });
+
+  test("shop cards use portrait resolver output instead of icon-only rendering", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("resolveShopPortraitUrl(")).toBe(true);
+    expect(source.includes('class="shop-portrait"')).toBe(true);
+    expect(source.includes('class="shop-card-media"')).toBe(true);
+  });
+
+  test("legacy local board presentation helpers are removed from the operator client", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("function updateBoard(boardUnits) {")).toBe(false);
+    expect(source.includes("function detectDefeatedUnits(currentUnits) {")).toBe(false);
+    expect(source.includes("function animateUnitDeath(cellElement, unitId) {")).toBe(false);
+    expect(source.includes("function createDeathParticles(element) {")).toBe(false);
+    expect(source.includes("document.querySelector('.board-section')")).toBe(false);
+    expect(source.includes("data-board-cell")).toBe(false);
+    expect(source.includes("previousBoardUnits")).toBe(false);
+    expect(source.includes("DEFEATED_UNITS")).toBe(false);
+  });
+
   test("bench から shared-board へ配置する click 導線を持つ", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
@@ -236,7 +266,7 @@ describe("manual-check script contract", () => {
 
     expect(source.includes("id: 'okina'")).toBe(true);
     expect(source.includes("id: 'keiki'")).toBe(true);
-    expect(source.includes("id: 'megumu'")).toBe(true);
+    expect(source.includes("id: 'jyoon'")).toBe(true);
     expect(source.includes("name: '隠岐奈'")).toBe(true);
     expect(source.includes("name: '袿姫'")).toBe(true);
     expect(source.includes("name: '女苑'")).toBe(true);

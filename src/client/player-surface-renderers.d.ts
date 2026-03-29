@@ -35,9 +35,13 @@ export function renderPlayerSelectionSummary(input: {
 }): void;
 
 export function renderPlayerPrepSummary(input: {
+  detailCardElement?: HTMLElement | null;
+  allyRailElement?: HTMLElement | null;
   boardCopyElement?: HTMLElement | null;
   shopCopyElement?: HTMLElement | null;
   bossShopCopyElement?: HTMLElement | null;
+  heroUpgradeCopyElement?: HTMLElement | null;
+  refreshCopyElement?: HTMLElement | null;
   specialUnitCopyElement?: HTMLElement | null;
   spellCopyElement?: HTMLElement | null;
   synergyCopyElement?: HTMLElement | null;
@@ -123,6 +127,16 @@ export function renderPlayerPrepSummary(input: {
     label?: string;
     valueText?: string;
   } | null;
+  hoverDetail?: {
+    kicker?: string;
+    title?: string;
+    lines?: string[];
+  } | null;
+  onHoverDetailChange?: ((detail: {
+    kicker?: string;
+    title?: string;
+    lines?: string[];
+  } | null) => void) | null;
   benchSellButton?: HTMLButtonElement | null;
   boardReturnButton?: HTMLButtonElement | null;
   boardSellButton?: HTMLButtonElement | null;

@@ -35,6 +35,7 @@ import type {
   BrowserRoom,
   RoundStateMessage,
 } from "./helpers";
+import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 
 describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   const getTestServer = () => context.testServer;
@@ -487,7 +488,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
-  test("benchToBoardCellが既存cellと競合するとINVALID_PAYLOADでstate不変", async () => {
+  test("benchToBoardCellで自分のoccupied main cellを選ぶとboardとbenchを入れ替える", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -524,6 +525,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
     const beforeBench = beforePlayer?.benchUnits.length ?? 0;
     const beforeBoardCount = beforePlayer?.boardUnitCount ?? 0;
+    const beforeBenchUnit = beforePlayer?.benchUnits[0];
 
     targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 3,
@@ -533,17 +535,19 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       },
     });
 
-    const rejectResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
-    expect(rejectResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    const deployResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(deployResult).toEqual({ accepted: true });
 
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(beforeBench);
     expect(afterPlayer?.boardUnitCount).toBe(beforeBoardCount);
+    expect(afterPlayer?.boardUnits).toContain(`2:${beforeBenchUnit}`);
+    expect(afterPlayer?.benchUnits?.[0]).toBe("vanguard");
   });
 
 
-  test("benchSellIndexでbench売却すると購入時のコスト分goldがstateへ同期される", async () => {
+  test("benchSellIndexでtier 1 sell formula C - 1 がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -560,25 +564,30 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const targetClient = clients[0];
-    const beforeBuyPlayer = serverRoom.state.players.get(targetClient.sessionId);
-    const beforeBuyGold = Number(beforeBuyPlayer?.gold ?? 0);
+    const internalController = (serverRoom as unknown as {
+      controller?: {
+        benchUnitsByPlayer: Map<string, Array<{
+          unitType: "vanguard" | "ranger" | "mage" | "assassin";
+          cost: number;
+          starLevel: number;
+          unitCount: number;
+        }>>;
+      };
+    }).controller;
+
+    if (!internalController) {
+      throw new Error("Expected internal controller");
+    }
+
+    internalController.benchUnitsByPlayer.set(targetClient.sessionId, [
+      { unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 },
+    ]);
+
+    const beforeSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeSellGold = Number(beforeSellPlayer?.gold ?? 0);
 
     targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
-      shopBuySlotIndex: 0,
-    });
-
-    const buyResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
-    expect(buyResult).toEqual({ accepted: true });
-
-    const afterBuyPlayer = serverRoom.state.players.get(targetClient.sessionId);
-    const afterBuyGold = Number(afterBuyPlayer?.gold ?? 0);
-    const unitCost = beforeBuyGold - afterBuyGold;
-
-    const beforeSellGold = afterBuyGold;
-
-    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: 2,
       benchSellIndex: 0,
     });
 
@@ -590,11 +599,11 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(0);
-    expect(afterPlayer?.gold).toBe(beforeSellGold + unitCost);
+    expect(afterPlayer?.gold).toBe(beforeSellGold + 1);
   });
 
 
-  test("boardSellIndexで盤面ユニット売却するとgold増加とboardUnitCount減少がstateへ同期される", async () => {
+  test("boardSellIndexでtier 3 sell formula 4C - 2 がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -611,18 +620,30 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
     const targetClient = clients[0];
+    const internalController = (serverRoom as unknown as {
+      controller?: {
+        boardPlacementsByPlayer: Map<string, Array<{
+          cell: number;
+          unitType: "vanguard" | "ranger" | "mage" | "assassin";
+          starLevel?: number;
+          sellValue?: number;
+          unitCount?: number;
+        }>>;
+        boardUnitCountByPlayer: Map<string, number>;
+      };
+    }).controller;
 
-    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-      cmdSeq: 1,
-      boardPlacements: [{ cell: 3, unitType: "mage" }],
-    });
-    expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
-      accepted: true,
-    });
+    if (!internalController) {
+      throw new Error("Expected internal controller");
+    }
+
+    internalController.boardPlacementsByPlayer.set(targetClient.sessionId, [
+      { cell: 3, unitType: "mage", starLevel: 3, sellValue: 14, unitCount: 7 },
+    ]);
+    internalController.boardUnitCountByPlayer.set(targetClient.sessionId, 1);
 
     const beforeSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
     const beforeSellGold = Number(beforeSellPlayer?.gold ?? 0);
-    const beforeSellCount = Number(beforeSellPlayer?.boardUnitCount ?? 0);
 
     targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 2,
@@ -636,8 +657,77 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
 
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
-    expect(afterPlayer?.gold).toBe(beforeSellGold + 2);
-    expect(afterPlayer?.boardUnitCount).toBe(beforeSellCount - 1);
+    expect(afterPlayer?.gold).toBe(beforeSellGold + 6);
+    expect(afterPlayer?.boardUnitCount).toBe(0);
+  });
+
+  test("discounted purchase でも sell で購入額を上回る refund がstateへ同期されない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const serverRoom = await getTestServer().createRoom<GameRoom>("game");
+      const clients = await Promise.all([
+        getTestServer().connectTo(serverRoom),
+        getTestServer().connectTo(serverRoom),
+        getTestServer().connectTo(serverRoom),
+        getTestServer().connectTo(serverRoom),
+      ]);
+
+      for (const client of clients) {
+        client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+      }
+
+      await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+      const targetClient = clients[0];
+      const internalController = (serverRoom as unknown as {
+        controller?: {
+          boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+          shopOffersByPlayer: Map<string, Array<{
+            unitType: "vanguard" | "ranger" | "mage" | "assassin";
+            unitId?: string;
+            rarity: 1 | 2 | 3;
+            cost: number;
+          }>>;
+        };
+      }).controller;
+
+      if (!internalController) {
+        throw new Error("Expected internal controller");
+      }
+
+      internalController.boardPlacementsByPlayer.set(targetClient.sessionId, [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+      ]);
+
+      for (const cmdSeq of [1, 2, 3, 4]) {
+        internalController.shopOffersByPlayer.set(targetClient.sessionId, [
+          { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+        ]);
+
+        targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+          cmdSeq,
+          shopBuySlotIndex: 0,
+        });
+        expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+          accepted: true,
+        });
+      }
+
+      const beforeSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
+      expect(Number(beforeSellPlayer?.gold ?? 0)).toBe(11);
+
+      targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: 5,
+        benchSellIndex: 0,
+      });
+      expect(await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT)).toEqual({
+        accepted: true,
+      });
+
+      const afterSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
+      expect(afterSellPlayer?.gold).toBe(14);
+    });
   });
 
 
@@ -732,7 +822,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
-  test("同種3体購入でベンチ上の自動合成結果がstateへ同期される", async () => {
+  test("同種4回購入で購入回数進行のtier 2がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -766,7 +856,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       throw new Error("Expected internal controller");
     }
 
-    for (const cmdSeq of [1, 2, 3]) {
+    for (const cmdSeq of [1, 2, 3, 4]) {
       internalController.shopOffersByPlayer.set(targetClient.sessionId, [
         { unitType: "vanguard", rarity: 1, cost: 1 },
         { unitType: "ranger", rarity: 1, cost: 1 },
@@ -788,11 +878,11 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
 
     expect(afterPlayer?.benchUnits.length).toBe(1);
     expect(afterPlayer?.benchUnits[0]).toBe("vanguard:2");
-    expect(afterPlayer?.ownedVanguard).toBe(3);
+    expect(afterPlayer?.ownedVanguard).toBe(4);
   });
 
 
-  test("同種9体購入で連鎖合成した★3がstateへ同期される", async () => {
+  test("同種7回購入で購入回数進行のtier 3がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -826,7 +916,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       throw new Error("Expected internal controller");
     }
 
-    for (const cmdSeq of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    for (const cmdSeq of [1, 2, 3, 4, 5, 6, 7]) {
       internalController.shopOffersByPlayer.set(targetClient.sessionId, [
         { unitType: "vanguard", rarity: 1, cost: 1 },
         { unitType: "ranger", rarity: 1, cost: 1 },
@@ -848,7 +938,45 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
 
     expect(afterPlayer?.benchUnits.length).toBe(1);
     expect(afterPlayer?.benchUnits[0]).toBe("vanguard:3");
-    expect(afterPlayer?.ownedVanguard).toBe(9);
+    expect(afterPlayer?.ownedVanguard).toBe(7);
+  });
+
+  test("legacy mergeUnits payload は INVALID_PAYLOAD で reject される", async () => {
+    const serverRoom = await getTestServer().createRoom<GameRoom>("game");
+    const clients = await Promise.all([
+      getTestServer().connectTo(serverRoom),
+      getTestServer().connectTo(serverRoom),
+      getTestServer().connectTo(serverRoom),
+      getTestServer().connectTo(serverRoom),
+    ]);
+
+    for (const client of clients) {
+      client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
+      client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
+    }
+
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
+
+    const targetClient = clients[0];
+    const beforePlayer = serverRoom.state.players.get(targetClient.sessionId);
+    const beforeBench = Array.from(beforePlayer?.benchUnits ?? []);
+    const beforeGold = Number(beforePlayer?.gold ?? 0);
+
+    targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      mergeUnits: {
+        unitType: "vanguard",
+        starLevel: 2,
+        benchIndices: [0, 1, 2],
+      },
+    });
+
+    const rejectResult = await targetClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    expect(rejectResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+
+    const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
+    expect(Array.from(afterPlayer?.benchUnits ?? [])).toEqual(beforeBench);
+    expect(Number(afterPlayer?.gold ?? 0)).toBe(beforeGold);
   });
 
 });

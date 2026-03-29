@@ -26,6 +26,13 @@ export type MatchPhase =
   | "Elimination"
   | "End";
 
+export type PlayerFacingPhase =
+  | "lobby"
+  | "selection"
+  | "purchase"
+  | "deploy"
+  | "battle";
+
 export interface ReadyMessage {
   ready?: boolean;
 }
@@ -50,18 +57,35 @@ export interface PrepCommandMessage {
   benchToBoardCell?: {
     benchIndex: number;
     cell: number;
+    slot?: "main" | "sub";
   };
   boardToBenchCell?: {
     cell: number;
   };
   benchSellIndex?: number;
   boardSellIndex?: number;
+  mergeUnits?: {
+    unitType: string;
+    starLevel: number;
+    benchIndices?: number[];
+    boardCells?: number[];
+  };
   bossShopBuySlotIndex?: number;       // Buy unit from boss shop
 }
 
 export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
 
 export type UnitEffectSetId = "set1" | "set2";
+
+export interface AttachedSubUnitPlacement {
+  unitType: BoardUnitType;
+  unitId?: UnitId;
+  factionId?: TouhouFactionId | null;
+  starLevel?: number;
+  sellValue?: number;
+  unitCount?: number;
+  archetype?: string;
+}
 
 export interface BoardUnitPlacement {
   cell: number;
@@ -76,6 +100,7 @@ export interface BoardUnitPlacement {
   sellValue?: number;
   unitCount?: number;
   archetype?: string;  // 特殊ユニットのアーキタイプ（例: meiling, sakuya, patchouli）
+  subUnit?: AttachedSubUnitPlacement;
 }
 
 export type CommandRejectCode =
@@ -104,8 +129,10 @@ export type CommandResult =
 
 export interface RoundStateMessage {
   phase: MatchPhase;
+  playerPhase?: PlayerFacingPhase | undefined;
   roundIndex: number;
   phaseDeadlineAtMs: number;
+  playerPhaseDeadlineAtMs?: number | undefined;
   sharedBoardRoomId?: string;
   lobbyStage?: "preference" | "selection" | "started";
   selectionDeadlineAtMs?: number;
@@ -179,6 +206,7 @@ export interface PlayerMatchStatus {
   benchUnits: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
+  boardSubUnits?: string[];
   ownedUnits: OwnedUnitsMessage;
   lastBattleResult?: {
     opponentId: string;

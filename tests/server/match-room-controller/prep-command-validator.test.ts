@@ -28,6 +28,7 @@ describe("PrepCommandValidator", () => {
     getBossShopOffers: vi.fn().mockReturnValue([]),
     getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     isBossPlayer: vi.fn().mockReturnValue(false),
+    isSubUnitSystemEnabled: vi.fn().mockReturnValue(false),
     isSharedPoolEnabled: vi.fn().mockReturnValue(false),
     isPoolDepleted: vi.fn().mockReturnValue(false),
     getPrepDeadlineAtMs: vi.fn().mockReturnValue(32000),
@@ -340,7 +341,7 @@ describe("PrepCommandValidator", () => {
 
     test("shopBuySlotIndex with full bench returns BENCH_FULL", () => {
       const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "vanguard" })),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "ranger" })),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
@@ -548,7 +549,7 @@ describe("PrepCommandValidator", () => {
         getBossShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", rarity: 1, cost: 0 },
         ]),
-        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "vanguard" })),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "ranger" })),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { bossShopBuySlotIndex: 0 }, deps);

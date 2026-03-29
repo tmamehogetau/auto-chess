@@ -555,6 +555,15 @@ describe("Rumor Influence Integration", () => {
       expect(actualBoss).not.toBeNull();
       const raidPlayers = playerIds.filter(id => id !== actualBoss);
       const testRaidPlayer = raidPlayers[0]!;
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; starLevel?: number }>>;
+      };
+
+      for (const [index, playerId] of playerIds.entries()) {
+        internals.boardPlacementsByPlayer.set(playerId, [
+          { cell: index, unitType: "vanguard", starLevel: 1 },
+        ]);
+      }
 
       // R1: Prep → Battle → フェーズ成功
       if (controller.prepDeadlineAtMs) {

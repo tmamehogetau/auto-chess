@@ -4,6 +4,7 @@ import {
   type PrepCommandLoggingDeps,
 } from "../../../src/server/rooms/game-room/prep-command-logging";
 import type { MatchLogger, PlayerActionLog } from "../../../src/server/match-logger";
+import type { BoardUnitType } from "../../../src/shared/room-messages";
 
 interface LoggedAction {
   sessionId: string;
@@ -80,8 +81,24 @@ describe("prep-command-logging", () => {
     });
 
     it("should log sell_unit action when benchSellIndex is provided", () => {
+      (deps as PrepCommandLoggingDeps & {
+        getBenchUnits: (sessionId: string) => Array<{
+          unitType: BoardUnitType;
+          cost: number;
+          starLevel: number;
+          unitCount: number;
+        }> | undefined;
+      }).getBenchUnits = vi.fn((): Array<{
+        unitType: BoardUnitType;
+        cost: number;
+        starLevel: number;
+        unitCount: number;
+      }> => [
+        { unitType: "mage", cost: 8, starLevel: 2, unitCount: 4 },
+      ]);
+
       const payload = {
-        benchSellIndex: 2,
+        benchSellIndex: 0,
       };
 
       logPrepCommandActions("player1", payload, deps);
@@ -89,9 +106,9 @@ describe("prep-command-logging", () => {
       expect(loggedActions).toHaveLength(1);
       expect(loggedActions[0]!.action).toBe("sell_unit");
       expect(loggedActions[0]!.details).toMatchObject({
-        benchIndex: 2,
+        benchIndex: 0,
         goldBefore: 10,
-        goldAfter: 11,
+        goldAfter: 13,
       });
     });
 
@@ -145,6 +162,24 @@ describe("prep-command-logging", () => {
     });
 
     it("should log board_sell action when boardSellIndex is provided", () => {
+      (deps as PrepCommandLoggingDeps & {
+        getBoardPlacements: (sessionId: string) => Array<{
+          cell: number;
+          unitType: BoardUnitType;
+          sellValue?: number;
+          starLevel?: number;
+          unitCount?: number;
+        }> | undefined;
+      }).getBoardPlacements = vi.fn((): Array<{
+        cell: number;
+        unitType: BoardUnitType;
+        sellValue?: number;
+        starLevel?: number;
+        unitCount?: number;
+      }> => [
+        { cell: 3, unitType: "mage", sellValue: 14, starLevel: 3, unitCount: 7 },
+      ]);
+
       const payload = {
         boardSellIndex: 3,
       };
@@ -156,7 +191,7 @@ describe("prep-command-logging", () => {
       expect(loggedActions[0]!.details).toMatchObject({
         cell: 3,
         goldBefore: 10,
-        goldAfter: 11,
+        goldAfter: 16,
       });
     });
 

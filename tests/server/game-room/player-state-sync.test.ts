@@ -95,6 +95,7 @@ describe("player-state-sync", () => {
         role: "unassigned",
         selectedHeroId: "hero-001",
         isRumorEligible: true,
+        boardSubUnits: ["0:mage", "4:assassin:2"],
       };
 
       syncPlayerStateFromController(playerState, controllerStatus);
@@ -130,6 +131,8 @@ describe("player-state-sync", () => {
       expect(playerState.benchDisplayNames[1]).toBe("Unit B");
       expect(playerState.boardUnits.length).toBe(3);
       expect(playerState.boardUnits[2]).toBe("board-unit-3");
+      expect((playerState as any).boardSubUnits.length).toBe(2);
+      expect((playerState as any).boardSubUnits[0]).toBe("0:mage");
     });
 
     it("should preserve optional unitId fields in shop payloads", () => {
@@ -633,6 +636,7 @@ describe("player-state-sync", () => {
         benchUnits: ["unit-x", "unit-y", "unit-z"],
         benchDisplayNames: ["紅美鈴", "十六夜咲夜", "パチュリー・ノーレッジ"],
         boardUnits: ["b1", "b2", "b3", "b4", "b5"],
+        boardSubUnits: ["1:mage"],
         lastBattleResult: {
           opponentId: "p2",
           won: true,
@@ -659,6 +663,8 @@ describe("player-state-sync", () => {
       expect(playerState.benchUnits.length).toBe(3);
       expect(playerState.benchDisplayNames[2]).toBe("パチュリー・ノーレッジ");
       expect(playerState.boardUnits.length).toBe(5);
+      expect((playerState as any).boardSubUnits.length).toBe(1);
+      expect((playerState as any).boardSubUnits[0]).toBe("1:mage");
       expect(playerState.lastBattleResult.timelineEndState.length).toBe(1);
       expect(playerState.lastBattleResult.timelineEndState[0]).toMatchObject({
         battleUnitId: "koishi",
@@ -979,6 +985,74 @@ describe("player-state-sync", () => {
       expect(playerState.role).toBe("boss");
       expect(playerState.selectedHeroId).toBe("existing-hero");
       expect(playerState.isRumorEligible).toBe(true);
+    });
+
+    it("should clear eliminated state when a revived raid player syncs back in", () => {
+      playerState.eliminated = true;
+      playerState.remainingLives = 0;
+
+      const controllerStatus: ControllerPlayerStatus = {
+        hp: 90,
+        remainingLives: 1,
+        eliminated: false,
+        boardUnitCount: 1,
+        gold: 12,
+        xp: 0,
+        level: 2,
+        shopOffers: [],
+        shopLocked: false,
+        benchUnits: ["vanguard"],
+        benchDisplayNames: ["博麗の守り"],
+        boardUnits: [],
+        ownedUnits: { vanguard: 1, ranger: 0, mage: 0, assassin: 0 },
+        bossShopOffers: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "raid",
+        selectedHeroId: "marisa",
+        isRumorEligible: false,
+        finalRoundShield: 1,
+      };
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.remainingLives).toBe(1);
+      expect(playerState.eliminated).toBe(false);
+      expect(playerState.finalRoundShield).toBe(1);
+      expect(playerState.benchUnits.length).toBe(1);
+      expect(playerState.benchUnits[0]).toBe("vanguard");
+    });
+
+    it("should sync final-round shield when controller status provides it", () => {
+      const controllerStatus: ControllerPlayerStatus = {
+        hp: 88,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnitCount: 2,
+        gold: 10,
+        xp: 1,
+        level: 2,
+        shopOffers: [],
+        shopLocked: false,
+        benchUnits: [],
+        boardUnits: [],
+        ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
+        bossShopOffers: [],
+        lastBattleResult: undefined,
+        activeSynergies: [],
+        wantsBoss: false,
+        selectedBossId: "",
+        role: "raid",
+        selectedHeroId: "reimu",
+        isRumorEligible: false,
+        finalRoundShield: 2,
+      };
+
+      syncPlayerStateFromController(playerState, controllerStatus);
+
+      expect(playerState.finalRoundShield).toBe(2);
     });
   });
 

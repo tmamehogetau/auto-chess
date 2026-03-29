@@ -442,8 +442,18 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       sourceCellIndex !== payload.toCell &&
       targetCell.unitId !== ""
     ) {
-      this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
-      return;
+      if (targetCell.ownerId !== this.resolveOwnerId(client.sessionId)) {
+        this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
+        return;
+      }
+
+      if (
+        (this.isHeroUnitId(targetCell.unitId) && !this.isHeroUnitId(payload.unitId))
+        || (this.isBossUnitId(targetCell.unitId) && !this.isBossUnitId(payload.unitId))
+      ) {
+        this.sendActionResult(client, "place_unit", false, "TARGET_OCCUPIED");
+        return;
+      }
     }
 
     targetCell.lockedBy = client.sessionId;
@@ -457,14 +467,20 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
         return;
       }
 
+      const targetUnitId = targetCell.unitId;
+      const targetOwnerId = targetCell.ownerId;
+      const targetDisplayName = targetCell.displayName;
+      const targetPortraitKey = targetCell.portraitKey;
+
       targetCell.unitId = sourceCell.unitId;
       targetCell.ownerId = sourceCell.ownerId;
       targetCell.displayName = sourceCell.displayName;
       targetCell.portraitKey = sourceCell.portraitKey;
-      sourceCell.unitId = "";
-      sourceCell.ownerId = "";
-      sourceCell.displayName = "";
-      sourceCell.portraitKey = "";
+
+      sourceCell.unitId = targetUnitId;
+      sourceCell.ownerId = targetOwnerId;
+      sourceCell.displayName = targetDisplayName;
+      sourceCell.portraitKey = targetPortraitKey;
     }
 
     const cursor = this.state.cursors.get(client.sessionId);

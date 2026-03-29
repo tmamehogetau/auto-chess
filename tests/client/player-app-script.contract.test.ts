@@ -44,6 +44,7 @@ describe("player-app script contract", () => {
     expect(source.includes("handlePlayerBoardSell(")).toBe(true);
     expect(source.includes("handlePlayerBoardReturn(")).toBe(true);
     expect(source.includes("handlePlayerSharedCellClick(")).toBe(true);
+    expect(source.includes("handlePlayerSharedSubSlotClick(")).toBe(true);
     expect(source.includes("handlePlayerBossShopBuy(")).toBe(true);
     expect(source.includes("handlePlayerShopRefresh(")).toBe(true);
     expect(source.includes("handlePlayerBuyXp(")).toBe(true);
@@ -52,6 +53,7 @@ describe("player-app script contract", () => {
     expect(source.includes("shopRefreshCount")).toBe(true);
     expect(source.includes("xpPurchaseCount")).toBe(true);
     expect(source.includes("benchToBoardCell")).toBe(true);
+    expect(source.includes('slot: "sub"')).toBe(true);
     expect(source.includes("boardToBenchCell")).toBe(true);
     expect(source.includes("benchSellIndex")).toBe(true);
     expect(source.includes("boardSellIndex")).toBe(true);

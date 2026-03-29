@@ -177,7 +177,40 @@
       }
 
       .player-prep-grid {
-        grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1.25fr) minmax(240px, 300px);
+        align-items: start;
+      }
+
+      .player-phase-shell {
+        display: contents;
+      }
+
+      .player-rail-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .player-phase-surface {
+        display: grid;
+        gap: 12px;
+      }
+
+      .player-phase-surface[hidden] {
+        display: none;
+      }
+
+      .player-purchase-shop-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .player-ally-card-copy {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .player-bench-grid-two-column {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .player-card {
@@ -779,88 +812,122 @@
         </section>
 
         <section class="player-phase" data-player-phase="prep" hidden>
-          <p class="player-phase-tag">Prep Board</p>
-          <h2>Build Your Setup</h2>
-          <div class="player-prep-grid" data-player-prep-surface>
-            <div class="player-card player-board" data-player-shared-board-grid>
-              <strong>Shared Board</strong>
-              <div data-shared-board-help>shared-board は 6x6 です。Boss は上半分、raid は下半分の配置セルを使います。通常ユニットも主人公もボスも、自分の半分の中で位置調整します。</div>
-              <div data-player-board-copy data-shared-board-placement-guide>shared-board をここへ mount する。</div>
-              <div class="player-inline-actions">
-                <button class="player-action-btn" type="button" data-player-board-return-button>Return Selected Unit</button>
-                <button class="player-action-btn" type="button" data-player-board-sell-button>Sell Selected Unit</button>
+          <p class="player-phase-tag">Purchase / Deploy / Battle</p>
+          <h2>Build Around The Shared Board</h2>
+          <div class="player-prep-grid" data-player-prep-surface data-player-phase-shell>
+            <div class="player-rail-stack" data-player-left-rail>
+              <div class="player-card" data-player-detail-card>
+                <strong>Unit Detail</strong>
+                <div class="player-ally-card-copy">hover したユニット詳細をここに表示します。いまは shell 骨格だけ先に固定します。</div>
               </div>
-              <div class="player-cursor-list" data-shared-board-status-legend>
-                <span data-shared-board-own-status>Your unit</span>
-                <span data-shared-board-ally-status>Ally unit</span>
-                <span data-shared-board-open-status>Active cell</span>
-                <span data-shared-board-blocked-status>Inactive cell</span>
+              <div class="player-card" data-player-ally-rail>
+                <strong>Allies</strong>
+                <div class="player-ally-card-copy">味方主人公、残機、bench 一覧をここに表示します。</div>
               </div>
-              <div class="shared-board-grid" data-player-board-cells>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="0" aria-label="Board cell 0">0</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="1" aria-label="Board cell 1">1</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="2" aria-label="Board cell 2">2</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="3" aria-label="Board cell 3">3</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="4" aria-label="Board cell 4">4</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="5" aria-label="Board cell 5">5</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="6" aria-label="Board cell 6">6</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="7" aria-label="Board cell 7">7</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="8" aria-label="Board cell 8">8</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="9" aria-label="Board cell 9">9</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="10" aria-label="Board cell 10">10</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="11" aria-label="Board cell 11">11</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="12" aria-label="Board cell 12">12</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="13" aria-label="Board cell 13">13</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="14" aria-label="Board cell 14">14</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="15" aria-label="Board cell 15">15</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="16" aria-label="Board cell 16">16</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="17" aria-label="Board cell 17">17</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="18" aria-label="Board cell 18">18</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="19" aria-label="Board cell 19">19</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="20" aria-label="Board cell 20">20</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="21" aria-label="Board cell 21">21</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="22" aria-label="Board cell 22">22</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="23" aria-label="Board cell 23">23</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="24" aria-label="Board cell 24">24</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="25" aria-label="Board cell 25">25</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="26" aria-label="Board cell 26">26</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="27" aria-label="Board cell 27">27</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="28" aria-label="Board cell 28">28</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="29" aria-label="Board cell 29">29</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="30" aria-label="Board cell 30">30</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="31" aria-label="Board cell 31">31</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="32" aria-label="Board cell 32">32</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="33" aria-label="Board cell 33">33</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="34" aria-label="Board cell 34">34</button>
-                <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="35" aria-label="Board cell 35">35</button>
-              </div>
-              <div class="player-cursor-list" data-player-shared-cursor-list>Board presence をここに出す。</div>
             </div>
-            <div class="player-summary-grid">
-              <div class="player-card" data-player-unit-shop>
-                <strong>Shop</strong>
-                <div data-player-shop-copy>ユニット購入 UI をここへ mount する。</div>
-                <div class="player-inline-actions">
-                  <button class="player-action-btn" type="button" data-player-shop-refresh-button>Refresh Shop</button>
-                  <button class="player-action-btn" type="button" data-player-buy-xp-button>Buy XP</button>
+
+            <div class="player-phase-surface" data-player-center-rail data-player-phase-surface>
+              <div class="player-phase-surface player-purchase-shop-stack" data-player-purchase-surface data-player-purchase-shop>
+                <div class="player-card" data-player-purchase-section="common-units" data-player-unit-shop>
+                  <strong>共通ユニット</strong>
+                  <div data-player-shop-copy>ユニット購入 UI をここへ mount する。</div>
+                  <div class="player-mini-grid" data-player-shop-grid>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="0" aria-label="Shop slot 0">0</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="1" aria-label="Shop slot 1">1</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="2" aria-label="Shop slot 2">2</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="3" aria-label="Shop slot 3">3</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="4" aria-label="Shop slot 4">4</button>
+                  </div>
                 </div>
-                <div class="player-mini-grid" data-player-shop-grid>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="0" aria-label="Shop slot 0">0</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="1" aria-label="Shop slot 1">1</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="2" aria-label="Shop slot 2">2</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="3" aria-label="Shop slot 3">3</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-shop-slot="4" aria-label="Shop slot 4">4</button>
+                <div class="player-card" data-player-purchase-section="dedicated-units" data-player-boss-shop>
+                  <strong>専用ユニット</strong>
+                  <div data-player-boss-shop-copy>boss 専用 shop をここへ mount する。</div>
+                  <div class="player-mini-grid" data-player-boss-shop-grid>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="0" aria-label="Boss shop slot 0">0</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="1" aria-label="Boss shop slot 1">1</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="2" aria-label="Boss shop slot 2">2</button>
+                  </div>
+                </div>
+                <div class="player-card" data-player-purchase-section="hero-upgrade">
+                  <strong>主人公強化</strong>
+                  <div data-player-hero-upgrade-copy>主人公の成長ラインをここに表示します。</div>
+                  <div class="player-inline-actions">
+                    <button class="player-action-btn" type="button" data-player-buy-xp-button>Buy XP</button>
+                  </div>
+                </div>
+                <div class="player-card" data-player-purchase-section="refresh">
+                  <strong>リロード</strong>
+                  <div data-player-refresh-copy>shop の再抽選をここで行います。</div>
+                  <div class="player-inline-actions">
+                    <button class="player-action-btn" type="button" data-player-shop-refresh-button>Refresh Shop</button>
+                  </div>
                 </div>
               </div>
-              <div class="player-card" data-player-boss-shop>
-                <strong>Boss Shop</strong>
-                <div data-player-boss-shop-copy>boss 専用 shop をここへ mount する。</div>
-                <div class="player-mini-grid" data-player-boss-shop-grid>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="0" aria-label="Boss shop slot 0">0</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="1" aria-label="Boss shop slot 1">1</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-boss-shop-slot="2" aria-label="Boss shop slot 2">2</button>
+
+              <div class="player-phase-surface" data-player-deploy-surface>
+                <div class="player-battle-start-banner" data-player-battle-start-banner hidden>
+                  <div class="player-battle-start-kicker" data-player-battle-start-kicker>Boss Raid</div>
+                  <div class="player-battle-start-title">BATTLE START</div>
+                  <div class="player-battle-start-round" data-player-battle-start-round>Round 1 kickoff</div>
+                </div>
+                <div class="player-card player-board" data-player-shared-board-grid data-player-deploy-board>
+                  <strong>Shared Board</strong>
+                  <div data-shared-board-help>shared-board は 6x6 です。Boss は上半分、raid は下半分の配置セルを使います。通常ユニットも主人公もボスも、自分の半分の中で位置調整します。</div>
+                  <div data-player-board-copy data-shared-board-placement-guide>shared-board をここへ mount する。</div>
+                  <div class="player-inline-actions">
+                    <button class="player-action-btn" type="button" data-player-board-return-button>Return Selected Unit</button>
+                    <button class="player-action-btn" type="button" data-player-board-sell-button>Sell Selected Unit</button>
+                  </div>
+                  <div class="player-cursor-list" data-shared-board-status-legend>
+                    <span data-shared-board-own-status>Your unit</span>
+                    <span data-shared-board-ally-status>Ally unit</span>
+                    <span data-shared-board-open-status>Active cell</span>
+                    <span data-shared-board-blocked-status>Inactive cell</span>
+                  </div>
+                  <div class="shared-board-grid" data-player-board-cells>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="0" aria-label="Board cell 0">0</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="1" aria-label="Board cell 1">1</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="2" aria-label="Board cell 2">2</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="3" aria-label="Board cell 3">3</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="4" aria-label="Board cell 4">4</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="5" aria-label="Board cell 5">5</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="6" aria-label="Board cell 6">6</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="7" aria-label="Board cell 7">7</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="8" aria-label="Board cell 8">8</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="9" aria-label="Board cell 9">9</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="10" aria-label="Board cell 10">10</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="11" aria-label="Board cell 11">11</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="12" aria-label="Board cell 12">12</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="13" aria-label="Board cell 13">13</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="14" aria-label="Board cell 14">14</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="15" aria-label="Board cell 15">15</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="16" aria-label="Board cell 16">16</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="17" aria-label="Board cell 17">17</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="18" aria-label="Board cell 18">18</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="19" aria-label="Board cell 19">19</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="20" aria-label="Board cell 20">20</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="21" aria-label="Board cell 21">21</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="22" aria-label="Board cell 22">22</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="23" aria-label="Board cell 23">23</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="24" aria-label="Board cell 24">24</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="25" aria-label="Board cell 25">25</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="26" aria-label="Board cell 26">26</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="27" aria-label="Board cell 27">27</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="28" aria-label="Board cell 28">28</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="29" aria-label="Board cell 29">29</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="30" aria-label="Board cell 30">30</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="31" aria-label="Board cell 31">31</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="32" aria-label="Board cell 32">32</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="33" aria-label="Board cell 33">33</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="34" aria-label="Board cell 34">34</button>
+                    <button class="player-choice-btn player-slot-btn" type="button" data-player-shared-cell="35" aria-label="Board cell 35">35</button>
+                  </div>
+                  <div class="player-cursor-list" data-player-shared-cursor-list>Board presence をここに出す。</div>
                 </div>
               </div>
+            </div>
+
+            <div class="player-rail-stack" data-player-right-rail>
               <div class="player-card" data-player-special-unit-card>
                 <strong>Special Unit</strong>
                 <div data-player-special-unit-copy>選択した主人公またはボスをここに表示します。</div>
@@ -879,7 +946,7 @@
                 <div class="player-inline-actions">
                   <button class="player-action-btn" type="button" data-player-bench-sell-button>Sell Selected Bench Unit</button>
                 </div>
-                <div class="player-mini-grid" data-player-bench-grid>
+                <div class="player-mini-grid player-bench-grid-two-column" data-player-bench-grid>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="0" aria-label="Bench slot 0">0</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="1" aria-label="Bench slot 1">1</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="2" aria-label="Bench slot 2">2</button>

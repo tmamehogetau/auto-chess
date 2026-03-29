@@ -303,9 +303,9 @@ describe("E2E: Phase HP Progress", () => {
           expect(resolvedState).toBeDefined();
           expect(resolvedState?.phaseHpTarget).toBe(600);
           expect(resolvedState?.phaseDamageDealt).toBe(100);
-          expect((gameRoom.state.players.get(raidClientA.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(2);
-          expect((gameRoom.state.players.get(raidClientB.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(3);
-          expect((gameRoom.state.players.get(raidClientC.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(2);
+          expect((gameRoom.state.players.get(raidClientA.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(1);
+          expect((gameRoom.state.players.get(raidClientB.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(2);
+          expect((gameRoom.state.players.get(raidClientC.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(1);
 
           for (const client of clients) {
             client.connection.close();

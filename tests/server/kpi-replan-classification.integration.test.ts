@@ -453,7 +453,20 @@ async function buildTrackedCompositionViaPrepActions(
       continue;
     }
 
-    injectForcedOffers(serverRoom, playerId, [unitType]);
+    const internalController = (serverRoom as unknown as {
+      controller?: {
+        shopOffersByPlayer: Map<string, Array<{
+          unitType: string;
+          unitId?: string;
+          rarity: number;
+          cost: number;
+        }>>;
+      };
+    }).controller;
+
+    internalController?.shopOffersByPlayer.set(playerId, [
+      { unitType, unitId: `${unitType}-${cell}`, rarity: 1, cost: 1 },
+    ]);
 
     const buyResult = await sendPrepCommand(client, cmdSeq++, { shopBuySlotIndex: 0 });
     recordResult(buyResult);

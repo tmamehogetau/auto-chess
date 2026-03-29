@@ -10,7 +10,8 @@ export interface ComparableShopOffer {
 export interface ApplyPrepIncomeParams {
   alivePlayerIds: readonly string[];
   goldByPlayer: Map<string, number>;
-  baseIncome: number;
+  baseIncome?: number;
+  getBaseIncome?: (playerId: string) => number;
   initialGold: number;
 }
 
@@ -84,7 +85,8 @@ export interface RefreshShopByCountParams<TShopOffer extends ComparableShopOffer
 export function applyPrepIncomeToPlayers(params: ApplyPrepIncomeParams): void {
   for (const playerId of params.alivePlayerIds) {
     const currentGold = params.goldByPlayer.get(playerId) ?? params.initialGold;
-    params.goldByPlayer.set(playerId, currentGold + params.baseIncome);
+    const incomeAmount = params.getBaseIncome?.(playerId) ?? params.baseIncome ?? 0;
+    params.goldByPlayer.set(playerId, currentGold + incomeAmount);
   }
 }
 

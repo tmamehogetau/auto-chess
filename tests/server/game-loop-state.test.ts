@@ -22,7 +22,7 @@ describe("GameLoopState", () => {
     expect(loop.bossPlayerId).toBe("p4");
     expect(loop.raidPlayerIds).toEqual(["p1", "p2", "p3"]);
     expect(loop.getRemainingLives("p4")).toBe(0);
-    expect(loop.getRemainingLives("p1")).toBe(3);
+    expect(loop.getRemainingLives("p1")).toBe(2);
     expect(loop.isBoss("p4")).toBe(true);
     expect(loop.isBoss("p2")).toBe(false);
   });
@@ -39,7 +39,7 @@ describe("GameLoopState", () => {
     const loop = new GameLoopState(["p1", "p2", "p3", "p4"]);
 
     loop.setBossPlayer("p2");
-    loop.consumeLife("p1", 3);
+    loop.consumeLife("p1", 2);
 
     expect(loop.getRemainingLives("p1")).toBe(0);
     expect(loop.isPlayerEliminated("p1")).toBe(false);

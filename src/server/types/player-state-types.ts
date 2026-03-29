@@ -92,6 +92,7 @@ export interface ControllerPlayerStatus {
   role: "unassigned" | "raid" | "boss" | "spectator";
   hp: number;
   remainingLives: number;
+  finalRoundShield?: number;
   eliminated: boolean;
   boardUnitCount: number;
   gold: number;
@@ -102,6 +103,7 @@ export interface ControllerPlayerStatus {
   benchUnits: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
+  boardSubUnits?: string[];
   ownedUnits: OwnedUnitsView;
   bossShopOffers: ShopOfferView[];
   lastBattleResult: PlayerStatusBattleResult | undefined;
@@ -124,6 +126,7 @@ export interface CommandResultPayload {
   role?: "unassigned" | "raid" | "boss" | "spectator";
   hp?: number;
   eliminated?: boolean;
+  finalRoundShield?: number;
   boardUnitCount: number;
   gold: number;
   xp: number;
@@ -134,6 +137,7 @@ export interface CommandResultPayload {
   benchUnits: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
+  boardSubUnits?: string[];
   lastBattleResult: PlayerStatusBattleResult | undefined;
   activeSynergies?: ActiveSynergyView[];
   bossShopOffers?: ShopOfferView[];

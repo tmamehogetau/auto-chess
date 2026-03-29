@@ -4,6 +4,7 @@ import { GameLoopState } from "../../../src/domain/game-loop-state";
 import type { FeatureFlags } from "../../../src/shared/feature-flags";
 import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import { SharedPool } from "../../../src/server/shared-pool";
+import { resolveSharedPoolCost } from "../../../src/server/unit-id-resolver";
 import {
   ShopManager,
   type ShopManagerBenchUnit,
@@ -225,5 +226,191 @@ describe("ShopManager", () => {
     expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
       { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 },
     ]);
+  });
+
+  it("merges a purchased unit into an attached sub unit even when the bench is full", () => {
+    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+      unitType: "vanguard" as const,
+      unitId: `bench-${index}`,
+      cost: 1,
+      starLevel: 1,
+      unitCount: 1,
+    }));
+    const { manager, deps } = createHarness({
+      initialOffers: [{ unitType: "mage", unitId: "patchouli", rarity: 2, cost: 2 }],
+      benchUnits: fullBench,
+      boardPlacements: [{
+        cell: 3,
+        unitType: "vanguard",
+        unitId: "meiling",
+        subUnit: {
+          unitType: "mage",
+          unitId: "patchouli",
+          sellValue: 2,
+          starLevel: 1,
+          unitCount: 1,
+        },
+      }],
+      ownedUnits: {
+        vanguard: 10,
+        ranger: 0,
+        mage: 1,
+        assassin: 0,
+      },
+    });
+
+    manager.buyShopOfferBySlot("p1", 0);
+
+    expect(deps.shopPurchaseCountByPlayer.get("p1")).toBe(1);
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(9);
+    expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([{
+      cell: 3,
+      unitType: "vanguard",
+      unitId: "meiling",
+      subUnit: {
+        unitType: "mage",
+        unitId: "patchouli",
+        sellValue: 4,
+        starLevel: 1,
+        unitCount: 2,
+      },
+    }]);
+  });
+
+  it("merges a boss-shop purchase into an existing board unit even when the bench is full", () => {
+    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+      unitType: "vanguard" as const,
+      unitId: `bench-${index}`,
+      cost: 1,
+      starLevel: 1,
+      unitCount: 1,
+    }));
+    const { manager, deps } = createHarness({
+      enableBossExclusiveShop: true,
+      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 }],
+      benchUnits: fullBench,
+      boardPlacements: [{
+        cell: 1,
+        unitType: "assassin",
+        unitId: "murasa",
+        sellValue: 3,
+        starLevel: 2,
+        unitCount: 4,
+      }],
+      ownedUnits: {
+        vanguard: 9,
+        ranger: 0,
+        mage: 0,
+        assassin: 4,
+      },
+    });
+
+    manager.buyBossShopOffer("p1", 0);
+
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(9);
+    expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([{
+      cell: 1,
+      unitType: "assassin",
+      unitId: "murasa",
+      sellValue: 6,
+      starLevel: 2,
+      unitCount: 5,
+    }]);
+    expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2, purchased: true },
+    ]);
+  });
+
+  it("sells an attached host by refunding both the host and its sub unit", () => {
+    const touhouPoolFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+      enablePerUnitSharedPool: true,
+    };
+    const { manager, deps, sharedPool } = createHarness({
+      rosterFlags: touhouPoolFlags,
+      enableSharedPool: true,
+      boardPlacements: [{
+        cell: 0,
+        unitType: "vanguard",
+        unitId: "meiling",
+        sellValue: 1,
+        starLevel: 1,
+        unitCount: 1,
+        subUnit: {
+          unitType: "mage",
+          unitId: "patchouli",
+          sellValue: 2,
+          starLevel: 1,
+          unitCount: 1,
+        },
+      }],
+      ownedUnits: {
+        vanguard: 1,
+        ranger: 0,
+        mage: 1,
+        assassin: 0,
+      },
+      gold: 5,
+    });
+
+    if (!sharedPool) {
+      throw new Error("expected shared pool");
+    }
+
+    const meilingPoolCost = resolveSharedPoolCost("meiling", 1, touhouPoolFlags);
+    const patchouliPoolCost = resolveSharedPoolCost("patchouli", 2, touhouPoolFlags);
+    const increaseByUnitIdSpy = vi.spyOn(sharedPool, "increaseByUnitId");
+
+    manager.sellBoardUnit("p1", 0);
+
+    expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([]);
+    expect(deps.ownedUnitsByPlayer.get("p1")).toEqual({
+      vanguard: 0,
+      ranger: 0,
+      mage: 0,
+      assassin: 0,
+    });
+    expect(deps.goldByPlayer.get("p1")).toBe(6);
+    expect(increaseByUnitIdSpy).toHaveBeenCalledWith("meiling", meilingPoolCost);
+    expect(increaseByUnitIdSpy).toHaveBeenCalledWith("patchouli", patchouliPoolCost);
+  });
+
+  it("returns attached sub units to the shared pool when releasing player inventory", () => {
+    const touhouPoolFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+      enablePerUnitSharedPool: true,
+    };
+    const { manager, sharedPool } = createHarness({
+      rosterFlags: touhouPoolFlags,
+      enableSharedPool: true,
+      boardPlacements: [{
+        cell: 0,
+        unitType: "ranger",
+        unitId: "nazrin",
+        sellValue: 1,
+        unitCount: 1,
+        subUnit: {
+          unitType: "mage",
+          unitId: "patchouli",
+          sellValue: 2,
+          unitCount: 1,
+        },
+      }],
+    });
+
+    if (!sharedPool) {
+      throw new Error("expected shared pool");
+    }
+
+    const nazrinPoolCost = resolveSharedPoolCost("nazrin", 1, touhouPoolFlags);
+    const patchouliPoolCost = resolveSharedPoolCost("patchouli", 2, touhouPoolFlags);
+    const increaseByUnitIdSpy = vi.spyOn(sharedPool, "increaseByUnitId");
+
+    manager.releasePlayerInventoryToSharedPool("p1");
+
+    expect(increaseByUnitIdSpy).toHaveBeenCalledWith("nazrin", nazrinPoolCost);
+    expect(increaseByUnitIdSpy).toHaveBeenCalledWith("patchouli", patchouliPoolCost);
   });
 });

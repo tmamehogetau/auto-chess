@@ -1,5 +1,6 @@
+import { Metadata } from "@colyseus/schema";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { MatchRoomState } from "../../src/server/schema/match-room-state";
+import { MatchRoomState, PlayerPresenceState } from "../../src/server/schema/match-room-state";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
 import { DEFAULT_FLAGS } from "../../src/shared/feature-flags";
 import {
@@ -383,6 +384,12 @@ describe("Feature Flag Integration", () => {
       expect(state.featureFlagsEnableSharedPool).toBe(true);
       expect(state.featureFlagsEnablePhaseExpansion).toBe(true);
       expect(state.featureFlagsEnableSubUnitSystem).toBe(true);
+    });
+
+    it("should register finalRoundShield in PlayerPresenceState schema metadata", () => {
+      expect(Metadata.getFields(PlayerPresenceState)).toMatchObject({
+        finalRoundShield: "number",
+      });
     });
   });
 

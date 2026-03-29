@@ -40,8 +40,12 @@ const boardElement = document.querySelector("[data-player-shared-board-grid]");
 const boardGridElement = document.querySelector("[data-player-board-cells]");
 const boardCopyElement = document.querySelector("[data-player-board-copy]");
 const sharedCursorListElement = document.querySelector("[data-player-shared-cursor-list]");
+const purchaseSurfaceElement = document.querySelector("[data-player-purchase-surface]");
+const deploySurfaceElement = document.querySelector("[data-player-deploy-surface]");
 const shopElement = document.querySelector("[data-player-unit-shop]");
 const shopCopyElement = document.querySelector("[data-player-shop-copy]");
+const heroUpgradeCopyElement = document.querySelector("[data-player-hero-upgrade-copy]");
+const refreshCopyElement = document.querySelector("[data-player-refresh-copy]");
 const shopSlotElements = Array.from(document.querySelectorAll("[data-player-shop-slot]"));
 const shopRefreshButton = document.querySelector("[data-player-shop-refresh-button]");
 const buyXpButton = document.querySelector("[data-player-buy-xp-button]");
@@ -64,6 +68,8 @@ const battleStartBannerElement = document.querySelector("[data-player-battle-sta
 const battleStartKickerElement = document.querySelector("[data-player-battle-start-kicker]");
 const battleStartRoundElement = document.querySelector("[data-player-battle-start-round]");
 const resultSurfaceElement = document.querySelector("[data-player-result-surface]");
+const detailCardElement = document.querySelector("[data-player-detail-card]");
+const allyRailElement = document.querySelector("[data-player-ally-rail]");
 const phaseSections = new Map([
   ["lobby", document.querySelector('[data-player-phase="lobby"]')],
   ["selection", document.querySelector('[data-player-phase="selection"]')],
@@ -82,7 +88,9 @@ let selectedBossId = "remilia";
 let selectedBenchIndex = null;
 let cmdSeqCounter = 0;
 let latestRawPhase = "Waiting";
+let latestPlayerFacingPhase = "lobby";
 let battleStartSweepTimeoutId = null;
+let latestPrepHoverDetail = null;
 
 function rememberSharedBoardRoomId(roomId) {
   const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
@@ -124,6 +132,20 @@ initSharedBoardClient(
       }
     },
     isTouhouRosterEnabled: () => latestState?.featureFlagsEnableTouhouRoster === true,
+    isSubUnitSystemEnabled: () => latestState?.featureFlagsEnableSubUnitSystem === true,
+    getSelectedHeroId: () => latestPlayer?.selectedHeroId ?? selectedHeroId ?? "",
+    getPlayerBoardSubUnits: () => Array.isArray(latestPlayer?.boardSubUnits)
+      ? latestPlayer.boardSubUnits
+      : latestPlayer?.boardSubUnits && typeof latestPlayer.boardSubUnits[Symbol.iterator] === "function"
+        ? Array.from(latestPlayer.boardSubUnits)
+        : [],
+    getPlayerFacingPhase: () => latestPlayerFacingPhase,
+    onSubSlotActivate: ({ cellIndex }) => {
+      handlePlayerSharedSubSlotClick(cellIndex);
+    },
+    onHoverDetailChange: (detail) => {
+      setPrepHoverDetail(detail);
+    },
     getPlayerPlacementSide: () => {
       const sessionId = gameRoomSession.getRoom()?.sessionId ?? "";
       return latestState?.bossPlayerId === sessionId || latestPlayer?.role === "boss"
@@ -165,6 +187,8 @@ gameRoomSession.onConnectionState((connectionState) => {
   latestRoundState = null;
   latestSharedBoardRoomId = "";
   latestRawPhase = "Waiting";
+  latestPlayerFacingPhase = "lobby";
+  latestPrepHoverDetail = null;
   selectedBenchIndex = null;
   clearPlayerBattleStartSweep();
   leaveSharedBoardRoom();
@@ -179,7 +203,8 @@ gameRoomSession.onConnectionState((connectionState) => {
 gameRoomSession.onStateChange((state) => {
   const previousPhase = latestRawPhase;
   latestRawPhase = typeof state?.phase === "string" ? state.phase : "Waiting";
-  const nextView = resolvePlayerPhaseView(state);
+  latestPlayerFacingPhase = resolvePlayerFacingPhase(state, latestRoundState);
+  const nextView = resolvePlayerPhaseView(state, latestRoundState);
   const player = mapGet(state?.players, gameRoomSession.getRoom()?.sessionId ?? "") ?? null;
   latestState = state;
   latestPlayer = player;
@@ -219,12 +244,13 @@ gameRoomSession.onStateChange((state) => {
     return;
   }
 
-  statusCopy.textContent = buildPlayerPhaseCopy(nextView);
+  statusCopy.textContent = buildPlayerPhaseCopy(latestPlayerFacingPhase);
   updateReadyButton(player);
 });
 
 gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
   latestRoundState = message;
+  latestPlayerFacingPhase = resolvePlayerFacingPhase(latestState, message);
   const sharedBoardRoomId = typeof message?.sharedBoardRoomId === "string"
     ? message.sharedBoardRoomId
     : "";
@@ -240,6 +266,10 @@ gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
     phaseHpProgress: latestPhaseHpProgress,
     sessionId: gameRoomSession.getRoom()?.sessionId ?? "",
   });
+  renderPlayerPrepSurface();
+  if (statusCopy instanceof HTMLElement) {
+    statusCopy.textContent = buildPlayerPhaseCopy(latestPlayerFacingPhase);
+  }
   void syncSharedBoardConnection();
 });
 
@@ -340,6 +370,11 @@ if (getSearchParam("autoconnect") === "1" && resolveRequestedRoomCode().length >
 }
 
 function resolvePlayerPhaseView(state) {
+  const playerFacingPhase = resolvePlayerFacingPhase(state, latestRoundState);
+  if (playerFacingPhase === "purchase" || playerFacingPhase === "deploy" || playerFacingPhase === "battle") {
+    return "prep";
+  }
+
   const phase = typeof state?.phase === "string" ? state.phase : "Waiting";
   const lobbyStage = typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference";
 
@@ -357,6 +392,34 @@ function resolvePlayerPhaseView(state) {
 
   if (phase === "Battle" || phase === "Settle" || phase === "Elimination" || phase === "End") {
     return "result";
+  }
+
+  return "lobby";
+}
+
+function resolvePlayerFacingPhase(state, roundState) {
+  const playerPhaseFromState = typeof state?.playerPhase === "string" ? state.playerPhase : "";
+  if (playerPhaseFromState.length > 0) {
+    return playerPhaseFromState;
+  }
+
+  const playerPhaseFromRoundState = typeof roundState?.playerPhase === "string" ? roundState.playerPhase : "";
+  if (playerPhaseFromRoundState.length > 0) {
+    return playerPhaseFromRoundState;
+  }
+
+  const phase = typeof state?.phase === "string" ? state.phase : "Waiting";
+  const lobbyStage = typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference";
+  if (phase === "Waiting" && lobbyStage === "selection") {
+    return "selection";
+  }
+
+  if (phase === "Prep") {
+    return "deploy";
+  }
+
+  if (phase === "Battle" || phase === "Settle" || phase === "Elimination" || phase === "End") {
+    return "battle";
   }
 
   return "lobby";
@@ -388,7 +451,7 @@ function syncPlayerBattleStartSweep(previousPhase, state) {
 }
 
 function triggerPlayerBattleStartSweep(state) {
-  const resultPhaseElement = phaseSections.get("result");
+  const prepPhaseElement = phaseSections.get("prep");
   const roundIndex = Number.isInteger(state?.roundIndex) ? state.roundIndex : -1;
   const roundLabel = roundIndex >= 0 ? `Round ${roundIndex + 1} kickoff` : "Battle kickoff";
 
@@ -407,10 +470,10 @@ function triggerPlayerBattleStartSweep(state) {
     battleStartBannerElement.classList.add("visible");
   }
 
-  if (resultPhaseElement instanceof HTMLElement) {
-    resultPhaseElement.classList.remove("battle-start-sweep");
-    void resultPhaseElement.offsetWidth;
-    resultPhaseElement.classList.add("battle-start-sweep");
+  if (prepPhaseElement instanceof HTMLElement) {
+    prepPhaseElement.classList.remove("battle-start-sweep");
+    void prepPhaseElement.offsetWidth;
+    prepPhaseElement.classList.add("battle-start-sweep");
   }
 
   if (battleStartSweepTimeoutId !== null) {
@@ -428,9 +491,9 @@ function clearPlayerBattleStartSweep() {
     battleStartSweepTimeoutId = null;
   }
 
-  const resultPhaseElement = phaseSections.get("result");
-  if (resultPhaseElement instanceof HTMLElement) {
-    resultPhaseElement.classList.remove("battle-start-sweep");
+  const prepPhaseElement = phaseSections.get("prep");
+  if (prepPhaseElement instanceof HTMLElement) {
+    prepPhaseElement.classList.remove("battle-start-sweep");
   }
 
   if (battleStartBannerElement instanceof HTMLElement) {
@@ -443,6 +506,12 @@ function buildPlayerPhaseCopy(phase) {
   switch (phase) {
     case "selection":
       return "role に応じた選択だけを表示しています。boss は boss、raid は hero を選びます。";
+    case "purchase":
+      return "Purchase 中です。shop で補充して、主人公以外の盤面ユニットは bench へ戻っています。";
+    case "deploy":
+      return "Deploy 中です。shared-board で配置を整えてから Ready を押します。";
+    case "battle":
+      return "Battle 中です。shared-board は参照専用で、戦闘操作はロックされています。";
     case "prep":
       return "Prep 中です。shared-board、shop、bench、Ready に集中してください。";
     case "result":
@@ -513,6 +582,21 @@ function resolveSharedBoardRoomId(state, roundState, fallbackRoomId = latestShar
 }
 
 function buildDeadlineSummary(state, roundState) {
+  const playerFacingPhase = resolvePlayerFacingPhase(state, roundState);
+  const playerPhaseDeadlineAtMs = Number(
+    roundState?.playerPhaseDeadlineAtMs ?? state?.playerPhaseDeadlineAtMs,
+  );
+  if (
+    (playerFacingPhase === "purchase" || playerFacingPhase === "deploy" || playerFacingPhase === "battle")
+    && Number.isFinite(playerPhaseDeadlineAtMs)
+    && playerPhaseDeadlineAtMs > 0
+  ) {
+    return {
+      label: `${playerFacingPhase} deadline`,
+      valueText: formatDeadlineCountdown(playerPhaseDeadlineAtMs),
+    };
+  }
+
   const phase = typeof state?.phase === "string" ? state.phase : "Waiting";
   if (phase === "Waiting" && Number(state?.selectionDeadlineAtMs) > 0) {
     return {
@@ -773,6 +857,33 @@ function handlePlayerSharedCellClick(cellIndex) {
   renderPlayerPrepSurface();
 }
 
+function handlePlayerSharedSubSlotClick(cellIndex) {
+  if (latestState?.phase !== "Prep") {
+    return;
+  }
+
+  if (selectedBenchIndex === null) {
+    showPlayerStatus("sub slot に装着する unit を Bench から選んでください。");
+    return;
+  }
+
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
+    showPlayerStatus("sub slot の対象セルを読み取れませんでした。もう一度選び直してください。");
+    return;
+  }
+
+  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+    cmdSeq: nextCmdSeq(),
+    benchToBoardCell: {
+      benchIndex: selectedBenchIndex,
+      cell: cellIndex,
+      slot: "sub",
+    },
+  });
+  selectedBenchIndex = null;
+  renderPlayerPrepSurface();
+}
+
 function getCurrentBoardCellElements() {
   if (!(boardGridElement instanceof HTMLElement)) {
     return [];
@@ -781,11 +892,62 @@ function getCurrentBoardCellElements() {
   return Array.from(boardGridElement.querySelectorAll("[data-player-shared-cell]"));
 }
 
+function normalizePrepHoverDetail(detail) {
+  if (!detail || typeof detail !== "object") {
+    return null;
+  }
+
+  const kicker = typeof detail.kicker === "string" ? detail.kicker : "";
+  const title = typeof detail.title === "string" ? detail.title : "";
+  const lines = Array.isArray(detail.lines)
+    ? detail.lines.filter((line) => typeof line === "string")
+    : [];
+
+  if (kicker.length === 0 && title.length === 0 && lines.length === 0) {
+    return null;
+  }
+
+  return { kicker, title, lines };
+}
+
+function isSamePrepHoverDetail(left, right) {
+  const normalizedLeft = normalizePrepHoverDetail(left);
+  const normalizedRight = normalizePrepHoverDetail(right);
+
+  if (normalizedLeft === null || normalizedRight === null) {
+    return normalizedLeft === normalizedRight;
+  }
+
+  if (normalizedLeft.kicker !== normalizedRight.kicker || normalizedLeft.title !== normalizedRight.title) {
+    return false;
+  }
+
+  if (normalizedLeft.lines.length !== normalizedRight.lines.length) {
+    return false;
+  }
+
+  return normalizedLeft.lines.every((line, index) => line === normalizedRight.lines[index]);
+}
+
+function setPrepHoverDetail(detail) {
+  const nextHoverDetail = normalizePrepHoverDetail(detail);
+  if (isSamePrepHoverDetail(latestPrepHoverDetail, nextHoverDetail)) {
+    return;
+  }
+
+  latestPrepHoverDetail = nextHoverDetail;
+  renderPlayerPrepSurface();
+}
+
 function renderPlayerPrepSurface() {
   renderPlayerPrepSummary({
+    detailCardElement,
+    allyRailElement,
     boardCopyElement,
     shopCopyElement,
     bossShopCopyElement,
+    heroUpgradeCopyElement,
+    refreshCopyElement,
     specialUnitCopyElement,
     spellCopyElement,
     synergyCopyElement,
@@ -806,6 +968,7 @@ function renderPlayerPrepSurface() {
     player: latestPlayer,
     sessionId: gameRoomSession.getRoom()?.sessionId ?? "",
     currentPhase: typeof latestState?.phase === "string" ? latestState.phase : "Waiting",
+    playerFacingPhase: latestPlayerFacingPhase,
     selectedBenchIndex,
     canSellBench: selectedBenchIndex !== null,
     canSellBoard: canManipulateSelectedBoardUnit(),
@@ -817,11 +980,27 @@ function renderPlayerPrepSurface() {
       sharedBoardRoomId: resolveSharedBoardRoomId(latestState, latestRoundState),
     },
     deadlineSummary: buildDeadlineSummary(latestState, latestRoundState),
+    hoverDetail: latestPrepHoverDetail,
+    onHoverDetailChange: setPrepHoverDetail,
     benchSellButton,
     boardReturnButton,
     boardSellButton,
     sharedBoardConnected: Boolean(getSharedBoardState()),
   });
+  syncSharedPhaseSurfaceMode();
+}
+
+function syncSharedPhaseSurfaceMode() {
+  const showPurchaseSurface = latestPlayerFacingPhase === "purchase";
+  const showDeploySurface = latestPlayerFacingPhase === "deploy" || latestPlayerFacingPhase === "battle";
+
+  if (purchaseSurfaceElement instanceof HTMLElement) {
+    purchaseSurfaceElement.hidden = !showPurchaseSurface;
+  }
+
+  if (deploySurfaceElement instanceof HTMLElement) {
+    deploySurfaceElement.hidden = !showDeploySurface;
+  }
 }
 
 function resolveSelectedSharedBoardCell() {

@@ -133,7 +133,24 @@ async function buildCompositionViaPrepActions(
       continue;
     }
 
-    injectForcedOffers(serverRoom, playerId, [unitType]);
+    const internalController = (serverRoom as unknown as {
+      controller?: {
+        shopOffersByPlayer: Map<string, Array<{
+          unitType: string;
+          unitId?: string;
+          rarity: number;
+          cost: number;
+        }>>;
+      };
+    }).controller;
+
+    if (!internalController?.shopOffersByPlayer) {
+      throw new Error("Expected internal controller shopOffersByPlayer for deterministic offer injection");
+    }
+
+    internalController.shopOffersByPlayer.set(playerId, [
+      { unitType, unitId: `${unitType}-${cell}`, rarity: 1, cost: 1 },
+    ]);
     const buyResult = await sendPrepCommand(client, cmdSeq++, { shopBuySlotIndex: 0 });
     if (buyResult.accepted) {
       await sendPrepCommand(client, cmdSeq++, {
@@ -157,7 +174,11 @@ function injectForcedOffers(
     };
   }).controller;
 
-  internalController?.shopOffersByPlayer.set(
+  if (!internalController?.shopOffersByPlayer) {
+    throw new Error("Expected internal controller shopOffersByPlayer for forced offer injection");
+  }
+
+  internalController.shopOffersByPlayer.set(
     playerId,
     unitTypes.map((unitType) => ({ unitType, rarity: 1, cost: 1 })),
   );

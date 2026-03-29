@@ -44,12 +44,19 @@ export interface CommandPayload {
   benchToBoardCell?: {
     benchIndex: number;
     cell: number;
+    slot?: "main" | "sub";
   };
   boardToBenchCell?: {
     cell: number;
   };
   benchSellIndex?: number;
   boardSellIndex?: number;
+  mergeUnits?: {
+    unitType: string;
+    starLevel: number;
+    benchIndices?: number[];
+    boardCells?: number[];
+  };
   bossShopBuySlotIndex?: number;
 }
 
@@ -66,6 +73,7 @@ export interface ValidationDependencies {
   getBossShopOffers: (playerId: string) => ShopOffer[];
   getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   isBossPlayer: (playerId: string) => boolean;
+  isSubUnitSystemEnabled: () => boolean;
   isSharedPoolEnabled: () => boolean;
   isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
@@ -88,6 +96,23 @@ export type ValidationInternalRejectReason = "SERVER_INVARIANT_BREACH";
 
 export interface ValidationInternalResult {
   rejectReason?: ValidationInternalRejectReason;
+}
+
+function matchesUpgradeTrack(
+  unitType: string,
+  unitId: string | undefined,
+  candidate: { unitType: string; unitId?: string },
+): boolean {
+  return candidate.unitType === unitType && (candidate.unitId ?? "") === (unitId ?? "");
+}
+
+function placementContainsUpgradeTrack(
+  unitType: string,
+  unitId: string | undefined,
+  placement: BoardUnitPlacement,
+): boolean {
+  return matchesUpgradeTrack(unitType, unitId, placement)
+    || (placement.subUnit !== undefined && matchesUpgradeTrack(unitType, unitId, placement.subUnit));
 }
 
 /**
@@ -179,6 +204,10 @@ function validatePayload(
   payload: CommandPayload,
   deps: ValidationDependencies,
 ): import("../../shared/room-messages").CommandResult | null {
+  if (payload.mergeUnits !== undefined) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   // boardUnitCount validation
   if (payload.boardUnitCount !== undefined) {
     if (!Number.isInteger(payload.boardUnitCount) || payload.boardUnitCount < 0 || payload.boardUnitCount > 8) {
@@ -193,6 +222,12 @@ function validatePayload(
       const errorCode = validationResult.errorCode ?? "INVALID_PAYLOAD";
       return { accepted: false, code: errorCode };
     }
+
+    const hasSubAttachment = validationResult.normalized.some((placement) => placement.subUnit !== undefined);
+    if (hasSubAttachment && !deps.isSubUnitSystemEnabled()) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
     // Check for too many units (max 8)
     if (validationResult.normalized.length > 8) {
       return { accepted: false, code: "TOO_MANY_UNITS" };
@@ -234,7 +269,7 @@ function validatePayload(
 
   // benchToBoardCell validation
   if (payload.benchToBoardCell !== undefined) {
-    const { benchIndex, cell } = payload.benchToBoardCell;
+    const { benchIndex, cell, slot } = payload.benchToBoardCell;
     if (
       !Number.isInteger(benchIndex) ||
       benchIndex < 0 ||
@@ -242,6 +277,10 @@ function validatePayload(
       cell < SHARED_BOARD_MIN_INDEX ||
       cell > SHARED_BOARD_MAX_INDEX
     ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (slot !== undefined && slot !== "main" && slot !== "sub") {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
@@ -372,21 +411,39 @@ function validatePreconditions(
     const benchUnits = deps.getBenchUnits(playerId);
     const boardPlacements = deps.getBoardPlacements(playerId);
     const currentBoardUnitCount = deps.getBoardUnitCount(playerId);
+    const occupiedPlacement = boardPlacements.find(
+      (placement) => placement.cell === payload.benchToBoardCell?.cell,
+    );
+    const targetSlot = payload.benchToBoardCell.slot ?? "main";
 
     if (!benchUnits[payload.benchToBoardCell.benchIndex]) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
-    if (currentBoardUnitCount >= 8) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
-    }
+    if (targetSlot === "sub") {
+      if (!deps.isSubUnitSystemEnabled()) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
 
-    const duplicatedCell = boardPlacements.some(
-      (placement) => placement.cell === payload.benchToBoardCell?.cell,
-    );
+      if (deps.isBossPlayer(playerId)) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
 
-    if (duplicatedCell || reservedBoardCells.has(payload.benchToBoardCell.cell)) {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
+      if (!occupiedPlacement) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+    } else {
+      if (currentBoardUnitCount >= 8 && !occupiedPlacement) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      if (reservedBoardCells.has(payload.benchToBoardCell.cell)) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      if (occupiedPlacement?.subUnit) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
     }
   }
 
@@ -414,20 +471,26 @@ function validatePreconditions(
   if (payload.boardToBenchCell !== undefined) {
     const benchUnits = deps.getBenchUnits(playerId);
     const boardPlacements = deps.getBoardPlacements(playerId);
-    const hasBoardUnit = boardPlacements.some(
+    const returnedPlacement = boardPlacements.find(
       (placement) => placement.cell === payload.boardToBenchCell?.cell,
     );
+    const hasBoardUnit = returnedPlacement !== undefined;
 
     if (!hasBoardUnit) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
-    if (benchUnits.length >= MAX_BENCH_SIZE) {
+    const requiredBenchSlots = returnedPlacement?.subUnit ? 2 : 1;
+    if (benchUnits.length + requiredBenchSlots > MAX_BENCH_SIZE) {
       return { accepted: false, code: "BENCH_FULL" };
     }
   }
 
   if (payload.boardPlacements !== undefined) {
+    if (deps.isBossPlayer(playerId) && payload.boardPlacements.some((placement) => placement.subUnit !== undefined)) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
     const conflictsWithReservedCell = payload.boardPlacements.some((placement) =>
       reservedBoardCells.has(placement.cell),
     );
@@ -441,18 +504,23 @@ function validatePreconditions(
   if (payload.shopBuySlotIndex !== undefined) {
     const offers = deps.getShopOffers(playerId);
     const benchUnits = deps.getBenchUnits(playerId);
+    const targetOffer = offers[payload.shopBuySlotIndex];
 
-    if (!offers[payload.shopBuySlotIndex]) {
+    if (!targetOffer) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
-    if (benchUnits.length >= MAX_BENCH_SIZE) {
+    const boardPlacements = deps.getBoardPlacements(playerId);
+    const canStackIntoExistingUnit =
+      benchUnits.some((unit) => matchesUpgradeTrack(targetOffer.unitType, targetOffer.unitId, unit)) ||
+      boardPlacements.some((placement) => placementContainsUpgradeTrack(targetOffer.unitType, targetOffer.unitId, placement));
+
+    if (benchUnits.length >= MAX_BENCH_SIZE && !canStackIntoExistingUnit) {
       return { accepted: false, code: "BENCH_FULL" };
     }
 
     // Shared pool check
     if (deps.isSharedPoolEnabled()) {
-      const targetOffer = offers[payload.shopBuySlotIndex];
       if (targetOffer) {
         const rosterFlags = deps.getRosterFlags();
         if (rosterFlags.enablePerUnitSharedPool && !targetOffer.unitId) {
@@ -491,7 +559,12 @@ function validatePreconditions(
     }
 
     const benchUnits = deps.getBenchUnits(playerId);
-    if (benchUnits.length >= MAX_BENCH_SIZE) {
+    const boardPlacements = deps.getBoardPlacements(playerId);
+    const canStackIntoExistingUnit =
+      benchUnits.some((unit) => matchesUpgradeTrack(bossOffer.unitType, bossOffer.unitId, unit)) ||
+      boardPlacements.some((placement) => placementContainsUpgradeTrack(bossOffer.unitType, bossOffer.unitId, placement));
+
+    if (benchUnits.length >= MAX_BENCH_SIZE && !canStackIntoExistingUnit) {
       return { accepted: false, code: "BENCH_FULL" };
     }
   }

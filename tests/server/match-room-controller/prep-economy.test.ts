@@ -31,6 +31,23 @@ describe("prep-economy", () => {
     expect(goldByPlayer.get("p2")).toBe(7);
   });
 
+  it("applies role-aware prep income so raid gets +5 and boss gets +9", () => {
+    const goldByPlayer = new Map<string, number>([
+      ["raid", 10],
+      ["boss", 20],
+    ]);
+
+    applyPrepIncomeToPlayers({
+      alivePlayerIds: ["raid", "boss"],
+      goldByPlayer,
+      getBaseIncome: (playerId) => playerId === "boss" ? 9 : 5,
+      initialGold: 2,
+    });
+
+    expect(goldByPlayer.get("raid")).toBe(15);
+    expect(goldByPlayer.get("boss")).toBe(29);
+  });
+
   it("initializes prep shops, resets counters, and seeds boss offers only for the boss", () => {
     const shopRefreshCountByPlayer = new Map<string, number>([["boss", 9]]);
     const shopPurchaseCountByPlayer = new Map<string, number>([["boss", 9]]);

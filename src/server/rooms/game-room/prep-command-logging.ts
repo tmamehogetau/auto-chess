@@ -1,16 +1,36 @@
 import type { MatchLogger } from "../../match-logger";
 import type { LoggedPrepCommandPayload } from "./prep-command-payload";
+import { calculateSellValue } from "../../star-level-config";
 
 export interface PrepCommandLoggingDeps {
   logger: MatchLogger | null;
   getShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
   getBossShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
+  getBenchUnits?: (
+    sessionId: string,
+  ) => Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number }> | undefined;
+  getBoardPlacements?: (
+    sessionId: string,
+  ) => Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; starLevel?: number; unitCount?: number }> | undefined;
   getRoundIndex: () => number;
   getPlayerGold: (sessionId: string) => number;
 }
 
 export interface LogPrepCommandActionsOptions {
   shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
+  benchUnitsSnapshot?: Array<{
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    cost: number;
+    starLevel: number;
+    unitCount: number;
+  }> | undefined;
+  boardPlacementsSnapshot?: Array<{
+    cell: number;
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    sellValue?: number;
+    starLevel?: number;
+    unitCount?: number;
+  }> | undefined;
 }
 
 /**
@@ -48,10 +68,15 @@ export function logPrepCommandActions(
   }
 
   if (commandPayload.benchSellIndex !== undefined) {
+    const benchUnit = options?.benchUnitsSnapshot?.[commandPayload.benchSellIndex]
+      ?? deps.getBenchUnits?.(sessionId)?.[commandPayload.benchSellIndex];
+    const sellValue = benchUnit
+      ? calculateSellValue(benchUnit.cost, benchUnit.unitType, benchUnit.starLevel, benchUnit.unitCount)
+      : 1;
     deps.logger.logAction(sessionId, roundIndex, "sell_unit", {
       benchIndex: commandPayload.benchSellIndex,
       goldBefore,
-      goldAfter: goldBefore + 1,
+      goldAfter: goldBefore + sellValue,
     });
   }
 
@@ -89,10 +114,21 @@ export function logPrepCommandActions(
   }
 
   if (commandPayload.boardSellIndex !== undefined) {
+    const soldPlacement = (options?.boardPlacementsSnapshot ?? deps.getBoardPlacements?.(sessionId))?.find(
+      (placement) => placement.cell === commandPayload.boardSellIndex,
+    );
+    const sellValue = soldPlacement
+      ? calculateSellValue(
+        soldPlacement.sellValue ?? 0,
+        soldPlacement.unitType,
+        soldPlacement.starLevel ?? 1,
+        soldPlacement.unitCount,
+      )
+      : 1;
     deps.logger.logAction(sessionId, roundIndex, "board_sell", {
       cell: commandPayload.boardSellIndex,
       goldBefore,
-      goldAfter: goldBefore + 1,
+      goldAfter: goldBefore + sellValue,
     });
   }
 

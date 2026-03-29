@@ -52,6 +52,8 @@ export class FakeElement {
   public role = "";
   public ariaLabel = "";
   public onclick: (() => void) | null = null;
+  public onmouseenter: (() => void) | null = null;
+  public onmouseleave: (() => void) | null = null;
   public onpointerdown: (() => void) | null = null;
   public ondragstart: ((event: unknown) => void) | null = null;
   public ondragend: (() => void) | null = null;

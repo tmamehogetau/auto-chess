@@ -189,11 +189,11 @@ describe("E2E: Unit Operations Flow", () => {
       );
       expect(sellResult).toEqual({ accepted: true });
 
-      // Verify: unit removed from board, gold increased by unit cost
+      // Verify: unit removed from board, gold increases by tier 1 sell formula (C - 1)
       const playerAfterSell = gameRoom.state.players.get(targetClient.sessionId);
       expect(playerAfterSell?.benchUnits.length).toBe(0);
       expect(playerAfterSell?.boardUnitCount).toBe(0);
-      expect(Number(playerAfterSell?.gold)).toBe(goldAfterBuy + unitCost);
+      expect(Number(playerAfterSell?.gold)).toBe(goldAfterBuy + Math.max(unitCost - 1, 0));
 
       // Cleanup
       for (const client of clients) {
@@ -228,10 +228,10 @@ describe("E2E: Unit Operations Flow", () => {
         expect(buyResult).toEqual({ accepted: true });
       }
 
-      // Verify synthesis: 3 units should merge into 1 star-2 unit
+      // Verify purchase-count progression: 3 buys still remain tier 1 on a single stack
       const playerAfter = gameRoom.state.players.get(targetClient.sessionId);
       expect(playerAfter?.benchUnits.length).toBe(1);
-      expect(playerAfter?.benchUnits[0]).toBe("vanguard:2");
+      expect(playerAfter?.benchUnits[0]).toBe("vanguard");
       expect(playerAfter?.ownedVanguard).toBe(3);
 
       // Gold should be decreased by 3 (1 gold per unit)
@@ -368,11 +368,10 @@ describe("E2E: Unit Operations Flow", () => {
       );
       expect(sellResult).toEqual({ accepted: true });
 
-      // Verify: unit removed from bench, gold restored
+      // Verify: unit removed from bench, gold follows tier 1 sell formula (C - 1)
       const playerAfterSell = gameRoom.state.players.get(targetClient.sessionId);
       expect(playerAfterSell?.benchUnits.length).toBe(0);
-      expect(Number(playerAfterSell?.gold)).toBe(goldAfterBuy + unitCost);
-      expect(Number(playerAfterSell?.gold)).toBe(initialGold);
+      expect(Number(playerAfterSell?.gold)).toBe(goldAfterBuy + Math.max(unitCost - 1, 0));
 
       // Cleanup
       for (const client of clients) {

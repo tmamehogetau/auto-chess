@@ -125,6 +125,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public remainingLives: number;
 
+  declare public finalRoundShield: number;
+
   declare public eliminated: boolean;
 
   declare public boardUnitCount: number;
@@ -144,6 +146,8 @@ export class PlayerPresenceState extends Schema {
   declare public benchDisplayNames: ArraySchema<string>;
 
   declare public boardUnits: ArraySchema<string>;
+
+  declare public boardSubUnits: ArraySchema<string>;
 
   declare public ownedVanguard: number;
 
@@ -175,6 +179,7 @@ export class PlayerPresenceState extends Schema {
     this.role = "unassigned";
     this.hp = 100;
     this.remainingLives = 0;
+    this.finalRoundShield = 0;
     this.eliminated = false;
     this.boardUnitCount = 4;
     this.shopOffers = new ArraySchema<ShopOfferState>();
@@ -185,6 +190,7 @@ export class PlayerPresenceState extends Schema {
     this.benchUnits = new ArraySchema<string>();
     this.benchDisplayNames = new ArraySchema<string>();
     this.boardUnits = new ArraySchema<string>();
+    this.boardSubUnits = new ArraySchema<string>();
     this.ownedVanguard = 0;
     this.ownedRanger = 0;
     this.ownedMage = 0;
@@ -201,6 +207,8 @@ export class PlayerPresenceState extends Schema {
 export class MatchRoomState extends Schema {
   declare public phase: string;
 
+  declare public playerPhase: string;
+
   declare public setId: UnitEffectSetId;
 
   declare public maxPlayers: number;
@@ -208,6 +216,8 @@ export class MatchRoomState extends Schema {
   declare public lobbyStage: "preference" | "selection" | "started";
 
   declare public phaseDeadlineAtMs: number;
+
+  declare public playerPhaseDeadlineAtMs: number;
 
   declare public sharedBoardRoomId: string;
 
@@ -260,10 +270,12 @@ export class MatchRoomState extends Schema {
   public constructor() {
     super();
     this.phase = "Waiting";
+    this.playerPhase = "lobby";
     this.setId = "set1";
     this.maxPlayers = 4;
     this.lobbyStage = "preference";
     this.phaseDeadlineAtMs = 0;
+    this.playerPhaseDeadlineAtMs = 0;
     this.sharedBoardRoomId = "";
     this.selectionDeadlineAtMs = 0;
     this.prepDeadlineAtMs = 0;
@@ -336,6 +348,7 @@ defineTypes(PlayerPresenceState, {
   role: "string",
   hp: "number",
   remainingLives: "number",
+  finalRoundShield: "number",
   eliminated: "boolean",
   boardUnitCount: "number",
   shopOffers: [ShopOfferState],
@@ -346,6 +359,7 @@ defineTypes(PlayerPresenceState, {
   benchUnits: ["string"],
   benchDisplayNames: ["string"],
   boardUnits: ["string"],
+  boardSubUnits: ["string"],
   ownedVanguard: "number",
   ownedRanger: "number",
   ownedMage: "number",
@@ -360,10 +374,12 @@ defineTypes(PlayerPresenceState, {
 
 defineTypes(MatchRoomState, {
   phase: "string",
+  playerPhase: "string",
   setId: "string",
   maxPlayers: "number",
   lobbyStage: "string",
   phaseDeadlineAtMs: "number",
+  playerPhaseDeadlineAtMs: "number",
   sharedBoardRoomId: "string",
   selectionDeadlineAtMs: "number",
   prepDeadlineAtMs: "number",

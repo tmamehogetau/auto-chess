@@ -28,6 +28,7 @@ describe("PrepCommandValidator", () => {
     getBossShopOffers: vi.fn().mockReturnValue([]),
     getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     isBossPlayer: vi.fn().mockReturnValue(false),
+    isSubUnitSystemEnabled: vi.fn().mockReturnValue(false),
     isSharedPoolEnabled: vi.fn().mockReturnValue(false),
     isPoolDepleted: vi.fn().mockReturnValue(false),
     getPrepDeadlineAtMs: vi.fn().mockReturnValue(32000),
@@ -316,6 +317,24 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
+    test("benchToBoardCell sub slot rejects when sub-unit system is disabled", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue([
+          { unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 },
+        ]),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          { cell: 3, unitType: "vanguard" },
+        ]),
+        isSubUnitSystemEnabled: vi.fn().mockReturnValue(false),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        benchToBoardCell: { benchIndex: 0, cell: 3, slot: "sub" },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
     test("benchSellIndex with non-existent bench index returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         getBenchUnits: vi.fn().mockReturnValue([]),
@@ -340,12 +359,47 @@ describe("PrepCommandValidator", () => {
 
     test("shopBuySlotIndex with full bench returns BENCH_FULL", () => {
       const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "vanguard" })),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "ranger" })),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
 
       expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
+    });
+
+    test("shopBuySlotIndex allows a full-bench buy when a matching attached sub unit can merge", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue(
+          Array.from({ length: 9 }, (_, index) => ({
+            unitType: "vanguard",
+            unitId: `bench-${index}`,
+            cost: 1,
+            starLevel: 1,
+            unitCount: 1,
+          })),
+        ),
+        getShopOffers: vi.fn().mockReturnValue([
+          { unitType: "mage", unitId: "patchouli", rarity: 2, cost: 2 },
+        ]),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          {
+            cell: 4,
+            unitType: "vanguard",
+            unitId: "meiling",
+            subUnit: {
+              unitType: "mage",
+              unitId: "patchouli",
+              starLevel: 1,
+              unitCount: 1,
+              sellValue: 2,
+            },
+          },
+        ] satisfies BoardUnitPlacement[]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
+
+      expect(result).toBeNull();
     });
 
     test("shopBuySlotIndex with non-existent offer returns INVALID_PAYLOAD", () => {
@@ -548,12 +602,48 @@ describe("PrepCommandValidator", () => {
         getBossShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", rarity: 1, cost: 0 },
         ]),
-        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "vanguard" })),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "ranger" })),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { bossShopBuySlotIndex: 0 }, deps);
 
       expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
+    });
+
+    test("bossShopBuySlotIndex allows a full-bench buy when a matching attached sub unit can merge", () => {
+      const deps = createDependencies({
+        isBossPlayer: vi.fn().mockReturnValue(true),
+        getBossShopOffers: vi.fn().mockReturnValue([
+          { unitType: "mage", unitId: "patchouli", rarity: 2, cost: 2, purchased: false },
+        ]),
+        getBenchUnits: vi.fn().mockReturnValue(
+          Array.from({ length: 9 }, (_, index) => ({
+            unitType: "vanguard",
+            unitId: `bench-${index}`,
+            cost: 1,
+            starLevel: 1,
+            unitCount: 1,
+          })),
+        ),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          {
+            cell: 4,
+            unitType: "vanguard",
+            unitId: "meiling",
+            subUnit: {
+              unitType: "mage",
+              unitId: "patchouli",
+              starLevel: 1,
+              unitCount: 1,
+              sellValue: 2,
+            },
+          },
+        ] satisfies BoardUnitPlacement[]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { bossShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toBeNull();
     });
 
     test("bossShopBuySlotIndex with insufficient gold returns INSUFFICIENT_GOLD", () => {

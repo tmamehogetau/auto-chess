@@ -21,33 +21,54 @@ import { resolveFrontPortraitUrl } from "./portrait-resolver.js";
  * @property {(message: string, type: string) => void} onLog ログ追加関数
  * @property {(message: string, type: string) => void} showMessage メッセージ表示関数
  * @property {() => boolean} isTouhouRosterEnabled 東方ロスター有効判定
+ * @property {() => boolean} [isSubUnitSystemEnabled] sub unit system 有効判定
+ * @property {() => string} [getSelectedHeroId] 選択中 hero id
  * @property {() => ("boss"|"raid")} [getPlayerPlacementSide] 現在の配置サイド
+ * @property {() => string[]} [getPlayerBoardSubUnits] 現在プレイヤーの sub unit token 一覧
+ * @property {() => string} [getPlayerFacingPhase] 現在の player-facing phase
+ * @property {(payload: { cellIndex: number, subUnitToken: string | null }) => void} [onSubSlotActivate] sub slot click callback
+ * @property {(detail: { kicker: string, title: string, lines: string[] } | null) => void} [onHoverDetailChange] hover detail callback
  * @property {(client: object, roomName: string, options?: object) => Promise<object>} joinOrCreate ルーム接続関数
  */
 
 const DEFAULT_SHARED_BOARD_ROOM_NAME = "shared_board";
 const SHARED_BOARD_BATTLE_REPLAY_MESSAGE = "shared_battle_replay";
 const SHARED_BOARD_REQUEST_ROLE_MESSAGE = "shared_request_role";
-let currentSharedBoardRoomId = "";
-
-/** @type {SharedBoardDOMRefs} */
-let domRefs = {
+const UNIT_ICONS = {
+  vanguard: "🛡️",
+  ranger: "🏹",
+  mage: "✨",
+  assassin: "🗡️",
+  hero: "★",
+};
+const DEFAULT_DOM_REFS = {
   gridElement: null,
   cursorListElement: null,
   placementGuideElement: null,
 };
-
-/** @type {SharedBoardDependencies} */
-let deps = {
+const DEFAULT_DEPS = {
   client: null,
   gamePlayerId: "",
   sharedBoardRoomId: "",
   onLog: () => {},
   showMessage: () => {},
   isTouhouRosterEnabled: () => false,
+  isSubUnitSystemEnabled: () => false,
+  getSelectedHeroId: () => "",
   getPlayerPlacementSide: () => "raid",
+  getPlayerBoardSubUnits: () => [],
+  getPlayerFacingPhase: () => "",
+  onSubSlotActivate: () => {},
+  onHoverDetailChange: () => {},
   joinOrCreate: async () => null,
 };
+let currentSharedBoardRoomId = "";
+
+/** @type {SharedBoardDOMRefs} */
+let domRefs = { ...DEFAULT_DOM_REFS };
+
+/** @type {SharedBoardDependencies} */
+let deps = { ...DEFAULT_DEPS };
 
 /** @type {object|null} */
 let sharedBoardRoom = null;
@@ -79,8 +100,8 @@ let sharedBattleMovementGhosts = new Map();
  * @param {SharedBoardDependencies} dependencies 依存関数
  */
 export function initSharedBoardClient(refs, dependencies) {
-  domRefs = { ...domRefs, ...refs };
-  deps = { ...deps, ...dependencies };
+  domRefs = { ...DEFAULT_DOM_REFS, ...refs };
+  deps = { ...DEFAULT_DEPS, ...dependencies };
 }
 
 export function setSharedBoardGamePlayerId(gamePlayerId) {
@@ -393,6 +414,7 @@ function renderSharedBoard(state) {
   const { boardWidth = 6, boardHeight = 6 } = state;
   const cells = resolveSharedBoardCellsForRender(state);
   const legacyEmbeddedBoard = isLegacyEmbeddedBoard(state);
+  const playerSubUnitsByCell = buildPlayerSubUnitMap();
 
   for (let i = 0; i < boardWidth * boardHeight; i += 1) {
     const cell = mapGet(cells, String(i));
@@ -430,7 +452,8 @@ function renderSharedBoard(state) {
       cellElement.classList.add("active-combat-area");
       cellElement.classList.add(deploymentZone === "boss" ? "active-boss-area" : "active-raid-area");
     }
-    cellElement.onclick = () => {
+    cellElement.onclick = (event) => {
+      event?.stopPropagation?.();
       handleSharedCellClick(state, i);
     };
     cellElement.onkeydown = (event) => {
@@ -463,6 +486,14 @@ function renderSharedBoard(state) {
     };
 
     if (unitId && unitId !== "dummy-boss") {
+      const hoverDetail = buildSharedBoardHoverDetail(cell, playerSubUnitsByCell.get(i) ?? null);
+      cellElement.onmouseenter = () => {
+        deps.onHoverDetailChange?.(hoverDetail);
+      };
+      cellElement.onmouseleave = () => {
+        deps.onHoverDetailChange?.(null);
+      };
+
       if (isOwnUnit) {
         cellElement.draggable = true;
         cellElement.classList.add("draggable");
@@ -602,7 +633,21 @@ function renderSharedBoard(state) {
         }
       }
       cellElement.appendChild(unit);
+
+      const shouldRenderSubSlot = shouldRenderSharedBoardSubSlot({
+        ownerId,
+        unitId,
+        deploymentZone,
+      });
+      if (shouldRenderSubSlot) {
+        const subSlot = buildSharedBoardSubSlotElement(i, playerSubUnitsByCell.get(i) ?? null);
+        if (subSlot) {
+          cellElement.appendChild(subSlot);
+        }
+      }
     } else {
+      cellElement.onmouseenter = null;
+      cellElement.onmouseleave = null;
       cellElement.classList.add("empty");
     }
     domRefs.gridElement.appendChild(cellElement);
@@ -670,6 +715,213 @@ function shouldRenderTouhouPresentation(cell) {
       && typeof cell?.portraitKey === "string"
       && cell.portraitKey.length > 0,
   );
+}
+
+function buildPlayerSubUnitMap() {
+  const boardSubUnits = deps.getPlayerBoardSubUnits?.() ?? [];
+  const subUnitMap = new Map();
+
+  for (const token of boardSubUnits) {
+    const parsedToken = parseBoardSubUnitToken(token);
+    if (!parsedToken) {
+      continue;
+    }
+
+    subUnitMap.set(parsedToken.cellIndex, parsedToken);
+  }
+
+  return subUnitMap;
+}
+
+function parseBoardSubUnitToken(token) {
+  if (typeof token !== "string" || token.length === 0) {
+    return null;
+  }
+
+  const [cellText, unitType, detail] = token.split(":");
+  const cellIndex = Number.parseInt(cellText, 10);
+  if (!Number.isInteger(cellIndex) || typeof unitType !== "string" || unitType.length === 0) {
+    return null;
+  }
+
+  return {
+    cellIndex,
+    unitType,
+    detail: typeof detail === "string" ? detail : "",
+    rawToken: token,
+  };
+}
+
+function resolveSharedBoardUnitType(unitId) {
+  if (typeof unitId !== "string" || unitId.length === 0) {
+    return "";
+  }
+
+  if (unitId.startsWith("hero:")) {
+    return "hero";
+  }
+
+  if (unitId.startsWith("boss:")) {
+    return "boss";
+  }
+
+  const [unitType] = unitId.split("-");
+  return typeof unitType === "string" ? unitType : "";
+}
+
+function resolveSharedBoardUnitTypeName(unitType) {
+  if (typeof unitType !== "string" || unitType.length === 0) {
+    return "Unknown";
+  }
+
+  return ({
+    vanguard: "Vanguard",
+    ranger: "Ranger",
+    mage: "Mage",
+    assassin: "Assassin",
+    hero: "Hero",
+    boss: "Boss",
+  })[unitType] ?? unitType;
+}
+
+function resolveHeroDetailName(heroId) {
+  return ({
+    reimu: "霊夢",
+    marisa: "魔理沙",
+    okina: "隠岐奈",
+    keiki: "袿姫",
+    jyoon: "女苑",
+  })[heroId] ?? "Hero";
+}
+
+function resolveSubUnitHoverTitle(subUnitToken) {
+  if (!subUnitToken?.unitType) {
+    return "Unknown";
+  }
+
+  if (subUnitToken.unitType === "hero") {
+    return resolveHeroDetailName(subUnitToken.detail);
+  }
+
+  return resolveSharedBoardUnitTypeName(subUnitToken.unitType);
+}
+
+function buildSubUnitRuleLines(subUnitToken) {
+  if (subUnitToken?.unitType === "hero" && subUnitToken.detail === "okina") {
+    return ["他の自軍 unit の sub slot に入れます。"];
+  }
+
+  return [];
+}
+
+function buildSharedBoardHoverDetail(cell, subUnitToken = null) {
+  const title = typeof cell?.displayName === "string" && cell.displayName.length > 0
+    ? cell.displayName
+    : resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
+  const lines = [];
+  const unitTypeName = resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
+
+  if (unitTypeName !== "Unknown") {
+    lines.push(`タイプ: ${unitTypeName}`);
+  }
+
+  if (subUnitToken?.unitType) {
+    lines.push(`サブ効果: ${resolveSubUnitHoverTitle(subUnitToken)}`);
+    lines.push(...buildSubUnitRuleLines(subUnitToken));
+  }
+
+  if (isHeroSharedUnitId(cell?.unitId)) {
+    lines.push("Bench に戻らず、自軍 main と位置交換できます。");
+  }
+
+  return {
+    kicker: "Board Unit",
+    title,
+    lines,
+  };
+}
+
+function buildSharedBoardSubHoverDetail(subUnitToken, hostCell = null) {
+  if (!subUnitToken?.unitType) {
+    return null;
+  }
+
+  const hostTitle = typeof hostCell?.displayName === "string" && hostCell.displayName.length > 0
+    ? hostCell.displayName
+    : resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(hostCell?.unitId));
+
+  return {
+    kicker: "Sub Unit",
+    title: resolveSubUnitHoverTitle(subUnitToken),
+    lines: [
+      ...(hostTitle && hostTitle !== "Unknown" ? [`装着先: ${hostTitle}`] : []),
+      ...buildSubUnitRuleLines(subUnitToken),
+    ],
+  };
+}
+
+function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
+  if (!sharedBoardRoom || ownerId !== getOwnSharedBoardOwnerId()) {
+    return false;
+  }
+
+  if (!deps.isSubUnitSystemEnabled?.()) {
+    return false;
+  }
+
+  if (deploymentZone === "boss" || deps.getPlayerPlacementSide?.() === "boss") {
+    return false;
+  }
+
+  if (!unitId || unitId === "dummy-boss" || isBossSharedUnitId(unitId) || isHeroSharedUnitId(unitId)) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildSharedBoardSubSlotElement(cellIndex, subUnitToken) {
+  const playerFacingPhase = deps.getPlayerFacingPhase?.() ?? "";
+  const showEmptySubSlot = playerFacingPhase === "deploy";
+  const showAttachedSubSlot = playerFacingPhase === "deploy" || playerFacingPhase === "battle";
+
+  if (!subUnitToken && !showEmptySubSlot) {
+    return null;
+  }
+
+  if (subUnitToken && !showAttachedSubSlot) {
+    return null;
+  }
+
+  const subSlot = document.createElement("button");
+  subSlot.type = "button";
+  subSlot.className = "shared-board-sub-slot";
+  subSlot.dataset.sharedBoardSubSlot = String(cellIndex);
+  subSlot.dataset.sharedBoardTargetSlot = "sub";
+  subSlot.setAttribute("aria-label", `Sub slot for board cell ${cellIndex}`);
+
+  if (subUnitToken) {
+    subSlot.classList.add("attached");
+    subSlot.textContent = UNIT_ICONS[subUnitToken.unitType] ?? UNIT_ICONS.hero;
+  } else {
+    subSlot.textContent = "+";
+  }
+
+  subSlot.onclick = (event) => {
+    event?.stopPropagation?.();
+    deps.onSubSlotActivate?.({
+      cellIndex,
+      subUnitToken: subUnitToken?.rawToken ?? null,
+    });
+  };
+  subSlot.onmouseenter = () => {
+    deps.onHoverDetailChange?.(buildSharedBoardSubHoverDetail(subUnitToken, mapGet(currentSharedBoardState?.cells, String(cellIndex))));
+  };
+  subSlot.onmouseleave = () => {
+    deps.onHoverDetailChange?.(null);
+  };
+
+  return subSlot;
 }
 
 /**
@@ -748,6 +1000,12 @@ function selectSharedUnit(unitId, shouldNotify = true) {
     return;
   }
 
+  if (selectedSharedUnitId === unitId) {
+    selectedSharedUnitId = null;
+    renderSharedBoardState(currentSharedBoardState);
+    return;
+  }
+
   selectedSharedUnitId = unitId;
   renderSharedBoardState(currentSharedBoardState);
 
@@ -818,6 +1076,23 @@ function isValidSharedDropTarget(state, cellIndex) {
 
   if (cell.unitId === "dummy-boss") {
     return false;
+  }
+
+  if (
+    (isHeroSharedUnitId(cell.unitId) && !isHeroSharedUnitId(activeUnitId))
+    || (isBossSharedUnitId(cell.unitId) && !isBossSharedUnitId(activeUnitId))
+  ) {
+    return false;
+  }
+
+  if (cell.ownerId === getOwnSharedBoardOwnerId()) {
+    if (isBossSharedUnitId(activeUnitId)) {
+      return false;
+    }
+
+    if (isHeroSharedUnitId(activeUnitId)) {
+      return isOkinaSelectedHero();
+    }
   }
 
   return cell.ownerId === getOwnSharedBoardOwnerId();
@@ -901,6 +1176,10 @@ function isHeroSharedUnitId(unitId) {
   return typeof unitId === "string" && unitId.startsWith("hero:");
 }
 
+function isOkinaSelectedHero() {
+  return deps.getSelectedHeroId?.() === "okina";
+}
+
 function isBossSharedUnitId(unitId) {
   return typeof unitId === "string" && unitId.startsWith("boss:");
 }
@@ -960,6 +1239,20 @@ function buildSharedDropRejectMessage(state, cellIndex) {
   const cell = mapGet(state?.cells, String(cellIndex));
   if (cell?.unitId && cell.ownerId !== getOwnSharedBoardOwnerId()) {
     return "That cell is occupied by another player. Pick an open cell.";
+  }
+
+  if (isHeroSharedUnitId(cell?.unitId) && !isHeroSharedUnitId(activeUnitId)) {
+    return "Hero cells cannot be replaced. Swap with your own main unit instead.";
+  }
+
+  if (cell?.ownerId === getOwnSharedBoardOwnerId()) {
+    if (isBossSharedUnitId(activeUnitId)) {
+      return "Boss units can only move to an open boss cell.";
+    }
+
+    if (isHeroSharedUnitId(activeUnitId) && !isOkinaSelectedHero()) {
+      return "Only Okina can enter an occupied allied cell. Other heroes need an open raid cell.";
+    }
   }
 
   return isLegacyEmbeddedBoard(state)
@@ -1025,9 +1318,26 @@ export function handleSharedCellClick(state, cellIndex) {
   }
 
   const cell = mapGet(state?.cells, String(cellIndex));
+  const ownOwnerId = getOwnSharedBoardOwnerId();
+  const isOwnOccupiedCell = cell?.ownerId === ownOwnerId && cell.unitId && cell.unitId !== "dummy-boss";
+  const isDifferentSelectedOwnTarget = Boolean(
+    selectedSharedUnitId
+    && isOwnOccupiedCell
+    && cell.unitId !== selectedSharedUnitId,
+  );
+
+  if (selectedSharedUnitId && isDifferentSelectedOwnTarget) {
+    if (isValidSharedDropTarget(state, cellIndex)) {
+      sendSharedPlaceUnit(selectedSharedUnitId, cellIndex);
+      return;
+    }
+
+    deps.showMessage(buildSharedDropRejectMessage(state, cellIndex), "error");
+    return;
+  }
 
   // 自分のユニットがある場合は選択
-  if (cell?.ownerId === getOwnSharedBoardOwnerId() && cell.unitId && cell.unitId !== "dummy-boss") {
+  if (isOwnOccupiedCell) {
     selectSharedUnit(cell.unitId, true);
     return;
   }

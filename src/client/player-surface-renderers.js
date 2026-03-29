@@ -16,6 +16,13 @@ const UNIT_ICONS = {
   assassin: "🗡️",
 };
 
+const UNIT_DETAIL_NAMES = {
+  vanguard: "Vanguard",
+  ranger: "Ranger",
+  mage: "Mage",
+  assassin: "Assassin",
+};
+
 const HERO_DETAILS = {
   reimu: { name: "霊夢", role: "balance", hp: 120, attack: 18 },
   marisa: { name: "魔理沙", role: "dps", hp: 100, attack: 25 },
@@ -43,6 +50,226 @@ const SPELL_DETAILS = {
 
 const RESULT_IMPRINT_BOARD_WIDTH = 6;
 const RESULT_IMPRINT_BOARD_HEIGHT = 6;
+
+function buildHeroRuleLines(heroId) {
+  const lines = ["Bench に戻らず、自軍 main と位置交換できます。"];
+
+  if (heroId === "okina") {
+    lines.push("他の自軍 unit の sub slot に入れます。");
+  }
+
+  return lines;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function resolveUnitDetailName(unitType, displayName = "") {
+  if (typeof displayName === "string" && displayName.length > 0) {
+    return displayName;
+  }
+
+  if (typeof unitType !== "string" || unitType.length === 0) {
+    return "Unknown";
+  }
+
+  return UNIT_DETAIL_NAMES[unitType] ?? unitType;
+}
+
+function renderPrepDetailCard(detailCardElement, hoverDetail) {
+  if (!(detailCardElement instanceof HTMLElement)) {
+    return;
+  }
+
+  const kicker = typeof hoverDetail?.kicker === "string" && hoverDetail.kicker.length > 0
+    ? hoverDetail.kicker
+    : "Hover Detail";
+  const title = typeof hoverDetail?.title === "string" && hoverDetail.title.length > 0
+    ? hoverDetail.title
+    : "何も選ばれていません";
+  const lines = Array.isArray(hoverDetail?.lines) && hoverDetail.lines.length > 0
+    ? hoverDetail.lines
+    : [
+      "hover したユニットの詳細をここに表示します。",
+      "主人公、味方主人公、味方 bench、shared-board の sub 効果もここで確認できます。",
+    ];
+
+  detailCardElement.innerHTML = `
+    <strong>Unit Detail</strong>
+    <div class="player-ally-card-copy">${escapeHtml(kicker)}</div>
+    <div class="player-ally-card-copy"><strong>${escapeHtml(title)}</strong></div>
+    <div class="player-ally-card-copy">${lines.map((line) => escapeHtml(line)).join(" / ")}</div>
+  `;
+}
+
+function createHoverChip({ target, label, detail, onHoverDetailChange }) {
+  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+    return null;
+  }
+
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "player-choice-btn player-slot-btn";
+  chip.dataset.hoverDetailTarget = target;
+  chip.textContent = label;
+  chip.onmouseenter = () => {
+    onHoverDetailChange?.(detail);
+  };
+  chip.onfocus = () => {
+    onHoverDetailChange?.(detail);
+  };
+  chip.onmouseleave = () => {
+    onHoverDetailChange?.(null);
+  };
+  chip.onblur = () => {
+    onHoverDetailChange?.(null);
+  };
+  return chip;
+}
+
+function buildHeroHoverDetail(heroId, kicker, bossId = "") {
+  if (typeof heroId === "string" && heroId.length > 0) {
+    const heroDetail = HERO_DETAILS[heroId];
+    if (heroDetail) {
+      return {
+        kicker,
+        title: heroDetail.name,
+        lines: [
+          heroDetail.role,
+          `HP ${heroDetail.hp}`,
+          `ATK ${heroDetail.attack}`,
+          ...buildHeroRuleLines(heroId),
+        ],
+      };
+    }
+  }
+
+  if (typeof bossId === "string" && bossId.length > 0) {
+    const bossDetail = BOSS_DETAILS[bossId];
+    if (bossDetail) {
+      return {
+        kicker,
+        title: bossDetail.name,
+        lines: [bossDetail.roleCopy, "共有ボードでは位置だけ調整できます。"],
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildBenchHoverDetail(benchUnit, displayName, kicker) {
+  const title = formatBenchUnitLabel(benchUnit, displayName);
+  if (!title) {
+    return null;
+  }
+
+  return {
+    kicker,
+    title,
+    lines: ["味方の bench 候補です。shared-board の配置と噛み合うかを見ます。"],
+  };
+}
+
+function renderPrepAllyRail({
+  allyRailElement,
+  state,
+  player,
+  sessionId,
+  onHoverDetailChange,
+}) {
+  if (!(allyRailElement instanceof HTMLElement)) {
+    return;
+  }
+
+  allyRailElement.innerHTML = "";
+  allyRailElement.textContent = "";
+
+  const title = typeof document !== "undefined" && typeof document.createElement === "function"
+    ? document.createElement("strong")
+    : null;
+  if (title) {
+    title.textContent = "Allies";
+    allyRailElement.appendChild(title);
+  }
+
+  const ownHeroId = typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "";
+  const ownBossId = typeof player?.selectedBossId === "string" ? player.selectedBossId : "";
+  const ownHeroDetail = buildHeroHoverDetail(
+    ownHeroId,
+    ownHeroId.length > 0 ? "Your Hero" : "Your Boss",
+    ownBossId,
+  );
+  if (ownHeroDetail) {
+    const ownHeroChip = createHoverChip({
+      target: "self-hero",
+      label: ownHeroDetail.title,
+      detail: ownHeroDetail,
+      onHoverDetailChange,
+    });
+    if (ownHeroChip) {
+      allyRailElement.appendChild(ownHeroChip);
+    }
+  }
+
+  for (const [playerId, allyPlayer] of mapEntries(state?.players)) {
+    if (playerId === sessionId || allyPlayer?.isSpectator === true) {
+      continue;
+    }
+
+    const allyHeroId = typeof allyPlayer?.selectedHeroId === "string" ? allyPlayer.selectedHeroId : "";
+    const allyBossId = typeof allyPlayer?.selectedBossId === "string" ? allyPlayer.selectedBossId : "";
+    const allyHeroDetail = buildHeroHoverDetail(
+      allyHeroId,
+      allyHeroId.length > 0 ? "Ally Hero" : "Ally Boss",
+      allyBossId,
+    );
+    if (allyHeroDetail) {
+      const allyHeroChip = createHoverChip({
+        target: "ally-hero",
+        label: allyHeroDetail.title,
+        detail: allyHeroDetail,
+        onHoverDetailChange,
+      });
+      if (allyHeroChip) {
+        allyRailElement.appendChild(allyHeroChip);
+      }
+    }
+
+    const allyBenchUnits = toRenderableArray(allyPlayer?.benchUnits);
+    const allyBenchDisplayNames = toRenderableArray(allyPlayer?.benchDisplayNames);
+    for (let index = 0; index < allyBenchUnits.length; index += 1) {
+      const benchDetail = buildBenchHoverDetail(
+        allyBenchUnits[index],
+        allyBenchDisplayNames[index],
+        "Ally Bench",
+      );
+      if (!benchDetail) {
+        continue;
+      }
+
+      const allyBenchChip = createHoverChip({
+        target: "ally-bench",
+        label: benchDetail.title,
+        detail: benchDetail,
+        onHoverDetailChange,
+      });
+      if (allyBenchChip) {
+        allyRailElement.appendChild(allyBenchChip);
+      }
+    }
+  }
+
+  if (allyRailElement.children.length <= 1) {
+    allyRailElement.textContent = "味方情報の到着待ちです。";
+  }
+}
 
 function getActivePlayers(state) {
   return mapEntries(state?.players)
@@ -122,9 +349,13 @@ export function renderPlayerSelectionSummary({
 }
 
 export function renderPlayerPrepSummary({
+  detailCardElement,
+  allyRailElement,
   boardCopyElement,
   shopCopyElement,
   bossShopCopyElement,
+  heroUpgradeCopyElement,
+  refreshCopyElement,
   specialUnitCopyElement,
   spellCopyElement,
   synergyCopyElement,
@@ -151,11 +382,22 @@ export function renderPlayerPrepSummary({
   canReturnBoard = false,
   roomSummary = null,
   deadlineSummary = null,
+  hoverDetail = null,
+  onHoverDetailChange = null,
   benchSellButton,
   boardReturnButton,
   boardSellButton,
   sharedBoardConnected = false,
 }) {
+  renderPrepDetailCard(detailCardElement, hoverDetail);
+  renderPrepAllyRail({
+    allyRailElement,
+    state,
+    player,
+    sessionId,
+    onHoverDetailChange,
+  });
+
   const isBossPlayer = state?.bossPlayerId === sessionId || player?.role === "boss";
   const bossRoleSelectionEnabled = state?.featureFlagsEnableBossExclusiveShop === true;
 
@@ -183,7 +425,7 @@ export function renderPlayerPrepSummary({
         : "Boss role は boss character の選択待ちです。";
     } else {
       specialUnitCopyElement.textContent = heroDetail
-        ? `${heroDetail.name} / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。主人公は常設です。`
+        ? `${heroDetail.name} / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。主人公は常設で、bench には戻りません。${selectedHeroId === "okina" ? "隠岐奈だけは他の自軍 unit の sub slot に入れます。" : ""}`
         : "Raid role は hero selection の完了待ちです。";
     }
   }
@@ -227,8 +469,16 @@ export function renderPlayerPrepSummary({
   const remainingLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
   if (shopCopyElement instanceof HTMLElement) {
     shopCopyElement.textContent = offers.length > 0
-      ? `所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
-      : `所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
+      ? `共通ユニット / 所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
+      : `共通ユニット / 所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
+  }
+
+  if (heroUpgradeCopyElement instanceof HTMLElement) {
+    heroUpgradeCopyElement.textContent = `主人公強化 / LV ${level} / XP ${xp}。経験値を買って主人公レベルを上げます。`;
+  }
+
+  if (refreshCopyElement instanceof HTMLElement) {
+    refreshCopyElement.textContent = "リロード / 共通ユニット shop を更新して次の候補を見ます。";
   }
 
   shopSlotElements.forEach((button, index) => {
@@ -253,15 +503,15 @@ export function renderPlayerPrepSummary({
   }
   if (bossShopCopyElement instanceof HTMLElement) {
     if (!bossRoleSelectionEnabled) {
-      bossShopCopyElement.textContent = "Boss shop はこのルールセットでは無効です。";
+      bossShopCopyElement.textContent = "専用ユニット / Boss shop はこのルールセットでは無効です。";
     } else if (!isBossPlayer) {
-      bossShopCopyElement.textContent = "Boss shop は boss role のみ利用できます。";
+      bossShopCopyElement.textContent = "専用ユニット / Boss shop は boss role のみ利用できます。";
     } else if (bossShopOffers.length === 0) {
-      bossShopCopyElement.textContent = "Boss shop offer の更新待ちです。";
+      bossShopCopyElement.textContent = "専用ユニット / Boss shop offer の更新待ちです。";
     } else {
       const firstOffer = bossShopOffers[0];
       const firstCost = Math.max(0, Math.round(Number(firstOffer?.cost) || 0));
-      bossShopCopyElement.textContent = `Boss shop / ${bossShopOffers.length} offers。先頭 ${firstCost}G、boss 専用ユニットを直接 bench へ追加します。`;
+      bossShopCopyElement.textContent = `専用ユニット / Boss shop / ${bossShopOffers.length} offers。先頭 ${firstCost}G、boss 専用ユニットを直接 bench へ追加します。`;
     }
   }
 

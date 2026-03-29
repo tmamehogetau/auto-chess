@@ -1012,7 +1012,6 @@ describe("GameRoom Integration with Feature Flags", () => {
           const player = serverRoom.state.players.get(sessionId);
           expect(buyResult).toEqual({ accepted: true });
           expect(player?.gold).toBe(goldBefore - 2);
-          expect(player?.benchUnits.length).toBe(1);
         });
       });
     });

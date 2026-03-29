@@ -96,6 +96,7 @@ export interface PlayerStateQueryServiceDeps {
   wantsBossByPlayer: ReadonlyMap<string, boolean>;
   selectedBossByPlayer: ReadonlyMap<string, string>;
   roleByPlayer: ReadonlyMap<string, "unassigned" | "raid" | "boss">;
+  getFinalRoundShield(playerId: string): number;
   goldByPlayer: ReadonlyMap<string, number>;
   xpByPlayer: ReadonlyMap<string, number>;
   levelByPlayer: ReadonlyMap<string, number>;
@@ -110,6 +111,7 @@ export interface PlayerStateQueryServiceDeps {
   boardUnitCountByPlayer: ReadonlyMap<string, number>;
   boardPlacementsByPlayer: ReadonlyMap<string, BoardUnitPlacement[]>;
   heroPlacementByPlayer: ReadonlyMap<string, number>;
+  heroSubHostCellByPlayer?: ReadonlyMap<string, number>;
   bossPlacementByPlayer: ReadonlyMap<string, number>;
   enableBossExclusiveShop: boolean;
   enableSharedPool: boolean;
@@ -119,7 +121,9 @@ export interface PlayerStateQueryServiceDeps {
   initialLevel: number;
   buildActiveSynergies(playerId: string, boardPlacements: BoardUnitPlacement[]): ActiveSynergy[];
   resolveBenchUnitDisplayName(benchUnit: PlayerStateQueryBenchUnit): string;
-  formatBoardUnitToken(placement: BoardUnitPlacement): string;
+  formatBoardUnitToken(playerId: string, placement: BoardUnitPlacement): string;
+  formatBoardSubUnitToken(cell: number, placement: NonNullable<BoardUnitPlacement["subUnit"]>): string;
+  formatHeroSubUnitToken?(cell: number, heroId: string): string;
 }
 
 export class PlayerStateQueryService {
@@ -284,6 +288,19 @@ export class PlayerStateQueryService {
     }
 
     const activeSynergies = this.deps.buildActiveSynergies(playerId, boardPlacements);
+    const heroSubHostCell = this.deps.heroSubHostCellByPlayer?.get(playerId) ?? -1;
+    const selectedHeroId = this.deps.selectedHeroByPlayer.get(playerId) ?? "";
+    const boardSubUnits = boardPlacements
+      .filter((placement): placement is BoardUnitPlacement & { subUnit: NonNullable<BoardUnitPlacement["subUnit"]> } =>
+        placement.subUnit !== undefined)
+      .map((placement) => this.deps.formatBoardSubUnitToken(placement.cell, placement.subUnit));
+
+    if (Number.isInteger(heroSubHostCell) && heroSubHostCell >= 0 && selectedHeroId.length > 0) {
+      boardSubUnits.push(
+        this.deps.formatHeroSubUnitToken?.(heroSubHostCell, selectedHeroId)
+          ?? `${heroSubHostCell}:hero:${selectedHeroId}`,
+      );
+    }
 
     const baseStatus: ControllerPlayerStatus = {
       wantsBoss: this.deps.wantsBossByPlayer.get(playerId) ?? false,
@@ -291,6 +308,7 @@ export class PlayerStateQueryService {
       role: this.deps.roleByPlayer.get(playerId) ?? "unassigned",
       hp: isActivePlayer ? state.getPlayerHp(playerId) : 100,
       remainingLives: isActivePlayer ? state.getRemainingLives(playerId) : 0,
+      finalRoundShield: this.deps.getFinalRoundShield(playerId),
       eliminated: isActivePlayer ? state.isPlayerEliminated(playerId) : false,
       boardUnitCount: this.deps.boardUnitCountByPlayer.get(playerId) ?? 4,
       gold: this.deps.goldByPlayer.get(playerId) ?? this.deps.initialGold,
@@ -304,7 +322,8 @@ export class PlayerStateQueryService {
           : benchUnit.unitType,
       ),
       benchDisplayNames: benchUnits.map((benchUnit) => this.deps.resolveBenchUnitDisplayName(benchUnit)),
-      boardUnits: boardPlacements.map((placement) => this.deps.formatBoardUnitToken(placement)),
+      boardUnits: boardPlacements.map((placement) => this.deps.formatBoardUnitToken(playerId, placement)),
+      boardSubUnits,
       ownedUnits: {
         vanguard: ownedUnits?.vanguard ?? 0,
         ranger: ownedUnits?.ranger ?? 0,
@@ -314,7 +333,7 @@ export class PlayerStateQueryService {
       bossShopOffers: bossShopOffers.map((offer) => toShopOfferView(offer)),
       lastBattleResult: this.deps.battleResultsByPlayer.get(playerId),
       activeSynergies,
-      selectedHeroId: this.deps.selectedHeroByPlayer.get(playerId) ?? "",
+      selectedHeroId,
       isRumorEligible,
     };
 

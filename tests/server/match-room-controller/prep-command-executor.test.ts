@@ -247,6 +247,17 @@ describe("PrepCommandExecutor", () => {
 
       expect(deps.deployBenchUnitToBoard).toHaveBeenCalledWith("p1", 0, 3);
     });
+
+    test("passes through sub-slot bench deploy targets", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = {
+        benchToBoardCell: { benchIndex: 0, cell: 24, slot: "sub" },
+      };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.deployBenchUnitToBoard).toHaveBeenCalledWith("p1", 0, 24, "sub");
+    });
   });
 
   describe("Bench Sell", () => {

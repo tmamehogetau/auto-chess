@@ -73,10 +73,10 @@ describe("E2E: Sub Unit System", () => {
   );
 
   /**
-   * Sub Unit System有効時、盤面トークンにsub-unit有効化が反映される
+   * Sub Unit System有効時、host attachmentが盤面トークンに反映される
    */
   it(
-    "Sub Unit System有効時、対応fixed pairだけがsub-unit有効トークンになる",
+    "Sub Unit System有効時、host unitにsub attachmentがあるとsub-unit有効トークンになる",
     { timeout: 30_000 },
     async () => {
       await withFlags(
@@ -102,10 +102,20 @@ describe("E2E: Sub Unit System", () => {
           await waitForCondition(() => gameRoom.state.phase !== "Waiting", 5_000);
           await waitForPhase(gameRoom, "Prep", 5_000);
 
-          // vanguard配置を直接送信
+          // host + sub attachment を直接送信
           clients[0]!.send("prep_command", {
             cmdSeq: 1,
-            boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 }],
+            boardPlacements: [{
+              cell: 0,
+              unitType: "vanguard",
+              starLevel: 1,
+              subUnit: {
+                unitType: "mage",
+                starLevel: 1,
+                sellValue: 1,
+                unitCount: 1,
+              },
+            }],
           });
 
           await waitForCondition(() => {

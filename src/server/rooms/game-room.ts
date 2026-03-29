@@ -33,6 +33,7 @@ import {
 } from "../schema/match-room-state";
 import {
   CLIENT_MESSAGE_TYPES,
+  type PlayerFacingPhase,
   SERVER_MESSAGE_TYPES,
   type AdminPlayerSnapshot,
   type AdminQueryMessage,
@@ -262,6 +263,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     );
     this.lobbyReadyDeadlineAtMs = createdAtMs + this.readyAutoStartMs;
     this.state.phaseDeadlineAtMs = 0;
+    this.state.playerPhase = "lobby";
+    this.state.playerPhaseDeadlineAtMs = 0;
     this.state.lobbyStage = "preference";
     this.state.selectionDeadlineAtMs = 0;
 
@@ -364,6 +367,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.bossPlayerId = resetState.bossPlayerId;
     this.state.phase = "Waiting";
     this.state.prepDeadlineAtMs = 0;
+    this.state.playerPhase = "lobby";
+    this.state.playerPhaseDeadlineAtMs = 0;
     this.clearRaidPlayerIds();
 
     if (connectedPlayerIds.length >= GameRoom.MIN_ACTIVE_PLAYERS_TO_START && this.controller) {
@@ -415,6 +420,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.selectionDeadlineAtMs = nowMs + this.selectionTimeoutMs;
     this.state.phaseDeadlineAtMs = 0;
     this.state.bossPlayerId = bossPlayerId;
+    this.state.playerPhase = "selection";
+    this.state.playerPhaseDeadlineAtMs = this.state.selectionDeadlineAtMs;
     this.clearRaidPlayerIds();
 
     for (const playerId of connectedPlayerIds) {
@@ -521,6 +528,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.phaseDeadlineAtMs = 0;
     this.state.selectionDeadlineAtMs = 0;
     this.state.prepDeadlineAtMs = 0;
+    this.state.playerPhase = "lobby";
+    this.state.playerPhaseDeadlineAtMs = 0;
     this.state.bossPlayerId = "";
     this.clearRaidPlayerIds();
     this.state.roundIndex = 0;
@@ -600,14 +609,18 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
     shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
+    benchUnitsSnapshot?: Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number }>,
+    boardPlacementsSnapshot?: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; starLevel?: number; unitCount?: number }>,
   ): void {
     logPrepCommandActions(sessionId, commandPayload, {
       logger: this.matchLogger,
       getShopOffers: (sid) => this.controller?.getShopOffersForPlayer(sid),
       getBossShopOffers: (sid) => this.controller?.getBossShopOffersForPlayer(sid),
+      getBenchUnits: (sid) => this.controller?.getBenchUnitDetailsForPlayer(sid),
+      getBoardPlacements: (sid) => this.controller?.getBoardPlacementsForPlayer(sid),
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
-    }, { shopOffersSnapshot });
+    }, { shopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });
   }
 
   private isAdminQueryClient(client: Client): boolean {
@@ -691,8 +704,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     const progressed = this.controller.advanceByTime(nowMs);
 
-    // Endフェーズでも状態同期を行う（クライアントが終了を認識できるように）
-    if (!progressed && this.controller.phase !== "End") {
+    if (!progressed && !this.isStartedPlayerPhaseDirty(nowMs) && this.controller.phase !== "End") {
       return;
     }
 
@@ -722,6 +734,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.sharedBoardRoomId = this.sharedBoardRoomId ?? "";
     this.state.prepDeadlineAtMs =
       this.controller.phase === "Prep" ? this.controller.prepDeadlineAtMs ?? 0 : 0;
+    const playerFacingPhase = this.controller.getPlayerFacingPhaseState();
+    this.state.playerPhase = playerFacingPhase.phase;
+    this.state.playerPhaseDeadlineAtMs = playerFacingPhase.deadlineAtMs;
     this.state.lobbyStage = this.controller.phase === "Waiting"
       ? this.state.lobbyStage
       : "started";
@@ -837,8 +852,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
     return {
       phase: this.state.phase as RoundStateMessage["phase"],
+      playerPhase: this.state.playerPhase as PlayerFacingPhase,
       roundIndex: this.state.roundIndex,
       phaseDeadlineAtMs: this.state.phaseDeadlineAtMs,
+      playerPhaseDeadlineAtMs: this.state.playerPhaseDeadlineAtMs,
       sharedBoardRoomId: this.state.sharedBoardRoomId,
       lobbyStage: this.state.lobbyStage,
       selectionDeadlineAtMs: this.state.selectionDeadlineAtMs,
@@ -853,6 +870,16 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       phaseResult: phaseProgress?.result ?? "pending",
       phaseCompletionRate: phaseProgress?.completionRate ?? 0,
     };
+  }
+
+  private isStartedPlayerPhaseDirty(nowMs: number): boolean {
+    if (!this.controller || this.controller.phase === "Waiting") {
+      return false;
+    }
+
+    const playerFacingPhase = this.controller.getPlayerFacingPhaseState(nowMs);
+    return this.state.playerPhase !== playerFacingPhase.phase
+      || this.state.playerPhaseDeadlineAtMs !== playerFacingPhase.deadlineAtMs;
   }
 
   private isSharedBoardAuthoritativePrep(): boolean {
@@ -895,8 +922,20 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       syncPlayerFromCommandResult: (player, sessionId, cmdSeq) => {
         this.syncPlayerFromCommandResult(player, sessionId, cmdSeq);
       },
-      logPrepCommandActions: (sessionId, commandPayload, shopOffersSnapshot) => {
-        this.logPrepCommandActions(sessionId, commandPayload, shopOffersSnapshot);
+      logPrepCommandActions: (
+        sessionId,
+        commandPayload,
+        shopOffersSnapshot,
+        benchUnitsSnapshot,
+        boardPlacementsSnapshot,
+      ) => {
+        this.logPrepCommandActions(
+          sessionId,
+          commandPayload,
+          shopOffersSnapshot,
+          benchUnitsSnapshot,
+          boardPlacementsSnapshot,
+        );
       },
       buildAdminPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
       isAdminQueryClient: (client) => this.isAdminQueryClient(client),

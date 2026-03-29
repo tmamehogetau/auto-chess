@@ -32,6 +32,7 @@ import type {
   BoardUnitPlacement,
   BattleTimelineEvent,
   CommandResult,
+  PlayerFacingPhase,
   SharedBattleReplayMessage,
 } from "../shared/room-messages";
 import { MatchLogger } from "./match-logger";
@@ -62,6 +63,7 @@ import {
 } from "./combat/unit-effect-definitions";
 import {
   calculateSellValue,
+  UNIT_SELL_VALUE_BY_TYPE,
 } from "./star-level-config";
 import { HEROES } from "../data/heroes";
 import { isBossCharacterId } from "../shared/boss-characters";
@@ -118,10 +120,17 @@ interface MatchRoomControllerOptions {
 
 type RoundDamageByPlayer = Partial<Record<string, number>>;
 
+interface PlayerFacingPhaseState {
+  phase: PlayerFacingPhase;
+  deadlineAtMs: number;
+}
+
 const INITIAL_GOLD = 15;
 const INITIAL_XP = 0;
 const INITIAL_LEVEL = 1;
-const PREP_BASE_INCOME = 5;
+const RAID_PREP_BASE_INCOME = 5;
+const BOSS_PREP_BASE_INCOME = 9;
+const RAID_PHASE_SUCCESS_BONUS = 2;
 const XP_PURCHASE_COST = 4;
 const XP_PURCHASE_GAIN = 4;
 const MAX_XP_PURCHASE_COUNT = 10;
@@ -364,6 +373,7 @@ export class MatchRoomController {
 
   private readonly selectedHeroByPlayer: Map<string, string>;
   private readonly heroPlacementByPlayer: Map<string, number>;
+  private readonly heroSubHostCellByPlayer: Map<string, number>;
 
   private readonly selectedBossByPlayer: Map<string, string>;
   private readonly bossPlacementByPlayer: Map<string, number>;
@@ -371,6 +381,8 @@ export class MatchRoomController {
   private readonly wantsBossByPlayer: Map<string, boolean>;
 
   private readonly roleByPlayer: Map<string, "unassigned" | "raid" | "boss">;
+
+  private readonly finalRoundShieldByPlayer: Map<string, number>;
 
   private readonly readyDeadlineAtMs: number;
 
@@ -438,6 +450,7 @@ export class MatchRoomController {
   private readonly shopManager: ShopManager<BattleResult>;
   private readonly battleOrchestrator: BattleOrchestrator<BattleResult>;
   private readonly playerStateQuery: PlayerStateQueryService;
+  private readonly raidRecoveryRoundIndex: number;
 
   private pendingRumorInfluence: {
     roundIndex: number;
@@ -474,10 +487,12 @@ export class MatchRoomController {
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
     this.heroPlacementByPlayer = new Map<string, number>();
+    this.heroSubHostCellByPlayer = new Map<string, number>();
     this.selectedBossByPlayer = new Map<string, string>();
     this.bossPlacementByPlayer = new Map<string, number>();
     this.wantsBossByPlayer = new Map<string, boolean>();
     this.roleByPlayer = new Map<string, "unassigned" | "raid" | "boss">();
+    this.finalRoundShieldByPlayer = new Map<string, number>();
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
@@ -558,10 +573,12 @@ export class MatchRoomController {
       this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
       this.selectedHeroByPlayer.set(playerId, "");
       this.heroPlacementByPlayer.set(playerId, -1);
+      this.heroSubHostCellByPlayer.set(playerId, -1);
       this.selectedBossByPlayer.set(playerId, "");
       this.bossPlacementByPlayer.set(playerId, -1);
       this.wantsBossByPlayer.set(playerId, false);
       this.roleByPlayer.set(playerId, "unassigned");
+      this.finalRoundShieldByPlayer.set(playerId, 0);
     }
 
     // Feature Flagに基づいてサブユニットシステムを初期化
@@ -569,7 +586,6 @@ export class MatchRoomController {
     this.subUnitAssistConfigByType = this.enableSubUnitSystem
       ? resolveSubUnitAssistConfigByType()
       : new Map<BoardUnitType, SubUnitConfig>();
-
     // Initialize battle resolution service with dependencies
     // (must be after subUnit system initialization)
     const battleResolutionDeps: BattleResolutionDependencies = {
@@ -603,6 +619,7 @@ export class MatchRoomController {
 
     // Feature Flagに基づいてボス専用ショップを初期化
     this.enableBossExclusiveShop = resolvedFeatureFlags.enableBossExclusiveShop;
+    this.raidRecoveryRoundIndex = Math.max(1, Math.floor(this.resolveMaxRounds() / 2));
     this.bossShopOffersByPlayer = new Map<string, ShopOffer[]>();
     this.shopManager = new ShopManager<BattleResult>({
       ensureStarted: () => this.ensureStarted(),
@@ -670,6 +687,7 @@ export class MatchRoomController {
       eliminationDurationMs: this.eliminationDurationMs,
       resolvePhaseHpTarget: (roundIndex) => this.resolvePhaseHpTarget(roundIndex),
       onPrepToBattle: () => {
+        this.activateFinalRoundShields();
         this.captureBattleStartHp();
         this.captureBattleInputSnapshot();
         this.declareSpell();
@@ -683,7 +701,7 @@ export class MatchRoomController {
         this.applySpellEffect();
       },
       onBeforeSettleToElimination: () => {
-        this.battleOrchestrator.applyRaidRoundConsequences();
+        this.applyRaidRoundConsequences();
       },
       onAfterSettleToElimination: (aliveBeforeElimination) => {
         this.battleOrchestrator.captureEliminationResult(aliveBeforeElimination);
@@ -728,6 +746,7 @@ export class MatchRoomController {
       wantsBossByPlayer: this.wantsBossByPlayer,
       selectedBossByPlayer: this.selectedBossByPlayer,
       roleByPlayer: this.roleByPlayer,
+      getFinalRoundShield: (playerId) => this.getDisplayedFinalRoundShield(playerId),
       goldByPlayer: this.goldByPlayer,
       xpByPlayer: this.xpByPlayer,
       levelByPlayer: this.levelByPlayer,
@@ -742,6 +761,7 @@ export class MatchRoomController {
       boardUnitCountByPlayer: this.boardUnitCountByPlayer,
       boardPlacementsByPlayer: this.boardPlacementsByPlayer,
       heroPlacementByPlayer: this.heroPlacementByPlayer,
+      heroSubHostCellByPlayer: this.heroSubHostCellByPlayer,
       bossPlacementByPlayer: this.bossPlacementByPlayer,
       enableBossExclusiveShop: this.enableBossExclusiveShop,
       enableSharedPool: this.enableSharedPool,
@@ -755,20 +775,13 @@ export class MatchRoomController {
       },
       resolveBenchUnitDisplayName: (benchUnit) =>
         this.resolveBenchUnitDisplayName(benchUnit as BenchUnit),
-      formatBoardUnitToken: (placement) => {
+      formatBoardUnitToken: (playerId, placement) => {
         const starLevel = placement.starLevel ?? 1;
-        const hasSubUnitAssist =
-          this.enableSubUnitSystem &&
-          (() => {
-            const config = this.subUnitAssistConfigByType.get(placement.unitType);
-            if (!config) {
-              return false;
-            }
-            if (!config.parentUnitId) {
-              return true;
-            }
-            return placement.unitId === config.parentUnitId;
-          })();
+        const hasSubUnitAssist = this.enableSubUnitSystem
+          && (
+            placement.subUnit !== undefined
+            || this.getHeroSubHostCellForPlayer(playerId) === placement.cell
+          );
 
         if (starLevel > 1 || hasSubUnitAssist) {
           const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;
@@ -780,6 +793,16 @@ export class MatchRoomController {
 
         return `${placement.cell}:${placement.unitType}`;
       },
+      formatBoardSubUnitToken: (cell, subUnit) => {
+        const starLevel = subUnit.starLevel ?? 1;
+
+        if (starLevel > 1) {
+          return `${cell}:${subUnit.unitType}:${starLevel}`;
+        }
+
+        return `${cell}:${subUnit.unitType}`;
+      },
+      formatHeroSubUnitToken: (cell, heroId) => `${cell}:hero:${heroId}`,
     });
   }
 
@@ -813,6 +836,30 @@ export class MatchRoomController {
 
   public get phaseDeadlineAtMs(): number | null {
     return this.playerStateQuery.getPhaseDeadlineAtMs();
+  }
+
+  public getPlayerFacingPhaseState(nowMs: number = Date.now()): PlayerFacingPhaseState {
+    switch (this.phase) {
+      case "Prep": {
+        const prepDeadlineAtMs = this.prepDeadlineAtMs ?? 0;
+        const deployDurationMs = Math.floor(this.prepDurationMs / 2);
+        const purchaseDeadlineAtMs = Math.max(0, prepDeadlineAtMs - deployDurationMs);
+        const phase = nowMs < purchaseDeadlineAtMs ? "purchase" : "deploy";
+        const deadlineAtMs = phase === "purchase" ? purchaseDeadlineAtMs : prepDeadlineAtMs;
+        return { phase, deadlineAtMs };
+      }
+      case "Battle":
+        return { phase: "battle", deadlineAtMs: this.battleDeadlineAtMs ?? 0 };
+      case "Settle":
+        return { phase: "battle", deadlineAtMs: this.settleDeadlineAtMs ?? 0 };
+      case "Elimination":
+        return { phase: "battle", deadlineAtMs: this.eliminationDeadlineAtMs ?? 0 };
+      case "End":
+        return { phase: "battle", deadlineAtMs: 0 };
+      case "Waiting":
+      default:
+        return { phase: "lobby", deadlineAtMs: 0 };
+    }
   }
 
   /**
@@ -861,7 +908,7 @@ export class MatchRoomController {
       }
 
       // 配置を適用
-      this.boardPlacementsByPlayer.set(playerId, normalizedPlacements);
+      this.setBoardPlacementsForPlayer(playerId, normalizedPlacements);
       this.boardUnitCountByPlayer.set(playerId, normalizedPlacements.length);
 
       // 副作用（シナジー計算等）はgetPlayerStatus()で自動的に行われる
@@ -946,10 +993,25 @@ export class MatchRoomController {
         return { success: false, code: "INVALID_CELL", error: "Hero must stay in raid deployment rows" };
       }
 
+      const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+      const ownBoardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+      const occupiedOwnPlacement = ownBoardPlacements.some((placement) => placement.cell === cellIndex);
+
+      if (occupiedOwnPlacement) {
+        if (!this.enableSubUnitSystem || selectedHeroId !== "okina") {
+          return { success: false, code: "INVALID_CELL", error: "Hero cannot enter occupied sub slot" };
+        }
+
+        this.heroPlacementByPlayer.set(playerId, -1);
+        this.heroSubHostCellByPlayer.set(playerId, cellIndex);
+        return { success: true, code: "SUCCESS" };
+      }
+
       if (this.isBoardCellOccupiedByStandardPlacement(cellIndex)) {
         return { success: false, code: "INVALID_CELL", error: "Hero cell already occupied by board unit" };
       }
 
+      this.heroSubHostCellByPlayer.set(playerId, -1);
       this.heroPlacementByPlayer.set(playerId, cellIndex);
       return { success: true, code: "SUCCESS" };
     } catch (error) {
@@ -1063,6 +1125,7 @@ export class MatchRoomController {
       this.roleByPlayer.set(playerId, isBossPlayer ? "boss" : "raid");
       this.selectedBossByPlayer.set(playerId, isBossPlayer ? bossId : "");
       this.bossPlacementByPlayer.set(playerId, -1);
+      this.heroSubHostCellByPlayer.set(playerId, -1);
       this.selectedHeroByPlayer.set(
         playerId,
         isBossPlayer || !this.enableHeroSystem
@@ -1080,6 +1143,7 @@ export class MatchRoomController {
       this.roleByPlayer.set(playerId, "unassigned");
       this.selectedBossByPlayer.set(playerId, "");
       this.bossPlacementByPlayer.set(playerId, -1);
+      this.heroSubHostCellByPlayer.set(playerId, -1);
       this.selectedHeroByPlayer.set(playerId, "");
     }
 
@@ -1194,6 +1258,20 @@ export class MatchRoomController {
     return this.playerStateQuery.getBenchUnitsForPlayer(playerId);
   }
 
+  public getBenchUnitDetailsForPlayer(playerId: string): Array<{
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    unitId?: string;
+    cost: number;
+    starLevel: number;
+    unitCount: number;
+  }> {
+    this.ensureKnownPlayer(playerId);
+
+    return (this.benchUnitsByPlayer.get(playerId) ?? []).map((unit) => ({
+      ...unit,
+    }));
+  }
+
   public getPlayerStatus(playerId: string): ControllerPlayerStatus {
     return this.playerStateQuery.getPlayerStatus(playerId);
   }
@@ -1262,9 +1340,74 @@ export class MatchRoomController {
     return this.phaseOrchestrator.advanceByTime(nowMs);
   }
 
+  private resetFinalRoundShields(): void {
+    this.finalRoundShieldByPlayer.clear();
+    for (const playerId of this.playerIds) {
+      this.finalRoundShieldByPlayer.set(playerId, 0);
+    }
+  }
+
+  private getDisplayedFinalRoundShield(playerId: string): number {
+    const state = this.gameLoopState;
+    if (!state || !this.isRaidMode() || state.bossPlayerId === playerId) {
+      return 0;
+    }
+
+    if (state.roundIndex === 12 && state.phase === "Prep") {
+      return state.getRemainingLives(playerId);
+    }
+
+    return this.finalRoundShieldByPlayer.get(playerId) ?? 0;
+  }
+
+  private activateFinalRoundShields(): void {
+    const state = this.ensureStarted();
+
+    if (!this.isRaidMode() || state.roundIndex !== 12) {
+      this.resetFinalRoundShields();
+      return;
+    }
+
+    for (const playerId of state.playerIds) {
+      const nextShield = playerId === state.bossPlayerId ? 0 : state.getRemainingLives(playerId);
+      this.finalRoundShieldByPlayer.set(playerId, nextShield);
+    }
+  }
+
+  private applyRaidRoundConsequences(): void {
+    if (!this.isRaidMode()) {
+      return;
+    }
+
+    const state = this.ensureStarted();
+
+    if (state.roundIndex !== 12) {
+      this.battleOrchestrator.applyRaidRoundConsequences();
+      return;
+    }
+
+    for (const playerId of state.raidPlayerIds) {
+      const battleResult = this.battleResultsByPlayer.get(playerId);
+      if (battleResult === undefined || battleResult.survivors > 0) {
+        continue;
+      }
+
+      const currentShield = this.finalRoundShieldByPlayer.get(playerId) ?? 0;
+      const nextShield = Math.max(0, currentShield - 1);
+      this.finalRoundShieldByPlayer.set(playerId, nextShield);
+
+      if (nextShield <= 0) {
+        state.consumeLife(playerId, state.getRemainingLives(playerId));
+      }
+    }
+  }
+
   private resetForNextPrepRound(): void {
+    this.resetBoardForPurchasePhase();
     this.pendingRoundDamageByPlayer.clear();
     this.pendingPhaseDamageForTest = null;
+    this.resetFinalRoundShields();
+    this.applyRaidRecoveryAndRevival();
     this.applyPrepIncome();
     this.logRumorInfluenceWithAlivePlayersAfterElimination();
     this.refreshShopsForPrep();
@@ -1273,6 +1416,70 @@ export class MatchRoomController {
     this.battleParticipantIds = [];
     this.currentRoundPairings = [];
     this.battleInputSnapshotByPlayer.clear();
+  }
+
+  private resetBoardForPurchasePhase(): void {
+    const state = this.ensureStarted();
+
+    for (const playerId of state.playerIds) {
+      const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+      for (const placement of boardPlacements) {
+        this.returnBoardUnitToBench(playerId, placement.cell);
+      }
+    }
+  }
+
+  private applyRaidRecoveryAndRevival(): void {
+    const state = this.ensureStarted();
+
+    if (!this.isRaidMode() || state.roundIndex !== this.raidRecoveryRoundIndex) {
+      return;
+    }
+
+    for (const playerId of state.raidPlayerIds) {
+      const wasEliminated = state.isPlayerEliminated(playerId);
+      const hadNoLives = state.getRemainingLives(playerId) <= 0;
+
+      if (wasEliminated) {
+        state.revivePlayer(playerId, 1);
+      } else {
+        state.addLife(playerId, 1);
+      }
+
+      if (wasEliminated || hadNoLives) {
+        this.restoreRevivedRaidPlayerBoardState(playerId);
+      }
+    }
+
+    this.removeRaidPlayersFromEliminationRanking(state.raidPlayerIds);
+    this.ensureInitialHeroPlacements(state.playerIds);
+  }
+
+  private restoreRevivedRaidPlayerBoardState(playerId: string): void {
+    const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    const nextBenchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+
+    for (const placement of boardPlacements) {
+      nextBenchUnits.push({
+        unitType: placement.unitType,
+        cost: placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1,
+        starLevel: placement.starLevel ?? 1,
+        unitCount: placement.unitCount ?? 1,
+        ...(placement.unitId !== undefined ? { unitId: placement.unitId } : {}),
+      });
+    }
+
+    this.boardPlacementsByPlayer.set(playerId, []);
+    this.heroSubHostCellByPlayer.set(playerId, -1);
+    this.benchUnitsByPlayer.set(playerId, nextBenchUnits);
+  }
+
+  private removeRaidPlayersFromEliminationRanking(raidPlayerIds: readonly string[]): void {
+    const revivedRaidIds = new Set(raidPlayerIds);
+    const remainingRanking = this.eliminatedFromBottom.filter((playerId) => !revivedRaidIds.has(playerId));
+
+    this.eliminatedFromBottom.length = 0;
+    this.eliminatedFromBottom.push(...remainingRanking);
   }
 
   public submitPrepCommand(
@@ -1338,6 +1545,7 @@ export class MatchRoomController {
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       isBossPlayer: (id) => this.isBossPlayer(id),
+      isSubUnitSystemEnabled: () => this.enableSubUnitSystem,
       isSharedPoolEnabled: () => this.enableSharedPool,
       isPoolDepleted: (cost, unitId) => {
         if (this.rosterFlags.enablePerUnitSharedPool && unitId) {
@@ -1355,7 +1563,7 @@ export class MatchRoomController {
   private createPrepExecutionDependencies(): ExecutionDependencies {
     return {
       setBoardUnitCount: (id, count) => this.boardUnitCountByPlayer.set(id, count),
-      setBoardPlacements: (id, placements) => this.boardPlacementsByPlayer.set(id, placements),
+      setBoardPlacements: (id, placements) => this.setBoardPlacementsForPlayer(id, placements),
       setShopLock: (id, locked) => this.shopLockedByPlayer.set(id, locked),
       setLastCmdSeq: (id, seq) => this.lastCmdSeqByPlayer.set(id, seq),
       addGold: (id, amount) => {
@@ -1366,8 +1574,8 @@ export class MatchRoomController {
       getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       refreshShop: (id, count) => this.refreshShopByCount(id, count),
       buyShopOffer: (id, slotIndex) => this.buyShopOfferBySlot(id, slotIndex),
-      deployBenchUnitToBoard: (id, benchIndex, cell) =>
-        this.deployBenchUnitToBoard(id, benchIndex, cell),
+      deployBenchUnitToBoard: (id, benchIndex, cell, slot) =>
+        this.deployBenchUnitToBoard(id, benchIndex, cell, slot),
       returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
       sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
       sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
@@ -1405,7 +1613,7 @@ export class MatchRoomController {
     applyPrepIncomeToPlayers({
       alivePlayerIds: state.alivePlayerIds,
       goldByPlayer: this.goldByPlayer,
-      baseIncome: PREP_BASE_INCOME,
+      getBaseIncome: (playerId) => state.isBoss(playerId) ? BOSS_PREP_BASE_INCOME : RAID_PREP_BASE_INCOME,
       initialGold: INITIAL_GOLD,
     });
   }
@@ -1445,12 +1653,26 @@ export class MatchRoomController {
     this.shopManager.buyShopOfferBySlot(playerId, slotIndex);
   }
 
-  private deployBenchUnitToBoard(playerId: string, benchIndex: number, cell: number): void {
-    this.shopManager.deployBenchUnitToBoard(playerId, benchIndex, cell);
+  private deployBenchUnitToBoard(
+    playerId: string,
+    benchIndex: number,
+    cell: number,
+    slot: "main" | "sub" = "main",
+  ): void {
+    this.shopManager.deployBenchUnitToBoard(playerId, benchIndex, cell, slot);
   }
 
   private returnBoardUnitToBench(playerId: string, cell: number): void {
+    const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
     this.shopManager.returnBoardUnitToBench(playerId, cell);
+
+    const hostStillExists = (this.boardPlacementsByPlayer.get(playerId) ?? []).some(
+      (placement) => placement.cell === cell,
+    );
+    if (heroSubHostCell === cell && !hostStillExists) {
+      this.heroSubHostCellByPlayer.set(playerId, -1);
+      this.heroPlacementByPlayer.set(playerId, cell);
+    }
   }
 
   private sellBenchUnit(playerId: string, benchIndex: number): void {
@@ -1505,10 +1727,12 @@ export class MatchRoomController {
     this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
     this.selectedHeroByPlayer.delete(playerId);
     this.heroPlacementByPlayer.delete(playerId);
+    this.heroSubHostCellByPlayer.delete(playerId);
     this.selectedBossByPlayer.delete(playerId);
     this.bossPlacementByPlayer.delete(playerId);
     this.wantsBossByPlayer.delete(playerId);
     this.roleByPlayer.delete(playerId);
+    this.finalRoundShieldByPlayer.delete(playerId);
     this.battleResultsByPlayer.delete(playerId);
     this.pendingRoundDamageByPlayer.delete(playerId);
     this.hpAtBattleStartByPlayer.delete(playerId);
@@ -1516,7 +1740,10 @@ export class MatchRoomController {
   }
 
   private startMatch(nowMs: number, activePlayerIds: string[], bossPlayerId?: string): void {
-    this.gameLoopState = new GameLoopState(activePlayerIds);
+    this.gameLoopState = new GameLoopState(activePlayerIds, {
+      raidRecoveryRoundIndex: this.raidRecoveryRoundIndex,
+    });
+    this.resetFinalRoundShields();
 
     if (this.enableBossExclusiveShop) {
       if (bossPlayerId) {
@@ -1740,6 +1967,8 @@ export class MatchRoomController {
     this.pendingPhaseDamageForTest = null;
     const phaseProgress = this.phaseOrchestrator.recordPhaseProgress(state.roundIndex, totalDamage);
 
+    this.applyRaidPhaseSuccessBonus(phaseProgress.result);
+
     // 支配カウント: ボス優勢（フェーズ失敗）時にカウントアップ（R12以外）
     if (phaseProgress.result === "failed" && state.roundIndex < 12) {
       state.dominationCount += 1;
@@ -1776,6 +2005,23 @@ export class MatchRoomController {
           this.rumorInfluenceEligibleByPlayer.set(playerId, true);
         }
       }
+    }
+  }
+
+  private applyRaidPhaseSuccessBonus(phaseResult: "pending" | "success" | "failed"): void {
+    const state = this.ensureStarted();
+
+    if (!this.isRaidMode() || state.roundIndex >= 12 || phaseResult !== "success") {
+      return;
+    }
+
+    for (const playerId of state.alivePlayerIds) {
+      if (playerId === state.bossPlayerId) {
+        continue;
+      }
+
+      const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
+      this.goldByPlayer.set(playerId, currentGold + RAID_PHASE_SUCCESS_BONUS);
     }
   }
 
@@ -1831,6 +2077,10 @@ export class MatchRoomController {
     }
 
     return phaseTargets[12] ?? 0;
+  }
+
+  private resolveMaxRounds(): number {
+    return this.enableBossExclusiveShop || this.featureFlags.enablePhaseExpansion ? 12 : 8;
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
@@ -1896,7 +2146,7 @@ export class MatchRoomController {
       const heroBattleUnit = this.battleResolutionService.createHeroBattleUnit(
         heroId,
         heroPlayerId,
-        this.getHeroPlacementForPlayer(heroPlayerId) ?? undefined,
+        this.resolveHeroBattleCell(heroPlayerId),
       );
       if (heroBattleUnit) {
         battleUnits.push(heroBattleUnit);
@@ -2023,6 +2273,7 @@ export class MatchRoomController {
       const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
       if (!selectedHeroId) {
         this.heroPlacementByPlayer.set(playerId, -1);
+        this.heroSubHostCellByPlayer.set(playerId, -1);
         continue;
       }
 
@@ -2112,6 +2363,69 @@ export class MatchRoomController {
   ): number {
     const unitGap = Math.max(0, winnerUnitCount - loserUnitCount);
     return Math.max(1, Math.min(8, unitGap + 1));
+  }
+
+  private setBoardPlacementsForPlayer(playerId: string, placements: BoardUnitPlacement[]): void {
+    const previousPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    this.boardPlacementsByPlayer.set(playerId, placements);
+    this.reconcileHeroSubHostAfterBoardPlacementUpdate(playerId, previousPlacements, placements);
+  }
+
+  private getHeroSubHostCellForPlayer(playerId: string): number | null {
+    const cell = this.heroSubHostCellByPlayer.get(playerId) ?? -1;
+    return Number.isInteger(cell) && cell >= 0 ? cell : null;
+  }
+
+  private resolveHeroBattleCell(playerId: string): number | undefined {
+    return this.getHeroSubHostCellForPlayer(playerId)
+      ?? this.getHeroPlacementForPlayer(playerId)
+      ?? undefined;
+  }
+
+  private reconcileHeroSubHostAfterBoardPlacementUpdate(
+    playerId: string,
+    previousPlacements: readonly BoardUnitPlacement[],
+    nextPlacements: readonly BoardUnitPlacement[],
+  ): void {
+    const currentHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    if (currentHostCell === null) {
+      return;
+    }
+
+    if (nextPlacements.some((placement) => placement.cell === currentHostCell)) {
+      return;
+    }
+
+    const previousHostPlacement = previousPlacements.find((placement) => placement.cell === currentHostCell);
+    if (!previousHostPlacement) {
+      this.heroSubHostCellByPlayer.set(playerId, -1);
+      return;
+    }
+
+    const movedHostPlacement = nextPlacements.find((placement) =>
+      this.isSameHeroSubHostPlacement(previousHostPlacement, placement),
+    );
+    if (movedHostPlacement) {
+      this.heroSubHostCellByPlayer.set(playerId, movedHostPlacement.cell);
+      return;
+    }
+
+    this.heroSubHostCellByPlayer.set(playerId, -1);
+    this.heroPlacementByPlayer.set(playerId, currentHostCell);
+  }
+
+  private isSameHeroSubHostPlacement(
+    left: BoardUnitPlacement,
+    right: BoardUnitPlacement,
+  ): boolean {
+    return left.unitType === right.unitType
+      && (left.unitId ?? "") === (right.unitId ?? "")
+      && (left.factionId ?? "") === (right.factionId ?? "")
+      && (left.starLevel ?? 1) === (right.starLevel ?? 1)
+      && (left.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[left.unitType] ?? 1)
+        === (right.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[right.unitType] ?? 1)
+      && (left.unitCount ?? 1) === (right.unitCount ?? 1)
+      && (left.archetype ?? "") === (right.archetype ?? "");
   }
 
 

@@ -1255,7 +1255,7 @@ describe("MatchRoomController", () => {
       expect(buyResult).toEqual({ accepted: true });
       expect(sellResult).toEqual({ accepted: true });
       expect(goldAfterBuy).toBe(goldBefore - 1);
-      expect(status.gold).toBe(goldBefore);
+      expect(status.gold).toBe(goldBefore - 1);
     });
   });
 
@@ -1324,7 +1324,7 @@ describe("MatchRoomController", () => {
     expect(status.boardUnitCount).toBe(1);
   });
 
-  test("benchSellIndexでベンチ売却すると購入時のコスト分goldが増える", () => {
+  test("benchToBoardCell で自分の occupied main cell を選ぶと board と bench を入れ替える", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1337,33 +1337,168 @@ describe("MatchRoomController", () => {
     controller.setReady("p4", true);
     controller.startIfReady(2_000);
 
-    const beforeBuyGold = controller.getPlayerStatus("p1").gold;
-    const buyResult = controller.submitPrepCommand("p1", 1, 3_000, {
-      shopBuySlotIndex: 0,
+    const internals = controller as unknown as {
+      benchUnitsByPlayer: Map<string, Array<{
+        unitType: "vanguard" | "ranger" | "mage" | "assassin";
+        cost: number;
+        starLevel: number;
+        unitCount: number;
+      }>>;
+      boardPlacementsByPlayer: Map<string, Array<{
+        cell: number;
+        unitType: "vanguard" | "ranger" | "mage" | "assassin";
+        starLevel?: number;
+        sellValue?: number;
+        unitCount?: number;
+      }>>;
+      boardUnitCountByPlayer: Map<string, number>;
+    };
+
+    internals.benchUnitsByPlayer.set("p1", [
+      { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+    ]);
+    internals.boardPlacementsByPlayer.set("p1", [
+      { cell: 3, unitType: "vanguard", starLevel: 1, sellValue: 1, unitCount: 1 },
+    ]);
+    internals.boardUnitCountByPlayer.set("p1", 1);
+
+    const deployResult = controller.submitPrepCommand("p1", 1, 3_100, {
+      benchToBoardCell: {
+        benchIndex: 0,
+        cell: 3,
+      },
     });
-    const afterBuyGold = controller.getPlayerStatus("p1").gold;
-    const unitCost = beforeBuyGold - afterBuyGold;
-    const beforeSellOwned = controller.getPlayerStatus("p1").ownedUnits;
-    const soldUnitType = controller.getPlayerStatus("p1").benchUnits[0];
-    const soldOwnedKey = (["vanguard", "ranger", "mage", "assassin"] as const).find(
-      (unitType) => unitType === soldUnitType,
+
+    expect(deployResult).toEqual({ accepted: true });
+    expect(controller.getBoardPlacementsForPlayer("p1")).toEqual([
+      expect.objectContaining({ cell: 3, unitType: "ranger" }),
+    ]);
+    expect(controller.getBenchUnitsForPlayer?.("p1")).toEqual([
+      expect.objectContaining({ unitType: "vanguard" }),
+    ]);
+  });
+
+  test("benchSellIndex は tier 1 の sell formula C - 1 を使う", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
     );
 
-    if (!soldUnitType || !soldOwnedKey) {
-      throw new Error("expected bench unit to sell");
-    }
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const internals = controller as unknown as {
+      benchUnitsByPlayer: Map<string, Array<{
+        unitType: "vanguard" | "ranger" | "mage" | "assassin";
+        cost: number;
+        starLevel: number;
+        unitCount: number;
+      }>>;
+    };
+    internals.benchUnitsByPlayer.set("p1", [
+      { unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 },
+    ]);
 
     const beforeSellGold = controller.getPlayerStatus("p1").gold;
-    const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
+    const sellResult = controller.submitPrepCommand("p1", 1, 3_000, {
       benchSellIndex: 0,
     });
     const status = controller.getPlayerStatus("p1");
 
-    expect(buyResult).toEqual({ accepted: true });
     expect(sellResult).toEqual({ accepted: true });
-    expect(status.gold).toBe(beforeSellGold + unitCost);
+    expect(status.gold).toBe(beforeSellGold + 1);
     expect(status.benchUnits.length).toBe(0);
-    expect(status.ownedUnits[soldOwnedKey]).toBe(beforeSellOwned[soldOwnedKey] - 1);
+  });
+
+  test("benchSellIndex は tier 2 の sell formula 2C - 1 を使う", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+
+    const internals = controller as unknown as {
+      benchUnitsByPlayer: Map<string, Array<{
+        unitType: "vanguard" | "ranger" | "mage" | "assassin";
+        cost: number;
+        starLevel: number;
+        unitCount: number;
+      }>>;
+    };
+    internals.benchUnitsByPlayer.set("p1", [
+      { unitType: "mage", cost: 8, starLevel: 2, unitCount: 4 },
+    ]);
+
+    const beforeSellGold = controller.getPlayerStatus("p1").gold;
+    const sellResult = controller.submitPrepCommand("p1", 1, 3_000, {
+      benchSellIndex: 0,
+    });
+    const status = controller.getPlayerStatus("p1");
+
+    expect(sellResult).toEqual({ accepted: true });
+    expect(status.gold).toBe(beforeSellGold + 3);
+    expect(status.benchUnits.length).toBe(0);
+  });
+
+  test("discounted purchase でも sell で購入額を上回る refund にならない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{
+          unitType: "vanguard" | "ranger" | "mage" | "assassin";
+          unitId?: string;
+          rarity: number;
+          cost: number;
+        }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+      ]);
+
+      for (const cmdSeq of [1, 2, 3, 4]) {
+        internals.shopOffersByPlayer.set("p1", [
+          { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+        ]);
+
+        expect(controller.submitPrepCommand("p1", cmdSeq, 3_000 + cmdSeq, {
+          shopBuySlotIndex: 0,
+        })).toEqual({ accepted: true });
+      }
+
+      const beforeSellGold = controller.getPlayerStatus("p1").gold;
+      const sellResult = controller.submitPrepCommand("p1", 5, 3_100, {
+        benchSellIndex: 0,
+      });
+      const afterSell = controller.getPlayerStatus("p1");
+
+      expect(sellResult).toEqual({ accepted: true });
+      expect(beforeSellGold).toBe(11);
+      expect(afterSell.gold).toBe(12);
+    });
   });
 
   test("boardToBenchCellで盤面ユニットをbenchへ戻せる", () => {
@@ -1657,7 +1792,7 @@ describe("MatchRoomController", () => {
     });
   });
 
-  test("同種3体購入でベンチ上で自動合成されて★2になる", () => {
+  test("同種4回購入で購入回数進行のtier 2になる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1677,7 +1812,7 @@ describe("MatchRoomController", () => {
       >;
     }).shopOffersByPlayer;
 
-    for (const cmdSeq of [1, 2, 3]) {
+    for (const cmdSeq of [1, 2, 3, 4]) {
       internalOffersMap.set("p1", [
         { unitType: "vanguard", rarity: 1, cost: 1 },
         { unitType: "ranger", rarity: 1, cost: 1 },
@@ -1696,10 +1831,10 @@ describe("MatchRoomController", () => {
     const status = controller.getPlayerStatus("p1");
 
     expect(status.benchUnits).toEqual(["vanguard:2"]);
-    expect(status.ownedUnits.vanguard).toBe(3);
+    expect(status.ownedUnits.vanguard).toBe(4);
   });
 
-  test("同種9体購入でベンチ上で連鎖合成されて★3になる", () => {
+  test("同種7回購入で購入回数進行のtier 3になる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1719,7 +1854,7 @@ describe("MatchRoomController", () => {
       >;
     }).shopOffersByPlayer;
 
-    for (const cmdSeq of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    for (const cmdSeq of [1, 2, 3, 4, 5, 6, 7]) {
       internalOffersMap.set("p1", [
         { unitType: "vanguard", rarity: 1, cost: 1 },
         { unitType: "ranger", rarity: 1, cost: 1 },
@@ -1738,7 +1873,7 @@ describe("MatchRoomController", () => {
     const status = controller.getPlayerStatus("p1");
 
     expect(status.benchUnits).toEqual(["vanguard:3"]);
-    expect(status.ownedUnits.vanguard).toBe(9);
+    expect(status.ownedUnits.vanguard).toBe(7);
   });
 
   test("benchToBoardCellとbenchSellIndexを同時指定するとINVALID_PAYLOAD", () => {
@@ -1800,7 +1935,7 @@ describe("MatchRoomController", () => {
     expect(deployResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
   });
 
-  test("boardSellIndexで盤面ユニット売却するとunitTypeに応じてgoldが増える", () => {
+  test("boardSellIndex は tier 3 の sell formula 4C - 2 を使う", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1813,20 +1948,31 @@ describe("MatchRoomController", () => {
     controller.setReady("p4", true);
     controller.startIfReady(2_000);
 
-    const setBoardResult = controller.submitPrepCommand("p1", 1, 3_000, {
-      boardPlacements: [{ cell: 2, unitType: "mage" }],
-    });
+    const internals = controller as unknown as {
+      boardPlacementsByPlayer: Map<string, Array<{
+        cell: number;
+        unitType: "vanguard" | "ranger" | "mage" | "assassin";
+        starLevel?: number;
+        sellValue?: number;
+        unitCount?: number;
+      }>>;
+      boardUnitCountByPlayer: Map<string, number>;
+    };
+    internals.boardPlacementsByPlayer.set("p1", [
+      { cell: 2, unitType: "mage", starLevel: 3, sellValue: 14, unitCount: 7 },
+    ]);
+    internals.boardUnitCountByPlayer.set("p1", 1);
+
     const beforeSell = controller.getPlayerStatus("p1");
     const sellResult = controller.submitPrepCommand("p1", 2, 3_100, {
       boardSellIndex: 2,
     });
     const afterSell = controller.getPlayerStatus("p1");
 
-    expect(setBoardResult).toEqual({ accepted: true });
     expect(sellResult).toEqual({ accepted: true });
     expect(beforeSell.boardUnitCount).toBe(1);
     expect(afterSell.boardUnitCount).toBe(0);
-    expect(afterSell.gold).toBe(beforeSell.gold + 2);
+    expect(afterSell.gold).toBe(beforeSell.gold + 6);
   });
 
   test("boardSellIndexでユニット不在セル指定はINVALID_PAYLOAD", () => {
@@ -2043,12 +2189,248 @@ describe("MatchRoomController", () => {
             damageDealt: 100,
             result: "failed",
           });
-          expect(controller.getPlayerStatus("p1")).toMatchObject({ remainingLives: 2, eliminated: false });
-          expect(controller.getPlayerStatus("p3")).toMatchObject({ remainingLives: 3, eliminated: false });
-          expect(controller.getPlayerStatus("p4")).toMatchObject({ remainingLives: 2, eliminated: false });
+          expect(controller.getPlayerStatus("p1")).toMatchObject({ remainingLives: 1, eliminated: false });
+          expect(controller.getPlayerStatus("p3")).toMatchObject({ remainingLives: 2, eliminated: false });
+          expect(controller.getPlayerStatus("p4")).toMatchObject({ remainingLives: 1, eliminated: false });
         } finally {
           randomSpy.mockRestore();
         }
+      },
+    );
+  });
+
+  test("raid wipe status follows the 2 -> 1 -> 0 lives baseline", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.advanceByTime(1);
+          controller.setPendingPhaseDamageForTest(100);
+          controller.advanceByTime(2);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+          controller.advanceByTime(3);
+
+          expect(controller.getPlayerStatus("p1")).toMatchObject({
+            remainingLives: 1,
+            eliminated: false,
+          });
+
+          controller.advanceByTime(4);
+          controller.advanceByTime(5);
+          controller.setPendingPhaseDamageForTest(100);
+          controller.advanceByTime(6);
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+          controller.advanceByTime(7);
+
+          expect(controller.getPlayerStatus("p1")).toMatchObject({
+            remainingLives: 0,
+          });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("round 6 revives eliminated raid players and restores hero-only board state", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          0,
+          {
+            readyAutoStartMs: 1,
+            prepDurationMs: 1,
+            battleDurationMs: 1,
+            settleDurationMs: 1,
+            eliminationDurationMs: 1,
+          },
+        );
+
+        const resolveRaidRound = (
+          startTimeMs: number,
+          results: Record<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>,
+          phaseDamage: number = 100,
+        ): number => {
+          controller.advanceByTime(startTimeMs + 1);
+          controller.setPendingPhaseDamageForTest(phaseDamage);
+          controller.advanceByTime(startTimeMs + 2);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          for (const [playerId, battleResult] of Object.entries(results)) {
+            battleResultsByPlayer.set(playerId, battleResult);
+          }
+          controller.advanceByTime(startTimeMs + 3);
+          controller.advanceByTime(startTimeMs + 4);
+
+          return startTimeMs + 4;
+        };
+
+        expect(controller.startWithResolvedRoles(0, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        })).toBe(true);
+
+        const internals = controller as unknown as {
+          gameLoopState: {
+            roundIndex: number;
+            players: Map<string, {
+              remainingLives: number;
+              eliminated: boolean;
+            }>;
+          };
+          boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+          benchUnitsByPlayer: Map<string, Array<{
+            unitType: "vanguard" | "ranger" | "mage" | "assassin";
+            cost: number;
+            starLevel: number;
+            unitCount: number;
+          }>>;
+        };
+        const { gameLoopState } = internals;
+        const raidA = gameLoopState.players.get("p1");
+        const raidB = gameLoopState.players.get("p3");
+        const raidC = gameLoopState.players.get("p4");
+
+        if (!raidA || !raidB || !raidC) {
+          throw new Error("expected raid player states");
+        }
+
+        gameLoopState.roundIndex = 6;
+        raidA.remainingLives = 2;
+        raidA.eliminated = false;
+        raidB.remainingLives = 0;
+        raidB.eliminated = true;
+        raidC.remainingLives = 2;
+        raidC.eliminated = false;
+
+        internals.boardPlacementsByPlayer.set("p3", [
+          { cell: 30, unitType: "mage", starLevel: 1, sellValue: 2, unitCount: 1 },
+        ]);
+        internals.benchUnitsByPlayer.set("p3", [
+          { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1 },
+        ]);
+
+        let nowMs = 0;
+        nowMs = resolveRaidRound(nowMs, {
+          p1: {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          },
+          p4: {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          },
+        });
+
+        expect(nowMs).toBeGreaterThan(0);
+        expect(controller.roundIndex).toBe(7);
+        expect(controller.getPlayerStatus("p1")).toMatchObject({
+          remainingLives: 3,
+          eliminated: false,
+        });
+        expect(controller.getPlayerStatus("p4")).toMatchObject({
+          remainingLives: 3,
+          eliminated: false,
+        });
+        expect(controller.getPlayerStatus("p3")).toMatchObject({
+          remainingLives: 1,
+          eliminated: false,
+        });
+        expect(controller.getBoardPlacementsForPlayer("p3")).toEqual([]);
+        expect(controller.getPlayerStatus("p3").benchUnits).toEqual(["vanguard", "mage"]);
+        expect(controller.getHeroPlacementForPlayer("p3")).not.toBeNull();
       },
     );
   });
@@ -2129,6 +2511,134 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("raid players preview final-round shields from remaining lives during R12 prep", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          expect(controller.roundIndex).toBe(12);
+          expect(controller.phase).toBe("Prep");
+          expect(controller.getPlayerStatus("p1").remainingLives).toBe(3);
+          expect(controller.getPlayerStatus("p1").finalRoundShield).toBe(3);
+          expect(controller.getPlayerStatus("p3").finalRoundShield).toBe(3);
+          expect(controller.getPlayerStatus("p4").finalRoundShield).toBe(3);
+          expect(controller.getPlayerStatus("p2").finalRoundShield).toBe(0);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid R12 consumes shield before marking a wiped raid player defeated", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          const { gameLoopState, battleResultsByPlayer } = controller.getTestAccess();
+          if (!gameLoopState) {
+            throw new Error("Expected gameLoopState");
+          }
+
+          gameLoopState.consumeLife("p1", 1);
+
+          expect(controller.getPlayerStatus("p1").remainingLives).toBe(2);
+          expect(controller.getPlayerStatus("p1").finalRoundShield).toBe(2);
+
+          controller.advanceByTime(nowMs + 1);
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          });
+          controller.setPendingPhaseDamageForTest(3_000);
+
+          controller.advanceByTime(nowMs + 2);
+          controller.advanceByTime(nowMs + 3);
+          controller.advanceByTime(nowMs + 4);
+
+          expect(controller.phase).toBe("End");
+          expect(controller.getPlayerStatus("p1")).toMatchObject({
+            remainingLives: 2,
+            finalRoundShield: 1,
+            eliminated: false,
+          });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("raid R12 simultaneous wipe and phase break is a boss victory", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
@@ -2200,6 +2710,195 @@ describe("MatchRoomController", () => {
 
           expect(controller.phase).toBe("End");
           expect(controller.rankingTopToBottom[0]).toBe("p2");
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid prep income gives +5 to surviving raiders, +9 to the boss, and skips eliminated raiders when phase bonus is not earned", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          const internals = controller as unknown as {
+            gameLoopState: {
+              players: Map<string, {
+                remainingLives: number;
+                eliminated: boolean;
+              }>;
+            };
+          };
+          const raidA = internals.gameLoopState.players.get("p1");
+          if (!raidA) {
+            throw new Error("expected raid player state");
+          }
+          raidA.remainingLives = 0;
+          raidA.eliminated = true;
+
+          controller.advanceByTime(1);
+          controller.setPendingPhaseDamageForTest(0);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          battleResultsByPlayer.set("p3", {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          });
+          battleResultsByPlayer.set("p4", {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          });
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.phase).toBe("Prep");
+          expect(controller.roundIndex).toBe(2);
+          expect(controller.getPlayerStatus("p1")).toMatchObject({ gold: 15, eliminated: true });
+          expect(controller.getPlayerStatus("p2")).toMatchObject({ gold: 24 });
+          expect(controller.getPlayerStatus("p3")).toMatchObject({ gold: 20 });
+          expect(controller.getPlayerStatus("p4")).toMatchObject({ gold: 20 });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid players gain +2 gold on phase success while the boss only keeps boss prep income", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.advanceByTime(1);
+          controller.setPendingPhaseDamageForTest(600);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          for (const raidPlayerId of ["p1", "p3", "p4"]) {
+            battleResultsByPlayer.set(raidPlayerId, {
+              opponentId: "p2",
+              won: true,
+              damageDealt: 10,
+              damageTaken: 0,
+              survivors: 1,
+              opponentSurvivors: 0,
+            });
+          }
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.phase).toBe("Prep");
+          expect(controller.roundIndex).toBe(2);
+          expect(controller.getPhaseProgress()).toMatchObject({ result: "pending" });
+          expect(controller.getPlayerStatus("p1").gold).toBe(22);
+          expect(controller.getPlayerStatus("p3").gold).toBe(22);
+          expect(controller.getPlayerStatus("p4").gold).toBe(22);
+          expect(controller.getPlayerStatus("p2").gold).toBe(24);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("time-out only raid failure does not grant the phase success bonus", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.advanceByTime(1);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          for (const raidPlayerId of ["p1", "p3", "p4"]) {
+            battleResultsByPlayer.set(raidPlayerId, {
+              opponentId: "p2",
+              won: true,
+              damageDealt: 10,
+              damageTaken: 0,
+              survivors: 1,
+              opponentSurvivors: 0,
+            });
+          }
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.phase).toBe("Prep");
+          expect(controller.roundIndex).toBe(2);
+          expect(controller.getPlayerStatus("p1").gold).toBe(20);
+          expect(controller.getPlayerStatus("p3").gold).toBe(20);
+          expect(controller.getPlayerStatus("p4").gold).toBe(20);
+          expect(controller.getPlayerStatus("p2").gold).toBe(24);
         } finally {
           randomSpy.mockRestore();
         }

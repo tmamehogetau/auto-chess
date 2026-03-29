@@ -226,6 +226,9 @@ export function syncPlayerStateFromController(
   // Basic stats
   playerState.hp = controllerStatus.hp;
   playerState.remainingLives = controllerStatus.remainingLives;
+  if (controllerStatus.finalRoundShield !== undefined) {
+    playerState.finalRoundShield = controllerStatus.finalRoundShield;
+  }
   playerState.eliminated = controllerStatus.eliminated;
   playerState.boardUnitCount = controllerStatus.boardUnitCount;
   playerState.gold = controllerStatus.gold;
@@ -285,6 +288,11 @@ export function syncPlayerStateFromController(
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of controllerStatus.boardUnits) {
     playerState.boardUnits.push(boardUnit);
+  }
+
+  clearArraySchema(playerState.boardSubUnits);
+  for (const boardSubUnit of controllerStatus.boardSubUnits ?? []) {
+    playerState.boardSubUnits.push(boardSubUnit);
   }
 
   // Boss shop offers - clear and repopulate
@@ -383,6 +391,9 @@ export function syncPlayerStateFromCommandResult(
   if (cmdResult.isRumorEligible !== undefined) {
     playerState.isRumorEligible = cmdResult.isRumorEligible;
   }
+  if (cmdResult.finalRoundShield !== undefined) {
+    playerState.finalRoundShield = cmdResult.finalRoundShield;
+  }
 
   // Shop offers - clear and repopulate
   clearArraySchema(playerState.shopOffers);
@@ -413,6 +424,11 @@ export function syncPlayerStateFromCommandResult(
   clearArraySchema(playerState.boardUnits);
   for (const boardUnit of cmdResult.boardUnits) {
     playerState.boardUnits.push(boardUnit);
+  }
+
+  clearArraySchema(playerState.boardSubUnits);
+  for (const boardSubUnit of cmdResult.boardSubUnits ?? []) {
+    playerState.boardSubUnits.push(boardSubUnit);
   }
 
   // Boss shop offers - clear and repopulate

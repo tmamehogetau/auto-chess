@@ -170,4 +170,57 @@ describe("player.html contract", () => {
     expect(html.includes("Boss は上半分、raid は下半分の配置セルを使います。")).toBe(true);
     expect(html.includes("highlighted raid cells")).toBe(false);
   });
+
+  test("shared phase shell uses 3-column rails and dedicated purchase/deploy surfaces", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const prepSection = extractPhaseSection(html, "prep");
+
+    const requiredAttributes = [
+      "data-player-phase-shell",
+      "data-player-left-rail",
+      "data-player-center-rail",
+      "data-player-right-rail",
+      "data-player-phase-surface",
+      "data-player-purchase-surface",
+      "data-player-purchase-shop",
+      "data-player-deploy-surface",
+      "data-player-deploy-board",
+    ];
+
+    for (const attribute of requiredAttributes) {
+      expect(prepSection.includes(attribute)).toBe(true);
+    }
+  });
+
+  test("purchase phase shop is split into four named vertical sections", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const prepSection = extractPhaseSection(html, "prep");
+
+    const requiredAttributes = [
+      'data-player-purchase-section="common-units"',
+      'data-player-purchase-section="dedicated-units"',
+      'data-player-purchase-section="hero-upgrade"',
+      'data-player-purchase-section="refresh"',
+      "data-player-hero-upgrade-copy",
+      "data-player-refresh-copy",
+    ];
+
+    for (const attribute of requiredAttributes) {
+      expect(prepSection.includes(attribute)).toBe(true);
+    }
+
+    expect(prepSection.includes(">共通ユニット<")).toBe(true);
+    expect(prepSection.includes(">専用ユニット<")).toBe(true);
+    expect(prepSection.includes(">主人公強化<")).toBe(true);
+    expect(prepSection.includes(">リロード<")).toBe(true);
+  });
+
+  test("battle start banner placeholder is declared only once in the prep shell", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const bannerCount = (html.match(/data-player-battle-start-banner/g) ?? []).length;
+
+    expect(bannerCount).toBe(1);
+    expect(extractPhaseSection(html, "prep").includes("data-player-battle-start-banner")).toBe(true);
+    expect(extractPhaseSection(html, "result").includes("data-player-battle-start-banner")).toBe(false);
+  });
 });

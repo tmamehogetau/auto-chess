@@ -640,6 +640,103 @@ describe("SharedBoardRoom integration", () => {
     });
   });
 
+  test("自分の occupied cell へのplaceは board swap として受理する", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(client.sessionId);
+      return player !== undefined;
+    }, 1_000);
+
+    const firstCellIndex = combatCellToRaidBoardIndex(0);
+    const secondCellIndex = combatCellToRaidBoardIndex(1);
+    expect(
+      serverRoom.applyPlacementsFromGame(
+        client.sessionId,
+        [
+          { cell: firstCellIndex, unitType: "vanguard" },
+          { cell: secondCellIndex, unitType: "ranger" },
+        ],
+      ),
+    ).toEqual({ applied: 2, skipped: 0 });
+
+    const firstUnitId = serverRoom.state.cells.get(String(firstCellIndex))?.unitId;
+    const secondUnitId = serverRoom.state.cells.get(String(secondCellIndex))?.unitId;
+
+    if (!firstUnitId || !secondUnitId) {
+      throw new Error("Expected two owned units to be seeded");
+    }
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId: firstUnitId,
+      toCell: secondCellIndex,
+    });
+
+    expect(await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT)).toEqual({
+      accepted: true,
+      action: "place_unit",
+    });
+
+    expect(serverRoom.state.cells.get(String(firstCellIndex))?.unitId).toBe(secondUnitId);
+    expect(serverRoom.state.cells.get(String(secondCellIndex))?.unitId).toBe(firstUnitId);
+    expect(serverRoom.state.cells.get(String(firstCellIndex))?.ownerId).toBe(client.sessionId);
+    expect(serverRoom.state.cells.get(String(secondCellIndex))?.ownerId).toBe(client.sessionId);
+  });
+
+  test("通常ユニットで自分の hero occupied cell を選んでも TARGET_OCCUPIED で拒否する", async () => {
+    const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
+    const client = await testServer.connectTo(serverRoom);
+
+    client.send(CLIENT_MESSAGE_TYPES.REQUEST_ROLE);
+    await client.waitForMessage(SERVER_MESSAGE_TYPES.ROLE);
+
+    await waitForCondition(() => {
+      const player = serverRoom.state.players.get(client.sessionId);
+      return player !== undefined;
+    }, 1_000);
+
+    const heroCellIndex = sharedBoardCoordinateToIndex({ x: 0, y: 5 });
+    expect(
+      serverRoom.applyPlacementsFromGame(
+        client.sessionId,
+        [
+          { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard" },
+          { cell: heroCellIndex, unitType: "ranger" },
+        ],
+      ),
+    ).toEqual({ applied: 2, skipped: 0 });
+
+    const heroCell = serverRoom.state.cells.get(String(heroCellIndex));
+    if (!heroCell) {
+      throw new Error("Expected hero cell to exist");
+    }
+    heroCell.unitId = `hero:${client.sessionId}`;
+    heroCell.ownerId = client.sessionId;
+    heroCell.displayName = "Hero";
+    heroCell.portraitKey = "reimu";
+
+    const vanguardUnitId = serverRoom.state.cells.get(String(combatCellToRaidBoardIndex(0)))?.unitId;
+
+    if (!vanguardUnitId) {
+      throw new Error("Expected normal unit to be seeded");
+    }
+
+    client.send(CLIENT_MESSAGE_TYPES.PLACE_UNIT, {
+      unitId: vanguardUnitId,
+      toCell: heroCellIndex,
+    });
+
+    expect(await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT)).toEqual({
+      accepted: false,
+      action: "place_unit",
+      code: "TARGET_OCCUPIED",
+    });
+  });
+
   test("無効セルへのplaceでTARGET_OCCUPIED", async () => {
     const serverRoom = await testServer.createRoom<SharedBoardRoom>("shared_board");
     const client = await testServer.connectTo(serverRoom);

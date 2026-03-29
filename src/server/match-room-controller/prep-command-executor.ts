@@ -31,7 +31,7 @@ export interface ExecutionDependencies {
   buyShopOffer: (playerId: string, slotIndex: number) => void;
 
   // Unit operations
-  deployBenchUnitToBoard: (playerId: string, benchIndex: number, cell: number) => void;
+  deployBenchUnitToBoard: (playerId: string, benchIndex: number, cell: number, slot?: "main" | "sub") => void;
   returnBoardUnitToBench: (playerId: string, cell: number) => void;
   sellBenchUnit: (playerId: string, benchIndex: number) => void;
   sellBoardUnit: (playerId: string, cell: number) => void;
@@ -179,11 +179,20 @@ export function executePrepCommand(
 
   // 9. Execute bench to board
   if (payload.benchToBoardCell !== undefined) {
-    deps.deployBenchUnitToBoard(
-      playerId,
-      payload.benchToBoardCell.benchIndex,
-      payload.benchToBoardCell.cell,
-    );
+    if (payload.benchToBoardCell.slot !== undefined) {
+      deps.deployBenchUnitToBoard(
+        playerId,
+        payload.benchToBoardCell.benchIndex,
+        payload.benchToBoardCell.cell,
+        payload.benchToBoardCell.slot,
+      );
+    } else {
+      deps.deployBenchUnitToBoard(
+        playerId,
+        payload.benchToBoardCell.benchIndex,
+        payload.benchToBoardCell.cell,
+      );
+    }
   }
 
   // 10. Execute board to bench

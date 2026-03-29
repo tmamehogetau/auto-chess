@@ -35,6 +35,64 @@ export interface PlacementValidationResult {
   errorCode?: PlacementValidationErrorCode;
 }
 
+function normalizeAttachedSubUnit(
+  subUnit: BoardUnitPlacement["subUnit"],
+): { normalized: BoardUnitPlacement["subUnit"] | null; errorCode?: PlacementValidationErrorCode } {
+  if (!subUnit) {
+    return { normalized: undefined };
+  }
+
+  if (!VALID_UNIT_TYPES.has(subUnit.unitType)) {
+    return { normalized: null, errorCode: "INVALID_UNIT_TYPE" };
+  }
+
+  const starLevel = subUnit.starLevel ?? 1;
+  if (!Number.isInteger(starLevel) || starLevel < 1 || starLevel > 3) {
+    return { normalized: null, errorCode: "INVALID_STAR_LEVEL" };
+  }
+
+  if (
+    subUnit.sellValue !== undefined &&
+    (!Number.isInteger(subUnit.sellValue) || subUnit.sellValue < 1)
+  ) {
+    return { normalized: null, errorCode: "INVALID_SELL_VALUE" };
+  }
+
+  if (
+    subUnit.unitCount !== undefined &&
+    (!Number.isInteger(subUnit.unitCount) || subUnit.unitCount < 1)
+  ) {
+    return { normalized: null, errorCode: "INVALID_UNIT_COUNT" };
+  }
+
+  const normalizedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
+    unitType: subUnit.unitType,
+    starLevel,
+  };
+
+  if (subUnit.unitId !== undefined) {
+    normalizedSubUnit.unitId = subUnit.unitId;
+  }
+
+  if (subUnit.factionId !== undefined) {
+    normalizedSubUnit.factionId = subUnit.factionId;
+  }
+
+  if (subUnit.sellValue !== undefined) {
+    normalizedSubUnit.sellValue = subUnit.sellValue;
+  }
+
+  if (subUnit.unitCount !== undefined) {
+    normalizedSubUnit.unitCount = subUnit.unitCount;
+  }
+
+  if (subUnit.archetype !== undefined) {
+    normalizedSubUnit.archetype = subUnit.archetype;
+  }
+
+  return { normalized: normalizedSubUnit };
+}
+
 export function normalizeBoardPlacements(
   boardPlacements: BoardUnitPlacement[],
 ): PlacementValidationResult {
@@ -111,6 +169,18 @@ export function normalizeBoardPlacements(
 
     if (placement.archetype !== undefined) {
       normalizedPlacement.archetype = placement.archetype;
+    }
+
+    if (placement.subUnit !== undefined) {
+      const normalizedSubUnitResult = normalizeAttachedSubUnit(placement.subUnit);
+      if (!normalizedSubUnitResult.normalized) {
+        return {
+          normalized: null,
+          errorCode: normalizedSubUnitResult.errorCode ?? "INVALID_PLACEMENT",
+        };
+      }
+
+      normalizedPlacement.subUnit = normalizedSubUnitResult.normalized;
     }
 
     normalized.push(normalizedPlacement);

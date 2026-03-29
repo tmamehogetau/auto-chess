@@ -1712,6 +1712,820 @@ describe("shared-board client", () => {
     expect(gridElement.children[2]?.className).toContain("blocked-target");
   });
 
+  test("shared board clears selection when the same own unit is clicked again", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+        25: { unitId: "", ownerId: "" },
+        26: { unitId: "ranger-ally", ownerId: "ally-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    gridElement.children[19]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+    expect(gridElement.children[25]?.className).toContain("drop-target");
+    expect(gridElement.children[26]?.className).toContain("blocked-target");
+    expect(gridElement.children[26]?.className).not.toContain("drop-target");
+
+    gridElement.children[19]?.onpointerdown?.();
+
+    expect(getSelectedSharedUnitId()).toBeNull();
+    expect(gridElement.children[19]?.className).not.toContain("selected");
+    expect(gridElement.children[25]?.className).not.toContain("drop-target");
+    expect(gridElement.children[26]?.className).not.toContain("blocked-target");
+  });
+
+  test("shared board clicks another own occupied cell as a swap target when a unit is already selected", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const state = {
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        19: { unitId: "vanguard-1", ownerId: "player-1" },
+        25: { unitId: "ranger-1", ownerId: "player-1" },
+        26: { unitId: "mage-ally", ownerId: "ally-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    };
+
+    (stateChangeHandler as (state: unknown) => void)(state);
+
+    gridElement.children[19]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+    expect(gridElement.children[25]?.className).toContain("drop-target");
+    expect(gridElement.children[26]?.className).toContain("blocked-target");
+
+    gridElement.children[25]?.click();
+
+    expect(sendCalls).toContainEqual({
+      type: "shared_place_unit",
+      payload: { unitId: "vanguard-1", toCell: 25 },
+    });
+    expect(sendCalls).not.toContainEqual({
+      type: "shared_select_unit",
+      payload: { unitId: "ranger-1" },
+    });
+  });
+
+  test("shared board keeps own hero cell blocked when a normal unit is selected", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const state = {
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1" },
+        30: { unitId: "hero:player-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    };
+
+    (stateChangeHandler as (state: unknown) => void)(state);
+
+    gridElement.children[24]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+    expect(gridElement.children[30]?.className).toContain("blocked-target");
+    expect(gridElement.children[30]?.className).not.toContain("drop-target");
+
+    gridElement.children[30]?.click();
+
+    expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
+    expect(messages).toEqual([{
+      message: "Hero cells cannot be replaced. Swap with your own main unit instead.",
+      type: "error",
+    }]);
+    expect(getSelectedSharedUnitId()).toBe("vanguard-1");
+  });
+
+  test("shared board shows an empty + sub slot for own deployed raid units in deploy phase", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => [],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1" },
+        25: { unitId: "ranger-ally", ownerId: "ally-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const ownSubSlot = findDescendantByClass(gridElement.children[24], "shared-board-sub-slot");
+    expect(ownSubSlot).not.toBeNull();
+    expect(ownSubSlot?.textContent).toBe("+");
+    expect(findDescendantByClass(gridElement.children[25], "shared-board-sub-slot")).toBeNull();
+  });
+
+  test("shared board renders attached sub units as mini icons instead of a legacy SUB badge", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["24:mage"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const subSlot = findDescendantByClass(gridElement.children[24], "shared-board-sub-slot");
+    expect(subSlot).not.toBeNull();
+    expect(subSlot?.className).toContain("attached");
+    expect(subSlot?.textContent).toContain("✨");
+    expect(subSlot?.textContent).not.toContain("SUB");
+  });
+
+  test("shared board never shows sub slots for boss-side units", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-4",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-4",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["2:mage"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "boss",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        2: { unitId: "boss:player-4", ownerId: "player-4" },
+      },
+      cursors: {},
+      players: {
+        "player-4": { isSpectator: false },
+      },
+    });
+
+    expect(findDescendantByClass(gridElement.children[2], "shared-board-sub-slot")).toBeNull();
+  });
+
+  test("shared board never shows sub slots on hero cells", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => [],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        30: { unitId: "hero:player-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    expect(findDescendantByClass(gridElement.children[30], "shared-board-sub-slot")).toBeNull();
+  });
+
+  test("shared board hides empty sub slots when sub-unit system is disabled", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => false,
+        getPlayerBoardSubUnits: () => [],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    expect(findDescendantByClass(gridElement.children[24], "shared-board-sub-slot")).toBeNull();
+  });
+
+  test("shared board hover payload includes sub effect copy when a main unit has an attached sub", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["24:mage"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onHoverDetailChange: (detail: unknown) => {
+          hoverCalls.push(detail);
+        },
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    gridElement.children[24]?.onmouseenter?.();
+    gridElement.children[24]?.onmouseleave?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({
+        title: "美鈴",
+        lines: expect.arrayContaining(["サブ効果: Mage"]),
+      }),
+      null,
+    ]);
+  });
+
+  test("shared board attached sub slots publish their own hover detail payload", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["24:mage"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onHoverDetailChange: (detail: unknown) => {
+          hoverCalls.push(detail);
+        },
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const subSlot = findDescendantByClass(gridElement.children[24], "shared-board-sub-slot");
+    if (!subSlot) {
+      throw new Error("Expected attached sub slot to be rendered");
+    }
+
+    (subSlot as FakeElement & { onmouseenter?: () => void; onmouseleave?: () => void }).onmouseenter?.();
+    (subSlot as FakeElement & { onmouseenter?: () => void; onmouseleave?: () => void }).onmouseleave?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({
+        kicker: "Sub Unit",
+        title: "Mage",
+      }),
+      null,
+    ]);
+  });
+
+  test("shared board hover payload resolves attached Okina copy instead of a generic Hero label", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["24:hero:okina"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onHoverDetailChange: (detail: unknown) => {
+          hoverCalls.push(detail);
+        },
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    gridElement.children[24]?.onmouseenter?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({
+        title: "美鈴",
+        lines: expect.arrayContaining([
+          "サブ効果: 隠岐奈",
+          "他の自軍 unit の sub slot に入れます。",
+        ]),
+      }),
+    ]);
+  });
+
+  test("shared board attached Okina sub slot publishes hero-specific hover detail", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["24:hero:okina"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onHoverDetailChange: (detail: unknown) => {
+          hoverCalls.push(detail);
+        },
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const subSlot = findDescendantByClass(gridElement.children[24], "shared-board-sub-slot");
+    if (!subSlot) {
+      throw new Error("Expected attached sub slot to be rendered");
+    }
+
+    (subSlot as FakeElement & { onmouseenter?: () => void }).onmouseenter?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({
+        kicker: "Sub Unit",
+        title: "隠岐奈",
+        lines: expect.arrayContaining([
+          "装着先: 美鈴",
+          "他の自軍 unit の sub slot に入れます。",
+        ]),
+      }),
+    ]);
+  });
+
   test("shared board shows an empty board until real units are placed", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
@@ -2398,6 +3212,146 @@ describe("shared-board client", () => {
       boardWidth: 6,
       boardHeight: 6,
       cells: {
+        30: { unitId: "hero:player-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    };
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+    applyStateChange(state);
+
+    gridElement.children[30]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("hero:player-1");
+
+    handleSharedCellClick(state, 24);
+
+    expect(sendCalls).toContainEqual({
+      type: "shared_place_unit",
+      payload: { unitId: "hero:player-1", toCell: 24 },
+    });
+    expect(messages).toEqual([]);
+  });
+
+  test("shared board blocks normal heroes from targeting occupied allied cells", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        getSelectedHeroId: () => "reimu",
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const state = {
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1" },
+        30: { unitId: "hero:player-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    };
+    const applyStateChange = stateChangeHandler as (state: unknown) => void;
+    applyStateChange(state);
+
+    gridElement.children[30]?.onpointerdown?.();
+    expect(getSelectedSharedUnitId()).toBe("hero:player-1");
+
+    handleSharedCellClick(state, 24);
+
+    expect(sendCalls.filter((entry) => entry.type === "shared_place_unit")).toEqual([]);
+    expect(messages).toEqual([{
+      message: "Only Okina can enter an occupied allied cell. Other heroes need an open raid cell.",
+      type: "error",
+    }]);
+  });
+
+  test("shared board lets Okina target occupied allied cells", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const sendCalls: Array<{ type: string; payload: unknown }> = [];
+    const messages: Array<{ message: string; type: string }> = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: (type: string, payload: unknown) => {
+        sendCalls.push({ type, payload });
+      },
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      { gridElement: gridElement as unknown as HTMLElement, cursorListElement: cursorListElement as unknown as HTMLElement },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        getSelectedHeroId: () => "okina",
+        onLog: () => {},
+        showMessage: (message: string, type: string) => {
+          messages.push({ message, type });
+        },
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const state = {
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1" },
         30: { unitId: "hero:player-1", ownerId: "player-1" },
       },
       cursors: {},

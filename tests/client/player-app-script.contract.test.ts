@@ -44,6 +44,7 @@ describe("player-app script contract", () => {
     expect(source.includes("handlePlayerBoardSell(")).toBe(true);
     expect(source.includes("handlePlayerBoardReturn(")).toBe(true);
     expect(source.includes("handlePlayerSharedCellClick(")).toBe(true);
+    expect(source.includes("handlePlayerSharedSubSlotClick(")).toBe(true);
     expect(source.includes("handlePlayerBossShopBuy(")).toBe(true);
     expect(source.includes("handlePlayerShopRefresh(")).toBe(true);
     expect(source.includes("handlePlayerBuyXp(")).toBe(true);
@@ -52,6 +53,7 @@ describe("player-app script contract", () => {
     expect(source.includes("shopRefreshCount")).toBe(true);
     expect(source.includes("xpPurchaseCount")).toBe(true);
     expect(source.includes("benchToBoardCell")).toBe(true);
+    expect(source.includes('slot: "sub"')).toBe(true);
     expect(source.includes("boardToBenchCell")).toBe(true);
     expect(source.includes("benchSellIndex")).toBe(true);
     expect(source.includes("boardSellIndex")).toBe(true);
@@ -81,6 +83,8 @@ describe("player-app script contract", () => {
     expect(source.includes("function clearPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function resolveRequestedRoomCode(")).toBe(true);
     expect(source.includes("function resolveSharedBoardRoomId(")).toBe(true);
+    expect(source.includes('const prepPhaseElement = phaseSections.get("prep");')).toBe(true);
+    expect(source.includes('phaseSections.get("result")')).toBe(false);
     expect(source.includes('lobbyStage === "preference"')).toBe(true);
     expect(source.includes('lobbyStage === "selection"')).toBe(true);
     expect(source.includes('phase === "Prep"')).toBe(true);

@@ -7,6 +7,10 @@ interface PlayerState {
   eliminated: boolean;
 }
 
+interface GameLoopStateOptions {
+  raidRecoveryRoundIndex?: number;
+}
+
 const VALID_TRANSITIONS: Record<Phase, Phase[]> = {
   Prep: ["Battle"],
   Battle: ["Settle"],
@@ -28,7 +32,9 @@ export class GameLoopState {
   /** 支配カウント（ボス優勢時にカウントアップ、5でボス勝利） */
   public dominationCount: number;
 
-  public constructor(playerIds: string[]) {
+  private readonly raidRecoveryRoundIndex: number;
+
+  public constructor(playerIds: string[], options: GameLoopStateOptions = {}) {
     if (playerIds.length < 2) {
       throw new Error("At least 2 players are required");
     }
@@ -48,6 +54,7 @@ export class GameLoopState {
     this.roundIndex = 1;
     this.bossPlayerId = null;
     this.dominationCount = 0;
+    this.raidRecoveryRoundIndex = Math.max(1, options.raidRecoveryRoundIndex ?? 6);
   }
 
   /**
@@ -61,7 +68,7 @@ export class GameLoopState {
     this.bossPlayerId = playerId;
 
     for (const player of this.players.values()) {
-      player.remainingLives = player.id === playerId ? 0 : 3;
+      player.remainingLives = player.id === playerId ? 0 : 2;
     }
   }
 
@@ -166,6 +173,37 @@ export class GameLoopState {
     return player.remainingLives;
   }
 
+  public addLife(playerId: string, amount: number = 1): number {
+    const player = this.players.get(playerId);
+
+    if (!player) {
+      throw new Error(`Unknown player: ${playerId}`);
+    }
+
+    if (player.id === this.bossPlayerId) {
+      return player.remainingLives;
+    }
+
+    player.remainingLives = Math.max(0, player.remainingLives + amount);
+    return player.remainingLives;
+  }
+
+  public revivePlayer(playerId: string, nextLives: number = 1): number {
+    const player = this.players.get(playerId);
+
+    if (!player) {
+      throw new Error(`Unknown player: ${playerId}`);
+    }
+
+    if (player.id === this.bossPlayerId) {
+      return player.remainingLives;
+    }
+
+    player.remainingLives = Math.max(0, nextLives);
+    player.eliminated = false;
+    return player.remainingLives;
+  }
+
   public setPlayerHp(playerId: string, nextHp: number): void {
     const player = this.players.get(playerId);
 
@@ -206,6 +244,10 @@ export class GameLoopState {
     for (const player of this.players.values()) {
       if (this.bossPlayerId !== null) {
         if (player.id !== this.bossPlayerId && player.remainingLives <= 0) {
+          if (this.roundIndex === this.raidRecoveryRoundIndex) {
+            continue;
+          }
+
           player.eliminated = true;
         }
         continue;

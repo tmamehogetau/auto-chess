@@ -11,8 +11,46 @@ export const STAR_LEVEL_MAX = 3;
 /** 最小星レベル */
 export const STAR_LEVEL_MIN = 1;
 
-/** 星上げに必要な同種ユニット数（3体合成） */
-export const STAR_MERGE_THRESHOLD = 3;
+/** 購入回数進行で tier 2 へ上がる閾値 */
+export const TIER_TWO_PURCHASE_THRESHOLD = 4;
+
+/** 購入回数進行で tier 3 へ上がる閾値 */
+export const TIER_THREE_PURCHASE_THRESHOLD = 7;
+
+/**
+ * 購入回数から upgrade tier を求める
+ * 1-3回: tier 1, 4-6回: tier 2, 7回以上: tier 3
+ */
+export function getUpgradeTierForPurchaseCount(purchaseCount: number): number {
+  if (!Number.isFinite(purchaseCount) || purchaseCount < 1) {
+    return STAR_LEVEL_MIN;
+  }
+
+  if (purchaseCount >= TIER_THREE_PURCHASE_THRESHOLD) {
+    return STAR_LEVEL_MAX;
+  }
+
+  if (purchaseCount >= TIER_TWO_PURCHASE_THRESHOLD) {
+    return 2;
+  }
+
+  return STAR_LEVEL_MIN;
+}
+
+/**
+ * tier に対応する最小購入回数を返す
+ */
+export function getMinimumPurchaseCountForTier(starLevel: number): number {
+  if (starLevel >= STAR_LEVEL_MAX) {
+    return TIER_THREE_PURCHASE_THRESHOLD;
+  }
+
+  if (starLevel >= 2) {
+    return TIER_TWO_PURCHASE_THRESHOLD;
+  }
+
+  return STAR_LEVEL_MIN;
+}
 
 /**
  * 戦闘力の星レベル倍率
@@ -28,7 +66,7 @@ export function getStarCombatMultiplier(starLevel: number = STAR_LEVEL_MIN): num
 
 /**
  * ユニットタイプ別の基本売却値（★1時）
- * 星レベルに応じて累積（★2は3体分、★3は9体分）
+ * tier ごとの最終売却値は別計算で調整し、ここでは基準コストを保持する
  */
 export const UNIT_SELL_VALUE_BY_TYPE: Readonly<Record<BoardUnitType, number>> = {
   vanguard: 1,
@@ -39,17 +77,42 @@ export const UNIT_SELL_VALUE_BY_TYPE: Readonly<Record<BoardUnitType, number>> = 
 
 /**
  * 売却値を計算
- * @param baseValue 基本売却値（購入時のコスト累積値）
- * @param unitType ユニットタイプ（フォールバック用）
+ * @param totalPaidCost 実際に支払った累積コスト
+ * @param unitType ユニットタイプ
+ * @param starLevel 現在の tier
+ * @param unitCount 購入回数
  * @returns 最終的な売却値
  */
 export function calculateSellValue(
-  baseValue: number,
+  totalPaidCost: number,
   unitType: BoardUnitType,
+  starLevel: number = STAR_LEVEL_MIN,
+  unitCount?: number,
 ): number {
-  if (baseValue > 0) {
-    return baseValue;
+  const trackedPurchaseCount = unitCount ?? getMinimumPurchaseCountForTier(starLevel);
+  const trackedTier = getUpgradeTierForPurchaseCount(trackedPurchaseCount);
+  const fallbackUnitCost = UNIT_SELL_VALUE_BY_TYPE[unitType] ?? 1;
+  const baseUnitCost = totalPaidCost > 0 && trackedPurchaseCount > 0
+    ? Math.max(1, Math.round(totalPaidCost / trackedPurchaseCount))
+    : fallbackUnitCost;
+
+  let formulaValue = 0;
+  switch (trackedTier) {
+    case 3:
+      formulaValue = 4 * baseUnitCost - 2;
+      break;
+    case 2:
+      formulaValue = 2 * baseUnitCost - 1;
+      break;
+    default:
+      formulaValue = baseUnitCost - 1;
+      break;
   }
-  // フォールバック: タイプ別基本値
-  return UNIT_SELL_VALUE_BY_TYPE[unitType] ?? 1;
+
+  const normalizedFormulaValue = Math.max(0, formulaValue);
+  if (totalPaidCost > 0) {
+    return Math.min(totalPaidCost, normalizedFormulaValue);
+  }
+
+  return normalizedFormulaValue;
 }

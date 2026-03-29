@@ -53,6 +53,7 @@ function createDeps(): PlayerStateQueryServiceDeps {
       ["p1", "raid"],
       ["p2", "boss"],
     ]),
+    getFinalRoundShield: () => 0,
     goldByPlayer: new Map([
       ["p1", 18],
       ["p2", 23],
@@ -140,6 +141,10 @@ function createDeps(): PlayerStateQueryServiceDeps {
       ["p1", 30],
       ["p2", -1],
     ]),
+    heroSubHostCellByPlayer: new Map([
+      ["p1", -1],
+      ["p2", -1],
+    ]),
     bossPlacementByPlayer: new Map([
       ["p1", -1],
       ["p2", 2],
@@ -154,10 +159,14 @@ function createDeps(): PlayerStateQueryServiceDeps {
     initialLevel: 1,
     buildActiveSynergies: () => [{ unitType: "vanguard", count: 2, tier: 1 }],
     resolveBenchUnitDisplayName: (benchUnit) => benchUnit.unitId ?? "",
-    formatBoardUnitToken: (placement) =>
+    formatBoardUnitToken: (_playerId, placement) =>
       placement.starLevel && placement.starLevel > 1
         ? `${placement.cell}:${placement.unitType}:${placement.starLevel}`
         : `${placement.cell}:${placement.unitType}`,
+    formatBoardSubUnitToken: (cell, placement) =>
+      placement.starLevel && placement.starLevel > 1
+        ? `${cell}:${placement.unitType}:${placement.starLevel}`
+        : `${cell}:${placement.unitType}`,
   };
 }
 
@@ -173,7 +182,7 @@ describe("PlayerStateQueryService", () => {
       selectedBossId: "",
       role: "raid",
       hp: 100,
-      remainingLives: 3,
+      remainingLives: 2,
       eliminated: false,
       boardUnitCount: 2,
       gold: 18,

@@ -57,6 +57,8 @@ class FakeElement {
   public onclick: (() => void) | null = null;
   public onmouseenter: (() => void) | null = null;
   public onmouseleave: (() => void) | null = null;
+  public onfocus: (() => void) | null = null;
+  public onblur: (() => void) | null = null;
   public classList: FakeClassList;
   public children: FakeElement[] = [];
   public attributes: Record<string, string> = {};
@@ -94,9 +96,13 @@ class FakeButtonElement extends FakeElement {}
 
 describe("player surface renderers", () => {
   let originalDocument: typeof globalThis.document;
+  let originalHTMLElement: typeof globalThis.HTMLElement | undefined;
+  let originalHTMLButtonElement: typeof globalThis.HTMLButtonElement | undefined;
 
   beforeEach(() => {
     originalDocument = globalThis.document;
+    originalHTMLElement = globalThis.HTMLElement;
+    originalHTMLButtonElement = globalThis.HTMLButtonElement;
     globalThis.HTMLElement = FakeElement as unknown as typeof HTMLElement;
     globalThis.HTMLButtonElement = FakeButtonElement as unknown as typeof HTMLButtonElement;
     globalThis.document = {
@@ -107,10 +113,21 @@ describe("player surface renderers", () => {
   afterEach(() => {
     if (originalDocument === undefined) {
       delete (globalThis as { document?: typeof globalThis.document }).document;
-      return;
+    } else {
+      globalThis.document = originalDocument;
     }
 
-    globalThis.document = originalDocument;
+    if (originalHTMLElement === undefined) {
+      delete (globalThis as { HTMLElement?: typeof globalThis.HTMLElement }).HTMLElement;
+    } else {
+      globalThis.HTMLElement = originalHTMLElement;
+    }
+
+    if (originalHTMLButtonElement === undefined) {
+      delete (globalThis as { HTMLButtonElement?: typeof globalThis.HTMLButtonElement }).HTMLButtonElement;
+    } else {
+      globalThis.HTMLButtonElement = originalHTMLButtonElement;
+    }
   });
 
   test("prep summary renders player-facing economy and ready copy", () => {
@@ -492,6 +509,91 @@ describe("player surface renderers", () => {
       expect.objectContaining({ title: "魔理沙" }),
       expect.objectContaining({ title: "パチュリー・ノーレッジ" }),
       null,
+    ]);
+  });
+
+  test("prep summary exposes hover detail from keyboard focus too", () => {
+    const allyRailElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    renderPlayerPrepSummary({
+      allyRailElement: allyRailElement as unknown as HTMLElement,
+      onHoverDetailChange: (detail: unknown) => {
+        hoverCalls.push(detail);
+      },
+      state: {
+        phase: "Prep",
+        players: {
+          "raid-1": {
+            selectedHeroId: "reimu",
+          },
+        },
+      },
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+      },
+      sessionId: "raid-1",
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    const selfHeroChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "self-hero");
+    selfHeroChip?.onfocus?.();
+    selfHeroChip?.onblur?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({ title: "霊夢" }),
+      null,
+    ]);
+  });
+
+  test("prep summary labels boss-side chips with boss-specific kickers", () => {
+    const allyRailElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    renderPlayerPrepSummary({
+      allyRailElement: allyRailElement as unknown as HTMLElement,
+      onHoverDetailChange: (detail: unknown) => {
+        hoverCalls.push(detail);
+      },
+      state: {
+        phase: "Prep",
+        players: {
+          "boss-1": {
+            role: "boss",
+            selectedBossId: "remilia",
+          },
+          "raid-2": {
+            role: "raid",
+            selectedHeroId: "marisa",
+          },
+        },
+      },
+      player: {
+        role: "boss",
+        selectedBossId: "remilia",
+      },
+      sessionId: "boss-1",
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    const selfChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "self-hero");
+    const allyChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
+
+    selfChip?.onmouseenter?.();
+    allyChip?.onmouseenter?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({
+        kicker: "Your Boss",
+        title: "レミリア",
+      }),
+      expect.objectContaining({
+        kicker: "Ally Hero",
+        title: "魔理沙",
+      }),
     ]);
   });
 

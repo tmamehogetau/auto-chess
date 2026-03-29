@@ -144,7 +144,11 @@ async function buildCompositionViaPrepActions(
       };
     }).controller;
 
-    internalController?.shopOffersByPlayer.set(playerId, [
+    if (!internalController?.shopOffersByPlayer) {
+      throw new Error("Expected internal controller shopOffersByPlayer for deterministic offer injection");
+    }
+
+    internalController.shopOffersByPlayer.set(playerId, [
       { unitType, unitId: `${unitType}-${cell}`, rarity: 1, cost: 1 },
     ]);
     const buyResult = await sendPrepCommand(client, cmdSeq++, { shopBuySlotIndex: 0 });
@@ -170,7 +174,11 @@ function injectForcedOffers(
     };
   }).controller;
 
-  internalController?.shopOffersByPlayer.set(
+  if (!internalController?.shopOffersByPlayer) {
+    throw new Error("Expected internal controller shopOffersByPlayer for forced offer injection");
+  }
+
+  internalController.shopOffersByPlayer.set(
     playerId,
     unitTypes.map((unitType) => ({ unitType, rarity: 1, cost: 1 })),
   );

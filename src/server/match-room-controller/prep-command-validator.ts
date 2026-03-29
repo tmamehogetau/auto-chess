@@ -106,6 +106,15 @@ function matchesUpgradeTrack(
   return candidate.unitType === unitType && (candidate.unitId ?? "") === (unitId ?? "");
 }
 
+function placementContainsUpgradeTrack(
+  unitType: string,
+  unitId: string | undefined,
+  placement: BoardUnitPlacement,
+): boolean {
+  return matchesUpgradeTrack(unitType, unitId, placement)
+    || (placement.subUnit !== undefined && matchesUpgradeTrack(unitType, unitId, placement.subUnit));
+}
+
 /**
  * Validates a prep command and returns a CommandResult if invalid, null if valid.
  * This function performs all validation checks without mutating any state.
@@ -412,6 +421,10 @@ function validatePreconditions(
     }
 
     if (targetSlot === "sub") {
+      if (!deps.isSubUnitSystemEnabled()) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
       if (deps.isBossPlayer(playerId)) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
@@ -500,7 +513,7 @@ function validatePreconditions(
     const boardPlacements = deps.getBoardPlacements(playerId);
     const canStackIntoExistingUnit =
       benchUnits.some((unit) => matchesUpgradeTrack(targetOffer.unitType, targetOffer.unitId, unit)) ||
-      boardPlacements.some((placement) => matchesUpgradeTrack(targetOffer.unitType, targetOffer.unitId, placement));
+      boardPlacements.some((placement) => placementContainsUpgradeTrack(targetOffer.unitType, targetOffer.unitId, placement));
 
     if (benchUnits.length >= MAX_BENCH_SIZE && !canStackIntoExistingUnit) {
       return { accepted: false, code: "BENCH_FULL" };
@@ -549,7 +562,7 @@ function validatePreconditions(
     const boardPlacements = deps.getBoardPlacements(playerId);
     const canStackIntoExistingUnit =
       benchUnits.some((unit) => matchesUpgradeTrack(bossOffer.unitType, bossOffer.unitId, unit)) ||
-      boardPlacements.some((placement) => matchesUpgradeTrack(bossOffer.unitType, bossOffer.unitId, placement));
+      boardPlacements.some((placement) => placementContainsUpgradeTrack(bossOffer.unitType, bossOffer.unitId, placement));
 
     if (benchUnits.length >= MAX_BENCH_SIZE && !canStackIntoExistingUnit) {
       return { accepted: false, code: "BENCH_FULL" };

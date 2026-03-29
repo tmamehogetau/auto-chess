@@ -214,4 +214,13 @@ describe("player.html contract", () => {
     expect(prepSection.includes(">主人公強化<")).toBe(true);
     expect(prepSection.includes(">リロード<")).toBe(true);
   });
+
+  test("battle start banner placeholder is declared only once in the prep shell", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const bannerCount = (html.match(/data-player-battle-start-banner/g) ?? []).length;
+
+    expect(bannerCount).toBe(1);
+    expect(extractPhaseSection(html, "prep").includes("data-player-battle-start-banner")).toBe(true);
+    expect(extractPhaseSection(html, "result").includes("data-player-battle-start-banner")).toBe(false);
+  });
 });

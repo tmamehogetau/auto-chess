@@ -2110,6 +2110,63 @@ describe("shared-board client", () => {
     expect(findDescendantByClass(gridElement.children[2], "shared-board-sub-slot")).toBeNull();
   });
 
+  test("shared board never shows sub slots on hero cells", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        getPlayerBoardSubUnits: () => [],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        30: { unitId: "hero:player-1", ownerId: "player-1" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    expect(findDescendantByClass(gridElement.children[30], "shared-board-sub-slot")).toBeNull();
+  });
+
   test("shared board hover payload includes sub effect copy when a main unit has an attached sub", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();

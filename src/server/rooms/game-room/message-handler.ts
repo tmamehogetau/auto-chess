@@ -23,6 +23,19 @@ import {
 } from "../../schema/match-room-state";
 
 type ShopOfferSnapshot = Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>;
+type BenchUnitSnapshot = Array<{
+  unitType: "vanguard" | "ranger" | "mage" | "assassin";
+  cost: number;
+  starLevel: number;
+  unitCount: number;
+}>;
+type BoardPlacementSnapshot = Array<{
+  cell: number;
+  unitType: "vanguard" | "ranger" | "mage" | "assassin";
+  sellValue?: number;
+  starLevel?: number;
+  unitCount?: number;
+}>;
 
 export interface GameRoomMessageHandlerDeps {
   state: MatchRoomState;
@@ -40,6 +53,8 @@ export interface GameRoomMessageHandlerDeps {
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
     shopOffersSnapshot?: ShopOfferSnapshot,
+    benchUnitsSnapshot?: BenchUnitSnapshot,
+    boardPlacementsSnapshot?: BoardPlacementSnapshot,
   ) => void;
   buildAdminPlayerSnapshots: () => AdminPlayerSnapshot[];
   isAdminQueryClient: (client: Client) => boolean;
@@ -225,6 +240,12 @@ export function handlePrepCommandMessage(
   const shopOffersSnapshot = commandPayload?.shopBuySlotIndex !== undefined
     ? controller.getShopOffersForPlayer(client.sessionId)
     : undefined;
+  const benchUnitsSnapshot = commandPayload?.benchSellIndex !== undefined
+    ? controller.getBenchUnitDetailsForPlayer(client.sessionId)
+    : undefined;
+  const boardPlacementsSnapshot = commandPayload?.boardSellIndex !== undefined
+    ? controller.getBoardPlacementsForPlayer(client.sessionId)
+    : undefined;
 
   deps.getSharedBoardBridge()?.logGameCommandEvent({
     playerId: client.sessionId,
@@ -254,7 +275,13 @@ export function handlePrepCommandMessage(
       correlationId,
     });
 
-    deps.logPrepCommandActions(client.sessionId, commandPayload, shopOffersSnapshot);
+    deps.logPrepCommandActions(
+      client.sessionId,
+      commandPayload,
+      shopOffersSnapshot,
+      benchUnitsSnapshot,
+      boardPlacementsSnapshot,
+    );
   } else {
     deps.getSharedBoardBridge()?.logGameCommandEvent({
       playerId: client.sessionId,

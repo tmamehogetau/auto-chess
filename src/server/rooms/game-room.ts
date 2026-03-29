@@ -609,6 +609,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
     shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
+    benchUnitsSnapshot?: Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number }>,
+    boardPlacementsSnapshot?: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; starLevel?: number; unitCount?: number }>,
   ): void {
     logPrepCommandActions(sessionId, commandPayload, {
       logger: this.matchLogger,
@@ -618,7 +620,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       getBoardPlacements: (sid) => this.controller?.getBoardPlacementsForPlayer(sid),
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
-    }, { shopOffersSnapshot });
+    }, { shopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });
   }
 
   private isAdminQueryClient(client: Client): boolean {
@@ -920,8 +922,20 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       syncPlayerFromCommandResult: (player, sessionId, cmdSeq) => {
         this.syncPlayerFromCommandResult(player, sessionId, cmdSeq);
       },
-      logPrepCommandActions: (sessionId, commandPayload, shopOffersSnapshot) => {
-        this.logPrepCommandActions(sessionId, commandPayload, shopOffersSnapshot);
+      logPrepCommandActions: (
+        sessionId,
+        commandPayload,
+        shopOffersSnapshot,
+        benchUnitsSnapshot,
+        boardPlacementsSnapshot,
+      ) => {
+        this.logPrepCommandActions(
+          sessionId,
+          commandPayload,
+          shopOffersSnapshot,
+          benchUnitsSnapshot,
+          boardPlacementsSnapshot,
+        );
       },
       buildAdminPlayerSnapshots: () => this.buildAdminPlayerSnapshots(),
       isAdminQueryClient: (client) => this.isAdminQueryClient(client),

@@ -1497,7 +1497,7 @@ describe("MatchRoomController", () => {
 
       expect(sellResult).toEqual({ accepted: true });
       expect(beforeSellGold).toBe(11);
-      expect(afterSell.gold).toBe(14);
+      expect(afterSell.gold).toBe(12);
     });
   });
 

@@ -195,6 +195,55 @@ describe("prep-command-logging", () => {
       });
     });
 
+    it("should prefer boardPlacementsSnapshot when board sell logging needs pre-command state", () => {
+      (deps as PrepCommandLoggingDeps & {
+        getBoardPlacements: (sessionId: string) => Array<{
+          cell: number;
+          unitType: BoardUnitType;
+          sellValue?: number;
+          starLevel?: number;
+          unitCount?: number;
+        }> | undefined;
+      }).getBoardPlacements = vi.fn(() => []);
+
+      logPrepCommandActions("player1", { boardSellIndex: 7 }, deps, {
+        boardPlacementsSnapshot: [
+          { cell: 7, unitType: "mage", sellValue: 14, starLevel: 3, unitCount: 7 },
+        ],
+      });
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.details).toMatchObject({
+        cell: 7,
+        goldBefore: 10,
+        goldAfter: 16,
+      });
+    });
+
+    it("should prefer benchUnitsSnapshot when bench sell logging needs pre-command state", () => {
+      (deps as PrepCommandLoggingDeps & {
+        getBenchUnits: (sessionId: string) => Array<{
+          unitType: BoardUnitType;
+          cost: number;
+          starLevel: number;
+          unitCount: number;
+        }> | undefined;
+      }).getBenchUnits = vi.fn(() => []);
+
+      logPrepCommandActions("player1", { benchSellIndex: 0 }, deps, {
+        benchUnitsSnapshot: [
+          { unitType: "mage", cost: 8, starLevel: 2, unitCount: 4 },
+        ],
+      });
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.details).toMatchObject({
+        benchIndex: 0,
+        goldBefore: 10,
+        goldAfter: 13,
+      });
+    });
+
     it("should log buy_boss_unit action when bossShopBuySlotIndex is provided", () => {
       const payload = {
         bossShopBuySlotIndex: 0,

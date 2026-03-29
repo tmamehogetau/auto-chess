@@ -91,7 +91,10 @@ export function calculateSellValue(
 ): number {
   const trackedPurchaseCount = unitCount ?? getMinimumPurchaseCountForTier(starLevel);
   const trackedTier = getUpgradeTierForPurchaseCount(trackedPurchaseCount);
-  const baseUnitCost = UNIT_SELL_VALUE_BY_TYPE[unitType] ?? 1;
+  const fallbackUnitCost = UNIT_SELL_VALUE_BY_TYPE[unitType] ?? 1;
+  const baseUnitCost = totalPaidCost > 0 && trackedPurchaseCount > 0
+    ? Math.max(1, Math.round(totalPaidCost / trackedPurchaseCount))
+    : fallbackUnitCost;
 
   let formulaValue = 0;
   switch (trackedTier) {

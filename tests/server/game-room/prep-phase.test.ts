@@ -726,7 +726,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       });
 
       const afterSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
-      expect(afterSellPlayer?.gold).toBe(14);
+      expect(afterSellPlayer?.gold).toBe(12);
     });
   });
 

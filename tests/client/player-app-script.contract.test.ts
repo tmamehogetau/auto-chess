@@ -83,6 +83,8 @@ describe("player-app script contract", () => {
     expect(source.includes("function clearPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function resolveRequestedRoomCode(")).toBe(true);
     expect(source.includes("function resolveSharedBoardRoomId(")).toBe(true);
+    expect(source.includes('const prepPhaseElement = phaseSections.get("prep");')).toBe(true);
+    expect(source.includes('phaseSections.get("result")')).toBe(false);
     expect(source.includes('lobbyStage === "preference"')).toBe(true);
     expect(source.includes('lobbyStage === "selection"')).toBe(true);
     expect(source.includes('phase === "Prep"')).toBe(true);

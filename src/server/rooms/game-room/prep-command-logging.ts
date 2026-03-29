@@ -18,6 +18,19 @@ export interface PrepCommandLoggingDeps {
 
 export interface LogPrepCommandActionsOptions {
   shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
+  benchUnitsSnapshot?: Array<{
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    cost: number;
+    starLevel: number;
+    unitCount: number;
+  }> | undefined;
+  boardPlacementsSnapshot?: Array<{
+    cell: number;
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    sellValue?: number;
+    starLevel?: number;
+    unitCount?: number;
+  }> | undefined;
 }
 
 /**
@@ -55,7 +68,8 @@ export function logPrepCommandActions(
   }
 
   if (commandPayload.benchSellIndex !== undefined) {
-    const benchUnit = deps.getBenchUnits?.(sessionId)?.[commandPayload.benchSellIndex];
+    const benchUnit = options?.benchUnitsSnapshot?.[commandPayload.benchSellIndex]
+      ?? deps.getBenchUnits?.(sessionId)?.[commandPayload.benchSellIndex];
     const sellValue = benchUnit
       ? calculateSellValue(benchUnit.cost, benchUnit.unitType, benchUnit.starLevel, benchUnit.unitCount)
       : 1;
@@ -100,7 +114,7 @@ export function logPrepCommandActions(
   }
 
   if (commandPayload.boardSellIndex !== undefined) {
-    const soldPlacement = deps.getBoardPlacements?.(sessionId)?.find(
+    const soldPlacement = (options?.boardPlacementsSnapshot ?? deps.getBoardPlacements?.(sessionId))?.find(
       (placement) => placement.cell === commandPayload.boardSellIndex,
     );
     const sellValue = soldPlacement

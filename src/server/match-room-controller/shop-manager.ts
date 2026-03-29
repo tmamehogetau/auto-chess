@@ -1,5 +1,9 @@
 import type { GameLoopState } from "../../domain/game-loop-state";
-import type { BoardUnitPlacement, BoardUnitType } from "../../shared/room-messages";
+import type {
+  AttachedSubUnitPlacement,
+  BoardUnitPlacement,
+  BoardUnitType,
+} from "../../shared/room-messages";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { SharedPool } from "../shared-pool";
 import {
@@ -164,7 +168,27 @@ export class ShopManager<TBattleResult = unknown> {
     }
 
     const benchUnits = [...(this.deps.benchUnitsByPlayer.get(playerId) ?? [])];
-    if (benchUnits.length >= this.deps.maxBenchSize) {
+    const boardPlacements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
+    const purchasedUnitCost = calculateDiscountedShopOfferCost(
+      boughtOffer,
+      boardPlacements,
+      this.deps.rosterFlags,
+    );
+    const purchasedBenchUnit: ShopManagerBenchUnit = {
+      unitType: boughtOffer.unitType,
+      cost: purchasedUnitCost,
+      starLevel: STAR_LEVEL_MIN,
+      unitCount: 1,
+    };
+
+    if (boughtOffer.unitId !== undefined) {
+      purchasedBenchUnit.unitId = boughtOffer.unitId;
+    }
+
+    if (
+      benchUnits.length >= this.deps.maxBenchSize
+      && !this.wouldPurchasedUnitMergeIntoInventory(playerId, purchasedBenchUnit)
+    ) {
       return;
     }
 
@@ -182,24 +206,6 @@ export class ShopManager<TBattleResult = unknown> {
 
     this.deps.shopPurchaseCountByPlayer.set(playerId, purchaseCount);
     this.deps.shopOffersByPlayer.set(playerId, offers);
-
-    const boardPlacements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
-    const purchasedUnitCost = calculateDiscountedShopOfferCost(
-      boughtOffer,
-      boardPlacements,
-      this.deps.rosterFlags,
-    );
-
-    const purchasedBenchUnit: ShopManagerBenchUnit = {
-      unitType: boughtOffer.unitType,
-      cost: purchasedUnitCost,
-      starLevel: STAR_LEVEL_MIN,
-      unitCount: 1,
-    };
-
-    if (boughtOffer.unitId !== undefined) {
-      purchasedBenchUnit.unitId = boughtOffer.unitId;
-    }
 
     this.addPurchasedUnitToInventory(playerId, purchasedBenchUnit);
 
@@ -225,10 +231,6 @@ export class ShopManager<TBattleResult = unknown> {
       return;
     }
 
-    if (benchUnits.length >= this.deps.maxBenchSize) {
-      return;
-    }
-
     const benchUnit: ShopManagerBenchUnit = {
       unitType: bossOffer.unitType,
       cost: bossOffer.cost,
@@ -239,8 +241,14 @@ export class ShopManager<TBattleResult = unknown> {
       benchUnit.unitId = bossOffer.unitId;
     }
 
-    benchUnits.push(benchUnit);
-    this.deps.benchUnitsByPlayer.set(playerId, benchUnits);
+    if (
+      benchUnits.length >= this.deps.maxBenchSize
+      && !this.wouldPurchasedUnitMergeIntoInventory(playerId, benchUnit)
+    ) {
+      return;
+    }
+
+    this.addPurchasedUnitToInventory(playerId, benchUnit);
     bossOffer.purchased = true;
   }
 
@@ -450,25 +458,27 @@ export class ShopManager<TBattleResult = unknown> {
       assassin: ownedUnits.assassin,
     };
 
-    const unitCount = this.getTrackedPurchaseCount(soldPlacement.starLevel, soldPlacement.unitCount);
-    nextOwnedUnits[soldPlacement.unitType] = Math.max(
-      0,
-      nextOwnedUnits[soldPlacement.unitType] - unitCount,
-    );
+    const soldSettlements = [
+      this.buildPlacementSettlement(soldPlacement),
+      ...(soldPlacement.subUnit ? [this.buildPlacementSettlement(soldPlacement.subUnit)] : []),
+    ];
 
-    const paidCost = soldPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[soldPlacement.unitType] ?? 1;
-    const sellValue = calculateSellValue(
-      paidCost,
-      soldPlacement.unitType,
-      soldPlacement.starLevel ?? STAR_LEVEL_MIN,
-      unitCount,
-    );
+    for (const settlement of soldSettlements) {
+      nextOwnedUnits[settlement.unitType] = Math.max(
+        0,
+        nextOwnedUnits[settlement.unitType] - settlement.unitCount,
+      );
+    }
+
+    const sellValue = soldSettlements.reduce((total, settlement) => total + settlement.sellValue, 0);
 
     this.deps.boardPlacementsByPlayer.set(playerId, boardPlacements);
     this.deps.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
     this.deps.ownedUnitsByPlayer.set(playerId, nextOwnedUnits);
     this.deps.goldByPlayer.set(playerId, currentGold + sellValue);
-    this.increaseSharedPoolForUnit(soldPlacement.unitId, paidCost, unitCount);
+    for (const settlement of soldSettlements) {
+      this.increaseSharedPoolForUnit(settlement.unitId, settlement.paidCost, settlement.unitCount);
+    }
   }
 
   public getShopRefreshGoldCost(playerId: string, refreshCount: number): number {
@@ -490,9 +500,12 @@ export class ShopManager<TBattleResult = unknown> {
     }
 
     for (const placement of boardPlacements) {
-      const unitCost = placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1;
-      const unitCount = this.getTrackedPurchaseCount(placement.starLevel, placement.unitCount);
-      this.increaseSharedPoolForUnit(placement.unitId, unitCost, unitCount);
+      const mainSettlement = this.buildPlacementSettlement(placement);
+      this.increaseSharedPoolForUnit(mainSettlement.unitId, mainSettlement.paidCost, mainSettlement.unitCount);
+      if (placement.subUnit) {
+        const subSettlement = this.buildPlacementSettlement(placement.subUnit);
+        this.increaseSharedPoolForUnit(subSettlement.unitId, subSettlement.paidCost, subSettlement.unitCount);
+      }
     }
 
     for (const benchUnit of benchUnits) {
@@ -524,8 +537,24 @@ export class ShopManager<TBattleResult = unknown> {
       return;
     }
 
+    const matchingSubUnitLocation = this.findUpgradeableAttachedSubUnitLocation(boardPlacements, purchasedUnit);
+    if (matchingSubUnitLocation) {
+      this.applyPurchasedUnitToAttachedSubUnit(matchingSubUnitLocation, purchasedUnit);
+      this.deps.boardPlacementsByPlayer.set(playerId, boardPlacements);
+      return;
+    }
+
     benchUnits.push(purchasedUnit);
     this.deps.benchUnitsByPlayer.set(playerId, benchUnits);
+  }
+
+  private wouldPurchasedUnitMergeIntoInventory(playerId: string, purchasedUnit: ShopManagerBenchUnit): boolean {
+    const benchUnits = this.deps.benchUnitsByPlayer.get(playerId) ?? [];
+    const boardPlacements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
+
+    return this.findUpgradeableBenchUnitIndex(benchUnits, purchasedUnit) >= 0
+      || this.findUpgradeableBoardPlacementIndex(boardPlacements, purchasedUnit) >= 0
+      || this.findUpgradeableAttachedSubUnitLocation(boardPlacements, purchasedUnit) !== null;
   }
 
   private findUpgradeableBenchUnitIndex(
@@ -540,6 +569,19 @@ export class ShopManager<TBattleResult = unknown> {
     purchasedUnit: ShopManagerBenchUnit,
   ): number {
     return boardPlacements.findIndex((placement) => this.isSameUpgradeTrack(placement, purchasedUnit));
+  }
+
+  private findUpgradeableAttachedSubUnitLocation(
+    boardPlacements: BoardUnitPlacement[],
+    purchasedUnit: ShopManagerBenchUnit,
+  ): AttachedSubUnitPlacement | null {
+    for (const placement of boardPlacements) {
+      if (placement.subUnit && this.isSameUpgradeTrack(placement.subUnit, purchasedUnit)) {
+        return placement.subUnit;
+      }
+    }
+
+    return null;
   }
 
   private isSameUpgradeTrack(
@@ -570,12 +612,44 @@ export class ShopManager<TBattleResult = unknown> {
     targetPlacement.starLevel = getUpgradeTierForPurchaseCount(nextPurchaseCount);
   }
 
+  private applyPurchasedUnitToAttachedSubUnit(
+    targetSubUnit: AttachedSubUnitPlacement,
+    purchasedUnit: ShopManagerBenchUnit,
+  ): void {
+    const nextPurchaseCount = this.getTrackedPurchaseCount(targetSubUnit.starLevel, targetSubUnit.unitCount) + purchasedUnit.unitCount;
+    const currentSellValue = targetSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[targetSubUnit.unitType] ?? 1;
+    targetSubUnit.sellValue = currentSellValue + purchasedUnit.cost;
+    targetSubUnit.unitCount = nextPurchaseCount;
+    targetSubUnit.starLevel = getUpgradeTierForPurchaseCount(nextPurchaseCount);
+  }
+
   private getTrackedPurchaseCount(starLevel: number | undefined, unitCount: number | undefined): number {
     if (unitCount !== undefined && Number.isInteger(unitCount) && unitCount > 0) {
       return unitCount;
     }
 
     return getMinimumPurchaseCountForTier(starLevel ?? STAR_LEVEL_MIN);
+  }
+
+  private buildPlacementSettlement(
+    placement: Pick<BoardUnitPlacement, "unitType" | "unitId" | "sellValue" | "starLevel" | "unitCount">
+      | Pick<AttachedSubUnitPlacement, "unitType" | "unitId" | "sellValue" | "starLevel" | "unitCount">,
+  ): { unitType: BoardUnitType; unitId?: string; unitCount: number; paidCost: number; sellValue: number } {
+    const unitCount = this.getTrackedPurchaseCount(placement.starLevel, placement.unitCount);
+    const paidCost = placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1;
+
+    return {
+      unitType: placement.unitType,
+      unitCount,
+      paidCost,
+      sellValue: calculateSellValue(
+        paidCost,
+        placement.unitType,
+        placement.starLevel ?? STAR_LEVEL_MIN,
+        unitCount,
+      ),
+      ...(placement.unitId !== undefined ? { unitId: placement.unitId } : {}),
+    };
   }
 
   private decreaseSharedPoolForOffer(offer: ShopManagerShopOffer): void {

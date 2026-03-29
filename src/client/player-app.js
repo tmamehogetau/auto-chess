@@ -449,7 +449,7 @@ function syncPlayerBattleStartSweep(previousPhase, state) {
 }
 
 function triggerPlayerBattleStartSweep(state) {
-  const resultPhaseElement = phaseSections.get("prep");
+  const prepPhaseElement = phaseSections.get("prep");
   const roundIndex = Number.isInteger(state?.roundIndex) ? state.roundIndex : -1;
   const roundLabel = roundIndex >= 0 ? `Round ${roundIndex + 1} kickoff` : "Battle kickoff";
 
@@ -468,10 +468,10 @@ function triggerPlayerBattleStartSweep(state) {
     battleStartBannerElement.classList.add("visible");
   }
 
-  if (resultPhaseElement instanceof HTMLElement) {
-    resultPhaseElement.classList.remove("battle-start-sweep");
-    void resultPhaseElement.offsetWidth;
-    resultPhaseElement.classList.add("battle-start-sweep");
+  if (prepPhaseElement instanceof HTMLElement) {
+    prepPhaseElement.classList.remove("battle-start-sweep");
+    void prepPhaseElement.offsetWidth;
+    prepPhaseElement.classList.add("battle-start-sweep");
   }
 
   if (battleStartSweepTimeoutId !== null) {
@@ -489,9 +489,9 @@ function clearPlayerBattleStartSweep() {
     battleStartSweepTimeoutId = null;
   }
 
-  const resultPhaseElement = phaseSections.get("result");
-  if (resultPhaseElement instanceof HTMLElement) {
-    resultPhaseElement.classList.remove("battle-start-sweep");
+  const prepPhaseElement = phaseSections.get("prep");
+  if (prepPhaseElement instanceof HTMLElement) {
+    prepPhaseElement.classList.remove("battle-start-sweep");
   }
 
   if (battleStartBannerElement instanceof HTMLElement) {

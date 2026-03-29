@@ -121,7 +121,13 @@ function createHoverChip({ target, label, detail, onHoverDetailChange }) {
   chip.onmouseenter = () => {
     onHoverDetailChange?.(detail);
   };
+  chip.onfocus = () => {
+    onHoverDetailChange?.(detail);
+  };
   chip.onmouseleave = () => {
+    onHoverDetailChange?.(null);
+  };
+  chip.onblur = () => {
     onHoverDetailChange?.(null);
   };
   return chip;
@@ -193,10 +199,12 @@ function renderPrepAllyRail({
     allyRailElement.appendChild(title);
   }
 
+  const ownHeroId = typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "";
+  const ownBossId = typeof player?.selectedBossId === "string" ? player.selectedBossId : "";
   const ownHeroDetail = buildHeroHoverDetail(
-    typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "",
-    "Your Hero",
-    typeof player?.selectedBossId === "string" ? player.selectedBossId : "",
+    ownHeroId,
+    ownHeroId.length > 0 ? "Your Hero" : "Your Boss",
+    ownBossId,
   );
   if (ownHeroDetail) {
     const ownHeroChip = createHoverChip({
@@ -215,10 +223,12 @@ function renderPrepAllyRail({
       continue;
     }
 
+    const allyHeroId = typeof allyPlayer?.selectedHeroId === "string" ? allyPlayer.selectedHeroId : "";
+    const allyBossId = typeof allyPlayer?.selectedBossId === "string" ? allyPlayer.selectedBossId : "";
     const allyHeroDetail = buildHeroHoverDetail(
-      typeof allyPlayer?.selectedHeroId === "string" ? allyPlayer.selectedHeroId : "",
-      "Ally Hero",
-      typeof allyPlayer?.selectedBossId === "string" ? allyPlayer.selectedBossId : "",
+      allyHeroId,
+      allyHeroId.length > 0 ? "Ally Hero" : "Ally Boss",
+      allyBossId,
     );
     if (allyHeroDetail) {
       const allyHeroChip = createHoverChip({

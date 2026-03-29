@@ -448,7 +448,8 @@ function renderSharedBoard(state) {
       cellElement.classList.add("active-combat-area");
       cellElement.classList.add(deploymentZone === "boss" ? "active-boss-area" : "active-raid-area");
     }
-    cellElement.onclick = () => {
+    cellElement.onclick = (event) => {
+      event?.stopPropagation?.();
       handleSharedCellClick(state, i);
     };
     cellElement.onkeydown = (event) => {
@@ -864,7 +865,7 @@ function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
     return false;
   }
 
-  if (!unitId || unitId === "dummy-boss" || isBossSharedUnitId(unitId)) {
+  if (!unitId || unitId === "dummy-boss" || isBossSharedUnitId(unitId) || isHeroSharedUnitId(unitId)) {
     return false;
   }
 

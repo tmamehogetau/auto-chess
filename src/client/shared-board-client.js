@@ -21,6 +21,8 @@ import { resolveFrontPortraitUrl } from "./portrait-resolver.js";
  * @property {(message: string, type: string) => void} onLog ログ追加関数
  * @property {(message: string, type: string) => void} showMessage メッセージ表示関数
  * @property {() => boolean} isTouhouRosterEnabled 東方ロスター有効判定
+ * @property {() => boolean} [isSubUnitSystemEnabled] sub unit system 有効判定
+ * @property {() => string} [getSelectedHeroId] 選択中 hero id
  * @property {() => ("boss"|"raid")} [getPlayerPlacementSide] 現在の配置サイド
  * @property {() => string[]} [getPlayerBoardSubUnits] 現在プレイヤーの sub unit token 一覧
  * @property {() => string} [getPlayerFacingPhase] 現在の player-facing phase
@@ -51,6 +53,8 @@ const DEFAULT_DEPS = {
   onLog: () => {},
   showMessage: () => {},
   isTouhouRosterEnabled: () => false,
+  isSubUnitSystemEnabled: () => false,
+  getSelectedHeroId: () => "",
   getPlayerPlacementSide: () => "raid",
   getPlayerBoardSubUnits: () => [],
   getPlayerFacingPhase: () => "",
@@ -861,6 +865,10 @@ function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
     return false;
   }
 
+  if (!deps.isSubUnitSystemEnabled?.()) {
+    return false;
+  }
+
   if (deploymentZone === "boss" || deps.getPlayerPlacementSide?.() === "boss") {
     return false;
   }
@@ -1077,6 +1085,16 @@ function isValidSharedDropTarget(state, cellIndex) {
     return false;
   }
 
+  if (cell.ownerId === getOwnSharedBoardOwnerId()) {
+    if (isBossSharedUnitId(activeUnitId)) {
+      return false;
+    }
+
+    if (isHeroSharedUnitId(activeUnitId)) {
+      return isOkinaSelectedHero();
+    }
+  }
+
   return cell.ownerId === getOwnSharedBoardOwnerId();
 }
 
@@ -1158,6 +1176,10 @@ function isHeroSharedUnitId(unitId) {
   return typeof unitId === "string" && unitId.startsWith("hero:");
 }
 
+function isOkinaSelectedHero() {
+  return deps.getSelectedHeroId?.() === "okina";
+}
+
 function isBossSharedUnitId(unitId) {
   return typeof unitId === "string" && unitId.startsWith("boss:");
 }
@@ -1221,6 +1243,16 @@ function buildSharedDropRejectMessage(state, cellIndex) {
 
   if (isHeroSharedUnitId(cell?.unitId) && !isHeroSharedUnitId(activeUnitId)) {
     return "Hero cells cannot be replaced. Swap with your own main unit instead.";
+  }
+
+  if (cell?.ownerId === getOwnSharedBoardOwnerId()) {
+    if (isBossSharedUnitId(activeUnitId)) {
+      return "Boss units can only move to an open boss cell.";
+    }
+
+    if (isHeroSharedUnitId(activeUnitId) && !isOkinaSelectedHero()) {
+      return "Only Okina can enter an occupied allied cell. Other heroes need an open raid cell.";
+    }
   }
 
   return isLegacyEmbeddedBoard(state)

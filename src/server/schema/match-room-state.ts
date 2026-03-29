@@ -348,6 +348,7 @@ defineTypes(PlayerPresenceState, {
   role: "string",
   hp: "number",
   remainingLives: "number",
+  finalRoundShield: "number",
   eliminated: "boolean",
   boardUnitCount: "number",
   shopOffers: [ShopOfferState],

@@ -47,4 +47,35 @@ describe("GameLoopState", () => {
     expect(state.phase).toBe("End");
     expect(state.alivePlayerIds).toEqual(["p1"]);
   });
+
+  test("raid recovery round は constructor option で切り替えられる", () => {
+    const state = new GameLoopState(["p1", "p2", "p3", "p4"], {
+      raidRecoveryRoundIndex: 4,
+    });
+
+    state.setBossPlayer("p4");
+
+    for (let round = 1; round < 4; round += 1) {
+      state.transitionTo("Battle");
+      state.transitionTo("Settle");
+      state.transitionTo("Elimination");
+      state.transitionTo("Prep");
+    }
+
+    expect(state.roundIndex).toBe(4);
+
+    state.consumeLife("p1", 2);
+    state.transitionTo("Battle");
+    state.transitionTo("Settle");
+    state.transitionTo("Elimination");
+
+    expect(state.isPlayerEliminated("p1")).toBe(false);
+
+    state.transitionTo("Prep");
+    state.transitionTo("Battle");
+    state.transitionTo("Settle");
+    state.transitionTo("Elimination");
+
+    expect(state.isPlayerEliminated("p1")).toBe(true);
+  });
 });

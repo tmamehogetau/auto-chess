@@ -132,6 +132,8 @@ initSharedBoardClient(
       }
     },
     isTouhouRosterEnabled: () => latestState?.featureFlagsEnableTouhouRoster === true,
+    isSubUnitSystemEnabled: () => latestState?.featureFlagsEnableSubUnitSystem === true,
+    getSelectedHeroId: () => latestPlayer?.selectedHeroId ?? selectedHeroId ?? "",
     getPlayerBoardSubUnits: () => Array.isArray(latestPlayer?.boardSubUnits)
       ? latestPlayer.boardSubUnits
       : latestPlayer?.boardSubUnits && typeof latestPlayer.boardSubUnits[Symbol.iterator] === "function"

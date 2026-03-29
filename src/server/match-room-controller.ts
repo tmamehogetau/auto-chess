@@ -450,6 +450,7 @@ export class MatchRoomController {
   private readonly shopManager: ShopManager<BattleResult>;
   private readonly battleOrchestrator: BattleOrchestrator<BattleResult>;
   private readonly playerStateQuery: PlayerStateQueryService;
+  private readonly raidRecoveryRoundIndex: number;
 
   private pendingRumorInfluence: {
     roundIndex: number;
@@ -585,7 +586,6 @@ export class MatchRoomController {
     this.subUnitAssistConfigByType = this.enableSubUnitSystem
       ? resolveSubUnitAssistConfigByType()
       : new Map<BoardUnitType, SubUnitConfig>();
-
     // Initialize battle resolution service with dependencies
     // (must be after subUnit system initialization)
     const battleResolutionDeps: BattleResolutionDependencies = {
@@ -619,6 +619,7 @@ export class MatchRoomController {
 
     // Feature Flagに基づいてボス専用ショップを初期化
     this.enableBossExclusiveShop = resolvedFeatureFlags.enableBossExclusiveShop;
+    this.raidRecoveryRoundIndex = Math.max(1, Math.floor(this.resolveMaxRounds() / 2));
     this.bossShopOffersByPlayer = new Map<string, ShopOffer[]>();
     this.shopManager = new ShopManager<BattleResult>({
       ensureStarted: () => this.ensureStarted(),
@@ -1406,7 +1407,7 @@ export class MatchRoomController {
     this.pendingRoundDamageByPlayer.clear();
     this.pendingPhaseDamageForTest = null;
     this.resetFinalRoundShields();
-    this.applyRoundSixRecoveryAndRevival();
+    this.applyRaidRecoveryAndRevival();
     this.applyPrepIncome();
     this.logRumorInfluenceWithAlivePlayersAfterElimination();
     this.refreshShopsForPrep();
@@ -1428,10 +1429,10 @@ export class MatchRoomController {
     }
   }
 
-  private applyRoundSixRecoveryAndRevival(): void {
+  private applyRaidRecoveryAndRevival(): void {
     const state = this.ensureStarted();
 
-    if (!this.isRaidMode() || state.roundIndex !== 6) {
+    if (!this.isRaidMode() || state.roundIndex !== this.raidRecoveryRoundIndex) {
       return;
     }
 
@@ -1739,7 +1740,9 @@ export class MatchRoomController {
   }
 
   private startMatch(nowMs: number, activePlayerIds: string[], bossPlayerId?: string): void {
-    this.gameLoopState = new GameLoopState(activePlayerIds);
+    this.gameLoopState = new GameLoopState(activePlayerIds, {
+      raidRecoveryRoundIndex: this.raidRecoveryRoundIndex,
+    });
     this.resetFinalRoundShields();
 
     if (this.enableBossExclusiveShop) {
@@ -2074,6 +2077,10 @@ export class MatchRoomController {
     }
 
     return phaseTargets[12] ?? 0;
+  }
+
+  private resolveMaxRounds(): number {
+    return this.enableBossExclusiveShop || this.featureFlags.enablePhaseExpansion ? 12 : 8;
   }
 
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {

@@ -555,14 +555,21 @@ describe("Rumor Influence Integration", () => {
       expect(actualBoss).not.toBeNull();
       const raidPlayers = playerIds.filter(id => id !== actualBoss);
       const testRaidPlayer = raidPlayers[0]!;
-      const internals = controller as unknown as {
-        boardPlacementsByPlayer: Map<string, Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; starLevel?: number }>>;
-      };
 
-      for (const [index, playerId] of playerIds.entries()) {
-        internals.boardPlacementsByPlayer.set(playerId, [
-          { cell: index, unitType: "vanguard", starLevel: 1 },
-        ]);
+      const openingBoardCells = new Map<string, number>([
+        [actualBoss!, 0],
+        [raidPlayers[0]!, 24],
+        [raidPlayers[1]!, 25],
+        [raidPlayers[2]!, 26],
+      ]);
+
+      for (const playerId of playerIds) {
+        const cell = openingBoardCells.get(playerId);
+        expect(typeof cell).toBe("number");
+        const placementResult = controller.submitPrepCommand(playerId, 1, Date.now(), {
+          boardPlacements: [{ cell: cell!, unitType: "vanguard" }],
+        });
+        expect(placementResult.accepted).toBe(true);
       }
 
       // R1: Prep → Battle → フェーズ成功
@@ -606,7 +613,7 @@ describe("Rumor Influence Integration", () => {
       const status = controller.getPlayerStatus(testRaidPlayer);
       const rumorSlotIndex = status.shopOffers.findIndex((offer) => offer.isRumorUnit);
       if (rumorSlotIndex !== -1) {
-        const result = controller.submitPrepCommand(testRaidPlayer, 1, Date.now(), {
+        const result = controller.submitPrepCommand(testRaidPlayer, 2, Date.now(), {
           shopBuySlotIndex: rumorSlotIndex,
         });
         expect(result.accepted).toBe(true);

@@ -322,6 +322,11 @@ if (playerShell instanceof HTMLElement) {
   playerShell.dataset.playerAppReady = "true";
 }
 
+window.addEventListener("beforeunload", () => {
+  stopDeadlineRefreshLoop();
+  clearPlayerBattleStartSweep();
+});
+
 connectButton?.addEventListener("click", () => {
   void connectPlayerSession();
 });

@@ -108,6 +108,14 @@ describe("player-app script contract", () => {
     expect(source.includes("showPlayerPhase(resolvePlayerPhaseView(latestState));")).toBe(true);
   });
 
+  test("page unload 時に deadline refresh と battle sweep を掃除する", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes('window.addEventListener("beforeunload", () => {')).toBe(true);
+    expect(source.includes("stopDeadlineRefreshLoop();")).toBe(true);
+    expect(source.includes("clearPlayerBattleStartSweep();")).toBe(true);
+  });
+
   test("connect failure は tester が再試行できる文面へ戻す", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 

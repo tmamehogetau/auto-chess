@@ -10,6 +10,7 @@ export default defineConfig({
       ...configDefaults.exclude,
       ".worktrees/**",
       "**/.worktrees/**",
+      "tests/browser/**",
     ],
     coverage: {
       provider: "v8",

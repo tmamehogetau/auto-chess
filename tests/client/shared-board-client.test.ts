@@ -599,9 +599,13 @@ describe("shared-board client", () => {
     });
 
     const unit = findDescendantByClass(gridElement.children[18], "shared-board-unit-card");
-    const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };
-    const metaWrap = unit?.children[2];
-    const nameplate = metaWrap?.children[1];
+    const portrait = findDescendantByClass(unit ?? undefined, "shared-board-portrait") as unknown as {
+      src?: string;
+      alt?: string;
+      className?: string;
+    };
+    const metaWrap = findDescendantByClass(unit ?? undefined, "shared-board-unit-meta-wrap");
+    const nameplate = findDescendantByClass(metaWrap ?? undefined, "shared-board-display-name");
 
     expect(unit?.className).toContain("shared-board-unit-card");
     expect(portrait?.className).toContain("shared-board-portrait");
@@ -610,7 +614,7 @@ describe("shared-board client", () => {
     expect(nameplate?.textContent).toBe("ナズーリン");
   });
 
-  test("shared board ignores duplicate replay payloads for the same battle", async () => {
+  test("shared board ignores only identical replay payloads for the same battle", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
     const placementGuideElement = new FakeElement();
@@ -723,6 +727,153 @@ describe("shared-board client", () => {
 
     expect(gridElement.children[19]?.className).not.toContain("empty");
     expect(gridElement.children[18]?.className).toContain("empty");
+
+    battleReplayHandler({
+      ...replayMessage,
+      timeline: [
+        replayMessage.timeline[0],
+        replayMessage.timeline[1],
+        {
+          type: "move",
+          battleId: "battle-raid-dup",
+          atMs: 240,
+          battleUnitId: "raid-vanguard-dup",
+          from: { x: 1, y: 3 },
+          to: { x: 2, y: 3 },
+        },
+        replayMessage.timeline[2],
+      ],
+    });
+    vi.advanceTimersByTime(250);
+
+    expect(gridElement.children[20]?.className).not.toContain("empty");
+    expect(gridElement.children[19]?.className).toContain("empty");
+  });
+
+  test("shared board reapplies replay when the same battle receives a longer timeline", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+
+    const room = {
+      sessionId: "raid-player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const handleStateChange = stateChangeHandler as (state: unknown) => void;
+    handleStateChange({
+      mode: "battle",
+      phase: "Battle",
+      battleId: "battle-raid-extend",
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {},
+      cursors: {},
+      players: {
+        "raid-player-1": {
+          isSpectator: false,
+          color: "#4ECDC4",
+        },
+      },
+    });
+
+    const battleReplayHandler = messageHandlers.get("shared_battle_replay");
+    if (!battleReplayHandler) {
+      throw new Error("Expected shared battle replay handler to be registered");
+    }
+
+    const initialReplayMessage = {
+      battleId: "battle-raid-extend",
+      phase: "Battle",
+      timeline: [
+        {
+          type: "battleStart",
+          battleId: "battle-raid-extend",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-extend",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+          ],
+        },
+        {
+          type: "move",
+          battleId: "battle-raid-extend",
+          atMs: 120,
+          battleUnitId: "raid-vanguard-extend",
+          from: { x: 0, y: 3 },
+          to: { x: 1, y: 3 },
+        },
+      ],
+    };
+
+    const extendedReplayMessage = {
+      battleId: "battle-raid-extend",
+      phase: "Battle",
+      timeline: [
+        ...initialReplayMessage.timeline,
+        {
+          type: "move",
+          battleId: "battle-raid-extend",
+          atMs: 260,
+          battleUnitId: "raid-vanguard-extend",
+          from: { x: 1, y: 3 },
+          to: { x: 2, y: 3 },
+        },
+      ],
+    };
+
+    battleReplayHandler(initialReplayMessage);
+    vi.advanceTimersByTime(130);
+
+    expect(gridElement.children[19]?.className).not.toContain("empty");
+    expect(gridElement.children[18]?.className).toContain("empty");
+
+    battleReplayHandler(extendedReplayMessage);
+    vi.advanceTimersByTime(300);
+
+    expect(gridElement.children[20]?.className).not.toContain("empty");
+    expect(gridElement.children[19]?.className).toContain("empty");
   });
 
   test("shared board battle replay updates HP bars and removes dead units", async () => {
@@ -2801,6 +2952,7 @@ describe("shared-board client", () => {
       expect.objectContaining({
         kicker: "Sub Unit",
         title: "隠岐奈",
+        portraitKey: "okina",
         lines: expect.arrayContaining([
           "装着先: 美鈴",
           "他の自軍 unit の sub slot に入れます。",

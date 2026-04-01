@@ -356,7 +356,7 @@ describe("E2E: Phase HP Progress", () => {
           expect(controller).toBeDefined();
 
           const bossPlayerId = gameRoom.state.bossPlayerId;
-          expect(bossPlayerId).toBeDefined();
+          expect(bossPlayerId).toBeTruthy();
           const resolvedBossPlayerId = bossPlayerId!;
 
           gameRoom.setPendingRoundDamageForTest({ [resolvedBossPlayerId]: 23 });

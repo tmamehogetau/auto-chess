@@ -10,6 +10,9 @@ import type { MatchupOutcome } from "../../../src/server/match-room-controller/b
 
 type BattleResultStub = {
   survivors: number;
+  won?: boolean;
+  opponentId?: string;
+  playerId?: string;
 };
 
 type Harness = {
@@ -260,5 +263,36 @@ describe("BattleOrchestrator", () => {
     expect(harness.state.alivePlayerIds).toEqual(["boss"]);
     expect(harness.orchestrator?.shouldEndAfterElimination(12)).toBe(false);
     expect(harness.finalRankingOverride).toBeNull();
+  });
+
+  it("ignores stored results when opponent ids are not reciprocal", () => {
+    const harness = createHarness(["p1", "p2"]);
+    harness.currentRoundPairings = [
+      { leftPlayerId: "p1", rightPlayerId: "p2", ghostSourcePlayerId: null },
+    ];
+    harness.battleResultsByPlayer.set("p1", {
+      survivors: 3,
+      won: true,
+      opponentId: "ghost",
+    });
+    harness.battleResultsByPlayer.set("p2", {
+      survivors: 0,
+      won: false,
+      opponentId: "p1",
+    });
+    harness.outcomeResolver = () => ({
+      winnerId: null,
+      loserId: null,
+      winnerUnitCount: 0,
+      loserUnitCount: 0,
+      isDraw: true,
+    });
+
+    harness.orchestrator?.resolveMissingRoundDamage();
+
+    expect(Array.from(harness.pendingRoundDamageByPlayer.entries())).toEqual([
+      ["p1", 0],
+      ["p2", 0],
+    ]);
   });
 });

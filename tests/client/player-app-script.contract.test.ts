@@ -85,6 +85,7 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("function resolvePlayerPhaseView(")).toBe(true);
+    expect(source.includes("canUseReadyAction(")).toBe(true);
     expect(source.includes("function syncPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function triggerPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function clearPlayerBattleStartSweep(")).toBe(true);
@@ -103,6 +104,8 @@ describe("player-app script contract", () => {
     expect(source.includes('data-player-battle-start-banner')).toBe(true);
     expect(source.includes("setInterval(")).toBe(true);
     expect(source.includes("function updateReadyCopy(")).toBe(true);
+    expect(source.includes("const previousPlayerFacingPhase = latestPlayerFacingPhase;")).toBe(true);
+    expect(source.includes("showPlayerPhase(resolvePlayerPhaseView(latestState));")).toBe(true);
   });
 
   test("connect failure は tester が再試行できる文面へ戻す", () => {

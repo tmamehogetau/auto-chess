@@ -75,9 +75,27 @@ export function resolvePlayerFacingPhase(state, roundState, nowMs = Date.now()) 
 }
 
 export function formatDeadlineCountdown(deadlineAtMs, nowMs = Date.now()) {
-  const remainingMs = Math.max(0, Math.round(Number(deadlineAtMs) - nowMs));
+  const resolvedDeadlineAtMs = Number(deadlineAtMs);
+  const resolvedNowMs = Number(nowMs);
+  if (!Number.isFinite(resolvedDeadlineAtMs) || !Number.isFinite(resolvedNowMs)) {
+    return "0s";
+  }
+
+  const remainingMs = Math.max(0, Math.round(resolvedDeadlineAtMs - resolvedNowMs));
+  if (!Number.isFinite(remainingMs)) {
+    return "0s";
+  }
+
   const remainingSeconds = Math.ceil(remainingMs / 1000);
+  if (!Number.isFinite(remainingSeconds)) {
+    return "0s";
+  }
+
   return `${remainingSeconds}s`;
+}
+
+export function canUseReadyAction(currentPhase) {
+  return currentPhase === "Waiting" || currentPhase === "Prep";
 }
 
 export function buildDeadlineSummary(state, roundState, nowMs = Date.now()) {

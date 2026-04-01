@@ -85,7 +85,7 @@ let sharedDraggedUnitId = null;
 /** @type {string|null} */
 let selectedSharedUnitId = null;
 
-/** @type {{ battleId: string, boardWidth: number, boardHeight: number, lastAttackMarkerAtMs: number | null, units: Map<string, { battleUnitId: string, sourceUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null, impactAmount: number | null, displayName: string, portraitKey: string }> } | null} */
+/** @type {{ battleId: string, timelineSignature: string, boardWidth: number, boardHeight: number, lastAttackMarkerAtMs: number | null, units: Map<string, { battleUnitId: string, sourceUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null, impactAmount: number | null, displayName: string, portraitKey: string }> } | null} */
 let currentSharedBattleReplay = null;
 
 /** @type {ReturnType<typeof setTimeout>[]} */
@@ -893,14 +893,33 @@ function buildSharedBoardSubHoverDetail(subUnitToken, hostCell = null) {
   return {
     kicker: "Sub Unit",
     title: resolveSubUnitHoverTitle(subUnitToken),
-    portraitKey: typeof subUnitToken?.portraitKey === "string" && subUnitToken.portraitKey.length > 0
-      ? subUnitToken.portraitKey
-      : resolvePortraitKeyByUnitId(subUnitToken?.unitId),
+    portraitKey: resolveSharedBoardSubUnitPortraitKey(subUnitToken),
     lines: [
       ...(hostTitle && hostTitle !== "Unknown" ? [`装着先: ${hostTitle}`] : []),
       ...buildSubUnitRuleLines(subUnitToken),
     ],
   };
+}
+
+function resolveSharedBoardSubUnitPortraitKey(subUnitToken) {
+  const detail = typeof subUnitToken?.detail === "string" ? subUnitToken.detail.trim() : "";
+  if (detail.length > 0 && !/^\d+$/.test(detail)) {
+    return resolvePortraitKeyByUnitId(detail) ?? "";
+  }
+
+  return "";
+}
+
+function buildSharedBattleReplayTimelineSignature(timeline) {
+  if (!Array.isArray(timeline)) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(timeline);
+  } catch {
+    return "";
+  }
 }
 
 function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
@@ -1597,6 +1616,7 @@ function resolveSharedBattleAttackDirection(unit) {
 
 function startSharedBattleReplay(message) {
   const timeline = Array.isArray(message?.timeline) ? message.timeline : [];
+  const timelineSignature = buildSharedBattleReplayTimelineSignature(timeline);
   const battleStartEvent = timeline.find((event) => event?.type === "battleStart");
 
   if (!battleStartEvent || typeof message?.battleId !== "string") {
@@ -1605,7 +1625,10 @@ function startSharedBattleReplay(message) {
     return;
   }
 
-  if (currentSharedBattleReplay?.battleId === message.battleId) {
+  if (
+    currentSharedBattleReplay?.battleId === message.battleId
+    && currentSharedBattleReplay.timelineSignature === timelineSignature
+  ) {
     return;
   }
 
@@ -1637,6 +1660,7 @@ function startSharedBattleReplay(message) {
 
   currentSharedBattleReplay = {
     battleId: message.battleId,
+    timelineSignature,
     boardWidth: battleStartEvent.boardConfig?.width ?? 6,
     boardHeight: battleStartEvent.boardConfig?.height ?? 6,
     lastAttackMarkerAtMs: null,

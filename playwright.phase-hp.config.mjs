@@ -2,6 +2,15 @@ import { defineConfig } from "@playwright/test";
 
 const BROWSER_PHASE_HP_SERVER_PORT = 3568;
 const BROWSER_PHASE_HP_CLIENT_PORT = 38081;
+const IS_WINDOWS = process.platform === "win32";
+
+function withEnvCommand(envName, value, command) {
+  if (IS_WINDOWS) {
+    return `cmd.exe /c "set ${envName}=${value} && ${command}"`;
+  }
+
+  return `${envName}=${value} ${command}`;
+}
 
 export default defineConfig({
   testDir: "./tests/browser",
@@ -25,13 +34,25 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `cmd.exe /c "set PORT=${BROWSER_PHASE_HP_SERVER_PORT} && npm.cmd exec tsx scripts/phase-hp-browser-server.ts"`,
+      command: withEnvCommand(
+        "PORT",
+        BROWSER_PHASE_HP_SERVER_PORT,
+        IS_WINDOWS
+          ? "npm.cmd exec tsx scripts/phase-hp-browser-server.ts"
+          : "npm exec tsx scripts/phase-hp-browser-server.ts",
+      ),
       port: BROWSER_PHASE_HP_SERVER_PORT,
       timeout: 60_000,
       reuseExistingServer: false,
     },
     {
-      command: `cmd.exe /c "set CLIENT_CHECK_PORT=${BROWSER_PHASE_HP_CLIENT_PORT} && npm.cmd run client:check"`,
+      command: withEnvCommand(
+        "CLIENT_CHECK_PORT",
+        BROWSER_PHASE_HP_CLIENT_PORT,
+        IS_WINDOWS
+          ? "npm.cmd run client:check"
+          : "npm run client:check",
+      ),
       port: BROWSER_PHASE_HP_CLIENT_PORT,
       timeout: 60_000,
       reuseExistingServer: false,

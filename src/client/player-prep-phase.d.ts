@@ -18,6 +18,8 @@ export function resolvePlayerFacingPhase(
 
 export function formatDeadlineCountdown(deadlineAtMs: number, nowMs?: number): string;
 
+export function canUseReadyAction(currentPhase?: string): boolean;
+
 export function buildDeadlineSummary(
   state?: {
     phase?: string;

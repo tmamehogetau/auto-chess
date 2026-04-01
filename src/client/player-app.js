@@ -8,6 +8,7 @@ import {
 } from "./player-surface-renderers.js";
 import {
   buildDeadlineSummary,
+  canUseReadyAction,
   canUseBenchAction,
   canUseBoardAction,
   canUseShopAction,
@@ -274,14 +275,19 @@ gameRoomSession.onStateChange((state) => {
 });
 
 gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
+  const previousPlayerFacingPhase = latestPlayerFacingPhase;
   latestRoundState = message;
-  latestPlayerFacingPhase = resolvePlayerFacingPhase(latestState, message);
+  const nextPlayerFacingPhase = resolvePlayerFacingPhase(latestState, message);
+  latestPlayerFacingPhase = nextPlayerFacingPhase;
   const sharedBoardRoomId = typeof message?.sharedBoardRoomId === "string"
     ? message.sharedBoardRoomId
     : "";
   latestPhaseHpProgress = resolvePhaseHpProgress(message);
   if (sharedBoardRoomId.length > 0) {
     rememberSharedBoardRoomId(sharedBoardRoomId);
+  }
+  if (latestState && nextPlayerFacingPhase !== previousPlayerFacingPhase) {
+    showPlayerPhase(resolvePlayerPhaseView(latestState));
   }
   renderPlayerHeaderTruth();
   renderPlayerResultSummary({
@@ -334,6 +340,10 @@ bossPreferenceOffButton?.addEventListener("click", () => {
 
 readyButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    if (!canUseReadyAction(typeof latestState?.phase === "string" ? latestState.phase : "Waiting")) {
+      return;
+    }
+
     const nextReady = !(latestPlayer?.ready === true);
     gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY, { ready: nextReady });
   });
@@ -721,12 +731,13 @@ async function syncSharedBoardConnection() {
 
 function updateReadyButton(player) {
   const connected = gameRoomSession.getConnectionState() === "connected";
+  const currentPhase = typeof latestState?.phase === "string" ? latestState.phase : "Waiting";
   readyButtons.forEach((button) => {
     if (!(button instanceof HTMLButtonElement)) {
       return;
     }
 
-    button.disabled = !connected;
+    button.disabled = !connected || !canUseReadyAction(currentPhase);
     button.textContent = player?.ready === true ? "Cancel Ready" : "Ready";
   });
 }

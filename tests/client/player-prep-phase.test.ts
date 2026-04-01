@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   buildDeadlineSummary,
+  canUseReadyAction,
   canUseBenchAction,
   canUseBoardAction,
   canUseShopAction,
@@ -128,6 +129,21 @@ describe("player prep phase helpers", () => {
 
   test("formatDeadlineCountdown clamps expired deadlines to zero", () => {
     expect(formatDeadlineCountdown(10_000, 12_000)).toBe("0s");
+  });
+
+  test("formatDeadlineCountdown returns a safe fallback for non-finite inputs", () => {
+    expect(formatDeadlineCountdown(Number.NaN, 10_000)).toBe("0s");
+    expect(formatDeadlineCountdown(10_000, Number.POSITIVE_INFINITY)).toBe("0s");
+    expect(formatDeadlineCountdown(Number.POSITIVE_INFINITY, 10_000)).toBe("0s");
+  });
+
+  test("ready actions stay available only in Waiting and Prep", () => {
+    expect(canUseReadyAction("Waiting")).toBe(true);
+    expect(canUseReadyAction("Prep")).toBe(true);
+    expect(canUseReadyAction("Battle")).toBe(false);
+    expect(canUseReadyAction("Settle")).toBe(false);
+    expect(canUseReadyAction("Elimination")).toBe(false);
+    expect(canUseReadyAction("End")).toBe(false);
   });
 
   test("shop actions are allowed only during purchase while unlocked", () => {

@@ -392,14 +392,16 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
       return null;
     }
 
+    if (!this.isReciprocalBattleResult(leftResult, leftPlayerId, rightPlayerId)) {
+      return null;
+    }
+
+    if (!this.isReciprocalBattleResult(rightResult, rightPlayerId, leftPlayerId)) {
+      return null;
+    }
+
     if (leftResult.won === rightResult.won) {
-      return {
-        winnerId: null,
-        loserId: null,
-        winnerUnitCount: leftResult.survivors,
-        loserUnitCount: rightResult.survivors,
-        isDraw: true,
-      };
+      return null;
     }
 
     if (leftResult.won) {
@@ -425,6 +427,22 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
     result: TBattleResult,
   ): result is TBattleResult & { won: boolean } {
     return "won" in result && typeof result.won === "boolean";
+  }
+
+  private isReciprocalBattleResult(
+    result: TBattleResult,
+    playerId: string,
+    expectedOpponentId: string,
+  ): boolean {
+    if ("playerId" in result && typeof result.playerId === "string" && result.playerId !== playerId) {
+      return false;
+    }
+
+    if ("opponentId" in result && typeof result.opponentId === "string" && result.opponentId !== expectedOpponentId) {
+      return false;
+    }
+
+    return true;
   }
 
   private buildRaidFinalRanking(winner: "raid" | "boss"): string[] {

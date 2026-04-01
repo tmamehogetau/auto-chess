@@ -63,9 +63,9 @@ describe("Feature Flag Integration", () => {
       const flags = service.getFlags();
 
       expect(flags.enableHeroSystem).toBe(true);
-      expect(flags.enableSharedPool).toBe(true);
+      expect(flags.enableSharedPool).toBe(false);
       expect(flags.enablePhaseExpansion).toBe(true);
-      expect(flags.enableSubUnitSystem).toBe(false);
+      expect(flags.enableSubUnitSystem).toBe(true);
       expect(flags.enableBossExclusiveShop).toBe(true);
       expect(flags.enableSpellCard).toBe(true);
       expect(flags.enableTouhouRoster).toBe(true);

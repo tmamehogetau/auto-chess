@@ -54,6 +54,21 @@ const TOUHOU_SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, numbe
   6: [0.15, 0.25, 0.25, 0.2, 0.15],
 };
 
+const TOUHOU_SHOP_ODDS_BY_ROUND: Readonly<Record<number, readonly [number, number, number, number, number]>> = {
+  1: [0.85, 0.15, 0, 0, 0],
+  2: [0.7, 0.25, 0.05, 0, 0],
+  3: [0.7, 0.25, 0.05, 0, 0],
+  4: [0.5, 0.3, 0.15, 0.05, 0],
+  5: [0.5, 0.3, 0.15, 0.05, 0],
+  6: [0.35, 0.3, 0.2, 0.1, 0.05],
+  7: [0.35, 0.3, 0.2, 0.1, 0.05],
+  8: [0.25, 0.3, 0.25, 0.15, 0.05],
+  9: [0.25, 0.3, 0.25, 0.15, 0.05],
+  10: [0.15, 0.25, 0.25, 0.2, 0.15],
+  11: [0.15, 0.25, 0.25, 0.2, 0.15],
+  12: [0.15, 0.25, 0.25, 0.2, 0.15],
+};
+
 /**
  * Dependencies required by ShopOfferBuilder
  * Allows for dependency injection and testing
@@ -266,8 +281,7 @@ export class ShopOfferBuilder {
     refreshCount: number,
     nonce: number,
   ): ShopOffer {
-    const level = this.deps.getPlayerLevel(playerId);
-    const odds = TOUHOU_SHOP_ODDS_BY_LEVEL[level] ?? TOUHOU_SHOP_ODDS_BY_LEVEL[MAX_LEVEL] ?? [1, 0, 0, 0, 0];
+    const odds = this.resolveTouhouOddsForRound(roundIndex);
     const seedBase = this.deps.hashToUint32(
       `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.deps.setId}:touhou`,
     );
@@ -311,6 +325,22 @@ export class ShopOfferBuilder {
       rarity: selectedUnit.cost as UnitRarity,
       cost: selectedUnit.cost,
     };
+  }
+
+  private resolveTouhouOddsForRound(
+    roundIndex: number,
+  ): readonly [number, number, number, number, number] {
+    if (TOUHOU_SHOP_ODDS_BY_ROUND[roundIndex]) {
+      return TOUHOU_SHOP_ODDS_BY_ROUND[roundIndex]!;
+    }
+
+    if (roundIndex <= 1) {
+      return TOUHOU_SHOP_ODDS_BY_ROUND[1]!;
+    }
+
+    return TOUHOU_SHOP_ODDS_BY_ROUND[12]
+      ?? TOUHOU_SHOP_ODDS_BY_LEVEL[MAX_LEVEL]
+      ?? [1, 0, 0, 0, 0];
   }
 
   private pickTouhouCost(

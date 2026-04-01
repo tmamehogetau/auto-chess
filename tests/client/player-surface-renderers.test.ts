@@ -169,7 +169,7 @@ describe("player surface renderers", () => {
 
     expect(shopCopyElement.textContent).toContain("8G");
     expect(shopCopyElement.textContent).toContain("購入");
-    expect(benchCopyElement.textContent).toContain("2 / 9");
+    expect(benchCopyElement.textContent).toContain("2 / 8");
     expect(benchCopyElement.textContent).toContain("Bench 2");
     expect(readyCopyElement.textContent).toContain("One player is still setting up");
     expect(shopSlotElements[0]?.textContent).toContain("パチュリー");
@@ -209,7 +209,7 @@ describe("player surface renderers", () => {
     expect(shopCopyElement.textContent).toContain("12G");
     expect(shopCopyElement.textContent).toContain("購入");
     expect(shopSlotElements[0]?.textContent).toContain("パチュリー");
-    expect(benchCopyElement.textContent).toContain("2 / 9");
+    expect(benchCopyElement.textContent).toContain("2 / 8");
     expect(benchSlotElements[0]?.textContent).toContain("vanguard");
   });
 
@@ -398,6 +398,11 @@ describe("player surface renderers", () => {
 
     expect(detailCardElement.innerHTML).toContain("Unit Detail");
     expect(detailCardElement.innerHTML).toContain("hover");
+    expect(detailCardElement.innerHTML).toContain("player-detail-head");
+    expect(detailCardElement.innerHTML).toContain("player-detail-portrait");
+    expect(detailCardElement.innerHTML).toContain("player-detail-tags");
+    expect(detailCardElement.innerHTML).toContain("player-detail-stats");
+    expect(detailCardElement.innerHTML).toContain("player-detail-effect");
   });
 
   test("prep summary renders hovered hero detail in the same left detail card", () => {
@@ -415,50 +420,18 @@ describe("player surface renderers", () => {
     });
 
     expect(detailCardElement.innerHTML).toContain("霊夢");
-    expect(detailCardElement.innerHTML).toContain("HP 120");
-    expect(detailCardElement.innerHTML).toContain("ATK 18");
+    expect(detailCardElement.innerHTML).toContain("<strong>HP</strong>");
+    expect(detailCardElement.innerHTML).toContain(">120<");
+    expect(detailCardElement.innerHTML).toContain("<strong>ATK</strong>");
+    expect(detailCardElement.innerHTML).toContain(">18<");
+    expect(detailCardElement.innerHTML).toContain("player-detail-portrait-img");
+    expect(detailCardElement.innerHTML).toContain("player-detail-kicker");
+    expect(detailCardElement.innerHTML).toContain("player-detail-title");
+    expect(detailCardElement.innerHTML).toContain("player-detail-lines");
+    expect(detailCardElement.innerHTML).toContain("player-detail-stat");
   });
 
-  test("prep summary adds Matara Okina exception copy to hero detail", () => {
-    const allyRailElement = new FakeElement();
-    const hoverCalls: unknown[] = [];
-
-    renderPlayerPrepSummary({
-      allyRailElement: allyRailElement as unknown as HTMLElement,
-      onHoverDetailChange: (detail: unknown) => {
-        hoverCalls.push(detail);
-      },
-      state: {
-        phase: "Prep",
-        players: {
-          "raid-1": {
-            selectedHeroId: "okina",
-          },
-        },
-      },
-      player: {
-        role: "raid",
-        selectedHeroId: "okina",
-      },
-      sessionId: "raid-1",
-      currentPhase: "Prep",
-      selectedBenchIndex: null,
-    });
-
-    const selfHeroChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "self-hero");
-    expect(selfHeroChip).toBeDefined();
-
-    selfHeroChip?.onmouseenter?.();
-
-    expect(hoverCalls).toEqual([
-      expect.objectContaining({
-        title: "隠岐奈",
-        lines: expect.arrayContaining(["他の自軍 unit の sub slot に入れます。"]),
-      }),
-    ]);
-  });
-
-  test("prep summary wires player hero, ally hero, and ally bench hover targets into one detail callback", () => {
+  test("prep summary adds Matara Okina exception copy to allied hero detail", () => {
     const allyRailElement = new FakeElement();
     const hoverCalls: unknown[] = [];
 
@@ -472,13 +445,9 @@ describe("player surface renderers", () => {
         players: {
           "raid-1": {
             selectedHeroId: "reimu",
-            benchUnits: ["vanguard"],
-            benchDisplayNames: ["紅美鈴"],
           },
           "ally-2": {
-            selectedHeroId: "marisa",
-            benchUnits: ["mage"],
-            benchDisplayNames: ["パチュリー・ノーレッジ"],
+            selectedHeroId: "okina",
           },
         },
       },
@@ -491,23 +460,319 @@ describe("player surface renderers", () => {
       selectedBenchIndex: null,
     });
 
-    const selfHeroChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "self-hero");
-    const allyHeroChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
-    const allyBenchChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "ally-bench");
-
-    expect(selfHeroChip).toBeDefined();
+    const allyHeroPanel = allyRailElement.children.filter((child) => child.className.includes("player-ally-panel"))[1];
+    const allyHeroChip = allyHeroPanel?.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
     expect(allyHeroChip).toBeDefined();
-    expect(allyBenchChip).toBeDefined();
 
-    selfHeroChip?.onmouseenter?.();
     allyHeroChip?.onmouseenter?.();
-    allyBenchChip?.onmouseenter?.();
-    allyBenchChip?.onmouseleave?.();
 
     expect(hoverCalls).toEqual([
-      expect.objectContaining({ title: "霊夢" }),
+      expect.objectContaining({
+        title: "隠岐奈",
+        lines: expect.arrayContaining(["他の自軍 unit の sub slot に入れます。"]),
+      }),
+    ]);
+  });
+
+  test("prep summary keeps Allies rail focused on allied raid heroes only", () => {
+    const allyRailElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      allyRailElement: allyRailElement as unknown as HTMLElement,
+      state: {
+        phase: "Prep",
+        bossPlayerId: "boss-1",
+        players: {
+          "raid-1": {
+            selectedHeroId: "reimu",
+            benchUnits: ["vanguard"],
+            benchDisplayNames: ["紅美鈴"],
+          },
+          "raid-2": {
+            selectedHeroId: "marisa",
+            benchUnits: ["mage"],
+            benchDisplayNames: ["パチュリー・ノーレッジ"],
+          },
+          "boss-1": {
+            role: "boss",
+            selectedBossId: "remilia",
+          },
+        },
+      },
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+      },
+      sessionId: "raid-1",
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    const allyPanels = allyRailElement.children.filter((child) => child.className.includes("player-ally-panel"));
+    const firstChip = allyPanels[0]?.children[1];
+    const secondChip = allyPanels[1]?.children[1];
+
+    expect(allyRailElement.children[0]?.textContent).toBe("Allies");
+    expect(allyPanels.map((child) => child.children[0]?.textContent)).toEqual(["You", "Ally A"]);
+    expect(firstChip?.dataset.hoverDetailTarget).toBe("self-hero");
+    expect(secondChip?.dataset.hoverDetailTarget).toBe("ally-hero");
+    expect(firstChip?.textContent).toContain("霊夢");
+    expect(secondChip?.textContent).toContain("魔理沙");
+    expect(firstChip?.className).toContain("player-ally-card");
+    expect(firstChip?.className).toContain("player-ally-chip-self");
+    expect(secondChip?.className).toContain("player-ally-card");
+    expect(secondChip?.className).toContain("player-ally-chip-ally");
+  });
+
+  test("prep summary renders self summary as compact placement/state cards", () => {
+    const specialUnitCopyElement = new FakeElement();
+    const playerStatsCopyElement = new FakeElement();
+    const roomCopyElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      specialUnitCopyElement: specialUnitCopyElement as unknown as HTMLElement,
+      playerStatsCopyElement: playerStatsCopyElement as unknown as HTMLElement,
+      roomCopyElement: roomCopyElement as unknown as HTMLElement,
+      state: {
+        phase: "Prep",
+        players: {
+          "raid-1": { ready: false },
+          "raid-2": { ready: true },
+        },
+      },
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+        boardUnitCount: 1,
+        gold: 11,
+        hp: 92,
+        level: 3,
+        xp: 2,
+        remainingLives: 2,
+        ready: false,
+      },
+      roomSummary: {
+        roomId: "room-123",
+        sharedBoardRoomId: "shared-456",
+      },
+      sessionId: "raid-1",
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: null,
+    });
+
+    expect(specialUnitCopyElement.textContent).toContain("霊夢");
+    expect(specialUnitCopyElement.textContent).toContain("主人公");
+    expect(specialUnitCopyElement.textContent).toContain("hover で詳細");
+    expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-panel");
+    expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-avatar-img");
+    expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-lives");
+    expect(playerStatsCopyElement.textContent).toContain("Placement");
+    expect(playerStatsCopyElement.textContent).toContain("1 / 2");
+    expect(playerStatsCopyElement.textContent).toContain("State");
+    expect(playerStatsCopyElement.textContent).toContain("Deploy");
+    expect(playerStatsCopyElement.textContent).not.toContain("Gold");
+    expect(playerStatsCopyElement.textContent).not.toContain("HP");
+    expect(playerStatsCopyElement.textContent).not.toContain("LV");
+    expect(playerStatsCopyElement.innerHTML).toContain("player-player-stat-grid");
+    expect(roomCopyElement.textContent).toContain("room-123");
+  });
+
+  test("prep summary renders bench copy as a compact right-rail handoff summary", () => {
+    const benchCopyElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      benchCopyElement: benchCopyElement as unknown as HTMLElement,
+      player: {
+        benchUnits: ["vanguard-player-1-1", "mage-player-1-2"],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: 1,
+    });
+
+    expect(benchCopyElement.textContent).toContain("2 / 8");
+    expect(benchCopyElement.textContent).toContain("Bench 2");
+    expect(benchCopyElement.textContent).toContain("target slot");
+    expect(benchCopyElement.innerHTML).not.toContain("player-bench-summary-panel");
+  });
+
+  test("prep summary renders bench slots as mock-style reserve cards", () => {
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: ["ranger", "mage"],
+        benchUnitIds: ["nazrin", "patchouli"],
+        benchDisplayNames: ["紅美鈴", "パチュリー・ノーレッジ"],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: 1,
+    });
+
+    expect(benchSlotElements[0]?.className).toContain("player-bench-slot-filled");
+    expect(benchSlotElements[1]?.className).toContain("player-bench-slot-filled");
+    expect(benchSlotElements[1]?.className).toContain("player-bench-slot-selected");
+    expect(benchSlotElements[0]?.textContent).toContain("紅美鈴");
+    expect(benchSlotElements[1]?.textContent).toContain("パチュリー・ノーレッジ");
+    expect(benchSlotElements[0]?.innerHTML).toContain("player-bench-slot-avatar-img");
+    expect(benchSlotElements[0]?.innerHTML).toContain('/pics/processed/front/nazrin.png');
+    expect(benchSlotElements[1]?.innerHTML).toContain('/pics/processed/front/patchouli.png');
+  });
+
+  test("prep summary omits inactive tier-zero synergies", () => {
+    const synergyCopyElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      synergyCopyElement: synergyCopyElement as unknown as HTMLElement,
+      player: {
+        activeSynergies: [
+          { unitType: "ranger", count: 1, tier: 0 },
+          { unitType: "mage", count: 2, tier: 1 },
+        ],
+      },
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    expect(synergyCopyElement.textContent).toContain("mage x2 (T1)");
+    expect(synergyCopyElement.textContent).not.toContain("ranger x1 (T0)");
+  });
+
+  test("prep summary presents hero upgrades without XP wording", () => {
+    const heroUpgradeCopyElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      heroUpgradeCopyElement: heroUpgradeCopyElement as unknown as HTMLElement,
+      player: {
+        level: 3,
+        xp: 2,
+      },
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    expect(heroUpgradeCopyElement.textContent).toContain("主人公強化");
+    expect(heroUpgradeCopyElement.textContent).toContain("LV 3");
+    expect(heroUpgradeCopyElement.textContent).not.toContain("XP");
+    expect(heroUpgradeCopyElement.textContent).not.toContain("経験値");
+  });
+
+  test("prep summary locks purchase controls after Ready and outside purchase phase", () => {
+    const shopSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+    const bossShopSlotElements = Array.from({ length: 1 }, () => new FakeButtonElement());
+    const benchSlotElements = Array.from({ length: 1 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      shopSlotElements: shopSlotElements as unknown as HTMLButtonElement[],
+      bossShopSlotElements: bossShopSlotElements as unknown as HTMLButtonElement[],
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      state: {
+        phase: "Prep",
+        featureFlagsEnableBossExclusiveShop: true,
+        bossPlayerId: "boss-1",
+      },
+      player: {
+        ready: true,
+        role: "boss",
+        shopOffers: [{ unitType: "mage", cost: 3, displayName: "パチュリー" }],
+        bossShopOffers: [{ unitType: "mage", cost: 4, displayName: "咲夜" }],
+        benchUnits: ["mage"],
+      },
+      sessionId: "boss-1",
+      currentPhase: "Prep",
+      playerFacingPhase: "purchase",
+      selectedBenchIndex: null,
+    });
+
+    expect(shopSlotElements[0]?.disabled).toBe(true);
+    expect(bossShopSlotElements[0]?.disabled).toBe(true);
+    expect(benchSlotElements[0]?.disabled).toBe(true);
+
+    renderPlayerPrepSummary({
+      shopSlotElements: shopSlotElements as unknown as HTMLButtonElement[],
+      state: {
+        phase: "Prep",
+      },
+      player: {
+        ready: false,
+        shopOffers: [{ unitType: "mage", cost: 3, displayName: "パチュリー" }],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: null,
+    });
+
+    expect(shopSlotElements[0]?.disabled).toBe(true);
+  });
+
+  test("prep summary keeps deploy board locked until deploy and unlocks it for raiders", () => {
+    const boardCellElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      boardCellElements: boardCellElements as unknown as HTMLButtonElement[],
+      currentPhase: "Prep",
+      playerFacingPhase: "purchase",
+      selectedBenchIndex: null,
+    });
+
+    expect(boardCellElements[0]?.disabled).toBe(true);
+
+    renderPlayerPrepSummary({
+      boardCellElements: boardCellElements as unknown as HTMLButtonElement[],
+      player: {
+        role: "raid",
+        ready: false,
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: null,
+    });
+
+    expect(boardCellElements[0]?.disabled).toBe(false);
+  });
+
+  test("prep summary wires allied hero hover targets into one detail callback", () => {
+    const allyRailElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    renderPlayerPrepSummary({
+      allyRailElement: allyRailElement as unknown as HTMLElement,
+      onHoverDetailChange: (detail: unknown) => {
+        hoverCalls.push(detail);
+      },
+      state: {
+        phase: "Prep",
+        players: {
+          "raid-1": {
+            selectedHeroId: "reimu",
+          },
+          "ally-2": {
+            selectedHeroId: "marisa",
+          },
+        },
+      },
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+      },
+      sessionId: "raid-1",
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    const allyHeroPanel = allyRailElement.children.filter((child) => child.className.includes("player-ally-panel"))[1];
+    const allyHeroChip = allyHeroPanel?.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
+
+    expect(allyHeroChip).toBeDefined();
+
+    allyHeroChip?.onmouseenter?.();
+    allyHeroChip?.onmouseleave?.();
+
+    expect(hoverCalls).toEqual([
       expect.objectContaining({ title: "魔理沙" }),
-      expect.objectContaining({ title: "パチュリー・ノーレッジ" }),
       null,
     ]);
   });
@@ -524,8 +789,8 @@ describe("player surface renderers", () => {
       state: {
         phase: "Prep",
         players: {
-          "raid-1": {
-            selectedHeroId: "reimu",
+          "ally-2": {
+            selectedHeroId: "marisa",
           },
         },
       },
@@ -538,17 +803,18 @@ describe("player surface renderers", () => {
       selectedBenchIndex: null,
     });
 
-    const selfHeroChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "self-hero");
-    selfHeroChip?.onfocus?.();
-    selfHeroChip?.onblur?.();
+    const allyHeroPanel = allyRailElement.children.filter((child) => child.className.includes("player-ally-panel"))[1];
+    const allyHeroChip = allyHeroPanel?.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
+    allyHeroChip?.onfocus?.();
+    allyHeroChip?.onblur?.();
 
     expect(hoverCalls).toEqual([
-      expect.objectContaining({ title: "霊夢" }),
+      expect.objectContaining({ title: "魔理沙" }),
       null,
     ]);
   });
 
-  test("prep summary labels boss-side chips with boss-specific kickers", () => {
+  test("prep summary excludes boss chips and keeps allied hero kickers", () => {
     const allyRailElement = new FakeElement();
     const hoverCalls: unknown[] = [];
 
@@ -579,17 +845,12 @@ describe("player surface renderers", () => {
       selectedBenchIndex: null,
     });
 
-    const selfChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "self-hero");
-    const allyChip = allyRailElement.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
+    const allyPanel = allyRailElement.children.filter((child) => child.className.includes("player-ally-panel"))[1];
+    const allyChip = allyPanel?.children.find((child) => child.dataset.hoverDetailTarget === "ally-hero");
 
-    selfChip?.onmouseenter?.();
     allyChip?.onmouseenter?.();
 
     expect(hoverCalls).toEqual([
-      expect.objectContaining({
-        kicker: "Your Boss",
-        title: "レミリア",
-      }),
       expect.objectContaining({
         kicker: "Ally Hero",
         title: "魔理沙",
@@ -643,9 +904,12 @@ describe("player surface renderers", () => {
     });
 
     expect(resultSurfaceElement.innerHTML).toContain("Boss held this phase");
+    expect(resultSurfaceElement.innerHTML).toContain("Result phase");
     expect(resultSurfaceElement.innerHTML).toContain("Round 3: read the result and fix one weak position");
     expect(resultSurfaceElement.innerHTML).toContain("💀 DEFEAT");
     expect(resultSurfaceElement.innerHTML).toContain("trailed by 14 damage");
+    expect(resultSurfaceElement.innerHTML).toContain("player-result-hero-card");
+    expect(resultSurfaceElement.innerHTML).toContain("player-result-support-card");
     expect(resultSurfaceElement.innerHTML).toContain("Surviving Units");
     expect(resultSurfaceElement.innerHTML).toContain("古明地こいし");
     expect(resultSurfaceElement.innerHTML).toContain("27 / 60");

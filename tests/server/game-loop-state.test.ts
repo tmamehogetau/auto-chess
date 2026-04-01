@@ -45,4 +45,21 @@ describe("GameLoopState", () => {
     expect(loop.isPlayerEliminated("p1")).toBe(false);
     expect(loop.alivePlayerIds).toContain("p1");
   });
+
+  test("round 6 recovery allows elimination to prep even when all raiders are at zero lives", () => {
+    const loop = new GameLoopState(["boss", "raid-a", "raid-b", "raid-c"]);
+
+    loop.setBossPlayer("boss");
+    loop.roundIndex = 6;
+    loop.consumeLife("raid-a", 2);
+    loop.consumeLife("raid-b", 2);
+    loop.consumeLife("raid-c", 2);
+    loop.phase = "Settle";
+    loop.transitionTo("Elimination");
+
+    expect(loop.alivePlayerIds).toEqual(["boss"]);
+    expect(() => loop.transitionTo("Prep")).not.toThrow();
+    expect(loop.phase).toBe("Prep");
+    expect(loop.roundIndex).toBe(7);
+  });
 });

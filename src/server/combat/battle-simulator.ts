@@ -30,6 +30,11 @@ import { getScarletMansionUnitById } from "../../data/scarlet-mansion-units";
 import { HEROES } from "../../data/heroes";
 import { resolveBattlePlacement } from "../unit-id-resolver";
 import {
+  resolveSharedBoardBossPresentation,
+  resolveSharedBoardHeroPresentation,
+  resolveSharedBoardUnitPresentation,
+} from "../shared-board-unit-presentation";
+import {
   createAttackStartEvent,
   createBattleEndEvent,
   createBattleStartEvent,
@@ -56,6 +61,7 @@ export interface Action {
 export interface BattleUnit {
   id: string;
   sourceUnitId?: string;
+  battleSide?: "left" | "right";
   type: BoardUnitType;
   starLevel: number;
   hp: number;
@@ -123,6 +129,10 @@ function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
 }
 
 function resolveBattleSide(unit: BattleUnit): "left" | "right" {
+  if (unit.battleSide === "left" || unit.battleSide === "right") {
+    return unit.battleSide;
+  }
+
   if (unit.isBoss) {
     return "right";
   }
@@ -269,6 +279,10 @@ function findShortestApproachStep(
 
 function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
   const coordinate = resolveTimelineCoordinate(unit);
+  const presentation = unit.isBoss
+    ? resolveSharedBoardBossPresentation(unit.sourceUnitId)
+    : resolveSharedBoardHeroPresentation(unit.sourceUnitId)
+      ?? resolveSharedBoardUnitPresentation(unit.sourceUnitId, unit.type);
 
   return {
     battleUnitId: unit.id,
@@ -277,6 +291,15 @@ function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
     y: coordinate.y,
     currentHp: unit.hp,
     maxHp: unit.maxHp,
+    ...(typeof unit.sourceUnitId === "string" && unit.sourceUnitId.length > 0
+      ? { sourceUnitId: unit.sourceUnitId }
+      : {}),
+    ...(typeof presentation?.displayName === "string" && presentation.displayName.length > 0
+      ? { displayName: presentation.displayName }
+      : {}),
+    ...(typeof presentation?.portraitKey === "string" && presentation.portraitKey.length > 0
+      ? { portraitKey: presentation.portraitKey }
+      : {}),
   };
 }
 
@@ -385,6 +408,7 @@ export function createBattleUnit(
   return {
     id: `${side}-${unitType}-${index}`,
     sourceUnitId: resolvedPlacement.unitId ?? `${side}-${unitType}-${index}`,
+    battleSide: side,
     type: unitType,
     starLevel,
     hp: finalHp,

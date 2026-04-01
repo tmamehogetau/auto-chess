@@ -223,8 +223,11 @@ export class GameLoopState {
 
     if (this.phase === "Elimination") {
       const aliveCount = this.alivePlayerIds.length;
+      const allowsRaidRecoveryPrep =
+        this.bossPlayerId !== null
+        && this.roundIndex === this.raidRecoveryRoundIndex;
 
-      if (nextPhase === "Prep" && aliveCount < 2) {
+      if (nextPhase === "Prep" && aliveCount < 2 && !allowsRaidRecoveryPrep) {
         throw new Error(`Invalid transition: ${this.phase} -> ${nextPhase}`);
       }
     }

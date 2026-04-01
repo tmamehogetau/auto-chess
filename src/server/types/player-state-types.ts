@@ -101,6 +101,7 @@ export interface ControllerPlayerStatus {
   shopOffers: ShopOfferView[];
   shopLocked: boolean;
   benchUnits: string[];
+  benchUnitIds?: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
   boardSubUnits?: string[];
@@ -135,6 +136,7 @@ export interface CommandResultPayload {
   ownedUnits: OwnedUnitsView;
   shopOffers: ShopOfferView[];
   benchUnits: string[];
+  benchUnitIds?: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
   boardSubUnits?: string[];

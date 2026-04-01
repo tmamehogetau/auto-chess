@@ -212,7 +212,7 @@ describe("battle-simulator", () => {
         1_500,
       );
 
-      expect(passiveResult.damageDealt.right).toBeGreaterThan(nonPassiveResult.damageDealt.right);
+      expect(passiveResult.damageDealt.left).toBeGreaterThan(nonPassiveResult.damageDealt.left);
     });
   });
 
@@ -1114,6 +1114,68 @@ describe("BattleSimulator", () => {
             event.type === "attackStart"
             && event.sourceBattleUnitId === "hero-reimu"
             && event.targetBattleUnitId === "hero-reimu",
+        ),
+      ).toBe(false);
+    });
+
+    test("right side の hero unit は自分や味方ではなく left side の敵を攻撃する", () => {
+      const simulator = new BattleSimulator();
+      const leftBossUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "left",
+        0,
+        true,
+      );
+      const rightHeroUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      rightHeroUnit.id = "hero-reimu";
+      rightHeroUnit.sourceUnitId = "hero-reimu";
+      const rightAllyUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const result = simulator.simulateBattle(
+        [leftBossUnit],
+        [rightHeroUnit, rightAllyUnit],
+        [],
+        [],
+        1_000,
+      );
+
+      expect(leftBossUnit.hp).toBeLessThan(leftBossUnit.maxHp);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && event.targetBattleUnitId === leftBossUnit.id,
+        ),
+      ).toBe(true);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && (
+              event.targetBattleUnitId === "hero-reimu"
+              || event.targetBattleUnitId === rightAllyUnit.id
+            ),
+        ),
+      ).toBe(false);
+      expect(
+        result.timeline.some(
+          (event) =>
+            event.type === "damageApplied"
+            && event.sourceBattleUnitId === "hero-reimu"
+            && (
+              event.targetBattleUnitId === "hero-reimu"
+              || event.targetBattleUnitId === rightAllyUnit.id
+            ),
         ),
       ).toBe(false);
     });

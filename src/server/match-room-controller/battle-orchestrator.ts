@@ -325,7 +325,8 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
       return;
     }
 
-    const outcome = this.deps.resolveMatchupOutcome(leftPlayerId, rightPlayerId);
+    const outcome = this.resolveOutcomeFromStoredResults(leftPlayerId, rightPlayerId)
+      ?? this.deps.resolveMatchupOutcome(leftPlayerId, rightPlayerId);
 
     if (outcome.isDraw) {
       if (!leftAlreadySet) {
@@ -361,7 +362,8 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
       return;
     }
 
-    const outcome = this.deps.resolveMatchupOutcome(challengerPlayerId, ghostSourcePlayerId);
+    const outcome = this.resolveOutcomeFromStoredResults(challengerPlayerId, ghostSourcePlayerId)
+      ?? this.deps.resolveMatchupOutcome(challengerPlayerId, ghostSourcePlayerId);
 
     if (outcome.isDraw || outcome.winnerId === challengerPlayerId) {
       this.deps.pendingRoundDamageByPlayer.set(challengerPlayerId, 0);
@@ -373,6 +375,56 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
       outcome.loserUnitCount,
     );
     this.deps.pendingRoundDamageByPlayer.set(challengerPlayerId, challengerDamage);
+  }
+
+  private resolveOutcomeFromStoredResults(
+    leftPlayerId: string,
+    rightPlayerId: string,
+  ): MatchupOutcome | null {
+    const leftResult = this.deps.battleResultsByPlayer.get(leftPlayerId);
+    const rightResult = this.deps.battleResultsByPlayer.get(rightPlayerId);
+
+    if (!leftResult || !rightResult) {
+      return null;
+    }
+
+    if (!this.hasWinFlag(leftResult) || !this.hasWinFlag(rightResult)) {
+      return null;
+    }
+
+    if (leftResult.won === rightResult.won) {
+      return {
+        winnerId: null,
+        loserId: null,
+        winnerUnitCount: leftResult.survivors,
+        loserUnitCount: rightResult.survivors,
+        isDraw: true,
+      };
+    }
+
+    if (leftResult.won) {
+      return {
+        winnerId: leftPlayerId,
+        loserId: rightPlayerId,
+        winnerUnitCount: leftResult.survivors,
+        loserUnitCount: rightResult.survivors,
+        isDraw: false,
+      };
+    }
+
+    return {
+      winnerId: rightPlayerId,
+      loserId: leftPlayerId,
+      winnerUnitCount: rightResult.survivors,
+      loserUnitCount: leftResult.survivors,
+      isDraw: false,
+    };
+  }
+
+  private hasWinFlag(
+    result: TBattleResult,
+  ): result is TBattleResult & { won: boolean } {
+    return "won" in result && typeof result.won === "boolean";
   }
 
   private buildRaidFinalRanking(winner: "raid" | "boss"): string[] {

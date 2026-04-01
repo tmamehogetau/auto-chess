@@ -218,6 +218,70 @@ describe("SharedBoardBridge validation (T1-2)", () => {
       );
       expect(setModeFromGame).not.toHaveBeenCalled();
     });
+
+    it("Settleフェーズでは同じbattleIdの結果盤面をbattle modeのまま維持する", async () => {
+      const { bridge, controller } = createBridge();
+      const applyBattleReplayFromGame = vi.fn();
+      const setModeFromGame = vi.fn();
+
+      const replayMessage = {
+        type: "shared_battle_replay",
+        battleId: "battle-raid-1",
+        phase: "Battle",
+        timeline: [
+          createBattleStartEvent({
+            battleId: "battle-raid-1",
+            round: 3,
+            boardConfig: { width: 6, height: 6 },
+            units: [
+              {
+                battleUnitId: "raid-vanguard-1",
+                side: "raid",
+                x: 0,
+                y: 3,
+                currentHp: 40,
+                maxHp: 40,
+              },
+            ],
+          }),
+          createBattleEndEvent({
+            type: "battleEnd",
+            battleId: "battle-raid-1",
+            atMs: 600,
+            winner: "raid",
+          }),
+        ],
+      };
+
+      bridge.getTestAccess().setResources({ sharedBoardRoom: {
+        applyBattleReplayFromGame,
+        setModeFromGame,
+        offPlacementChange: vi.fn(),
+      } });
+
+      controller.getGameState.mockReturnValue({ phase: "Battle", roundIndex: 3 });
+      controller.getSharedBattleReplay.mockReturnValue(replayMessage);
+      bridge.getTestAccess().syncSharedBoardViewFromController();
+
+      applyBattleReplayFromGame.mockClear();
+      setModeFromGame.mockClear();
+
+      controller.getGameState.mockReturnValue({ phase: "Settle", roundIndex: 3 });
+      controller.getSharedBattleReplay.mockReturnValue({
+        ...replayMessage,
+        phase: "Settle",
+      });
+
+      bridge.getTestAccess().syncSharedBoardViewFromController();
+
+      expect(controller.getSharedBattleReplay).toHaveBeenCalledWith("Settle");
+      expect(applyBattleReplayFromGame).not.toHaveBeenCalled();
+      expect(setModeFromGame).toHaveBeenCalledWith({
+        phase: "Settle",
+        phaseDeadlineAtMs: 0,
+        mode: "battle",
+      });
+    });
   });
 
   describe("境界系: state !== READYで拒否する", () => {

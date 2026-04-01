@@ -297,16 +297,18 @@ describe("Hero System Integration Tests", () => {
         const replay = raidController.getSharedBattleReplay("Settle");
         const battleStart = replay?.timeline.find((event) => event.type === "battleStart");
 
-        expect(battleStart?.type).toBe("battleStart");
-        expect(battleStart?.units).toEqual(expect.arrayContaining([
-          expect.objectContaining({
-            battleUnitId: "boss-p2",
-            x: 2,
-            y: 0,
-          }),
-        ]));
+          expect(battleStart?.type).toBe("battleStart");
+          expect(battleStart?.units).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+              battleUnitId: "boss-p2",
+              x: 2,
+              y: 0,
+              currentHp: 600,
+              maxHp: 600,
+            }),
+          ]));
+        });
       });
-    });
 
     it("rejects normal board placements onto the reserved boss cell", async () => {
       await withFlags({

@@ -143,6 +143,8 @@ export class PlayerPresenceState extends Schema {
 
   declare public benchUnits: ArraySchema<string>;
 
+  declare public benchUnitIds: ArraySchema<string>;
+
   declare public benchDisplayNames: ArraySchema<string>;
 
   declare public boardUnits: ArraySchema<string>;
@@ -188,6 +190,7 @@ export class PlayerPresenceState extends Schema {
     this.xp = 0;
     this.level = 1;
     this.benchUnits = new ArraySchema<string>();
+    this.benchUnitIds = new ArraySchema<string>();
     this.benchDisplayNames = new ArraySchema<string>();
     this.boardUnits = new ArraySchema<string>();
     this.boardSubUnits = new ArraySchema<string>();
@@ -357,6 +360,7 @@ defineTypes(PlayerPresenceState, {
   xp: "number",
   level: "number",
   benchUnits: ["string"],
+  benchUnitIds: ["string"],
   benchDisplayNames: ["string"],
   boardUnits: ["string"],
   boardSubUnits: ["string"],

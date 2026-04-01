@@ -395,6 +395,51 @@ describe("GameRoom Integration with Feature Flags", () => {
         });
       });
 
+      test("boss player can buy from the regular shared shop during purchase", async () => {
+        await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
+          const serverRoom = await testServer.createRoom<GameRoom>("game");
+          const clients = await Promise.all([
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+            testServer.connectTo(serverRoom),
+          ]);
+
+          for (const client of clients) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          await startAllEnabledBossRoleMatch(serverRoom, clients);
+
+          const bossPlayerId = serverRoom.state.bossPlayerId;
+          expect(bossPlayerId).not.toBe("");
+
+          const bossClient = clients.find((client) => client.sessionId === bossPlayerId);
+          expect(bossClient).toBeDefined();
+
+          if (!bossClient || !bossPlayerId) {
+            throw new Error("Expected a connected boss client");
+          }
+
+          const playerBefore = serverRoom.state.players.get(bossPlayerId);
+          const goldBefore = playerBefore?.gold ?? 0;
+          const benchCountBefore = playerBefore?.benchUnits.length ?? 0;
+          expect(playerBefore?.shopOffers.length).toBeGreaterThan(0);
+
+          const buyResult = await sendPrepCommand(bossClient, 1, { shopBuySlotIndex: 0 });
+
+          await waitForCondition(() => {
+            const playerAfter = serverRoom.state.players.get(bossPlayerId);
+            return (playerAfter?.benchUnits.length ?? 0) === benchCountBefore + 1;
+          }, 1_000);
+
+          const playerAfter = serverRoom.state.players.get(bossPlayerId);
+          expect(buyResult).toEqual({ accepted: true });
+          expect(playerAfter?.gold).toBeLessThan(goldBefore);
+          expect(playerAfter?.benchUnits.length).toBe(benchCountBefore + 1);
+        });
+      });
+
       test("異常切断後に再接続するとconnectedがtrueへ戻る", async () => {
         await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
           const serverRoom = await testServer.createRoom<GameRoom>("game");
@@ -582,13 +627,18 @@ describe("GameRoom Integration with Feature Flags", () => {
           const strongestBResultPromise =
             strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
 
+          const strongestARole = serverRoom.state.players.get(strongestA)?.role;
+          const strongestBRole = serverRoom.state.players.get(strongestB)?.role;
+          const strongestABoardUnitCount = strongestARole === "boss" ? 6 : 2;
+          const strongestBBoardUnitCount = strongestBRole === "boss" ? 6 : 2;
+
           strongestAClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
             cmdSeq: 1,
-            boardUnitCount: 8,
+            boardUnitCount: strongestABoardUnitCount,
           });
           strongestBClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
             cmdSeq: 1,
-            boardUnitCount: 8,
+            boardUnitCount: strongestBBoardUnitCount,
           });
 
           const [strongestAResult, strongestBResult] = await Promise.all([
@@ -638,13 +688,18 @@ describe("GameRoom Integration with Feature Flags", () => {
           const strongestBResultPromise =
             strongestBClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
 
+          const strongestARole = serverRoom.state.players.get(strongestA)?.role;
+          const strongestBRole = serverRoom.state.players.get(strongestB)?.role;
+          const strongestABoardUnitCount = strongestARole === "boss" ? 6 : 2;
+          const strongestBBoardUnitCount = strongestBRole === "boss" ? 6 : 2;
+
           strongestAClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
             cmdSeq: 1,
-            boardUnitCount: 8,
+            boardUnitCount: strongestABoardUnitCount,
           });
           strongestBClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
             cmdSeq: 1,
-            boardUnitCount: 8,
+            boardUnitCount: strongestBBoardUnitCount,
           });
 
           const [strongestAResult, strongestBResult] = await Promise.all([

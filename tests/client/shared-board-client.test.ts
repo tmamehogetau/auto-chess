@@ -509,6 +509,222 @@ describe("shared-board client", () => {
     expect(findDescendantByClass(gridElement as unknown as FakeElement, "shared-board-battle-ghost")).toBeNull();
   });
 
+  test("shared board battle replay keeps Touhou portrait metadata from the timeline snapshot", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+
+    const room = {
+      sessionId: "raid-player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player-1",
+        joinOrCreate: async () => room,
+        isTouhouRosterEnabled: () => true,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      mode: "battle",
+      phase: "Battle",
+      battleId: "battle-raid-1",
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {},
+      cursors: {},
+      players: {
+        "raid-player-1": {
+          isSpectator: false,
+        },
+      },
+    });
+
+    const battleReplayHandler = messageHandlers.get("shared_battle_replay");
+    if (!battleReplayHandler) {
+      throw new Error("Expected shared battle replay handler to be registered");
+    }
+
+    battleReplayHandler({
+      battleId: "battle-raid-1",
+      phase: "Battle",
+      timeline: [
+        {
+          type: "battleStart",
+          battleId: "battle-raid-1",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-ranger-1",
+              sourceUnitId: "nazrin",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+              displayName: "ナズーリン",
+              portraitKey: "nazrin",
+            },
+          ],
+        },
+      ],
+    });
+
+    const unit = findDescendantByClass(gridElement.children[18], "shared-board-unit-card");
+    const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };
+    const metaWrap = unit?.children[2];
+    const nameplate = metaWrap?.children[1];
+
+    expect(unit?.className).toContain("shared-board-unit-card");
+    expect(portrait?.className).toContain("shared-board-portrait");
+    expect(portrait?.src).toBe("/pics/processed/front/nazrin.png");
+    expect(portrait?.alt).toBe("ナズーリン");
+    expect(nameplate?.textContent).toBe("ナズーリン");
+  });
+
+  test("shared board ignores duplicate replay payloads for the same battle", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const placementGuideElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+
+    const room = {
+      sessionId: "raid-player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      },
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+        placementGuideElement: placementGuideElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "raid-player-1",
+        joinOrCreate: async () => room,
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    const handleStateChange = stateChangeHandler as (state: unknown) => void;
+    handleStateChange({
+      mode: "battle",
+      phase: "Battle",
+      battleId: "battle-raid-dup",
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {},
+      cursors: {},
+      players: {
+        "raid-player-1": {
+          isSpectator: false,
+          color: "#4ECDC4",
+        },
+      },
+    });
+
+    const battleReplayHandler = messageHandlers.get("shared_battle_replay");
+    if (!battleReplayHandler) {
+      throw new Error("Expected shared battle replay handler to be registered");
+    }
+
+    const replayMessage = {
+      battleId: "battle-raid-dup",
+      phase: "Battle",
+      timeline: [
+        {
+          type: "battleStart",
+          battleId: "battle-raid-dup",
+          round: 2,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-vanguard-dup",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+          ],
+        },
+        {
+          type: "move",
+          battleId: "battle-raid-dup",
+          atMs: 120,
+          battleUnitId: "raid-vanguard-dup",
+          from: { x: 0, y: 3 },
+          to: { x: 1, y: 3 },
+        },
+        {
+          type: "battleEnd",
+          battleId: "battle-raid-dup",
+          atMs: 400,
+          winner: "raid",
+        },
+      ],
+    };
+
+    battleReplayHandler(replayMessage);
+    vi.advanceTimersByTime(130);
+
+    expect(gridElement.children[19]?.className).not.toContain("empty");
+    expect(gridElement.children[18]?.className).toContain("empty");
+
+    battleReplayHandler(replayMessage);
+
+    expect(gridElement.children[19]?.className).not.toContain("empty");
+    expect(gridElement.children[18]?.className).toContain("empty");
+  });
+
   test("shared board battle replay updates HP bars and removes dead units", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();
@@ -2051,8 +2267,75 @@ describe("shared-board client", () => {
     const subSlot = findDescendantByClass(gridElement.children[24], "shared-board-sub-slot");
     expect(subSlot).not.toBeNull();
     expect(subSlot?.className).toContain("attached");
+    expect(subSlot?.className).toContain("shared-board-sub-slot-attached");
     expect(subSlot?.textContent).toContain("✨");
     expect(subSlot?.textContent).not.toContain("SUB");
+  });
+
+  test("shared board renders mock-style zone labels and empty sub-slot affordances", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => [],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        18: { unitId: "hero:player-1", ownerId: "player-1", displayName: "霊夢" },
+        19: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const heroZoneLabel = findDescendantByClass(gridElement.children[18], "shared-board-zone-label");
+    const slotZoneLabel = findDescendantByClass(gridElement.children[19], "shared-board-zone-label");
+    const emptySubSlot = findDescendantByClass(gridElement.children[19], "shared-board-sub-slot");
+
+    expect(heroZoneLabel?.textContent).toBe("hero");
+    expect(slotZoneLabel?.textContent).toBe("slot");
+    expect(emptySubSlot?.className).toContain("shared-board-sub-slot-empty");
+    expect(emptySubSlot?.textContent).toBe("+");
   });
 
   test("shared board never shows sub slots for boss-side units", async () => {
@@ -2580,7 +2863,7 @@ describe("shared-board client", () => {
     });
 
     expect(gridElement.children[8]?.className).toContain("empty");
-    expect(gridElement.children[8]?.children).toHaveLength(0);
+    expect(findDescendantByClass(gridElement.children[8], "shared-board-unit-card")).toBeNull();
     expect(placementGuideElement.textContent).toContain("Buy a unit into your Bench");
   });
 
@@ -2638,16 +2921,21 @@ describe("shared-board client", () => {
       },
     });
 
-    const unit = gridElement.children[7]?.children[0];
+    const unit = findDescendantByClass(gridElement.children[7], "shared-board-unit-card");
     expect(unit?.className).toContain("shared-board-unit");
+    expect(unit?.className).toContain("shared-board-unit-card");
 
     const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };
     expect(portrait?.className).toContain("shared-board-portrait");
     expect(portrait?.src).toBe("/pics/processed/front/koishi.png");
     expect(portrait?.alt).toBe("古明地こいし");
 
-    const nameplate = unit?.children[2];
+    const metaWrap = unit?.children[2];
+    expect(metaWrap?.className).toContain("shared-board-unit-meta-wrap");
+
+    const nameplate = metaWrap?.children[1];
     expect(nameplate?.className).toContain("shared-board-display-name");
+    expect(nameplate?.className).toContain("shared-board-unit-meta");
     expect(nameplate?.textContent).toBe("古明地こいし");
   });
 
@@ -2705,7 +2993,7 @@ describe("shared-board client", () => {
       },
     });
 
-    const unit = gridElement.children[7]?.children[0];
+    const unit = findDescendantByClass(gridElement.children[7], "shared-board-unit-card");
     expect(unit?.className).toContain("shared-board-unit");
 
     const portrait = unit?.children[1] as unknown as { src?: string; alt?: string; className?: string };

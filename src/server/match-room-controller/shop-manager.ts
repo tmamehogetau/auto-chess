@@ -85,6 +85,7 @@ export interface ShopManagerDeps<TBattleResult = unknown> {
   rosterFlags: FeatureFlags;
   initialGold: number;
   maxBenchSize: number;
+  getMaxBoardUnitCount(playerId: string): number;
 }
 
 export class ShopManager<TBattleResult = unknown> {
@@ -257,8 +258,9 @@ export class ShopManager<TBattleResult = unknown> {
     const boardPlacements = [...(this.deps.boardPlacementsByPlayer.get(playerId) ?? [])];
     const benchUnit = benchUnits[benchIndex];
     const targetIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
+    const maxBoardUnitCount = this.deps.getMaxBoardUnitCount(playerId);
 
-    if (!benchUnit || (boardPlacements.length >= 8 && targetIndex < 0)) {
+    if (!benchUnit || (boardPlacements.length >= maxBoardUnitCount && targetIndex < 0)) {
       return;
     }
 

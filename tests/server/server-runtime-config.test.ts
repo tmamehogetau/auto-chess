@@ -230,6 +230,9 @@ describe("runtime shared_board server config", () => {
     expect(gameRoom.state.featureFlagsEnableSharedPool).toBe(
       DEFAULT_FLAGS.enableSharedPool || DEFAULT_FLAGS.enablePerUnitSharedPool,
     );
+    expect(gameRoom.state.featureFlagsEnableSubUnitSystem).toBe(
+      DEFAULT_FLAGS.enableSubUnitSystem,
+    );
     expect(gameRoom.state.featureFlagsEnableSpellCard).toBe(DEFAULT_FLAGS.enableSpellCard);
     expect(gameRoom.state.featureFlagsEnableSharedBoardShadow).toBe(true);
   });

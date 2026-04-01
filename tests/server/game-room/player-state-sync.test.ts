@@ -634,6 +634,7 @@ describe("player-state-sync", () => {
           { unitType: "assassin", unitId: "shop:assassin", cost: 4, rarity: 3, isRumorUnit: false },
         ],
         benchUnits: ["unit-x", "unit-y", "unit-z"],
+        benchUnitIds: ["nazrin", "sakuya", "patchouli"],
         benchDisplayNames: ["紅美鈴", "十六夜咲夜", "パチュリー・ノーレッジ"],
         boardUnits: ["b1", "b2", "b3", "b4", "b5"],
         boardSubUnits: ["1:mage"],
@@ -661,6 +662,7 @@ describe("player-state-sync", () => {
       expect(playerState.ownedRanger).toBe(2);
       expect(playerState.ownedMage).toBe(1);
       expect(playerState.benchUnits.length).toBe(3);
+      expect((playerState as any).benchUnitIds[1]).toBe("sakuya");
       expect(playerState.benchDisplayNames[2]).toBe("パチュリー・ノーレッジ");
       expect(playerState.boardUnits.length).toBe(5);
       expect((playerState as any).boardSubUnits.length).toBe(1);

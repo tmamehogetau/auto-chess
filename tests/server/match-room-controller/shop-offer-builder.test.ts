@@ -311,7 +311,6 @@ describe("ShopOfferBuilder", () => {
       const nonDepletedCost2UnitIds = new Set(cost2Units.slice(1));
 
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-      mockDeps.getPlayerLevel = vi.fn(() => 2);
       mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
       mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
@@ -324,7 +323,7 @@ describe("ShopOfferBuilder", () => {
 
       builder = new ShopOfferBuilder(mockDeps);
 
-      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+      const offers = builder.buildShopOffers("player1", 2, 0, 0, false);
 
       expect(offers).toHaveLength(5);
       expect(offers.every((offer) => offer.unitId !== depletedCost2UnitId)).toBe(true);
@@ -345,26 +344,26 @@ describe("ShopOfferBuilder", () => {
     test("shared+per-unit applies one deterministic nearest-tier policy for all-depleted selected cost", () => {
       const touhouRoster = getTouhouDraftRosterUnits();
       const cases: Array<{
-        level: number;
+        roundIndex: number;
         selectedCostRoll: number;
         depletedCosts: number[];
         expectedCost: number;
       }> = [
         {
-          level: 1,
+          roundIndex: 1,
           selectedCostRoll: 0,
           depletedCosts: [1],
           expectedCost: 2,
         },
         {
-          level: 2,
+          roundIndex: 2,
           selectedCostRoll: 0.75,
           depletedCosts: [2],
           expectedCost: 1,
         },
         {
-          level: 5,
-          selectedCostRoll: 0.5,
+          roundIndex: 8,
+          selectedCostRoll: 0.7,
           depletedCosts: [3, 2],
           expectedCost: 4,
         },
@@ -374,7 +373,6 @@ describe("ShopOfferBuilder", () => {
         const depletedCosts = new Set(testCase.depletedCosts);
 
         mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-        mockDeps.getPlayerLevel = vi.fn(() => testCase.level);
         mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
         mockDeps.isSharedPoolEnabled = vi.fn(() => true);
         mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
@@ -384,7 +382,7 @@ describe("ShopOfferBuilder", () => {
 
         builder = new ShopOfferBuilder(mockDeps);
 
-        const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+        const offers = builder.buildShopOffers("player1", testCase.roundIndex ?? 1, 0, 0, false);
         const expectedUnitIds = new Set(
           touhouRoster
             .filter((unit) => unit.cost === testCase.expectedCost)
@@ -407,17 +405,16 @@ describe("ShopOfferBuilder", () => {
       );
 
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-      mockDeps.getPlayerLevel = vi.fn(() => 5);
       mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
       mockDeps.isPerUnitPoolEnabled = vi.fn(() => false);
       mockDeps.hashToUint32 = vi.fn(() => 0);
-      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.5 : 0));
+      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.7 : 0));
       mockDeps.isPoolDepleted = vi.fn((cost: number) => cost === 3 || cost === 2);
 
       builder = new ShopOfferBuilder(mockDeps);
 
-      const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+      const offers = builder.buildShopOffers("player1", 8, 0, 0, false);
 
       expect(offers).toHaveLength(5);
       expect(offers.every((offer) => offer.cost === 1)).toBe(true);
@@ -449,7 +446,6 @@ describe("ShopOfferBuilder", () => {
 
       for (const testCase of cases) {
         mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-        mockDeps.getPlayerLevel = vi.fn(() => 2);
         mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
         mockDeps.isSharedPoolEnabled = vi.fn(() => true);
         mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
@@ -463,7 +459,7 @@ describe("ShopOfferBuilder", () => {
 
         builder = new ShopOfferBuilder(mockDeps);
 
-        const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+        const offers = builder.buildShopOffers("player1", 2, 0, 0, false);
 
         expect(offers, testCase.name).toHaveLength(5);
         expect(offers.every((offer) => offer.cost === testCase.expectedCost), testCase.name).toBe(true);
@@ -487,17 +483,18 @@ describe("ShopOfferBuilder", () => {
       }
     });
 
-    test("uses Touhou level 2 weighting boundaries deterministically", () => {
+    test("uses Touhou round-based weighting boundaries deterministically", () => {
       const touhouRoster = getTouhouDraftRosterUnits();
-      const cases: Array<{ roll: number; expectedCost: number }> = [
-        { roll: 0.749999, expectedCost: 1 },
-        { roll: 0.75, expectedCost: 2 },
-        { roll: 0.999999, expectedCost: 2 },
-        { roll: 1, expectedCost: 2 },
+      const cases: Array<{ roundIndex: number; roll: number; expectedCost: number }> = [
+        { roundIndex: 1, roll: 0.849999, expectedCost: 1 },
+        { roundIndex: 1, roll: 0.85, expectedCost: 2 },
+        { roundIndex: 2, roll: 0.949999, expectedCost: 2 },
+        { roundIndex: 2, roll: 0.95, expectedCost: 3 },
+        { roundIndex: 4, roll: 0.97, expectedCost: 4 },
+        { roundIndex: 10, roll: 0.97, expectedCost: 5 },
       ];
 
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
-      mockDeps.getPlayerLevel = vi.fn(() => 2);
       mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
       mockDeps.hashToUint32 = vi.fn(() => 0);
 
@@ -505,7 +502,7 @@ describe("ShopOfferBuilder", () => {
         mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? testCase.roll : 0));
         builder = new ShopOfferBuilder(mockDeps);
 
-        const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
+        const offers = builder.buildShopOffers("player1", testCase.roundIndex, 0, 0, false);
 
         expect(offers).toHaveLength(5);
         expect(offers.every((offer) => offer.cost === testCase.expectedCost)).toBe(true);

@@ -26,12 +26,18 @@ export interface PhaseOrchestratorDeps {
   settleDurationMs: number;
   eliminationDurationMs: number;
   resolvePhaseHpTarget(roundIndex: number): number;
-  onPrepToBattle(): void;
+  onPrepToBattle(nowMs: number): void;
   onBattleToSettle(): void;
   onBeforeSettleToElimination(): void;
   onAfterSettleToElimination(aliveBeforeElimination: Set<string>): void;
   onEliminationToPrep(): void;
   shouldEndAfterElimination(maxRounds: number): boolean;
+  resolveBattleDeadlineAtMs?(nowMs: number, roundIndex: number): number | null;
+  shouldAdvanceBattlePhase?(input: {
+    nowMs: number;
+    roundIndex: number;
+    battleDeadlineAtMs: number | null;
+  }): boolean;
   logRoundTransition?(
     phase: "Prep" | "Battle" | "Settle" | "Elimination",
     roundIndex: number,
@@ -136,11 +142,13 @@ export class PhaseOrchestrator {
       return false;
     }
 
-    this.deps.onPrepToBattle();
+    this.deps.onPrepToBattle(nowMs);
     state.transitionTo("Battle");
-    const update = beginBattlePhaseWindow(nowMs, this.deps.battleDurationMs);
+    const battleDeadlineAtMs = this.deps.resolveBattleDeadlineAtMs?.(nowMs, state.roundIndex)
+      ?? beginBattlePhaseWindow(nowMs, this.deps.battleDurationMs).battleDeadlineAtMs;
+    const update = clearPhaseTiming();
     this.prepDeadlineAtMs = update.prepDeadlineAtMs;
-    this.battleDeadlineAtMs = update.battleDeadlineAtMs;
+    this.battleDeadlineAtMs = battleDeadlineAtMs;
     this.settleDeadlineAtMs = update.settleDeadlineAtMs;
     this.eliminationDeadlineAtMs = update.eliminationDeadlineAtMs;
     this.deps.logRoundTransition?.("Battle", state.roundIndex, nowMs);
@@ -148,7 +156,13 @@ export class PhaseOrchestrator {
   }
 
   private advanceBattlePhase(state: GameLoopState, nowMs: number): boolean {
-    if (!hasDeadlineElapsed(this.battleDeadlineAtMs, nowMs)) {
+    const shouldAdvance = this.deps.shouldAdvanceBattlePhase?.({
+      nowMs,
+      roundIndex: state.roundIndex,
+      battleDeadlineAtMs: this.battleDeadlineAtMs,
+    }) ?? hasDeadlineElapsed(this.battleDeadlineAtMs, nowMs);
+
+    if (!shouldAdvance) {
       return false;
     }
 

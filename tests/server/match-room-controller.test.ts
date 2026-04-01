@@ -69,6 +69,17 @@ const advanceRaidRoundWithMinimalDurations = (
   return startTimeMs + 4;
 };
 
+const applyMinimalRaidBattlePlacements = (controller: MatchRoomController): void => {
+  expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard" }]))
+    .toMatchObject({ success: true });
+  expect(controller.applyPrepPlacementForPlayer("p1", [{ cell: 4, unitType: "ranger" }]))
+    .toMatchObject({ success: true });
+  expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 5, unitType: "mage" }]))
+    .toMatchObject({ success: true });
+  expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 6, unitType: "assassin" }]))
+    .toMatchObject({ success: true });
+};
+
 // 各ラウンドのフェーズHP目標値を取得
 function getPhaseHpTarget(roundIndex: number): number {
   const targets: Record<number, number> = {
@@ -299,6 +310,102 @@ describe("MatchRoomController", () => {
     ]);
   });
 
+  test("raid round exposes shared battle replay immediately when Battle starts", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1_000,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+          applyMinimalRaidBattlePlacements(controller);
+
+          controller.advanceByTime(1);
+
+          expect(controller.phase).toBe("Battle");
+          expect(controller.getSharedBattleReplay("Battle")).toMatchObject({
+            type: "shared_battle_replay",
+            phase: "Battle",
+            timeline: expect.arrayContaining([
+              expect.objectContaining({ type: "battleStart" }),
+            ]),
+          });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("battle can move to Settle before the battle deadline once replay resolution is complete", () => {
+    const controller = new MatchRoomController(
+      ["p1", "p2", "p3", "p4"],
+      1_000,
+      controllerOptions,
+    );
+
+    controller.setReady("p1", true);
+    controller.setReady("p2", true);
+    controller.setReady("p3", true);
+    controller.setReady("p4", true);
+    controller.startIfReady(2_000);
+    controller.advanceByTime(32_000);
+
+    const targetHp = getPhaseHpTarget(controller.roundIndex);
+    const { battleResultsByPlayer } = controller.getTestAccess();
+    battleResultsByPlayer.set("p1", {
+      opponentId: "p4",
+      won: true,
+      damageDealt: targetHp,
+      damageTaken: 0,
+      survivors: 1,
+      opponentSurvivors: 0,
+      timeline: [
+        createBattleStartEvent({
+          battleId: "battle-early-resolve",
+          round: 1,
+          boardConfig: { width: 6, height: 6 },
+          units: [
+            {
+              battleUnitId: "raid-ranger-1",
+              side: "raid",
+              x: 0,
+              y: 3,
+              currentHp: 40,
+              maxHp: 40,
+            },
+          ],
+        }),
+        createBattleEndEvent({
+          type: "battleEnd",
+          battleId: "battle-early-resolve",
+          atMs: 700,
+          winner: "raid",
+        }),
+      ],
+    });
+    controller.setPendingRoundDamage({ p1: targetHp });
+
+    expect(controller.advanceByTime(32_700)).toBe(true);
+    expect(controller.phase).toBe("Settle");
+  });
+
   test("raid round resolves as one boss-vs-raid battle", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
@@ -347,6 +454,60 @@ describe("MatchRoomController", () => {
               expect.objectContaining({ cell: 6, unitType: "assassin" }),
             ]),
           );
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid phase HP uses aggregate raid combat damage instead of loser damage only", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+          controller.advanceByTime(32_000);
+
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: true,
+            damageDealt: 7,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+            phaseDamageToBoss: 180,
+          });
+          battleResultsByPlayer.set("p1", {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 7,
+            survivors: 0,
+            opponentSurvivors: 1,
+          });
+
+          controller.advanceByTime(42_000);
+
+          expect(controller.phase).toBe("Settle");
+          expect(controller.getPhaseProgress()).toMatchObject({
+            targetHp: 600,
+            damageDealt: 180,
+            result: "failed",
+          });
         } finally {
           randomSpy.mockRestore();
         }
@@ -628,6 +789,13 @@ describe("MatchRoomController", () => {
             "hero-p3",
             "hero-p4",
           ]);
+          expect(raidHeroUnits).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ id: "hero-p1", battleSide: "right" }),
+              expect.objectContaining({ id: "hero-p3", battleSide: "right" }),
+              expect.objectContaining({ id: "hero-p4", battleSide: "right" }),
+            ]),
+          );
           expect(raidNonHeroUnits).toEqual(
             expect.arrayContaining([
               expect.objectContaining({ buffModifiers: expect.objectContaining({ attackMultiplier: 30 }) }),
@@ -2504,6 +2672,53 @@ describe("MatchRoomController", () => {
           expect(controller.phase).toBe("End");
           expect(controller.rankingTopToBottom[0]).toBe("p1");
           expect(controller.rankingTopToBottom.at(-1)).toBe("p2");
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid R12 ignores the normal battle timeout and stays in Battle until the final fight resolves", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          expect(controller.roundIndex).toBe(12);
+          expect(controller.phase).toBe("Prep");
+
+          applyMinimalRaidBattlePlacements(controller);
+          controller.advanceByTime(nowMs + 1);
+
+          expect(controller.phase).toBe("Battle");
+          expect(controller.getSharedBattleReplay("Battle")).not.toBeNull();
+          expect(controller.advanceByTime(nowMs + 2)).toBe(false);
+          expect(controller.phase).toBe("Battle");
         } finally {
           randomSpy.mockRestore();
         }

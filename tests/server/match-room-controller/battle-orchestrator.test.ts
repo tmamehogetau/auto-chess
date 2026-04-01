@@ -244,4 +244,21 @@ describe("BattleOrchestrator", () => {
     expect(harness.orchestrator?.shouldEndAfterElimination(12)).toBe(true);
     expect(harness.finalRankingOverride).toEqual(["raid-a", "raid-b", "boss"]);
   });
+
+  it("does not end a raid match on the round 6 recovery elimination even when all raiders are temporarily out", () => {
+    const harness = createHarness(["boss", "raid-a", "raid-b", "raid-c"], {
+      raidBossPlayerId: "boss",
+      phaseResult: "failed",
+    });
+    harness.state.roundIndex = 6;
+    harness.state.consumeLife("raid-a", 2);
+    harness.state.consumeLife("raid-b", 2);
+    harness.state.consumeLife("raid-c", 2);
+    harness.state.phase = "Settle";
+    harness.state.transitionTo("Elimination");
+
+    expect(harness.state.alivePlayerIds).toEqual(["boss"]);
+    expect(harness.orchestrator?.shouldEndAfterElimination(12)).toBe(false);
+    expect(harness.finalRankingOverride).toBeNull();
+  });
 });

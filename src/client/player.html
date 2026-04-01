@@ -31,9 +31,9 @@
       }
 
       .player-shell {
-        max-width: 1080px;
+        width: min(100%, 1680px);
         margin: 0 auto;
-        padding: 24px 16px 40px;
+        padding: clamp(16px, 2vw, 24px) clamp(12px, 1.8vw, 20px) 32px;
       }
 
       .player-header,
@@ -98,8 +98,12 @@
         gap: 16px;
       }
 
+      .player-top-hud {
+        margin-bottom: 16px;
+      }
+
       .player-phase {
-        padding: 18px 20px;
+        padding: 16px 18px;
       }
 
       .player-phase-tag {
@@ -177,7 +181,7 @@
       }
 
       .player-prep-grid {
-        grid-template-columns: minmax(220px, 260px) minmax(0, 1.25fr) minmax(240px, 300px);
+        grid-template-columns: clamp(248px, 21vw, 320px) minmax(0, 1fr) clamp(248px, 21vw, 320px);
         align-items: start;
       }
 
@@ -188,6 +192,22 @@
       .player-rail-stack {
         display: grid;
         gap: 12px;
+      }
+
+      .player-self-summary {
+        display: grid;
+        gap: 10px;
+      }
+
+      .player-self-summary-section {
+        display: grid;
+        gap: 4px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .player-self-summary-section strong {
+        margin-bottom: 0;
       }
 
       .player-phase-surface {
@@ -202,6 +222,11 @@
       .player-purchase-shop-stack {
         display: grid;
         gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      [data-player-purchase-section="common-units"] {
+        grid-column: 1 / -1;
       }
 
       .player-ally-card-copy {
@@ -209,16 +234,389 @@
         line-height: 1.55;
       }
 
-      .player-bench-grid-two-column {
+      .player-detail-kicker {
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .player-detail-title {
+        margin-top: 6px;
+        font-size: 18px;
+        color: var(--text);
+      }
+
+      .player-detail-lines {
+        margin-top: 8px;
+      }
+
+      [data-player-detail-card] {
+        height: 332px;
+        overflow: hidden;
+      }
+
+      [data-player-detail-card],
+      [data-player-ally-rail],
+      [data-player-self-summary-card],
+      [data-player-bench] {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+          rgba(9, 17, 32, 0.92);
+        border-color: rgba(164, 200, 255, 0.14);
+      }
+
+      .player-detail-head {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 14px;
+        margin-top: 10px;
+      }
+
+      .player-detail-portrait {
+        width: 92px;
+        height: 92px;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background:
+          radial-gradient(circle at top, rgba(124, 224, 255, 0.18), transparent 56%),
+          linear-gradient(180deg, rgba(25, 41, 72, 0.94), rgba(10, 18, 34, 0.98));
+        display: grid;
+        place-items: center;
+        color: var(--text);
+        font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+        font-size: 34px;
+        font-weight: 700;
+      }
+
+      .player-detail-portrait-img,
+      .player-ally-card-avatar-img,
+      .player-special-unit-avatar-img,
+      .player-bench-slot-avatar-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .player-detail-main {
+        min-width: 0;
+      }
+
+      .player-detail-title {
+        margin-top: 8px;
+        font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+
+      .player-detail-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0 0;
+      }
+
+      .player-detail-tag {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .player-detail-stats {
+        display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 12px 0;
+      }
+
+      .player-detail-stat {
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .player-detail-stat strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .player-detail-stat span {
+        font-size: 14px;
+        line-height: 1.3;
+        color: var(--text);
+      }
+
+      .player-detail-effect {
+        padding: 10px 12px;
+        border: 1px solid rgba(124, 224, 255, 0.16);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(124, 224, 255, 0.08), rgba(255, 255, 255, 0.03));
+        line-height: 1.5;
+        font-size: 13px;
+      }
+
+      .player-detail-effect strong {
+        color: var(--accent);
+      }
+
+      [data-player-ally-rail] {
+        display: grid;
+        gap: 12px;
+      }
+
+      .player-ally-panel {
+        display: grid;
+        gap: 8px;
+      }
+
+      .player-ally-panel-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .player-ally-card {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+        width: 100%;
+        min-height: 68px;
+        padding: 10px 12px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
+        text-align: left;
+      }
+
+      .player-ally-chip-self {
+        background: linear-gradient(180deg, rgba(243, 204, 123, 0.12), rgba(255, 255, 255, 0.04));
+        border-color: rgba(243, 204, 123, 0.32);
+      }
+
+      .player-ally-chip-ally {
+        background: linear-gradient(180deg, rgba(124, 224, 255, 0.08), rgba(255, 255, 255, 0.03));
+        border-color: rgba(124, 224, 255, 0.24);
+      }
+
+      .player-ally-card-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(124, 224, 255, 0.18), transparent 56%),
+          linear-gradient(180deg, rgba(25, 41, 72, 0.94), rgba(10, 18, 34, 0.98));
+        color: var(--text);
+        font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .player-ally-card-body {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .player-ally-card-title {
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .player-ally-card-meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .player-self-summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+      }
+
+      .player-self-summary-section {
+        gap: 6px;
+        align-content: start;
+      }
+
+      .player-special-unit-panel {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .player-special-unit-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(243, 204, 123, 0.18), transparent 56%),
+          linear-gradient(180deg, rgba(25, 41, 72, 0.94), rgba(10, 18, 34, 0.98));
+        color: var(--text);
+        font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .player-special-unit-main {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .player-special-unit-copy {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .player-special-unit-lives {
+        min-width: 60px;
+        text-align: right;
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .player-special-unit-lives span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .player-player-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .player-player-stat {
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .player-player-stat strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .player-player-stat span {
+        color: var(--text);
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .player-bench-slot-filled,
+      .player-bench-slot-empty {
+        min-height: 82px;
+        border-radius: 18px;
+      }
+
+      .player-bench-slot-filled {
+        position: relative;
+        display: grid;
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .player-bench-slot-selected {
+        border-color: rgba(243, 204, 123, 0.34);
+        background: linear-gradient(180deg, rgba(243, 204, 123, 0.12), rgba(255, 255, 255, 0.04));
+      }
+
+      .player-bench-slot-empty {
+        border: 1px dashed rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .player-bench-slot-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(124, 224, 255, 0.16), transparent 56%),
+          linear-gradient(180deg, rgba(25, 41, 72, 0.94), rgba(10, 18, 34, 0.98));
+        color: var(--text);
+        font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .player-bench-slot-copy {
+        display: grid;
+        gap: 6px;
+        align-content: start;
+        min-width: 0;
+      }
+
+      .player-bench-slot-name {
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 6px;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        word-break: keep-all;
+      }
+
+      .player-bench-slot-state,
+      .player-bench-slot-empty-copy {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      [data-player-bench] .player-inline-actions {
+        margin-top: 12px;
       }
 
       .player-card {
-        min-height: 92px;
+        min-height: 0;
         padding: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        background: rgba(30, 44, 82, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+          rgba(30, 44, 82, 0.78);
+        box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
       }
 
       .player-card strong {
@@ -309,6 +707,11 @@
         margin-top: 10px;
       }
 
+      [data-player-bench-grid].player-bench-grid-two-column {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-flow: row;
+      }
+
       .player-choice-btn {
         width: 100%;
         padding: 10px 12px;
@@ -321,7 +724,7 @@
       }
 
       .player-slot-btn {
-        min-height: 72px;
+        min-height: 0;
         padding: 10px;
       }
 
@@ -330,37 +733,53 @@
         background: rgba(245, 193, 108, 0.12);
       }
 
+      .player-ally-chip-bench {
+        border-style: dashed;
+      }
+
       .player-board {
         min-height: 320px;
+        padding: 16px;
+        border-radius: 24px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+          rgba(18, 28, 52, 0.86);
       }
 
       .shared-board-grid {
-        --shared-board-gap: 8px;
+        --shared-board-gap: 10px;
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: var(--shared-board-gap);
-        margin-top: 12px;
+        margin-top: 16px;
         position: relative;
       }
 
       .shared-board-cell {
-        min-height: 72px;
-        padding: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 12px;
-        background: rgba(11, 17, 31, 0.78);
+        min-height: 104px;
+        padding: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 20px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+          rgba(11, 17, 31, 0.82);
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: center;
         position: relative;
+        overflow: hidden;
       }
 
       .shared-board-cell.zone-boss {
-        background: rgba(170, 52, 52, 0.2);
+        background:
+          linear-gradient(180deg, rgba(170, 52, 52, 0.26), rgba(11, 17, 31, 0.78)),
+          rgba(170, 52, 52, 0.2);
       }
 
       .shared-board-cell.zone-raid {
-        background: rgba(39, 88, 68, 0.22);
+        background:
+          linear-gradient(180deg, rgba(39, 88, 68, 0.28), rgba(11, 17, 31, 0.78)),
+          rgba(39, 88, 68, 0.22);
       }
 
       .shared-board-cell.active-combat-area {
@@ -397,7 +816,9 @@
 
       .shared-board-cell.occupied-own {
         border-color: rgba(245, 193, 108, 0.72);
-        box-shadow: inset 0 0 0 1px rgba(245, 193, 108, 0.25);
+        box-shadow:
+          inset 0 0 0 1px rgba(245, 193, 108, 0.25),
+          0 0 0 1px rgba(245, 193, 108, 0.14);
       }
 
       .shared-board-cell.occupied-ally {
@@ -405,21 +826,88 @@
       }
 
       .shared-board-cell.selected {
-        box-shadow: inset 0 0 0 2px rgba(245, 193, 108, 0.72);
+        box-shadow:
+          inset 0 0 0 2px rgba(245, 193, 108, 0.84),
+          0 0 0 3px rgba(245, 193, 108, 0.14);
       }
 
       .shared-board-cell.drop-target {
-        box-shadow: inset 0 0 0 2px rgba(92, 184, 255, 0.78);
+        box-shadow:
+          inset 0 0 0 2px rgba(92, 184, 255, 0.82),
+          0 0 0 3px rgba(92, 184, 255, 0.16);
       }
 
       .shared-board-cell.blocked-target {
-        box-shadow: inset 0 0 0 2px rgba(220, 92, 92, 0.48);
+        box-shadow:
+          inset 0 0 0 2px rgba(220, 92, 92, 0.56),
+          0 0 0 3px rgba(220, 92, 92, 0.12);
+      }
+
+      .shared-board-zone-label {
+        position: absolute;
+        left: 12px;
+        top: 8px;
+        color: rgba(244, 247, 251, 0.42);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        pointer-events: none;
       }
 
       .shared-board-unit {
         display: grid;
-        justify-items: center;
-        gap: 4px;
+        justify-items: stretch;
+        gap: 2px;
+      }
+
+      @media (max-width: 1320px) {
+        .player-prep-grid {
+          grid-template-columns: 280px minmax(0, 1fr) 280px;
+        }
+
+        [data-player-detail-card] {
+          height: 332px;
+        }
+      }
+
+      @media (max-width: 1120px) {
+        .player-top-hud {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .player-prep-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        [data-player-left-rail] {
+          order: 1;
+        }
+
+        [data-player-center-rail],
+        [data-player-phase-surface] {
+          order: 2;
+        }
+
+        [data-player-right-rail] {
+          order: 3;
+        }
+
+        [data-player-detail-card] {
+          height: auto;
+          max-height: none;
+        }
+      }
+
+      .shared-board-unit-card {
+        width: 100%;
+        min-height: 100%;
+        position: relative;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 18px 28px rgba(0, 0, 0, 0.24);
+        background: rgba(8, 16, 29, 0.92);
       }
 
       .shared-board-battle-unit {
@@ -616,6 +1104,10 @@
       }
 
       .shared-board-owner {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        z-index: 2;
         width: 14px;
         height: 14px;
         border-radius: 999px;
@@ -623,20 +1115,86 @@
       }
 
       .shared-board-portrait {
-        width: 34px;
-        height: 34px;
-        border-radius: 8px;
+        width: 100%;
+        height: 100%;
         object-fit: cover;
+        display: block;
+      }
+
+      .shared-board-unit-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(8, 16, 29, 0.06), rgba(8, 16, 29, 0.18) 44%, rgba(8, 16, 29, 0.88));
+        pointer-events: none;
+      }
+
+      .shared-board-unit-meta-wrap {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        z-index: 1;
+        display: grid;
+        gap: 2px;
+      }
+
+      .shared-board-unit-type {
+        color: rgba(244, 247, 251, 0.72);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
 
       .shared-board-display-name,
       .shared-board-unit-id {
-        font-size: 10px;
-        text-align: center;
+        font-size: 11px;
+        text-align: left;
+        font-weight: 700;
+      }
+
+      .shared-board-sub-slot {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        z-index: 3;
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        border: 1px dashed rgba(255, 255, 255, 0.24);
+        background: rgba(8, 16, 29, 0.86);
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .shared-board-sub-slot-empty {
+        color: rgba(244, 247, 251, 0.72);
+      }
+
+      .shared-board-sub-slot-attached {
+        border-style: solid;
+        border-color: rgba(124, 195, 255, 0.38);
+        box-shadow: 0 0 0 3px rgba(124, 195, 255, 0.08);
+        color: #9ee7ff;
       }
 
       .result-imprint-grid {
         margin-top: 10px;
+      }
+
+      .player-result-hero-card {
+        min-height: 152px;
+        background:
+          radial-gradient(circle at top left, rgba(245, 193, 108, 0.14), transparent 48%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+          rgba(30, 44, 82, 0.78);
+      }
+
+      .player-result-support-card {
+        min-height: 124px;
       }
 
       .shared-board-cell.result-imprint-empty {
@@ -681,6 +1239,20 @@
         margin-top: 10px;
         color: var(--muted);
         font-size: 12px;
+      }
+
+      @media (max-width: 1180px) {
+        .player-prep-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .player-purchase-shop-stack {
+          grid-template-columns: 1fr;
+        }
+
+        [data-player-purchase-section="common-units"] {
+          grid-column: auto;
+        }
       }
 
       .player-host-help {
@@ -755,24 +1327,26 @@
           />
           <button class="player-action-btn" type="button" data-player-connect-btn disabled>Join Session</button>
         </div>
-        <div class="player-summary-grid" style="margin-top: 14px;">
-          <div class="player-card" data-player-room-summary>
-            <strong>Room</strong>
-            <div data-player-room-copy>進行役から受け取った room code と shared-board room を表示します。</div>
-          </div>
-          <div class="player-card" data-player-deadline-summary>
-            <strong>Deadline</strong>
-            <div data-player-deadline-copy>phase ごとの締切をここに表示します。</div>
-          </div>
-          <div class="player-card" data-player-ready-btn>
-            <strong>Ready</strong>
-            <div data-player-ready-copy>準備ができたら Ready を押します。</div>
-            <div class="player-inline-actions">
-              <button class="player-action-btn" type="button" data-player-ready-button>Ready</button>
-            </div>
-          </div>
-        </div>
       </header>
+
+      <section class="player-summary-grid player-top-hud" data-player-top-hud>
+        <div class="player-card" data-player-hud-round-phase>
+          <strong>Round / Phase</strong>
+          <div>現在のラウンドとフェイズを compact に表示します。</div>
+        </div>
+        <div class="player-card" data-player-hud-timer>
+          <strong>Timer</strong>
+          <div>現在フェイズの残り時間を表示します。</div>
+        </div>
+        <div class="player-card" data-player-hud-spell>
+          <strong>Spell</strong>
+          <div>この round の spell や効果を表示します。</div>
+        </div>
+        <div class="player-card" data-player-hud-flow>
+          <strong>Flow</strong>
+          <div>Purchase -&gt; Deploy -&gt; Battle の流れを表示します。</div>
+        </div>
+      </section>
 
       <div class="player-phase-list">
         <section class="player-phase" data-player-phase="lobby">
@@ -789,6 +1363,13 @@
               <div class="player-inline-actions">
                 <button class="player-action-btn" type="button" data-player-boss-pref-on>Boss希望 ON</button>
                 <button class="player-action-btn" type="button" data-player-boss-pref-off>Boss希望 OFF</button>
+              </div>
+            </div>
+            <div class="player-card" data-player-lobby-ready-btn>
+              <strong>Ready</strong>
+              <div data-player-lobby-ready-copy>準備ができたら Ready を押します。</div>
+              <div class="player-inline-actions">
+                <button class="player-action-btn" type="button" data-player-lobby-ready-button>Ready</button>
               </div>
             </div>
           </div>
@@ -852,7 +1433,7 @@
                   <strong>主人公強化</strong>
                   <div data-player-hero-upgrade-copy>主人公の成長ラインをここに表示します。</div>
                   <div class="player-inline-actions">
-                    <button class="player-action-btn" type="button" data-player-buy-xp-button>Buy XP</button>
+                    <button class="player-action-btn" type="button" data-player-buy-xp-button>強化 +1 (4G)</button>
                   </div>
                 </div>
                 <div class="player-card" data-player-purchase-section="refresh">
@@ -928,17 +1509,18 @@
             </div>
 
             <div class="player-rail-stack" data-player-right-rail>
-              <div class="player-card" data-player-special-unit-card>
-                <strong>Special Unit</strong>
-                <div data-player-special-unit-copy>選択した主人公またはボスをここに表示します。</div>
-              </div>
-              <div class="player-card" data-player-spell-card>
-                <strong>Spell</strong>
-                <div data-player-spell-copy>この round の spell 状態をここに表示します。</div>
-              </div>
-              <div class="player-card" data-player-synergy-card>
-                <strong>Synergy</strong>
-                <div data-player-synergy-copy>現在有効な synergy をここに表示します。</div>
+              <div class="player-card" data-player-self-summary-card>
+                <strong>Player Summary</strong>
+                <div class="player-self-summary">
+                  <div class="player-self-summary-section">
+                    <strong>Special Unit</strong>
+                    <div data-player-special-unit-copy>選択した主人公またはボスをここに表示します。</div>
+                  </div>
+                  <div class="player-self-summary-section">
+                    <strong>Stats</strong>
+                    <div data-player-player-stats-copy>Placement と State をここに表示します。</div>
+                  </div>
+                </div>
               </div>
               <div class="player-card" data-player-bench>
                 <strong>Bench</strong>
@@ -955,7 +1537,18 @@
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="5" aria-label="Bench slot 5">5</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="6" aria-label="Bench slot 6">6</button>
                   <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="7" aria-label="Bench slot 7">7</button>
-                  <button class="player-choice-btn player-slot-btn" type="button" data-player-bench-slot="8" aria-label="Bench slot 8">8</button>
+                </div>
+              </div>
+              <div class="player-card" data-player-phase-notes-card>
+                <strong>Phase Notes</strong>
+                <div data-player-phase-notes-copy>このフェイズで見る場所と次の操作をここに表示します。</div>
+                <div data-player-room-copy>進行役から受け取った room code と shared-board room を表示します。</div>
+                <div class="player-self-summary-section" data-player-ready-btn>
+                  <strong>Ready</strong>
+                  <div data-player-ready-copy>準備ができたら Ready を押します。</div>
+                  <div class="player-inline-actions">
+                    <button class="player-action-btn" type="button" data-player-ready-button>Ready</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -965,14 +1558,45 @@
         <section class="player-phase" data-player-phase="result" hidden>
           <p class="player-phase-tag">Battle / Result</p>
           <h2>Watch And Read The Outcome</h2>
-          <div class="player-result-grid" data-player-result-surface>
-            <div class="player-card">
-              <strong>Battle State</strong>
-              phase HP と勝敗を読みやすく出す。
+          <div class="player-prep-grid" data-player-phase-shell>
+            <div class="player-rail-stack" data-player-left-rail>
+              <div class="player-card">
+                <strong>Unit Detail</strong>
+                <div class="player-ally-card-copy">battle 終了時に見ていた対象の要約をここに残します。</div>
+              </div>
+              <div class="player-card">
+                <strong>Allies</strong>
+                <div class="player-ally-card-copy">味方情報を保持したまま result を読めるようにします。</div>
+              </div>
             </div>
-            <div class="player-card">
-              <strong>Next Adjustment</strong>
-              次に直す 1 点を短く返す。
+
+            <div class="player-phase-surface" data-player-center-rail>
+              <div class="player-result-grid" data-player-result-surface>
+                <div class="player-card">
+                  <strong>Battle State</strong>
+                  phase HP と勝敗を読みやすく出す。
+                </div>
+                <div class="player-card">
+                  <strong>Next Adjustment</strong>
+                  次に直す 1 点を短く返す。
+                </div>
+              </div>
+            </div>
+
+            <div class="player-rail-stack" data-player-right-rail>
+              <div class="player-card" data-player-self-summary-card>
+                <strong>Player Summary</strong>
+                <div class="player-self-summary">
+                  <div class="player-self-summary-section">
+                    <strong>Result Snapshot</strong>
+                    <div>この round の結果と次 round の準備要点を表示します。</div>
+                  </div>
+                </div>
+              </div>
+              <div class="player-card" data-player-phase-notes-card>
+                <strong>Phase Notes</strong>
+                <div>result を読み終えたら次の prep に進みます。</div>
+              </div>
             </div>
           </div>
         </section>

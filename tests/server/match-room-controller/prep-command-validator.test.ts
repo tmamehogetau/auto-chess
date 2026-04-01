@@ -25,6 +25,7 @@ describe("PrepCommandValidator", () => {
     getBenchUnits: vi.fn().mockReturnValue([]),
     getBoardPlacements: vi.fn().mockReturnValue([]),
     getBoardUnitCount: vi.fn().mockReturnValue(4),
+    getMaxBoardUnitCount: vi.fn().mockReturnValue(8),
     getBossShopOffers: vi.fn().mockReturnValue([]),
     getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     isBossPlayer: vi.fn().mockReturnValue(false),
@@ -303,6 +304,34 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
+    test("raid benchToBoardCell rejects a third main unit", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue([{ unitType: "vanguard" }]),
+        getBoardUnitCount: vi.fn().mockReturnValue(2),
+        getMaxBoardUnitCount: vi.fn().mockReturnValue(2),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        benchToBoardCell: { benchIndex: 0, cell: 3 },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("boss benchToBoardCell rejects a seventh main unit", () => {
+      const deps = createDependencies({
+        getBenchUnits: vi.fn().mockReturnValue([{ unitType: "vanguard" }]),
+        getBoardUnitCount: vi.fn().mockReturnValue(6),
+        getMaxBoardUnitCount: vi.fn().mockReturnValue(6),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        benchToBoardCell: { benchIndex: 0, cell: 3 },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
     test("benchToBoardCell with duplicated cell returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         getBoardPlacements: vi.fn().mockReturnValue([
@@ -359,7 +388,7 @@ describe("PrepCommandValidator", () => {
 
     test("shopBuySlotIndex with full bench returns BENCH_FULL", () => {
       const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "ranger" })),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(8).fill({ unitType: "ranger" })),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
@@ -370,7 +399,7 @@ describe("PrepCommandValidator", () => {
     test("shopBuySlotIndex allows a full-bench buy when a matching attached sub unit can merge", () => {
       const deps = createDependencies({
         getBenchUnits: vi.fn().mockReturnValue(
-          Array.from({ length: 9 }, (_, index) => ({
+          Array.from({ length: 8 }, (_, index) => ({
             unitType: "vanguard",
             unitId: `bench-${index}`,
             cost: 1,
@@ -602,7 +631,7 @@ describe("PrepCommandValidator", () => {
         getBossShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", rarity: 1, cost: 0 },
         ]),
-        getBenchUnits: vi.fn().mockReturnValue(new Array(9).fill({ unitType: "ranger" })),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(8).fill({ unitType: "ranger" })),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { bossShopBuySlotIndex: 0 }, deps);
@@ -617,7 +646,7 @@ describe("PrepCommandValidator", () => {
           { unitType: "mage", unitId: "patchouli", rarity: 2, cost: 2, purchased: false },
         ]),
         getBenchUnits: vi.fn().mockReturnValue(
-          Array.from({ length: 9 }, (_, index) => ({
+          Array.from({ length: 8 }, (_, index) => ({
             unitType: "vanguard",
             unitId: `bench-${index}`,
             cost: 1,
@@ -709,7 +738,9 @@ describe("PrepCommandValidator", () => {
     });
 
     test("boardUnitCount only returns null (valid)", () => {
-      const deps = createDependencies();
+      const deps = createDependencies({
+        getMaxBoardUnitCount: vi.fn().mockReturnValue(6),
+      });
 
       const result = validatePrepCommand("p1", 1, 1000, { boardUnitCount: 6 }, deps);
 
@@ -760,7 +791,7 @@ describe("PrepCommandValidator", () => {
     test("valid benchToBoardCell returns null with correct context", () => {
       const deps = createDependencies({
         getBenchUnits: vi.fn().mockReturnValue([{ unitType: "vanguard" }]),
-        getBoardUnitCount: vi.fn().mockReturnValue(4),
+        getBoardUnitCount: vi.fn().mockReturnValue(1),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, {
@@ -812,7 +843,7 @@ describe("PrepCommandValidator", () => {
 
     test("boardToBenchCell returns BENCH_FULL when bench is full", () => {
       const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue(Array.from({ length: 9 }, () => ({ unitType: "mage" }))),
+        getBenchUnits: vi.fn().mockReturnValue(Array.from({ length: 8 }, () => ({ unitType: "mage" }))),
         getBoardPlacements: vi.fn().mockReturnValue([
           { cell: 2, unitType: "vanguard" },
         ]),
@@ -901,6 +932,42 @@ describe("PrepCommandValidator", () => {
       }, deps);
 
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("raid boardPlacements rejects a third main unit", () => {
+      const deps = createDependencies({
+        getMaxBoardUnitCount: vi.fn().mockReturnValue(2),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardPlacements: [
+          { cell: 18, unitType: "vanguard" },
+          { cell: 19, unitType: "mage" },
+          { cell: 20, unitType: "ranger" },
+        ],
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "TOO_MANY_UNITS" });
+    });
+
+    test("boss boardPlacements rejects a seventh main unit", () => {
+      const deps = createDependencies({
+        getMaxBoardUnitCount: vi.fn().mockReturnValue(6),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardPlacements: [
+          { cell: 0, unitType: "vanguard" },
+          { cell: 1, unitType: "mage" },
+          { cell: 2, unitType: "ranger" },
+          { cell: 3, unitType: "assassin" },
+          { cell: 4, unitType: "vanguard" },
+          { cell: 5, unitType: "mage" },
+          { cell: 6, unitType: "ranger" },
+        ],
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "TOO_MANY_UNITS" });
     });
   });
 });

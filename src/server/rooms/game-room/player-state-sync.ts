@@ -279,6 +279,11 @@ export function syncPlayerStateFromController(
     playerState.benchUnits.push(benchUnit);
   }
 
+  clearArraySchema(playerState.benchUnitIds);
+  for (const benchUnitId of controllerStatus.benchUnitIds ?? []) {
+    playerState.benchUnitIds.push(benchUnitId);
+  }
+
   clearArraySchema(playerState.benchDisplayNames);
   for (const benchDisplayName of controllerStatus.benchDisplayNames ?? []) {
     playerState.benchDisplayNames.push(benchDisplayName);
@@ -413,6 +418,11 @@ export function syncPlayerStateFromCommandResult(
   clearArraySchema(playerState.benchUnits);
   for (const benchUnit of cmdResult.benchUnits) {
     playerState.benchUnits.push(benchUnit);
+  }
+
+  clearArraySchema(playerState.benchUnitIds);
+  for (const benchUnitId of cmdResult.benchUnitIds ?? []) {
+    playerState.benchUnitIds.push(benchUnitId);
   }
 
   clearArraySchema(playerState.benchDisplayNames);

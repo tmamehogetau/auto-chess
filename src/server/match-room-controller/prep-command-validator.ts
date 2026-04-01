@@ -3,6 +3,9 @@ import { normalizeBoardPlacements } from "../combat/unit-effects";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
+import {
+  MAX_BENCH_SIZE,
+} from "../player-slot-limits";
 
 // Constants from the controller
 const XP_PURCHASE_COST = 4;
@@ -11,7 +14,6 @@ const SHOP_REFRESH_COST = 2;
 const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
-const MAX_BENCH_SIZE = 9;
 const TOUHOU_COST_TIERS: readonly [1, 2, 3, 4, 5] = [1, 2, 3, 4, 5];
 const SHARED_BOARD_MIN_INDEX = 0;
 const SHARED_BOARD_MAX_INDEX = DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height - 1;
@@ -70,6 +72,7 @@ export interface ValidationDependencies {
   getBenchUnits: (playerId: string) => BenchUnit[];
   getBoardPlacements: (playerId: string) => BoardUnitPlacement[];
   getBoardUnitCount: (playerId: string) => number;
+  getMaxBoardUnitCount: (playerId: string) => number;
   getBossShopOffers: (playerId: string) => ShopOffer[];
   getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   isBossPlayer: (playerId: string) => boolean;
@@ -96,6 +99,10 @@ export type ValidationInternalRejectReason = "SERVER_INVARIANT_BREACH";
 
 export interface ValidationInternalResult {
   rejectReason?: ValidationInternalRejectReason;
+}
+
+function getMaxBoardUnitCount(playerId: string, deps: ValidationDependencies): number {
+  return deps.getMaxBoardUnitCount(playerId);
 }
 
 function matchesUpgradeTrack(
@@ -134,7 +141,7 @@ export function validatePrepCommand(
   }
 
   // Payload validation
-  const payloadValidation = validatePayload(payload, deps);
+  const payloadValidation = validatePayload(playerId, payload, deps);
   if (payloadValidation) {
     return payloadValidation;
   }
@@ -201,6 +208,7 @@ function validateBasicState(
 }
 
 function validatePayload(
+  playerId: string,
   payload: CommandPayload,
   deps: ValidationDependencies,
 ): import("../../shared/room-messages").CommandResult | null {
@@ -210,7 +218,12 @@ function validatePayload(
 
   // boardUnitCount validation
   if (payload.boardUnitCount !== undefined) {
-    if (!Number.isInteger(payload.boardUnitCount) || payload.boardUnitCount < 0 || payload.boardUnitCount > 8) {
+    const maxBoardUnitCount = getMaxBoardUnitCount(playerId, deps);
+    if (
+      !Number.isInteger(payload.boardUnitCount)
+      || payload.boardUnitCount < 0
+      || payload.boardUnitCount > maxBoardUnitCount
+    ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
@@ -228,8 +241,8 @@ function validatePayload(
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
-    // Check for too many units (max 8)
-    if (validationResult.normalized.length > 8) {
+    const maxBoardUnitCount = getMaxBoardUnitCount(playerId, deps);
+    if (validationResult.normalized.length > maxBoardUnitCount) {
       return { accepted: false, code: "TOO_MANY_UNITS" };
     }
   }
@@ -433,7 +446,7 @@ function validatePreconditions(
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
     } else {
-      if (currentBoardUnitCount >= 8 && !occupiedPlacement) {
+      if (currentBoardUnitCount >= getMaxBoardUnitCount(playerId, deps) && !occupiedPlacement) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
 

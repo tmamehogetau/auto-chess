@@ -601,7 +601,6 @@ describeGameRoomIntegration("GameRoom integration / shared board", (context) => 
       expect(helperResults).toEqual(expect.arrayContaining([{ accepted: true }]));
     });
 
-
     test("shared board hero move updates hero placement outside the old raid footprint", async () => {
       const sharedBoardRoom = await getTestServer().createRoom<SharedBoardRoom>("shared_board");
       const { serverRoom, clients } = await connectBossRoleSelectionRoom(getTestServer(), {

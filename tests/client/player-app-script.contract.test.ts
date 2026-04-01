@@ -26,8 +26,15 @@ describe("player-app script contract", () => {
     expect(source.includes("SERVER_MESSAGE_TYPES.ROUND_STATE")).toBe(true);
     expect(source.includes("data-player-room-code-input")).toBe(true);
     expect(source.includes("roomCodeInput")).toBe(true);
+    expect(source.includes("data-player-lobby-ready-copy")).toBe(true);
+    expect(source.includes("data-player-lobby-ready-button")).toBe(true);
+    expect(source.includes("data-player-hud-round-phase")).toBe(true);
+    expect(source.includes("data-player-hud-timer")).toBe(true);
+    expect(source.includes("data-player-hud-spell")).toBe(true);
+    expect(source.includes("data-player-hud-flow")).toBe(true);
+    expect(source.includes("data-player-phase-notes-copy")).toBe(true);
     expect(source.includes("connectButton?.addEventListener(\"click\"")).toBe(true);
-    expect(source.includes("readyButton?.addEventListener(\"click\"")).toBe(true);
+    expect(source.includes("readyButtons.forEach((button) => {")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.READY")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
@@ -78,11 +85,14 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("function resolvePlayerPhaseView(")).toBe(true);
+    expect(source.includes("canUseReadyAction(")).toBe(true);
     expect(source.includes("function syncPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function triggerPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function clearPlayerBattleStartSweep(")).toBe(true);
     expect(source.includes("function resolveRequestedRoomCode(")).toBe(true);
     expect(source.includes("function resolveSharedBoardRoomId(")).toBe(true);
+    expect(source.includes("function updatePhaseNotes(")).toBe(true);
+    expect(source.includes("function renderTopHud(")).toBe(true);
     expect(source.includes('const prepPhaseElement = phaseSections.get("prep");')).toBe(true);
     expect(source.includes('phaseSections.get("result")')).toBe(false);
     expect(source.includes('lobbyStage === "preference"')).toBe(true);
@@ -92,6 +102,18 @@ describe("player-app script contract", () => {
     expect(source.includes('phase === "Settle"')).toBe(true);
     expect(source.includes('phase === "Elimination"')).toBe(true);
     expect(source.includes('data-player-battle-start-banner')).toBe(true);
+    expect(source.includes("setInterval(")).toBe(true);
+    expect(source.includes("function updateReadyCopy(")).toBe(true);
+    expect(source.includes("const previousPlayerFacingPhase = latestPlayerFacingPhase;")).toBe(true);
+    expect(source.includes("showPlayerPhase(resolvePlayerPhaseView(latestState));")).toBe(true);
+  });
+
+  test("page unload 時に deadline refresh と battle sweep を掃除する", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes('window.addEventListener("beforeunload", () => {')).toBe(true);
+    expect(source.includes("stopDeadlineRefreshLoop();")).toBe(true);
+    expect(source.includes("clearPlayerBattleStartSweep();")).toBe(true);
   });
 
   test("connect failure は tester が再試行できる文面へ戻す", () => {
@@ -110,6 +132,22 @@ describe("player-app script contract", () => {
     expect(source.includes("function nextCmdSeq()")).toBe(true);
     expect(source.includes("cmdSeq: nextCmdSeq()")).toBe(true);
     expect(source.includes("cmdSeq: Date.now()")).toBe(false);
+  });
+
+  test("bench deploy captures shared-board clicks before cell handlers stop propagation", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("if (selectedBenchIndex !== null && !isSubSlotTarget) {")).toBe(true);
+    expect(source.includes("event.stopPropagation();")).toBe(true);
+    expect(source.includes("event.preventDefault();")).toBe(true);
+    expect(source.includes("}, true);")).toBe(true);
+  });
+
+  test("bench deploy capture lets sub-slot clicks reach the dedicated sub handler", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes('const isSubSlotTarget = target.closest("[data-shared-board-sub-slot]");')).toBe(true);
+    expect(source.includes("if (selectedBenchIndex !== null && !isSubSlotTarget) {")).toBe(true);
   });
 
   test("player app wires room code and dedicated shared-board room binding", () => {

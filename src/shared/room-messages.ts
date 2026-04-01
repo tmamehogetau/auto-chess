@@ -31,7 +31,8 @@ export type PlayerFacingPhase =
   | "selection"
   | "purchase"
   | "deploy"
-  | "battle";
+  | "battle"
+  | "result";
 
 export interface ReadyMessage {
   ready?: boolean;
@@ -204,6 +205,7 @@ export interface PlayerMatchStatus {
   shopOffers: ShopOfferMessage[];
   shopLocked: boolean;
   benchUnits: string[];
+  benchUnitIds?: string[];
   benchDisplayNames?: string[];
   boardUnits: string[];
   boardSubUnits?: string[];
@@ -242,11 +244,14 @@ export interface BattleTimelineBoardConfig {
 
 export interface BattleStartUnitSnapshot {
   battleUnitId: string;
+  sourceUnitId?: string;
   side: BattleTimelineSide;
   x: number;
   y: number;
   currentHp: number;
   maxHp: number;
+  displayName?: string;
+  portraitKey?: string;
 }
 
 export interface BattleKeyframeUnitState {

@@ -10,6 +10,9 @@ import type { MatchupOutcome } from "../../../src/server/match-room-controller/b
 
 type BattleResultStub = {
   survivors: number;
+  won?: boolean;
+  opponentId?: string;
+  playerId?: string;
 };
 
 type Harness = {
@@ -243,5 +246,53 @@ describe("BattleOrchestrator", () => {
 
     expect(harness.orchestrator?.shouldEndAfterElimination(12)).toBe(true);
     expect(harness.finalRankingOverride).toEqual(["raid-a", "raid-b", "boss"]);
+  });
+
+  it("does not end a raid match on the round 6 recovery elimination even when all raiders are temporarily out", () => {
+    const harness = createHarness(["boss", "raid-a", "raid-b", "raid-c"], {
+      raidBossPlayerId: "boss",
+      phaseResult: "failed",
+    });
+    harness.state.roundIndex = 6;
+    harness.state.consumeLife("raid-a", 2);
+    harness.state.consumeLife("raid-b", 2);
+    harness.state.consumeLife("raid-c", 2);
+    harness.state.phase = "Settle";
+    harness.state.transitionTo("Elimination");
+
+    expect(harness.state.alivePlayerIds).toEqual(["boss"]);
+    expect(harness.orchestrator?.shouldEndAfterElimination(12)).toBe(false);
+    expect(harness.finalRankingOverride).toBeNull();
+  });
+
+  it("ignores stored results when opponent ids are not reciprocal", () => {
+    const harness = createHarness(["p1", "p2"]);
+    harness.currentRoundPairings = [
+      { leftPlayerId: "p1", rightPlayerId: "p2", ghostSourcePlayerId: null },
+    ];
+    harness.battleResultsByPlayer.set("p1", {
+      survivors: 3,
+      won: true,
+      opponentId: "ghost",
+    });
+    harness.battleResultsByPlayer.set("p2", {
+      survivors: 0,
+      won: false,
+      opponentId: "p1",
+    });
+    harness.outcomeResolver = () => ({
+      winnerId: null,
+      loserId: null,
+      winnerUnitCount: 0,
+      loserUnitCount: 0,
+      isDraw: true,
+    });
+
+    harness.orchestrator?.resolveMissingRoundDamage();
+
+    expect(Array.from(harness.pendingRoundDamageByPlayer.entries())).toEqual([
+      ["p1", 0],
+      ["p2", 0],
+    ]);
   });
 });

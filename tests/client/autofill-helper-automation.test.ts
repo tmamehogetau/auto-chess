@@ -391,7 +391,7 @@ describe("autofill helper automation", () => {
     })).toEqual([]);
   });
 
-  test("prep phase raid helper buys one reserve unit when its deploy lane is full and bench is empty", () => {
+  test("prep phase raid helper readies instead of buying reserve units when its deploy lane is full", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -409,8 +409,8 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopBuySlotIndex: 0 },
-        type: "prep_command",
+        payload: { ready: true },
+        type: "ready",
       },
     ]);
   });

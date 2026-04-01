@@ -43,6 +43,7 @@ export function renderPlayerPrepSummary(input: {
   heroUpgradeCopyElement?: HTMLElement | null;
   refreshCopyElement?: HTMLElement | null;
   specialUnitCopyElement?: HTMLElement | null;
+  playerStatsCopyElement?: HTMLElement | null;
   spellCopyElement?: HTMLElement | null;
   synergyCopyElement?: HTMLElement | null;
   benchCopyElement?: HTMLElement | null;
@@ -76,6 +77,7 @@ export function renderPlayerPrepSummary(input: {
   player?: {
     ready?: boolean;
     role?: string;
+    boardUnitCount?: number;
     gold?: number;
     hp?: number;
     remainingLives?: number;
@@ -111,10 +113,12 @@ export function renderPlayerPrepSummary(input: {
       displayName?: string;
     }>;
     benchUnits?: unknown[] | Iterable<unknown>;
+    benchUnitIds?: unknown[] | Iterable<unknown>;
     benchDisplayNames?: unknown[] | Iterable<unknown>;
   } | null;
   sessionId?: string;
   currentPhase?: string;
+  playerFacingPhase?: string;
   selectedBenchIndex?: number | null;
   canSellBench?: boolean;
   canSellBoard?: boolean;
@@ -130,11 +134,15 @@ export function renderPlayerPrepSummary(input: {
   hoverDetail?: {
     kicker?: string;
     title?: string;
+    portraitKey?: string;
+    portraitUrl?: string;
     lines?: string[];
   } | null;
   onHoverDetailChange?: ((detail: {
     kicker?: string;
     title?: string;
+    portraitKey?: string;
+    portraitUrl?: string;
     lines?: string[];
   } | null) => void) | null;
   benchSellButton?: HTMLButtonElement | null;

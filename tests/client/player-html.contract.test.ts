@@ -36,12 +36,12 @@ describe("player.html contract", () => {
       "data-player-status-copy",
       "data-player-room-code-input",
       "data-player-connect-btn",
-      "data-player-room-summary",
       "data-player-room-copy",
-      "data-player-deadline-summary",
-      "data-player-deadline-copy",
       "data-player-participant-summary",
       "data-player-preference-copy",
+      "data-player-lobby-ready-btn",
+      "data-player-lobby-ready-copy",
+      "data-player-lobby-ready-button",
       "data-player-role-summary",
       "data-player-role-options",
       "data-player-boss-pref-on",
@@ -57,18 +57,14 @@ describe("player.html contract", () => {
       "data-player-buy-xp-button",
       "data-player-boss-shop",
       "data-player-boss-shop-slot",
-      "data-player-special-unit-card",
+      "data-player-self-summary-card",
+      "data-player-player-stats-copy",
       "data-player-special-unit-copy",
-      "data-player-spell-card",
-      "data-player-spell-copy",
-      "data-player-synergy-card",
-      "data-player-synergy-copy",
       "data-player-bench",
       "data-player-bench-slot",
       "data-player-bench-sell-button",
       "data-player-board-sell-button",
       "data-player-board-return-button",
-      "data-player-ready-btn",
       "data-player-ready-button",
       "data-player-result-surface",
       "data-player-host-help",
@@ -79,9 +75,10 @@ describe("player.html contract", () => {
     }
 
     expect(lobbySection.includes("data-player-boss-pref-on")).toBe(true);
+    expect(lobbySection.includes("data-player-lobby-ready-button")).toBe(true);
     expect(lobbySection.includes("data-player-ready-button")).toBe(false);
     expect(selectionSection.includes("data-player-boss-pref-on")).toBe(false);
-    expect(prepSection.includes("data-player-ready-button")).toBe(false);
+    expect(prepSection.includes("data-player-ready-button")).toBe(true);
 
     const operatorOnlyAttributes = [
       "data-endpoint-input",
@@ -120,12 +117,11 @@ describe("player.html contract", () => {
   test("ready controls stay outside lobby-only section so prep can still finish from the player shell", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
     const lobbySection = extractPhaseSection(html, "lobby");
-    const shellHeaderMatch = html.match(
-      /<header class="[^"]*\bplayer-shell-header\b[^"]*">[\s\S]*?<\/header>/,
-    );
+    const prepSection = extractPhaseSection(html, "prep");
 
-    expect(shellHeaderMatch?.[0]?.includes("data-player-ready-btn")).toBe(true);
-    expect(shellHeaderMatch?.[0]?.includes("data-player-ready-button")).toBe(true);
+    expect(lobbySection.includes("data-player-lobby-ready-btn")).toBe(true);
+    expect(lobbySection.includes("data-player-lobby-ready-button")).toBe(true);
+    expect(prepSection.includes("data-player-ready-button")).toBe(true);
     expect(lobbySection.includes("data-player-ready-btn")).toBe(false);
   });
 
@@ -174,12 +170,20 @@ describe("player.html contract", () => {
   test("shared phase shell uses 3-column rails and dedicated purchase/deploy surfaces", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
     const prepSection = extractPhaseSection(html, "prep");
+    const resultSection = extractPhaseSection(html, "result");
 
     const requiredAttributes = [
+      "data-player-top-hud",
+      "data-player-hud-round-phase",
+      "data-player-hud-timer",
+      "data-player-hud-spell",
+      "data-player-hud-flow",
       "data-player-phase-shell",
       "data-player-left-rail",
       "data-player-center-rail",
       "data-player-right-rail",
+      "data-player-self-summary-card",
+      "data-player-phase-notes-card",
       "data-player-phase-surface",
       "data-player-purchase-surface",
       "data-player-purchase-shop",
@@ -188,8 +192,55 @@ describe("player.html contract", () => {
     ];
 
     for (const attribute of requiredAttributes) {
-      expect(prepSection.includes(attribute)).toBe(true);
+      expect(html.includes(attribute)).toBe(true);
     }
+
+    expect(resultSection.includes("data-player-phase-shell")).toBe(true);
+    expect(resultSection.includes("data-player-left-rail")).toBe(true);
+    expect(resultSection.includes("data-player-center-rail")).toBe(true);
+    expect(resultSection.includes("data-player-right-rail")).toBe(true);
+    expect(resultSection.includes("data-player-phase-notes-card")).toBe(true);
+  });
+
+  test("prep right rail keeps self summary and bench inside the phase shell instead of the global header", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const prepSection = extractPhaseSection(html, "prep");
+    const shellHeaderMatch = html.match(
+      /<header class="[^"]*\bplayer-shell-header\b[^"]*">[\s\S]*?<\/header>/,
+    );
+
+    expect(prepSection.includes("data-player-room-copy")).toBe(true);
+    expect(prepSection.includes("data-player-ready-copy")).toBe(true);
+    expect(prepSection.includes("data-player-phase-notes-copy")).toBe(true);
+    expect(shellHeaderMatch?.[0]?.includes("data-player-room-copy")).toBe(false);
+    expect(shellHeaderMatch?.[0]?.includes("data-player-ready-copy")).toBe(false);
+  });
+
+  test("prep left detail card fits without scroll and player summary stays compact", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const prepSection = extractPhaseSection(html, "prep");
+
+    expect(html.includes("[data-player-detail-card]")).toBe(true);
+    expect(html.includes("height: 332px;")).toBe(true);
+    expect(html.includes("overflow: hidden;")).toBe(true);
+    expect(prepSection.includes("data-player-deadline-summary")).toBe(false);
+    expect(prepSection.includes("data-player-spell-copy")).toBe(false);
+    expect(prepSection.includes("data-player-ready-btn")).toBe(true);
+    expect(prepSection.includes("data-player-room-summary")).toBe(false);
+    expect(prepSection.includes("data-player-synergy-copy")).toBe(false);
+    expect(prepSection.includes("Gold、HP、残機、成長状況")).toBe(false);
+    expect(prepSection.includes("Placement")).toBe(true);
+    expect(prepSection.includes("State")).toBe(true);
+  });
+
+  test("bench keeps a dedicated two-column grid and non-wrapping slot labels", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    expect(html.includes("[data-player-bench-grid].player-bench-grid-two-column")).toBe(true);
+    expect(html.includes("grid-template-columns: repeat(2, minmax(0, 1fr));")).toBe(true);
+    expect(html.includes("grid-auto-flow: row;")).toBe(true);
+    expect(html.includes("flex-wrap: nowrap;")).toBe(true);
+    expect(html.includes("word-break: keep-all;")).toBe(true);
   });
 
   test("purchase phase shop is split into four named vertical sections", () => {
@@ -212,6 +263,9 @@ describe("player.html contract", () => {
     expect(prepSection.includes(">共通ユニット<")).toBe(true);
     expect(prepSection.includes(">専用ユニット<")).toBe(true);
     expect(prepSection.includes(">主人公強化<")).toBe(true);
+    expect(prepSection.includes(">Buy XP<")).toBe(false);
+    expect(prepSection.includes("data-player-buy-xp-button")).toBe(true);
+    expect(prepSection.includes(">強化 +1 (4G)<")).toBe(true);
     expect(prepSection.includes(">リロード<")).toBe(true);
   });
 
@@ -222,5 +276,14 @@ describe("player.html contract", () => {
     expect(bannerCount).toBe(1);
     expect(extractPhaseSection(html, "prep").includes("data-player-battle-start-banner")).toBe(true);
     expect(extractPhaseSection(html, "result").includes("data-player-battle-start-banner")).toBe(false);
+  });
+
+  test("bench uses 8 visible slots in the player shell", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const benchSlotCount = (html.match(/data-player-bench-slot="/g) ?? []).length;
+
+    expect(benchSlotCount).toBe(8);
+    expect(html.includes('data-player-bench-slot="7"')).toBe(true);
+    expect(html.includes('data-player-bench-slot="8"')).toBe(false);
   });
 });

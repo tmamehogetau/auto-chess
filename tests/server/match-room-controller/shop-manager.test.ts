@@ -38,6 +38,7 @@ function createHarness(options?: {
   rosterFlags?: FeatureFlags;
   enableSharedPool?: boolean;
   enableBossExclusiveShop?: boolean;
+  isBossPlayer?: boolean;
   initialOffers?: ShopManagerShopOffer[];
   bossOffers?: ShopManagerShopOffer[];
   replacementOffer?: ShopManagerShopOffer;
@@ -86,7 +87,13 @@ function createHarness(options?: {
     sharedPool,
     rosterFlags,
     initialGold: 15,
-    maxBenchSize: 9,
+    maxBenchSize: 8,
+    getMaxBoardUnitCount: (playerId: string) => {
+      if (playerId !== "p1") {
+        return 8;
+      }
+      return options?.isBossPlayer ? 6 : 2;
+    },
   };
 
   return {
@@ -179,7 +186,7 @@ describe("ShopManager", () => {
   });
 
   it("does not mutate shop state when a regular shop buy would overflow a full bench", () => {
-    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+    const fullBench = Array.from({ length: 8 }, (_, index) => ({
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
@@ -207,7 +214,7 @@ describe("ShopManager", () => {
   });
 
   it("does not mutate boss shop state when a boss buy would overflow a full bench", () => {
-    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+    const fullBench = Array.from({ length: 8 }, (_, index) => ({
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
@@ -229,7 +236,7 @@ describe("ShopManager", () => {
   });
 
   it("merges a purchased unit into an attached sub unit even when the bench is full", () => {
-    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+    const fullBench = Array.from({ length: 8 }, (_, index) => ({
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
@@ -262,7 +269,7 @@ describe("ShopManager", () => {
     manager.buyShopOfferBySlot("p1", 0);
 
     expect(deps.shopPurchaseCountByPlayer.get("p1")).toBe(1);
-    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(9);
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(8);
     expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([{
       cell: 3,
       unitType: "vanguard",
@@ -278,7 +285,7 @@ describe("ShopManager", () => {
   });
 
   it("merges a boss-shop purchase into an existing board unit even when the bench is full", () => {
-    const fullBench = Array.from({ length: 9 }, (_, index) => ({
+    const fullBench = Array.from({ length: 8 }, (_, index) => ({
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
@@ -307,7 +314,7 @@ describe("ShopManager", () => {
 
     manager.buyBossShopOffer("p1", 0);
 
-    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(9);
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(8);
     expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([{
       cell: 1,
       unitType: "assassin",
@@ -319,6 +326,46 @@ describe("ShopManager", () => {
     expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
       { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2, purchased: true },
     ]);
+  });
+
+  it("prevents a raider from deploying a third main unit onto an empty cell", () => {
+    const { manager, deps } = createHarness({
+      isBossPlayer: false,
+      boardPlacements: [
+        { cell: 18, unitType: "vanguard", sellValue: 1, unitCount: 1 },
+        { cell: 19, unitType: "mage", sellValue: 2, unitCount: 1 },
+      ],
+      benchUnits: [
+        { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+      ],
+    });
+
+    manager.deployBenchUnitToBoard("p1", 0, 20);
+
+    expect(deps.boardPlacementsByPlayer.get("p1")).toHaveLength(2);
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(1);
+  });
+
+  it("prevents the boss from deploying a seventh main unit onto an empty cell", () => {
+    const { manager, deps } = createHarness({
+      isBossPlayer: true,
+      boardPlacements: [
+        { cell: 0, unitType: "vanguard", sellValue: 1, unitCount: 1 },
+        { cell: 1, unitType: "mage", sellValue: 2, unitCount: 1 },
+        { cell: 2, unitType: "ranger", sellValue: 1, unitCount: 1 },
+        { cell: 3, unitType: "assassin", sellValue: 1, unitCount: 1 },
+        { cell: 4, unitType: "vanguard", sellValue: 1, unitCount: 1 },
+        { cell: 5, unitType: "mage", sellValue: 2, unitCount: 1 },
+      ],
+      benchUnits: [
+        { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+      ],
+    });
+
+    manager.deployBenchUnitToBoard("p1", 0, 6);
+
+    expect(deps.boardPlacementsByPlayer.get("p1")).toHaveLength(6);
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(1);
   });
 
   it("sells an attached host by refunding both the host and its sub unit", () => {

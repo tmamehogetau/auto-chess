@@ -190,6 +190,7 @@ describe("PlayerStateQueryService", () => {
       level: 2,
       shopLocked: true,
       benchUnits: ["mage:2"],
+      benchUnitIds: ["mage_a"],
       benchDisplayNames: ["mage_a"],
       boardUnits: ["0:vanguard", "1:mage:2"],
       ownedUnits: {

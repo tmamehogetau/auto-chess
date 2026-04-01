@@ -101,6 +101,11 @@ import {
   COMBAT_CELL_MIN_INDEX,
 } from "../shared/board-geometry";
 import { DEFAULT_SHARED_BOARD_CONFIG, sharedBoardCoordinateToIndex } from "../shared/shared-board-config";
+import {
+  getMaxBoardUnitsForPlayerRole,
+  MAX_BENCH_SIZE,
+  MAX_STANDARD_BOARD_UNITS,
+} from "./player-slot-limits";
 
 function shouldEmitVerboseBattleLogs(): boolean {
   return process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true";
@@ -298,6 +303,7 @@ interface BattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  phaseDamageToBoss?: number;
   timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
@@ -316,6 +322,7 @@ export interface MatchRoomControllerTestBattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  phaseDamageToBoss?: number;
   timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
@@ -451,6 +458,9 @@ export class MatchRoomController {
   private readonly battleOrchestrator: BattleOrchestrator<BattleResult>;
   private readonly playerStateQuery: PlayerStateQueryService;
   private readonly raidRecoveryRoundIndex: number;
+  private activeSharedBattleReplay: SharedBattleReplayMessage | null;
+  private activeBattleStartedAtMs: number | null;
+  private activeBattleCompletionAtMs: number | null;
 
   private pendingRumorInfluence: {
     roundIndex: number;
@@ -506,6 +516,9 @@ export class MatchRoomController {
     this.battleParticipantIds = [];
     this.currentRoundPairings = [];
     this.eliminatedFromBottom = [];
+    this.activeSharedBattleReplay = null;
+    this.activeBattleStartedAtMs = null;
+    this.activeBattleCompletionAtMs = null;
     this.setId = options.setId ?? DEFAULT_UNIT_EFFECT_SET_ID;
     const resolvedFeatureFlags: FeatureFlags = {
       ...FeatureFlagService.getInstance().getFlags(),
@@ -554,7 +567,7 @@ export class MatchRoomController {
 
     for (const playerId of playerIds) {
       this.lastCmdSeqByPlayer.set(playerId, 0);
-      this.boardUnitCountByPlayer.set(playerId, 4);
+      this.boardUnitCountByPlayer.set(playerId, 0);
       this.boardPlacementsByPlayer.set(playerId, []);
       this.goldByPlayer.set(playerId, INITIAL_GOLD);
       this.xpByPlayer.set(playerId, INITIAL_XP);
@@ -658,7 +671,8 @@ export class MatchRoomController {
       sharedPool: this.sharedPool,
       rosterFlags: this.rosterFlags,
       initialGold: INITIAL_GOLD,
-      maxBenchSize: 9,
+      maxBenchSize: MAX_BENCH_SIZE,
+      getMaxBoardUnitCount: (playerId) => this.resolveBoardUnitLimit(playerId),
     });
     this.battleOrchestrator = new BattleOrchestrator<BattleResult>({
       ensureStarted: () => this.ensureStarted(),
@@ -686,12 +700,13 @@ export class MatchRoomController {
       settleDurationMs: this.settleDurationMs,
       eliminationDurationMs: this.eliminationDurationMs,
       resolvePhaseHpTarget: (roundIndex) => this.resolvePhaseHpTarget(roundIndex),
-      onPrepToBattle: () => {
+      onPrepToBattle: (nowMs) => {
         this.activateFinalRoundShields();
         this.captureBattleStartHp();
         this.captureBattleInputSnapshot();
         this.declareSpell();
         this.applyPreBattleSpellEffect();
+        this.prepareBattleResolutionForCurrentRound(nowMs);
       },
       onBattleToSettle: () => {
         this.battleOrchestrator.resolveMissingRoundDamage();
@@ -708,6 +723,9 @@ export class MatchRoomController {
       },
       onEliminationToPrep: () => this.resetForNextPrepRound(),
       shouldEndAfterElimination: (maxRounds) => this.battleOrchestrator.shouldEndAfterElimination(maxRounds),
+      resolveBattleDeadlineAtMs: (nowMs, roundIndex) => this.resolveBattleDeadlineAtMs(nowMs, roundIndex),
+      shouldAdvanceBattlePhase: ({ nowMs, roundIndex, battleDeadlineAtMs }) =>
+        this.shouldAdvanceBattlePhase(nowMs, roundIndex, battleDeadlineAtMs),
       logRoundTransition: (phase, roundIndex, nowMs) =>
         this.matchLogger?.logRoundTransition(phase, roundIndex, nowMs),
     });
@@ -743,6 +761,7 @@ export class MatchRoomController {
       getEliminatedFromBottom: () => this.eliminatedFromBottom,
       getCurrentRoundPairings: () => this.currentRoundPairings,
       getCurrentPhaseProgress: () => this.phaseOrchestrator.getPhaseProgress(),
+      getActiveSharedBattleReplay: () => this.activeSharedBattleReplay,
       wantsBossByPlayer: this.wantsBossByPlayer,
       selectedBossByPlayer: this.selectedBossByPlayer,
       roleByPlayer: this.roleByPlayer,
@@ -838,29 +857,29 @@ export class MatchRoomController {
     return this.playerStateQuery.getPhaseDeadlineAtMs();
   }
 
-  public getPlayerFacingPhaseState(nowMs: number = Date.now()): PlayerFacingPhaseState {
-    switch (this.phase) {
-      case "Prep": {
-        const prepDeadlineAtMs = this.prepDeadlineAtMs ?? 0;
-        const deployDurationMs = Math.floor(this.prepDurationMs / 2);
+    public getPlayerFacingPhaseState(nowMs: number = Date.now()): PlayerFacingPhaseState {
+      switch (this.phase) {
+        case "Prep": {
+          const prepDeadlineAtMs = this.prepDeadlineAtMs ?? 0;
+          const deployDurationMs = Math.floor(this.prepDurationMs / 2);
         const purchaseDeadlineAtMs = Math.max(0, prepDeadlineAtMs - deployDurationMs);
         const phase = nowMs < purchaseDeadlineAtMs ? "purchase" : "deploy";
         const deadlineAtMs = phase === "purchase" ? purchaseDeadlineAtMs : prepDeadlineAtMs;
-        return { phase, deadlineAtMs };
+          return { phase, deadlineAtMs };
+        }
+        case "Battle":
+          return { phase: "battle", deadlineAtMs: this.battleDeadlineAtMs ?? 0 };
+        case "Settle":
+          return { phase: "result", deadlineAtMs: this.settleDeadlineAtMs ?? 0 };
+        case "Elimination":
+          return { phase: "result", deadlineAtMs: this.eliminationDeadlineAtMs ?? 0 };
+        case "End":
+          return { phase: "result", deadlineAtMs: 0 };
+        case "Waiting":
+        default:
+          return { phase: "lobby", deadlineAtMs: 0 };
       }
-      case "Battle":
-        return { phase: "battle", deadlineAtMs: this.battleDeadlineAtMs ?? 0 };
-      case "Settle":
-        return { phase: "battle", deadlineAtMs: this.settleDeadlineAtMs ?? 0 };
-      case "Elimination":
-        return { phase: "battle", deadlineAtMs: this.eliminationDeadlineAtMs ?? 0 };
-      case "End":
-        return { phase: "battle", deadlineAtMs: 0 };
-      case "Waiting":
-      default:
-        return { phase: "lobby", deadlineAtMs: 0 };
     }
-  }
 
   /**
    * ゲーム状態を取得（SharedBoardBridge用）
@@ -902,9 +921,9 @@ export class MatchRoomController {
 
       const normalizedPlacements = validationResult.normalized;
 
-      // 配置上限チェック（8枠）
-      if (normalizedPlacements.length > 8) {
-        return { success: false, code: "TOO_MANY_UNITS", error: "Too many units (max 8)" };
+      const maxBoardUnitCount = this.resolveBoardUnitLimit(playerId);
+      if (normalizedPlacements.length > maxBoardUnitCount) {
+        return { success: false, code: "TOO_MANY_UNITS", error: `Too many units (max ${maxBoardUnitCount})` };
       }
 
       // 配置を適用
@@ -1167,7 +1186,11 @@ export class MatchRoomController {
   public setPlayerBoardUnitCount(playerId: string, nextUnitCount: number): void {
     this.ensureKnownPlayer(playerId);
 
-    if (!Number.isInteger(nextUnitCount) || nextUnitCount < 0 || nextUnitCount > 8) {
+    if (
+      !Number.isInteger(nextUnitCount)
+      || nextUnitCount < 0
+      || nextUnitCount > this.resolveBoardUnitLimit(playerId)
+    ) {
       throw new Error(`Invalid unit count: ${playerId}`);
     }
 
@@ -1403,6 +1426,7 @@ export class MatchRoomController {
   }
 
   private resetForNextPrepRound(): void {
+    this.resetActiveBattleReplayState();
     this.resetBoardForPurchasePhase();
     this.pendingRoundDamageByPlayer.clear();
     this.pendingPhaseDamageForTest = null;
@@ -1542,6 +1566,7 @@ export class MatchRoomController {
       getBenchUnits: (id) => this.benchUnitsByPlayer.get(id) ?? [],
       getBoardPlacements: (id) => this.boardPlacementsByPlayer.get(id) ?? [],
       getBoardUnitCount: (id) => this.resolveUnitCount(id),
+      getMaxBoardUnitCount: (id) => this.resolveBoardUnitLimit(id),
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       isBossPlayer: (id) => this.isBossPlayer(id),
@@ -1562,7 +1587,7 @@ export class MatchRoomController {
 
   private createPrepExecutionDependencies(): ExecutionDependencies {
     return {
-      setBoardUnitCount: (id, count) => this.boardUnitCountByPlayer.set(id, count),
+      setBoardUnitCount: (id, count) => this.setPlayerBoardUnitCount(id, count),
       setBoardPlacements: (id, placements) => this.setBoardPlacementsForPlayer(id, placements),
       setShopLock: (id, locked) => this.shopLockedByPlayer.set(id, locked),
       setLastCmdSeq: (id, seq) => this.lastCmdSeqByPlayer.set(id, seq),
@@ -1957,9 +1982,13 @@ export class MatchRoomController {
 
   private capturePhaseProgressFromPendingDamage(): void {
     const state = this.ensureStarted();
+    const manualOrLegacyRaidDamage = this.pendingRoundDamageByPlayer.get(state.bossPlayerId ?? "") ?? 0;
+    const storedRaidPhaseDamage = this.isRaidMode()
+      ? this.battleResultsByPlayer.get(state.bossPlayerId ?? "")?.phaseDamageToBoss
+      : undefined;
     const totalDamage = this.pendingPhaseDamageForTest
       ?? (this.isRaidMode()
-        ? this.pendingRoundDamageByPlayer.get(state.bossPlayerId ?? "") ?? 0
+        ? Math.max(storedRaidPhaseDamage ?? 0, manualOrLegacyRaidDamage)
         : Array.from(this.pendingRoundDamageByPlayer.values()).reduce(
           (sum, damageValue) => sum + damageValue,
           0,
@@ -2083,8 +2112,124 @@ export class MatchRoomController {
     return this.enableBossExclusiveShop || this.featureFlags.enablePhaseExpansion ? 12 : 8;
   }
 
+  private isFinalBattleRound(roundIndex: number): boolean {
+    return this.isRaidMode() && roundIndex >= this.resolveMaxRounds();
+  }
+
+  private resolveBattleDeadlineAtMs(nowMs: number, roundIndex: number): number | null {
+    if (this.isFinalBattleRound(roundIndex)) {
+      return null;
+    }
+
+    return nowMs + this.battleDurationMs;
+  }
+
+  private shouldAdvanceBattlePhase(
+    nowMs: number,
+    roundIndex: number,
+    battleDeadlineAtMs: number | null,
+  ): boolean {
+    const completionAtMs = this.resolveCurrentBattleCompletionAtMs();
+    if (completionAtMs !== null && nowMs >= completionAtMs) {
+      return true;
+    }
+
+    if (this.isFinalBattleRound(roundIndex)) {
+      return completionAtMs === null && this.isBattleResolutionReady();
+    }
+
+    return battleDeadlineAtMs !== null && nowMs >= battleDeadlineAtMs;
+  }
+
+  private resetActiveBattleReplayState(): void {
+    this.activeSharedBattleReplay = null;
+    this.activeBattleStartedAtMs = null;
+    this.activeBattleCompletionAtMs = null;
+  }
+
+  private resolveCurrentBattleCompletionAtMs(): number | null {
+    if (this.activeBattleStartedAtMs === null) {
+      return null;
+    }
+
+    const maxTimelineAtMs = this.resolveCurrentBattleTimelineMaxAtMs();
+    if (maxTimelineAtMs === null) {
+      return null;
+    }
+
+    return this.activeBattleStartedAtMs + maxTimelineAtMs;
+  }
+
+  private resolveCurrentBattleTimelineMaxAtMs(): number | null {
+    let maxAtMs: number | null = null;
+
+    if (this.activeSharedBattleReplay?.timeline) {
+      maxAtMs = this.resolveTimelineMaxAtMs(this.activeSharedBattleReplay.timeline);
+    }
+
+    for (const playerId of this.battleParticipantIds) {
+      const timeline = this.battleResultsByPlayer.get(playerId)?.timeline;
+      const candidateAtMs = this.resolveTimelineMaxAtMs(timeline);
+      if (candidateAtMs === null) {
+        continue;
+      }
+
+      maxAtMs = maxAtMs === null ? candidateAtMs : Math.max(maxAtMs, candidateAtMs);
+    }
+
+    return maxAtMs;
+  }
+
+  private isBattleResolutionReady(): boolean {
+    if (this.currentRoundPairings.length === 0) {
+      return false;
+    }
+
+    for (const pairing of this.currentRoundPairings) {
+      if (pairing.rightPlayerId) {
+        if (
+          !this.battleResultsByPlayer.has(pairing.leftPlayerId)
+          || !this.battleResultsByPlayer.has(pairing.rightPlayerId)
+        ) {
+          return false;
+        }
+        continue;
+      }
+
+      if (!this.battleResultsByPlayer.has(pairing.leftPlayerId)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private resolveTimelineMaxAtMs(timeline: BattleTimelineEvent[] | undefined): number | null {
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      return null;
+    }
+
+    let maxAtMs = 0;
+    for (const event of timeline) {
+      const candidateAtMs = "atMs" in event && Number.isFinite(event.atMs)
+        ? Number(event.atMs)
+        : 0;
+      maxAtMs = Math.max(maxAtMs, candidateAtMs);
+    }
+
+    return maxAtMs;
+  }
+
   private resolveMatchupOutcome(leftPlayerId: string, rightPlayerId: string): MatchupOutcome {
     const matchup = this.prepareMatchupContext(leftPlayerId, rightPlayerId);
+    const resolutionResult = this.resolvePreparedMatchup(matchup);
+
+    return resolutionResult.outcome;
+  }
+
+  private resolvePreparedMatchup(
+    matchup: PreparedMatchupContext,
+  ): BattleResolutionResult {
     const resolutionResult = this.battleResolutionService.resolveMatchup({
       battleId: matchup.battleId,
       roundIndex: this.roundIndex,
@@ -2102,7 +2247,7 @@ export class MatchRoomController {
     this.storeBattleResolutionResults(matchup, resolutionResult);
     this.logResolvedBattleResult(matchup, resolutionResult);
 
-    return resolutionResult.outcome;
+    return resolutionResult;
   }
 
   private prepareMatchupContext(leftPlayerId: string, rightPlayerId: string): PreparedMatchupContext {
@@ -2117,9 +2262,9 @@ export class MatchRoomController {
       buildSpellModifiers: (playerIds) => this.buildSideSpellModifiers(playerIds),
       applySpellModifiers: (battleUnits, modifiers) =>
         this.battleResolutionService.applySpellModifiers(battleUnits, modifiers),
-      appendHeroBattleUnits: (playerIds, battleUnits) => {
-        const heroIds = this.appendHeroBattleUnits(playerIds, battleUnits);
-        this.appendBossBattleUnits(playerIds, battleUnits);
+      appendHeroBattleUnits: (playerIds, battleUnits, side) => {
+        const heroIds = this.appendHeroBattleUnits(playerIds, battleUnits, side);
+        this.appendBossBattleUnits(playerIds, battleUnits, side);
         return heroIds;
       },
       buildHeroSynergyBonusTypes: (playerIds) => this.buildSideHeroSynergyBonusTypes(playerIds),
@@ -2138,7 +2283,11 @@ export class MatchRoomController {
     return matchup;
   }
 
-  private appendHeroBattleUnits(playerIds: string[], battleUnits: BattleUnit[]): string[] {
+  private appendHeroBattleUnits(
+    playerIds: string[],
+    battleUnits: BattleUnit[],
+    side: "left" | "right",
+  ): string[] {
     const heroIds = this.buildSideHeroIds(playerIds);
 
     for (const heroPlayerId of playerIds) {
@@ -2147,6 +2296,7 @@ export class MatchRoomController {
         heroId,
         heroPlayerId,
         this.resolveHeroBattleCell(heroPlayerId),
+        side,
       );
       if (heroBattleUnit) {
         battleUnits.push(heroBattleUnit);
@@ -2156,18 +2306,25 @@ export class MatchRoomController {
     return heroIds;
   }
 
-  private appendBossBattleUnits(playerIds: string[], battleUnits: BattleUnit[]): void {
-    for (const bossPlayerId of playerIds) {
-      const bossId = this.selectedBossByPlayer.get(bossPlayerId);
-      const bossBattleUnit = this.battleResolutionService.createBossBattleUnit(
-        bossId,
-        bossPlayerId,
-        this.getBossPlacementForPlayer(bossPlayerId) ?? undefined,
-      );
-      if (bossBattleUnit) {
-        battleUnits.push(bossBattleUnit);
+    private appendBossBattleUnits(
+      playerIds: string[],
+      battleUnits: BattleUnit[],
+      side: "left" | "right",
+    ): void {
+      const phaseHpTarget = this.resolvePhaseHpTarget(this.roundIndex);
+      for (const bossPlayerId of playerIds) {
+        const bossId = this.selectedBossByPlayer.get(bossPlayerId);
+        const bossBattleUnit = this.battleResolutionService.createBossBattleUnit(
+          bossId,
+          bossPlayerId,
+          this.getBossPlacementForPlayer(bossPlayerId) ?? undefined,
+          phaseHpTarget,
+          side,
+        );
+        if (bossBattleUnit) {
+          battleUnits.push(bossBattleUnit);
+        }
       }
-    }
   }
 
   private logBattleInputTrace(params: {
@@ -2208,6 +2365,43 @@ export class MatchRoomController {
     )) {
       this.battleResultsByPlayer.set(assignment.playerId, assignment.battleResult);
     }
+  }
+
+  private prepareBattleResolutionForCurrentRound(battleStartedAtMs: number): void {
+    this.resetActiveBattleReplayState();
+    this.activeBattleStartedAtMs = battleStartedAtMs;
+
+    if (this.currentRoundPairings.length === 0) {
+      return;
+    }
+
+    for (const pairing of this.currentRoundPairings) {
+      const opponentPlayerId = pairing.rightPlayerId ?? pairing.ghostSourcePlayerId;
+      if (!opponentPlayerId) {
+        continue;
+      }
+
+      const matchup = this.prepareMatchupContext(pairing.leftPlayerId, opponentPlayerId);
+      const resolutionResult = this.resolvePreparedMatchup(matchup);
+      const candidateTimeline =
+        resolutionResult.leftBattleResult.timeline
+        ?? resolutionResult.rightBattleResult.timeline;
+
+      if (
+        !this.activeSharedBattleReplay
+        && Array.isArray(candidateTimeline)
+        && candidateTimeline.length > 0
+      ) {
+        this.activeSharedBattleReplay = {
+          type: "shared_battle_replay",
+          battleId: matchup.battleId,
+          phase: "Battle",
+          timeline: candidateTimeline,
+        };
+      }
+    }
+
+    this.activeBattleCompletionAtMs = this.resolveCurrentBattleCompletionAtMs();
   }
 
   private logResolvedBattleResult(
@@ -2343,18 +2537,30 @@ export class MatchRoomController {
 
   private resolveUnitCount(playerId: string): number {
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId);
-    const fallbackUnitCount = this.boardUnitCountByPlayer.get(playerId) ?? 4;
+    const fallbackUnitCount = this.boardUnitCountByPlayer.get(playerId) ?? this.resolveBoardUnitLimit(playerId);
 
     return resolveUnitCountFromState(boardPlacements, fallbackUnitCount);
   }
 
   private resolveBoardPower(playerId: string): number {
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId);
-    const fallbackUnitCount = this.boardUnitCountByPlayer.get(playerId) ?? 4;
+    const fallbackUnitCount = this.boardUnitCountByPlayer.get(playerId) ?? this.resolveBoardUnitLimit(playerId);
 
     return resolveBoardPowerFromState(boardPlacements, fallbackUnitCount, {
       setId: this.setId,
     });
+  }
+
+  private resolveBoardUnitLimit(playerId: string): number {
+    const role = this.roleByPlayer.get(playerId) ?? "unassigned";
+    if (role === "boss") {
+      return getMaxBoardUnitsForPlayerRole(true);
+    }
+    if (role === "raid") {
+      return getMaxBoardUnitsForPlayerRole(false);
+    }
+
+    return MAX_STANDARD_BOARD_UNITS;
   }
 
   private estimateWinningSurvivingUnits(

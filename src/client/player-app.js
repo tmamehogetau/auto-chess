@@ -7,6 +7,14 @@ import {
   renderPlayerSelectionSummary,
 } from "./player-surface-renderers.js";
 import {
+  buildDeadlineSummary,
+  canUseReadyAction,
+  canUseBenchAction,
+  canUseBoardAction,
+  canUseShopAction,
+  resolvePlayerFacingPhase,
+} from "./player-prep-phase.js";
+import {
   connectSharedBoard,
   getSelectedSharedUnitId,
   getSharedBoardState,
@@ -16,13 +24,17 @@ import {
   setSharedBoardGamePlayerId,
   setSharedBoardRoomId,
 } from "./shared-board-client.js";
-import { buildCommandResultCopy } from "./ui/player-facing-copy.js";
+import { buildCommandResultCopy, buildReadyHint } from "./ui/player-facing-copy.js";
 import { mapEntries, mapGet } from "./utils/pure-utils.js";
 
 const playerShell = document.querySelector("[data-player-shell]");
 const statusCopy = document.querySelector("[data-player-status-copy]");
 const connectButton = document.querySelector("[data-player-connect-btn]");
 const roomCodeInput = document.querySelector("[data-player-room-code-input]");
+const hudRoundPhaseElement = document.querySelector("[data-player-hud-round-phase]");
+const hudTimerElement = document.querySelector("[data-player-hud-timer]");
+const hudSpellElement = document.querySelector("[data-player-hud-spell]");
+const hudFlowElement = document.querySelector("[data-player-hud-flow]");
 const roomCopyElement = document.querySelector("[data-player-room-copy]");
 const deadlineCopyElement = document.querySelector("[data-player-deadline-copy]");
 const participantSummaryElement = document.querySelector("[data-player-participant-summary]");
@@ -53,15 +65,21 @@ const bossShopElement = document.querySelector("[data-player-boss-shop]");
 const bossShopCopyElement = document.querySelector("[data-player-boss-shop-copy]");
 const bossShopSlotElements = Array.from(document.querySelectorAll("[data-player-boss-shop-slot]"));
 const specialUnitCopyElement = document.querySelector("[data-player-special-unit-copy]");
+const playerStatsCopyElement = document.querySelector("[data-player-player-stats-copy]");
 const spellCopyElement = document.querySelector("[data-player-spell-copy]");
 const synergyCopyElement = document.querySelector("[data-player-synergy-copy]");
 const benchElement = document.querySelector("[data-player-bench]");
 const benchCopyElement = document.querySelector("[data-player-bench-copy]");
 const benchSlotElements = Array.from(document.querySelectorAll("[data-player-bench-slot]"));
 const benchSellButton = document.querySelector("[data-player-bench-sell-button]");
-const readyElement = document.querySelector("[data-player-ready-btn]");
-const readyCopyElement = document.querySelector("[data-player-ready-copy]");
-const readyButton = document.querySelector("[data-player-ready-button]");
+const prepReadyElement = document.querySelector("[data-player-ready-btn]");
+const prepReadyCopyElement = document.querySelector("[data-player-ready-copy]");
+const lobbyReadyElement = document.querySelector("[data-player-lobby-ready-btn]");
+const lobbyReadyCopyElement = document.querySelector("[data-player-lobby-ready-copy]");
+const phaseNotesCopyElements = Array.from(document.querySelectorAll("[data-player-phase-notes-copy]"));
+const readyButtons = Array.from(
+  document.querySelectorAll("[data-player-ready-button], [data-player-lobby-ready-button]"),
+);
 const boardReturnButton = document.querySelector("[data-player-board-return-button]");
 const boardSellButton = document.querySelector("[data-player-board-sell-button]");
 const battleStartBannerElement = document.querySelector("[data-player-battle-start-banner]");
@@ -91,6 +109,7 @@ let latestRawPhase = "Waiting";
 let latestPlayerFacingPhase = "lobby";
 let battleStartSweepTimeoutId = null;
 let latestPrepHoverDetail = null;
+let deadlineRefreshIntervalId = null;
 
 function rememberSharedBoardRoomId(roomId) {
   const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
@@ -104,6 +123,7 @@ function rememberSharedBoardRoomId(roomId) {
 }
 
 const PLAYER_BATTLE_START_SWEEP_MS = 900;
+const PLAYER_DEADLINE_REFRESH_INTERVAL_MS = 250;
 
 const HERO_OPTIONS = [
   { id: "reimu", name: "霊夢", role: "balance" },
@@ -177,6 +197,8 @@ gameRoomSession.onConnectionState((connectionState) => {
     statusCopy.textContent = "接続完了。現在の phase に合わせて player-facing surface を切り替えます。";
     renderPlayerHeaderTruth();
     updateReadyButton(latestPlayer);
+    updateReadyCopy(latestState, latestPlayer);
+    syncDeadlineRefreshLoop();
     return;
   }
 
@@ -191,6 +213,7 @@ gameRoomSession.onConnectionState((connectionState) => {
   latestPrepHoverDetail = null;
   selectedBenchIndex = null;
   clearPlayerBattleStartSweep();
+  stopDeadlineRefreshLoop();
   leaveSharedBoardRoom();
   setSharedBoardRoomId("");
   statusCopy.textContent = "進行役がルームを準備したら、この画面の player flow が始まります。";
@@ -198,6 +221,7 @@ gameRoomSession.onConnectionState((connectionState) => {
   renderPlayerHeaderTruth();
   renderPlayerPrepSurface();
   updateReadyButton(null);
+  updateReadyCopy(null, null);
 });
 
 gameRoomSession.onStateChange((state) => {
@@ -246,17 +270,24 @@ gameRoomSession.onStateChange((state) => {
 
   statusCopy.textContent = buildPlayerPhaseCopy(latestPlayerFacingPhase);
   updateReadyButton(player);
+  updateReadyCopy(state, player);
+  syncDeadlineRefreshLoop();
 });
 
 gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
+  const previousPlayerFacingPhase = latestPlayerFacingPhase;
   latestRoundState = message;
-  latestPlayerFacingPhase = resolvePlayerFacingPhase(latestState, message);
+  const nextPlayerFacingPhase = resolvePlayerFacingPhase(latestState, message);
+  latestPlayerFacingPhase = nextPlayerFacingPhase;
   const sharedBoardRoomId = typeof message?.sharedBoardRoomId === "string"
     ? message.sharedBoardRoomId
     : "";
   latestPhaseHpProgress = resolvePhaseHpProgress(message);
   if (sharedBoardRoomId.length > 0) {
     rememberSharedBoardRoomId(sharedBoardRoomId);
+  }
+  if (latestState && nextPlayerFacingPhase !== previousPlayerFacingPhase) {
+    showPlayerPhase(resolvePlayerPhaseView(latestState));
   }
   renderPlayerHeaderTruth();
   renderPlayerResultSummary({
@@ -270,7 +301,9 @@ gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
   if (statusCopy instanceof HTMLElement) {
     statusCopy.textContent = buildPlayerPhaseCopy(latestPlayerFacingPhase);
   }
+  updateReadyCopy(latestState, latestPlayer);
   void syncSharedBoardConnection();
+  syncDeadlineRefreshLoop();
 });
 
 gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
@@ -289,6 +322,11 @@ if (playerShell instanceof HTMLElement) {
   playerShell.dataset.playerAppReady = "true";
 }
 
+window.addEventListener("beforeunload", () => {
+  stopDeadlineRefreshLoop();
+  clearPlayerBattleStartSweep();
+});
+
 connectButton?.addEventListener("click", () => {
   void connectPlayerSession();
 });
@@ -305,9 +343,15 @@ bossPreferenceOffButton?.addEventListener("click", () => {
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE, { wantsBoss: false });
 });
 
-readyButton?.addEventListener("click", () => {
-  const nextReady = !(latestPlayer?.ready === true);
-  gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY, { ready: nextReady });
+readyButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (!canUseReadyAction(typeof latestState?.phase === "string" ? latestState.phase : "Waiting")) {
+      return;
+    }
+
+    const nextReady = !(latestPlayer?.ready === true);
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY, { ready: nextReady });
+  });
 });
 
 shopSlotElements.forEach((button, index) => {
@@ -354,13 +398,24 @@ boardGridElement?.addEventListener("click", (event) => {
     return;
   }
 
+  const isSubSlotTarget = target.closest("[data-shared-board-sub-slot]");
   const cell = target.closest("[data-cell-index], [data-player-shared-cell]");
   const cellIndex = Number.parseInt(
     cell?.getAttribute("data-cell-index") ?? cell?.getAttribute("data-player-shared-cell") ?? "",
     10,
   );
+
+  if (selectedBenchIndex !== null && !isSubSlotTarget) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  if (isSubSlotTarget) {
+    return;
+  }
+
   handlePlayerSharedCellClick(cellIndex);
-});
+}, true);
 
 hydrateRequestedRoomCodeInput();
 syncPlayerConnectButton();
@@ -371,6 +426,10 @@ if (getSearchParam("autoconnect") === "1" && resolveRequestedRoomCode().length >
 
 function resolvePlayerPhaseView(state) {
   const playerFacingPhase = resolvePlayerFacingPhase(state, latestRoundState);
+  if (playerFacingPhase === "result") {
+    return "result";
+  }
+
   if (playerFacingPhase === "purchase" || playerFacingPhase === "deploy" || playerFacingPhase === "battle") {
     return "prep";
   }
@@ -392,34 +451,6 @@ function resolvePlayerPhaseView(state) {
 
   if (phase === "Battle" || phase === "Settle" || phase === "Elimination" || phase === "End") {
     return "result";
-  }
-
-  return "lobby";
-}
-
-function resolvePlayerFacingPhase(state, roundState) {
-  const playerPhaseFromState = typeof state?.playerPhase === "string" ? state.playerPhase : "";
-  if (playerPhaseFromState.length > 0) {
-    return playerPhaseFromState;
-  }
-
-  const playerPhaseFromRoundState = typeof roundState?.playerPhase === "string" ? roundState.playerPhase : "";
-  if (playerPhaseFromRoundState.length > 0) {
-    return playerPhaseFromRoundState;
-  }
-
-  const phase = typeof state?.phase === "string" ? state.phase : "Waiting";
-  const lobbyStage = typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference";
-  if (phase === "Waiting" && lobbyStage === "selection") {
-    return "selection";
-  }
-
-  if (phase === "Prep") {
-    return "deploy";
-  }
-
-  if (phase === "Battle" || phase === "Settle" || phase === "Elimination" || phase === "End") {
-    return "battle";
   }
 
   return "lobby";
@@ -521,6 +552,55 @@ function buildPlayerPhaseCopy(phase) {
   }
 }
 
+function updatePhaseNotes(phase = latestPlayerFacingPhase) {
+  const nextCopy = (() => {
+    switch (phase) {
+      case "selection":
+        return "boss は boss、raid は hero を選ぶ段階です。選択が終わったら最初の prep を待ちます。";
+      case "purchase":
+        return "中央の shop が主役です。左で詳細を読み、右の所持情報を見ながら購入順を決めます。";
+      case "deploy":
+        return "中央の shared-board が主役です。ユニット選択 -> 枠選択で配置し、sub slot は盤面上で確認します。";
+      case "battle":
+        return "戦闘中は board を読む段階です。操作はロックされるので、左右の補助情報で状況を追います。";
+      case "result":
+        return "result を読み終えたら次 round で直す一点だけ決めます。board は最終盤面のまま残ります。";
+      default:
+        return "boss希望と Ready を整える段階です。全員の準備が揃うと role selection に進みます。";
+    }
+  })();
+
+  phaseNotesCopyElements.forEach((element) => {
+    if (element instanceof HTMLElement) {
+      element.textContent = nextCopy;
+    }
+  });
+}
+
+function renderTopHud() {
+  const roundIndex = Number.isInteger(latestState?.roundIndex) ? latestState.roundIndex + 1 : 1;
+  const deadlineSummary = buildDeadlineSummary(latestState, latestRoundState);
+  const spellSummary = typeof latestPlayer?.spellName === "string" && latestPlayer.spellName.length > 0
+    ? latestPlayer.spellName
+    : "No active spell";
+
+  if (hudRoundPhaseElement instanceof HTMLElement) {
+    hudRoundPhaseElement.innerHTML = `<strong>Round / Phase</strong><div>Round ${roundIndex} / ${latestPlayerFacingPhase}</div>`;
+  }
+
+  if (hudTimerElement instanceof HTMLElement) {
+    hudTimerElement.innerHTML = `<strong>Timer</strong><div>${deadlineSummary.label}: ${deadlineSummary.valueText}</div>`;
+  }
+
+  if (hudSpellElement instanceof HTMLElement) {
+    hudSpellElement.innerHTML = `<strong>Spell</strong><div>${spellSummary}</div>`;
+  }
+
+  if (hudFlowElement instanceof HTMLElement) {
+    hudFlowElement.innerHTML = "<strong>Flow</strong><div>Purchase -&gt; Deploy -&gt; Battle</div>";
+  }
+}
+
 function resolveRequestedRoomCode() {
   const inputValue = roomCodeInput instanceof HTMLInputElement
     ? roomCodeInput.value.trim()
@@ -581,58 +661,6 @@ function resolveSharedBoardRoomId(state, roundState, fallbackRoomId = latestShar
   return typeof fallbackRoomId === "string" ? fallbackRoomId.trim() : "";
 }
 
-function buildDeadlineSummary(state, roundState) {
-  const playerFacingPhase = resolvePlayerFacingPhase(state, roundState);
-  const playerPhaseDeadlineAtMs = Number(
-    roundState?.playerPhaseDeadlineAtMs ?? state?.playerPhaseDeadlineAtMs,
-  );
-  if (
-    (playerFacingPhase === "purchase" || playerFacingPhase === "deploy" || playerFacingPhase === "battle")
-    && Number.isFinite(playerPhaseDeadlineAtMs)
-    && playerPhaseDeadlineAtMs > 0
-  ) {
-    return {
-      label: `${playerFacingPhase} deadline`,
-      valueText: formatDeadlineCountdown(playerPhaseDeadlineAtMs),
-    };
-  }
-
-  const phase = typeof state?.phase === "string" ? state.phase : "Waiting";
-  if (phase === "Waiting" && Number(state?.selectionDeadlineAtMs) > 0) {
-    return {
-      label: "Selection deadline",
-      valueText: formatDeadlineCountdown(state.selectionDeadlineAtMs),
-    };
-  }
-
-  const prepDeadline = Number(state?.prepDeadlineAtMs);
-  if (phase === "Prep" && Number.isFinite(prepDeadline) && prepDeadline > 0) {
-    return {
-      label: "Prep deadline",
-      valueText: formatDeadlineCountdown(prepDeadline),
-    };
-  }
-
-  const phaseDeadline = Number(roundState?.phaseDeadlineAtMs ?? state?.phaseDeadlineAtMs);
-  if (Number.isFinite(phaseDeadline) && phaseDeadline > 0) {
-    return {
-      label: `${phase} deadline`,
-      valueText: formatDeadlineCountdown(phaseDeadline),
-    };
-  }
-
-  return {
-    label: "Deadline",
-    valueText: "pending",
-  };
-}
-
-function formatDeadlineCountdown(deadlineAtMs) {
-  const remainingMs = Math.max(0, Math.round(Number(deadlineAtMs) - Date.now()));
-  const remainingSeconds = Math.ceil(remainingMs / 1000);
-  return `${remainingSeconds}s remaining`;
-}
-
 function renderPlayerHeaderTruth() {
   if (roomCopyElement instanceof HTMLElement) {
     const roomId = typeof gameRoomSession.getRoom()?.roomId === "string"
@@ -647,6 +675,50 @@ function renderPlayerHeaderTruth() {
     const deadlineSummary = buildDeadlineSummary(latestState, latestRoundState);
     deadlineCopyElement.textContent = `${deadlineSummary.label}: ${deadlineSummary.valueText}`;
   }
+
+  renderTopHud();
+  updatePhaseNotes();
+}
+
+function syncDeadlineRefreshLoop() {
+  if (gameRoomSession.getConnectionState() !== "connected") {
+    stopDeadlineRefreshLoop();
+    return;
+  }
+
+  const deadlineSummary = buildDeadlineSummary(latestState, latestRoundState);
+  if (deadlineSummary.valueText === "pending") {
+    stopDeadlineRefreshLoop();
+    return;
+  }
+
+  if (deadlineRefreshIntervalId !== null) {
+    return;
+  }
+
+  deadlineRefreshIntervalId = window.setInterval(() => {
+    const nextPlayerFacingPhase = resolvePlayerFacingPhase(latestState, latestRoundState);
+    const playerFacingPhaseChanged = nextPlayerFacingPhase !== latestPlayerFacingPhase;
+    latestPlayerFacingPhase = nextPlayerFacingPhase;
+    renderPlayerHeaderTruth();
+
+    if (playerFacingPhaseChanged) {
+      if (statusCopy instanceof HTMLElement) {
+        statusCopy.textContent = buildPlayerPhaseCopy(latestPlayerFacingPhase);
+      }
+      renderPlayerPrepSurface();
+      return;
+    }
+  }, PLAYER_DEADLINE_REFRESH_INTERVAL_MS);
+}
+
+function stopDeadlineRefreshLoop() {
+  if (deadlineRefreshIntervalId === null) {
+    return;
+  }
+
+  clearInterval(deadlineRefreshIntervalId);
+  deadlineRefreshIntervalId = null;
 }
 
 async function syncSharedBoardConnection() {
@@ -663,13 +735,43 @@ async function syncSharedBoardConnection() {
 }
 
 function updateReadyButton(player) {
-  if (!(readyButton instanceof HTMLButtonElement)) {
-    return;
+  const connected = gameRoomSession.getConnectionState() === "connected";
+  const currentPhase = typeof latestState?.phase === "string" ? latestState.phase : "Waiting";
+  readyButtons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    button.disabled = !connected || !canUseReadyAction(currentPhase);
+    button.textContent = player?.ready === true ? "Cancel Ready" : "Ready";
+  });
+}
+
+function updateReadyCopy(state, player) {
+  const players = mapEntries(state?.players)
+    .map(([, currentPlayer]) => currentPlayer)
+    .filter((currentPlayer) => currentPlayer?.isSpectator !== true);
+  const readyCount = players.filter((currentPlayer) => currentPlayer?.ready === true).length;
+  const readyHint = buildReadyHint({
+    phase: typeof state?.phase === "string" ? state.phase : "Waiting",
+    isReady: player?.ready === true,
+    heroEnabled: state?.featureFlagsEnableHeroSystem === true,
+    heroSelected: typeof player?.selectedHeroId === "string" && player.selectedHeroId.length > 0,
+    bossRoleSelectionEnabled: state?.featureFlagsEnableBossExclusiveShop === true,
+    lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "preference",
+    isBossPlayer: state?.bossPlayerId === (gameRoomSession.getRoom()?.sessionId ?? "") || player?.role === "boss",
+    bossSelected: typeof player?.selectedBossId === "string" && player.selectedBossId.length > 0,
+    readyCount,
+    totalCount: players.length,
+  });
+
+  if (prepReadyCopyElement instanceof HTMLElement) {
+    prepReadyCopyElement.textContent = readyHint;
   }
 
-  const connected = gameRoomSession.getConnectionState() === "connected";
-  readyButton.disabled = !connected;
-  readyButton.textContent = player?.ready === true ? "Cancel Ready" : "Ready";
+  if (lobbyReadyCopyElement instanceof HTMLElement) {
+    lobbyReadyCopyElement.textContent = readyHint;
+  }
 }
 
 async function connectPlayerSession() {
@@ -712,7 +814,11 @@ async function connectPlayerSession() {
 }
 
 function handlePlayerShopBuy(slotIndex) {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseShopAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -723,7 +829,11 @@ function handlePlayerShopBuy(slotIndex) {
 }
 
 function handlePlayerBossShopBuy(slotIndex) {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseShopAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -734,7 +844,11 @@ function handlePlayerBossShopBuy(slotIndex) {
 }
 
 function handlePlayerShopRefresh() {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseShopAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -745,7 +859,11 @@ function handlePlayerShopRefresh() {
 }
 
 function handlePlayerBuyXp() {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseShopAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -756,7 +874,11 @@ function handlePlayerBuyXp() {
 }
 
 function handlePlayerBenchSelect(index) {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseBenchAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -765,7 +887,11 @@ function handlePlayerBenchSelect(index) {
 }
 
 function handlePlayerBenchSell() {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseBenchAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -783,7 +909,11 @@ function handlePlayerBenchSell() {
 }
 
 function handlePlayerBoardSell() {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseBoardAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -806,7 +936,11 @@ function handlePlayerBoardSell() {
 }
 
 function handlePlayerBoardReturn() {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseBoardAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -829,7 +963,11 @@ function handlePlayerBoardReturn() {
 }
 
 function handlePlayerSharedCellClick(cellIndex) {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseBoardAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -858,7 +996,11 @@ function handlePlayerSharedCellClick(cellIndex) {
 }
 
 function handlePlayerSharedSubSlotClick(cellIndex) {
-  if (latestState?.phase !== "Prep") {
+  if (!canUseBoardAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
     return;
   }
 
@@ -899,15 +1041,17 @@ function normalizePrepHoverDetail(detail) {
 
   const kicker = typeof detail.kicker === "string" ? detail.kicker : "";
   const title = typeof detail.title === "string" ? detail.title : "";
+  const portraitKey = typeof detail.portraitKey === "string" ? detail.portraitKey : "";
+  const portraitUrl = typeof detail.portraitUrl === "string" ? detail.portraitUrl : "";
   const lines = Array.isArray(detail.lines)
     ? detail.lines.filter((line) => typeof line === "string")
     : [];
 
-  if (kicker.length === 0 && title.length === 0 && lines.length === 0) {
+  if (kicker.length === 0 && title.length === 0 && portraitKey.length === 0 && portraitUrl.length === 0 && lines.length === 0) {
     return null;
   }
 
-  return { kicker, title, lines };
+  return { kicker, title, portraitKey, portraitUrl, lines };
 }
 
 function isSamePrepHoverDetail(left, right) {
@@ -918,7 +1062,12 @@ function isSamePrepHoverDetail(left, right) {
     return normalizedLeft === normalizedRight;
   }
 
-  if (normalizedLeft.kicker !== normalizedRight.kicker || normalizedLeft.title !== normalizedRight.title) {
+  if (
+    normalizedLeft.kicker !== normalizedRight.kicker
+    || normalizedLeft.title !== normalizedRight.title
+    || normalizedLeft.portraitKey !== normalizedRight.portraitKey
+    || normalizedLeft.portraitUrl !== normalizedRight.portraitUrl
+  ) {
     return false;
   }
 
@@ -949,6 +1098,7 @@ function renderPlayerPrepSurface() {
     heroUpgradeCopyElement,
     refreshCopyElement,
     specialUnitCopyElement,
+    playerStatsCopyElement,
     spellCopyElement,
     synergyCopyElement,
     benchCopyElement,
@@ -961,8 +1111,8 @@ function renderPlayerPrepSurface() {
     bossShopSlotElements,
     benchElement,
     benchSlotElements,
-    readyElement,
-    readyCopyElement,
+    readyElement: prepReadyElement,
+    readyCopyElement: prepReadyCopyElement,
     boardCellElements: getCurrentBoardCellElements(),
     state: latestState,
     player: latestPlayer,

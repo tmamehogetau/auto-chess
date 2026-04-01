@@ -3,6 +3,8 @@ dist/
 coverage/
 .worktrees/
 .superpowers/
+.playwright-cli/
+test-results/
 output/
 *.log
 .serena/

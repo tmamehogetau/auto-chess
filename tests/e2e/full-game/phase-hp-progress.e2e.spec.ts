@@ -314,4 +314,83 @@ describe("E2E: Phase HP Progress", () => {
       );
     },
   );
+
+  it(
+    "raid phase hp uses aggregate combat damage over loser damage in round_state",
+    { timeout: 30_000 },
+    async () => {
+      await withFlags(
+        { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+        async () => {
+          const gameRoom = await testServer.createRoom<GameRoom>("game");
+          const roundStates: Array<Record<string, unknown>> = [];
+          const client1 = await testServer.connectTo(gameRoom);
+          client1.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (msg) => {
+            roundStates.push(msg as Record<string, unknown>);
+          });
+
+          const clients = [
+            client1,
+            await testServer.connectTo(gameRoom),
+            await testServer.connectTo(gameRoom),
+            await testServer.connectTo(gameRoom),
+          ];
+
+          for (const client of clients) {
+            client.onMessage("command_result", () => {});
+          }
+          for (const client of clients.slice(1)) {
+            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
+          }
+
+          for (const client of clients) {
+            client.send("ready", { ready: true });
+          }
+
+          await waitForPhase(gameRoom, "Battle", 5_000);
+
+          const roomInternals = gameRoom as unknown as {
+            controller?: MatchRoomController;
+          };
+          const controller = roomInternals.controller;
+          expect(controller).toBeDefined();
+
+          const bossPlayerId = gameRoom.state.bossPlayerId;
+          expect(bossPlayerId).toBeTruthy();
+          const resolvedBossPlayerId = bossPlayerId!;
+
+          gameRoom.setPendingRoundDamageForTest({ [resolvedBossPlayerId]: 23 });
+
+          const { battleResultsByPlayer } = controller!.getTestAccess();
+          battleResultsByPlayer.set(resolvedBossPlayerId, {
+            opponentId: clients.find((client) => client.sessionId !== resolvedBossPlayerId)?.sessionId ?? "raid",
+            won: true,
+            damageDealt: 0,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+            phaseDamageToBoss: 180,
+          });
+
+          await waitForPhase(gameRoom, "Settle", 5_000);
+          await waitForCondition(
+            () => roundStates.some((state) => state.roundIndex === 1 && state.phaseResult !== "pending"),
+            5_000,
+          );
+
+          const resolvedState = roundStates.find(
+            (state) => state.roundIndex === 1 && state.phaseResult !== "pending",
+          );
+          expect(resolvedState).toBeDefined();
+          expect(resolvedState?.phaseHpTarget).toBe(600);
+          expect(resolvedState?.phaseDamageDealt).toBe(180);
+          expect(resolvedState?.phaseResult).toBe("failed");
+
+          for (const client of clients) {
+            client.connection.close();
+          }
+        },
+      );
+    },
+  );
 });

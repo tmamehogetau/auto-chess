@@ -7,6 +7,8 @@ import {
   buildRoundSummaryCaption,
   buildRoundSummaryTip,
 } from "./ui/player-facing-copy.js";
+import { canUseBenchAction, canUseBoardAction, canUseShopAction } from "./player-prep-phase.js";
+import { resolveFrontPortraitUrl, resolvePortraitKeyByUnitId, resolveShopPortraitUrl } from "./portrait-resolver.js";
 import { mapEntries, readPhase, shortPlayerId } from "./utils/pure-utils.js";
 
 const UNIT_ICONS = {
@@ -35,6 +37,15 @@ const BOSS_DETAILS = {
   remilia: { name: "レミリア", roleCopy: "紅魔館の主" },
 };
 
+const PORTRAIT_KEY_BY_DISPLAY_NAME = {
+  "霊夢": "reimu",
+  "魔理沙": "marisa",
+  "隠岐奈": "okina",
+  "袿姫": "keiki",
+  "女苑": "jyoon",
+  "レミリア": "remilia",
+};
+
 const SPELL_DETAILS = {
   "instant-1": { name: "紅符「スカーレットシュート」", description: "レイド全体へ 50 ダメージ" },
   "instant-2": { name: "必殺「ハートブレイク」", description: "レイド全体へ 65 ダメージ" },
@@ -50,6 +61,8 @@ const SPELL_DETAILS = {
 
 const RESULT_IMPRINT_BOARD_WIDTH = 6;
 const RESULT_IMPRINT_BOARD_HEIGHT = 6;
+const MAX_RAID_BOARD_UNITS = 2;
+const MAX_BOSS_BOARD_UNITS = 6;
 
 function buildHeroRuleLines(heroId) {
   const lines = ["Bench に戻らず、自軍 main と位置交換できます。"];
@@ -68,6 +81,89 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function isFakeElement(element) {
+  return !element || !("ownerDocument" in element);
+}
+
+function setElementMarkup(element, html, fallbackText = "") {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+
+  if (isFakeElement(element)) {
+    element.innerHTML = html;
+    element.textContent = fallbackText;
+    return;
+  }
+
+  element.innerHTML = html;
+}
+
+function getDisplayInitial(value = "") {
+  const text = String(value ?? "").trim();
+  return text.length > 0 ? text.slice(0, 1) : "?";
+}
+
+function resolvePortraitUrlFromKey(key, fallbackKey = "meiling") {
+  return typeof key === "string" && key.length > 0
+    ? resolveFrontPortraitUrl(key, fallbackKey)
+    : null;
+}
+
+function resolvePortraitUrlFromDisplayName(displayName, fallbackKey = "meiling") {
+  if (typeof displayName !== "string" || displayName.length === 0) {
+    return null;
+  }
+
+  const portraitKey = PORTRAIT_KEY_BY_DISPLAY_NAME[displayName] ?? null;
+  return portraitKey ? resolveFrontPortraitUrl(portraitKey, fallbackKey) : null;
+}
+
+function resolveHoverDetailPortraitUrl(detail) {
+  if (typeof detail?.portraitUrl === "string" && detail.portraitUrl.length > 0) {
+    return detail.portraitUrl;
+  }
+
+  if (typeof detail?.portraitKey === "string" && detail.portraitKey.length > 0) {
+    return resolveFrontPortraitUrl(detail.portraitKey, "meiling");
+  }
+
+  return resolvePortraitUrlFromDisplayName(detail?.title, "meiling");
+}
+
+function resolveBenchPortraitUrl(unit, displayName, benchUnitId = "") {
+  if (typeof unit?.portraitUrl === "string" && unit.portraitUrl.length > 0) {
+    return unit.portraitUrl;
+  }
+
+  if (typeof unit?.portraitKey === "string" && unit.portraitKey.length > 0) {
+    return resolveFrontPortraitUrl(unit.portraitKey, "meiling");
+  }
+
+  if (typeof unit?.unitId === "string" && unit.unitId.length > 0) {
+    return resolveShopPortraitUrl({
+      unitId: unit.unitId,
+      unitType: typeof unit?.unitType === "string" ? unit.unitType : "",
+    });
+  }
+
+  if (typeof benchUnitId === "string" && benchUnitId.length > 0) {
+    return resolveShopPortraitUrl({
+      unitId: benchUnitId,
+      unitType: resolveBenchUnitType(unit),
+    });
+  }
+
+  if (typeof unit === "string" && unit.length > 0) {
+    const [unitType] = unit.split("-");
+    if (unitType) {
+      return resolveShopPortraitUrl({ unitType });
+    }
+  }
+
+  return resolvePortraitUrlFromDisplayName(displayName, "meiling");
 }
 
 function resolveUnitDetailName(unitType, displayName = "") {
@@ -99,25 +195,84 @@ function renderPrepDetailCard(detailCardElement, hoverDetail) {
       "hover したユニットの詳細をここに表示します。",
       "主人公、味方主人公、味方 bench、shared-board の sub 効果もここで確認できます。",
     ];
+  const statEntries = [];
+  const noteLines = [];
+  for (const line of lines) {
+    if (typeof line !== "string" || line.length === 0) {
+      continue;
+    }
 
-  detailCardElement.innerHTML = `
+    if (line.startsWith("HP ")) {
+      statEntries.push({ label: "HP", value: line.replace("HP ", "") });
+      continue;
+    }
+
+    if (line.startsWith("ATK ")) {
+      statEntries.push({ label: "ATK", value: line.replace("ATK ", "") });
+      continue;
+    }
+
+    if (statEntries.length === 0) {
+      statEntries.push({ label: "Role", value: line });
+      continue;
+    }
+
+    noteLines.push(line);
+  }
+
+  const statsToRender = statEntries.slice(0, 3);
+  const summaryLine = noteLines[0] ?? lines[0] ?? "";
+  const effectLine = noteLines.slice(1).join(" / ") || noteLines[0] || "hover した対象の補足がここに出ます。";
+  const portraitUrl = resolveHoverDetailPortraitUrl(hoverDetail);
+  const statsMarkup = statsToRender.map((entry) => `
+      <div class="player-detail-stat">
+        <strong>${escapeHtml(entry.label)}</strong>
+        <span>${escapeHtml(entry.value)}</span>
+      </div>
+    `).join("");
+  const html = `
     <strong>Unit Detail</strong>
-    <div class="player-ally-card-copy">${escapeHtml(kicker)}</div>
-    <div class="player-ally-card-copy"><strong>${escapeHtml(title)}</strong></div>
-    <div class="player-ally-card-copy">${lines.map((line) => escapeHtml(line)).join(" / ")}</div>
+    <div class="player-detail-head">
+      <div class="player-detail-portrait">${portraitUrl
+        ? `<img class="player-detail-portrait-img" src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(title)}" loading="lazy" />`
+        : escapeHtml(getDisplayInitial(title))}</div>
+      <div class="player-detail-main">
+        <div class="player-detail-kicker player-ally-card-copy">${escapeHtml(kicker)}</div>
+        <div class="player-detail-title player-ally-card-copy"><strong>${escapeHtml(title)}</strong></div>
+        <div class="player-detail-tags">
+          <span class="player-detail-tag">${escapeHtml(kicker)}</span>
+          <span class="player-detail-tag">${escapeHtml(statsToRender[0]?.value ?? "Info")}</span>
+        </div>
+        <div class="player-detail-lines player-ally-card-copy">${escapeHtml(summaryLine)}</div>
+      </div>
+    </div>
+    <div class="player-detail-stats">${statsMarkup}</div>
+    <div class="player-detail-effect"><strong>Detail Note</strong><div>${escapeHtml(effectLine)}</div></div>
   `;
+  setElementMarkup(detailCardElement, html, `Unit Detail ${title} ${lines.join(" / ")}`);
 }
 
-function createHoverChip({ target, label, detail, onHoverDetailChange }) {
+function createHoverChip({ target, label, detail, onHoverDetailChange, variant = "", subtitle = "", portraitUrl = "" }) {
   if (typeof document === "undefined" || typeof document.createElement !== "function") {
     return null;
   }
 
   const chip = document.createElement("button");
   chip.type = "button";
-  chip.className = "player-choice-btn player-slot-btn";
+  chip.className = `player-choice-btn player-slot-btn player-ally-card ${variant}`.trim();
   chip.dataset.hoverDetailTarget = target;
   chip.textContent = label;
+  if (!isFakeElement(chip)) {
+    chip.innerHTML = `
+      <span class="player-ally-card-avatar">${portraitUrl
+        ? `<img class="player-ally-card-avatar-img" src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(label)}" loading="lazy" />`
+        : escapeHtml(getDisplayInitial(label))}</span>
+      <span class="player-ally-card-body">
+        <span class="player-ally-card-title">${escapeHtml(label)}</span>
+        <span class="player-ally-card-meta">${escapeHtml(subtitle)}</span>
+      </span>
+    `;
+  }
   chip.onmouseenter = () => {
     onHoverDetailChange?.(detail);
   };
@@ -140,6 +295,7 @@ function buildHeroHoverDetail(heroId, kicker, bossId = "") {
       return {
         kicker,
         title: heroDetail.name,
+        portraitKey: heroId,
         lines: [
           heroDetail.role,
           `HP ${heroDetail.hp}`,
@@ -156,6 +312,7 @@ function buildHeroHoverDetail(heroId, kicker, bossId = "") {
       return {
         kicker,
         title: bossDetail.name,
+        portraitKey: bossId,
         lines: [bossDetail.roleCopy, "共有ボードでは位置だけ調整できます。"],
       };
     }
@@ -164,16 +321,22 @@ function buildHeroHoverDetail(heroId, kicker, bossId = "") {
   return null;
 }
 
-function buildBenchHoverDetail(benchUnit, displayName, kicker) {
-  const title = formatBenchUnitLabel(benchUnit, displayName);
+function buildBenchHoverDetail(unit, displayName, kicker = "Ally Bench") {
+  const title = formatBenchUnitLabel(unit, displayName);
   if (!title) {
     return null;
   }
 
+  const unitType = typeof unit === "string"
+    ? unit.split("-")[0] || unit
+    : typeof unit?.unitType === "string" && unit.unitType.length > 0
+      ? unit.unitType
+      : title;
+
   return {
     kicker,
     title,
-    lines: ["味方の bench 候補です。shared-board の配置と噛み合うかを見ます。"],
+    lines: [`bench unit`, `${unitType}`],
   };
 }
 
@@ -199,76 +362,99 @@ function renderPrepAllyRail({
     allyRailElement.appendChild(title);
   }
 
-  const ownHeroId = typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "";
-  const ownBossId = typeof player?.selectedBossId === "string" ? player.selectedBossId : "";
-  const ownHeroDetail = buildHeroHoverDetail(
-    ownHeroId,
-    ownHeroId.length > 0 ? "Your Hero" : "Your Boss",
-    ownBossId,
-  );
-  if (ownHeroDetail) {
-    const ownHeroChip = createHoverChip({
-      target: "self-hero",
-      label: ownHeroDetail.title,
-      detail: ownHeroDetail,
-      onHoverDetailChange,
-    });
-    if (ownHeroChip) {
-      allyRailElement.appendChild(ownHeroChip);
+  const appendAllyPanel = (label, chip) => {
+    if (!chip || typeof document === "undefined" || typeof document.createElement !== "function") {
+      return;
     }
+
+    const panel = document.createElement("div");
+    panel.className = "player-ally-panel";
+
+    const panelLabel = document.createElement("div");
+    panelLabel.className = "player-ally-panel-label";
+    panelLabel.textContent = label;
+
+    panel.append(panelLabel, chip);
+    allyRailElement.appendChild(panel);
+  };
+
+  const selfHeroId = typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "";
+  const selfBossId = typeof player?.selectedBossId === "string" ? player.selectedBossId : "";
+  const selfLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
+  const selfHeroDetail = buildHeroHoverDetail(selfHeroId, "Your Hero", selfBossId);
+  if (selfHeroDetail) {
+    const selfHeroChip = createHoverChip({
+      target: "self-hero",
+      label: selfHeroDetail.title,
+      detail: selfHeroDetail,
+      onHoverDetailChange,
+      variant: "player-ally-chip-self",
+      subtitle: selfLives > 0 ? `残機 ${selfLives}` : "your hero",
+      portraitUrl: resolvePortraitUrlFromKey(selfHeroId || selfBossId, "meiling") ?? "",
+    });
+    appendAllyPanel("You", selfHeroChip);
   }
 
+  let allyIndex = 0;
   for (const [playerId, allyPlayer] of mapEntries(state?.players)) {
     if (playerId === sessionId || allyPlayer?.isSpectator === true) {
       continue;
     }
 
     const allyHeroId = typeof allyPlayer?.selectedHeroId === "string" ? allyPlayer.selectedHeroId : "";
-    const allyBossId = typeof allyPlayer?.selectedBossId === "string" ? allyPlayer.selectedBossId : "";
-    const allyHeroDetail = buildHeroHoverDetail(
-      allyHeroId,
-      allyHeroId.length > 0 ? "Ally Hero" : "Ally Boss",
-      allyBossId,
-    );
+    const allyLives = Math.max(0, Math.round(Number(allyPlayer?.remainingLives ?? 0) || 0));
+    const allyHeroDetail = buildHeroHoverDetail(allyHeroId, "Ally Hero");
     if (allyHeroDetail) {
       const allyHeroChip = createHoverChip({
         target: "ally-hero",
         label: allyHeroDetail.title,
         detail: allyHeroDetail,
         onHoverDetailChange,
+        variant: "player-ally-chip-ally",
+        subtitle: allyLives > 0 ? `残機 ${allyLives}` : "ally hero",
+        portraitUrl: resolvePortraitUrlFromKey(allyHeroId, "meiling") ?? "",
       });
-      if (allyHeroChip) {
-        allyRailElement.appendChild(allyHeroChip);
-      }
-    }
-
-    const allyBenchUnits = toRenderableArray(allyPlayer?.benchUnits);
-    const allyBenchDisplayNames = toRenderableArray(allyPlayer?.benchDisplayNames);
-    for (let index = 0; index < allyBenchUnits.length; index += 1) {
-      const benchDetail = buildBenchHoverDetail(
-        allyBenchUnits[index],
-        allyBenchDisplayNames[index],
-        "Ally Bench",
-      );
-      if (!benchDetail) {
-        continue;
-      }
-
-      const allyBenchChip = createHoverChip({
-        target: "ally-bench",
-        label: benchDetail.title,
-        detail: benchDetail,
-        onHoverDetailChange,
-      });
-      if (allyBenchChip) {
-        allyRailElement.appendChild(allyBenchChip);
-      }
+      allyIndex += 1;
+      appendAllyPanel(`Ally ${String.fromCharCode(64 + allyIndex)}`, allyHeroChip);
     }
   }
 
   if (allyRailElement.children.length <= 1) {
     allyRailElement.textContent = "味方情報の到着待ちです。";
   }
+}
+
+function resolvePlacementLimit(isBossPlayer) {
+  return isBossPlayer ? MAX_BOSS_BOARD_UNITS : MAX_RAID_BOARD_UNITS;
+}
+
+function resolvePlayerStateLabel({ currentPhase, playerFacingPhase, isReady }) {
+  if (isReady) {
+    return "Ready";
+  }
+
+  if (playerFacingPhase === "purchase") {
+    return "Purchase";
+  }
+
+  if (playerFacingPhase === "deploy") {
+    return "Deploy";
+  }
+
+  if (playerFacingPhase === "battle") {
+    return "Battle";
+  }
+
+  const normalizedPhase = readPhase(currentPhase);
+  if (normalizedPhase === "Prep") {
+    return "Prep";
+  }
+
+  if (normalizedPhase === "Settle") {
+    return "Result";
+  }
+
+  return normalizedPhase;
 }
 
 function getActivePlayers(state) {
@@ -357,6 +543,7 @@ export function renderPlayerPrepSummary({
   heroUpgradeCopyElement,
   refreshCopyElement,
   specialUnitCopyElement,
+  playerStatsCopyElement,
   spellCopyElement,
   synergyCopyElement,
   benchCopyElement,
@@ -376,6 +563,7 @@ export function renderPlayerPrepSummary({
   player,
   sessionId = "",
   currentPhase,
+  playerFacingPhase = "lobby",
   selectedBenchIndex,
   canSellBench = false,
   canSellBoard = false,
@@ -417,21 +605,76 @@ export function renderPlayerPrepSummary({
   const selectedBossId = typeof player?.selectedBossId === "string" ? player.selectedBossId : "";
   const heroDetail = HERO_DETAILS[selectedHeroId] ?? null;
   const bossDetail = BOSS_DETAILS[selectedBossId] ?? null;
+  const gold = Number(player?.gold ?? 0);
+  const level = Math.max(1, Math.round(Number(player?.level ?? 1) || 1));
+  const xp = Math.max(0, Math.round(Number(player?.xp ?? 0) || 0));
+  const hp = Math.max(0, Math.round(Number(player?.hp ?? 0) || 0));
+  const remainingLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
+  const boardUnitCount = Math.max(0, Math.round(Number(player?.boardUnitCount ?? 0) || 0));
+  const shopActionsEnabled = canUseShopAction({
+    currentPhase,
+    playerFacingPhase,
+    isReady: player?.ready === true,
+  });
+  const boardActionsEnabled = canUseBoardAction({
+    currentPhase,
+    playerFacingPhase,
+    isReady: player?.ready === true,
+  });
+  const benchActionsEnabled = canUseBenchAction({
+    currentPhase,
+    playerFacingPhase,
+    isReady: player?.ready === true,
+  });
 
   if (specialUnitCopyElement instanceof HTMLElement) {
+    const livesCopy = remainingLives > 0 ? `${remainingLives}` : "0";
     if (isBossPlayer) {
-      specialUnitCopyElement.textContent = bossDetail
-        ? `${bossDetail.name} / ${bossDetail.roleCopy}。共有ボード上で位置だけ調整できます。`
+      const summaryText = bossDetail
+        ? `${bossDetail.name} / boss / ${bossDetail.roleCopy}。hover で詳細を見ながら、共有ボード上で位置だけ調整できます。`
         : "Boss role は boss character の選択待ちです。";
+      setElementMarkup(
+        specialUnitCopyElement,
+        `
+          <div class="player-special-unit-panel">
+            <div class="player-special-unit-avatar">${bossDetail
+              ? `<img class="player-special-unit-avatar-img" src="${escapeHtml(resolveFrontPortraitUrl(selectedBossId || "remilia", "remilia"))}" alt="${escapeHtml(bossDetail.name)}" loading="lazy" />`
+              : escapeHtml(getDisplayInitial(bossDetail?.name ?? "B"))}</div>
+            <div class="player-special-unit-main">
+              <strong>${escapeHtml(bossDetail?.name ?? "Boss")}</strong>
+              <div class="player-special-unit-copy">${escapeHtml(summaryText)}</div>
+            </div>
+            <div class="player-special-unit-lives">${escapeHtml(livesCopy)}<span>Lives</span></div>
+          </div>
+        `,
+        summaryText,
+      );
     } else {
-      specialUnitCopyElement.textContent = heroDetail
-        ? `${heroDetail.name} / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。主人公は常設で、bench には戻りません。${selectedHeroId === "okina" ? "隠岐奈だけは他の自軍 unit の sub slot に入れます。" : ""}`
+      const summaryText = heroDetail
+        ? `${heroDetail.name} / 主人公 / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。hover で詳細を見ながら、主人公は常設で bench には戻りません。${selectedHeroId === "okina" ? "隠岐奈だけは他の自軍 unit の sub slot に入れます。" : ""}`
         : "Raid role は hero selection の完了待ちです。";
+      setElementMarkup(
+        specialUnitCopyElement,
+        `
+          <div class="player-special-unit-panel">
+            <div class="player-special-unit-avatar">${heroDetail
+              ? `<img class="player-special-unit-avatar-img" src="${escapeHtml(resolveFrontPortraitUrl(selectedHeroId || "reimu", "reimu"))}" alt="${escapeHtml(heroDetail.name)}" loading="lazy" />`
+              : escapeHtml(getDisplayInitial(heroDetail?.name ?? "H"))}</div>
+            <div class="player-special-unit-main">
+              <strong>${escapeHtml(heroDetail?.name ?? "Hero")}</strong>
+              <div class="player-special-unit-copy">${escapeHtml(summaryText)}</div>
+            </div>
+            <div class="player-special-unit-lives">${escapeHtml(livesCopy)}<span>Lives</span></div>
+          </div>
+        `,
+        summaryText,
+      );
     }
   }
 
   if (synergyCopyElement instanceof HTMLElement) {
-    const activeSynergies = toRenderableArray(player?.activeSynergies);
+    const activeSynergies = toRenderableArray(player?.activeSynergies)
+      .filter((synergy) => Number(synergy?.tier ?? 0) > 0);
     if (activeSynergies.length === 0) {
       synergyCopyElement.textContent = "有効な synergy はまだありません。盤面を広げるとここに出ます。";
     } else {
@@ -462,19 +705,33 @@ export function renderPlayerPrepSummary({
   }
 
   const offers = toRenderableArray(player?.shopOffers);
-  const gold = Number(player?.gold ?? 0);
-  const level = Math.max(1, Math.round(Number(player?.level ?? 1) || 1));
-  const xp = Math.max(0, Math.round(Number(player?.xp ?? 0) || 0));
-  const hp = Math.max(0, Math.round(Number(player?.hp ?? 0) || 0));
-  const remainingLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
+  if (playerStatsCopyElement instanceof HTMLElement) {
+    const placementLimit = resolvePlacementLimit(isBossPlayer);
+    const stateLabel = resolvePlayerStateLabel({
+      currentPhase,
+      playerFacingPhase,
+      isReady: player?.ready === true,
+    });
+    const statsText = `Placement ${boardUnitCount} / ${placementLimit} / State ${stateLabel}`;
+    setElementMarkup(
+      playerStatsCopyElement,
+      `
+        <div class="player-player-stat-grid">
+          <div class="player-player-stat"><strong>Placement</strong><span>${escapeHtml(`${boardUnitCount} / ${placementLimit}`)}</span></div>
+          <div class="player-player-stat"><strong>State</strong><span>${escapeHtml(stateLabel)}</span></div>
+        </div>
+      `,
+      statsText,
+    );
+  }
   if (shopCopyElement instanceof HTMLElement) {
     shopCopyElement.textContent = offers.length > 0
-      ? `共通ユニット / 所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
-      : `共通ユニット / 所持 ${gold}G / LV ${level} / XP ${xp} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
+      ? `共通ユニット / 所持 ${gold}G / LV ${level} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
+      : `共通ユニット / 所持 ${gold}G / LV ${level} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
   }
 
   if (heroUpgradeCopyElement instanceof HTMLElement) {
-    heroUpgradeCopyElement.textContent = `主人公強化 / LV ${level} / XP ${xp}。経験値を買って主人公レベルを上げます。`;
+    heroUpgradeCopyElement.textContent = `主人公強化 / LV ${level}。4G で強化を 1 段進めます。現在の進行度 ${xp}。`;
   }
 
   if (refreshCopyElement instanceof HTMLElement) {
@@ -492,7 +749,7 @@ export function renderPlayerPrepSummary({
     const displayName = typeof offer?.displayName === "string" && offer.displayName.length > 0
       ? offer.displayName
       : unitType;
-    button.disabled = !offer || currentPhase !== "Prep";
+    button.disabled = !offer || !shopActionsEnabled;
     button.classList.toggle("selected", false);
     button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "❓"} ${displayName} / ${cost}G` : `Shop ${index + 1}`;
   });
@@ -511,7 +768,7 @@ export function renderPlayerPrepSummary({
     } else {
       const firstOffer = bossShopOffers[0];
       const firstCost = Math.max(0, Math.round(Number(firstOffer?.cost) || 0));
-      bossShopCopyElement.textContent = `専用ユニット / Boss shop / ${bossShopOffers.length} offers。先頭 ${firstCost}G、boss 専用ユニットを直接 bench へ追加します。`;
+      bossShopCopyElement.textContent = `専用ユニット / 所持 ${gold}G / Boss shop / ${bossShopOffers.length} offers。先頭 ${firstCost}G、boss 専用ユニットを直接 bench へ追加します。`;
     }
   }
 
@@ -526,7 +783,7 @@ export function renderPlayerPrepSummary({
     const displayName = typeof offer?.displayName === "string" && offer.displayName.length > 0
       ? offer.displayName
       : unitType;
-    button.disabled = !offer || currentPhase !== "Prep" || !isBossPlayer;
+    button.disabled = !offer || !shopActionsEnabled || !isBossPlayer;
     button.classList.toggle("selected", false);
     button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "👑"} ${displayName} / ${cost}G` : `Boss ${index + 1}`;
   });
@@ -555,11 +812,12 @@ export function renderPlayerPrepSummary({
   }
 
   const benchUnits = toRenderableArray(player?.benchUnits);
+  const benchUnitIds = toRenderableArray(player?.benchUnitIds);
   const benchDisplayNames = toRenderableArray(player?.benchDisplayNames);
   if (benchCopyElement instanceof HTMLElement) {
     benchCopyElement.textContent = selectedBenchIndex === null
-      ? `${benchUnits.length} / 9 on bench。配置か売却したい unit を選びます。`
-      : `${benchUnits.length} / 9 on bench。Bench ${selectedBenchIndex + 1} を選択中です。`;
+      ? `${benchUnits.length} / 8 on bench。配置か売却したい unit を選びます。`
+      : `${benchUnits.length} / 8 on bench。Bench ${selectedBenchIndex + 1} を選択中です。次の target slot を選んで配置します。`;
   }
 
   benchSlotElements.forEach((button, index) => {
@@ -568,9 +826,28 @@ export function renderPlayerPrepSummary({
     }
 
     const unitText = formatBenchUnitLabel(benchUnits[index], benchDisplayNames[index]);
-    button.disabled = !unitText || currentPhase !== "Prep";
+    const portraitUrl = resolveBenchPortraitUrl(benchUnits[index], benchDisplayNames[index], benchUnitIds[index]);
+    button.disabled = !unitText || !benchActionsEnabled;
     button.classList.toggle("selected", selectedBenchIndex === index);
-    button.textContent = unitText ?? `Bench ${index + 1}`;
+    button.classList.toggle("player-bench-slot-filled", Boolean(unitText));
+    button.classList.toggle("player-bench-slot-empty", !unitText);
+    button.classList.toggle("player-bench-slot-selected", selectedBenchIndex === index);
+    button.textContent = unitText ? unitText : `Bench ${index + 1}`;
+    setElementMarkup(
+      button,
+      unitText
+        ? `
+          <span class="player-bench-slot-avatar">${portraitUrl
+            ? `<img class="player-bench-slot-avatar-img" src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(unitText)}" loading="lazy" />`
+            : escapeHtml(getDisplayInitial(unitText))}</span>
+          <span class="player-bench-slot-copy">
+            <span class="player-bench-slot-name">${escapeHtml(unitText)}</span>
+            <span class="player-bench-slot-state">${selectedBenchIndex === index ? "selected" : "reserve"}</span>
+          </span>
+        `
+        : `<span class="player-bench-slot-empty-copy">empty</span>`,
+      unitText ? `${unitText} ${selectedBenchIndex === index ? "selected" : "reserve"}` : "empty",
+    );
   });
 
   boardCellElements.forEach((button) => {
@@ -578,19 +855,19 @@ export function renderPlayerPrepSummary({
       return;
     }
 
-    button.disabled = currentPhase !== "Prep";
+    button.disabled = !boardActionsEnabled;
   });
 
   if (benchSellButton instanceof HTMLButtonElement) {
-    benchSellButton.disabled = currentPhase !== "Prep" || !canSellBench;
+    benchSellButton.disabled = !benchActionsEnabled || !canSellBench;
   }
 
   if (boardSellButton instanceof HTMLButtonElement) {
-    boardSellButton.disabled = currentPhase !== "Prep" || !canSellBoard;
+    boardSellButton.disabled = !boardActionsEnabled || !canSellBoard;
   }
 
   if (boardReturnButton instanceof HTMLButtonElement) {
-    boardReturnButton.disabled = currentPhase !== "Prep" || !canReturnBoard;
+    boardReturnButton.disabled = !boardActionsEnabled || !canReturnBoard;
   }
 
   if (readyCopyElement instanceof HTMLElement) {
@@ -634,6 +911,11 @@ export function renderPlayerResultSummary({
     raidPlayerIds,
     roundIndex: Number(state?.roundIndex),
   });
+  const phaseStatusCopy = phase === "Settle"
+    ? "Result phase"
+    : phase === "Battle"
+      ? "Live battle"
+      : phase;
   const ranking = buildRoundDamageRanking(state?.players);
   const resultCopy = battleResult
     ? buildBattleResultCopy({
@@ -658,23 +940,23 @@ export function renderPlayerResultSummary({
   });
 
   resultSurfaceElement.innerHTML = `
-    <div class="player-card">
+    <div class="player-card player-result-hero-card">
       <strong>Final Judgment</strong>
       <div>${judgmentCopy}</div>
-      <div>${phase}</div>
+      <div>${phaseStatusCopy}</div>
     </div>
-    <div class="player-card">
+    <div class="player-card player-result-support-card">
       <strong>Phase HP</strong>
       <div>${phaseHpCopy.valueText}</div>
       <div>${phaseHpCopy.resultText}</div>
       <div>${phaseHpCopy.helperText}</div>
     </div>
-    <div class="player-card">
+    <div class="player-card player-result-support-card">
       <strong>${resultCopy.title}</strong>
       <div>${resultCopy.subtitle}</div>
       <div>${resultCopy.hint}</div>
     </div>
-    <div class="player-card">
+    <div class="player-card player-result-support-card">
       <strong>Round Read</strong>
       <div>${caption}</div>
       <div>${tip}</div>
@@ -726,6 +1008,31 @@ function formatBenchUnitLabel(unit, displayName) {
   }
 
   return String(unit);
+}
+
+function resolveBenchUnitType(unit) {
+  if (!unit) {
+    return "";
+  }
+
+  if (typeof unit === "string") {
+    return unit.split("-")[0] || unit;
+  }
+
+  if (typeof unit?.unitType === "string" && unit.unitType.length > 0) {
+    return unit.unitType;
+  }
+
+  if (typeof unit?.unitId === "string" && unit.unitId.length > 0) {
+    return unit.unitId.split("-")[0] || unit.unitId;
+  }
+
+  return "";
+}
+
+function resolveBenchUnitIcon(unit) {
+  const unitType = resolveBenchUnitType(unit);
+  return UNIT_ICONS[unitType] ?? "❓";
 }
 
 function toRenderableArray(value) {

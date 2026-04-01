@@ -269,13 +269,6 @@ export function buildAutoFillHelperActions({ state, player, helperIndex = 0 }) {
       }
     }
 
-    if (nextDeployCell === null) {
-      const reserveBuyAction = buildReserveBuyAction(player);
-      if (reserveBuyAction) {
-        return [reserveBuyAction];
-      }
-    }
-
     if (!Number.isFinite(player.gold) && placedPurchasedUnitCount > 0) {
       return [];
     }

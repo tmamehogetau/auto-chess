@@ -16,9 +16,9 @@ export interface FeatureFlags {
 
 export const DEFAULT_FLAGS: FeatureFlags = {
   enableHeroSystem: true,
-  enableSharedPool: true,
+  enableSharedPool: false,
   enablePhaseExpansion: true,
-  enableSubUnitSystem: false,
+  enableSubUnitSystem: true,
   enableEmblemCells: false,
   enableSpellCard: true,
   enableRumorInfluence: false,

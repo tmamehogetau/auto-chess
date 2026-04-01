@@ -46,6 +46,7 @@ export interface PlayerBattleResult {
   damageTaken: number;
   survivors: number;
   opponentSurvivors: number;
+  phaseDamageToBoss?: number;
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
   timeline?: BattleTimelineEvent[];
 }
@@ -57,6 +58,10 @@ export interface BattleResolutionResult {
   outcome: MatchupOutcome;
   leftBattleResult: PlayerBattleResult;
   rightBattleResult: PlayerBattleResult;
+  combatDamageDealt?: {
+    left: number;
+    right: number;
+  };
 }
 
 /**
@@ -371,6 +376,7 @@ export class BattleResolutionService {
       outcome,
       leftBattleResult,
       rightBattleResult,
+      combatDamageDealt: battleResult.damageDealt,
     };
   }
 
@@ -460,6 +466,7 @@ export class BattleResolutionService {
     heroId: string | undefined,
     playerId: string,
     boardCellIndex?: number,
+    battleSide: "left" | "right" = "left",
   ): BattleUnit | null {
     if (!heroId) return null;
 
@@ -471,6 +478,7 @@ export class BattleResolutionService {
 
     return {
       id: `hero-${playerId}`,
+      battleSide,
       type: "vanguard" as BoardUnitType,
       starLevel: 1,
       hp: hero.hp,
@@ -498,6 +506,8 @@ export class BattleResolutionService {
     bossId: string | undefined,
     playerId: string,
     boardCellIndex?: number,
+    phaseHpTarget?: number,
+    battleSide: "left" | "right" = "right",
   ): BattleUnit | null {
     if (!bossId) return null;
 
@@ -512,10 +522,11 @@ export class BattleResolutionService {
     return {
       id: `boss-${playerId}`,
       sourceUnitId: boss.id,
+      battleSide,
       type: "vanguard" as BoardUnitType,
       starLevel: 1,
-      hp: bossStats.hp,
-      maxHp: bossStats.hp,
+      hp: typeof phaseHpTarget === "number" && phaseHpTarget > 0 ? phaseHpTarget : bossStats.hp,
+      maxHp: typeof phaseHpTarget === "number" && phaseHpTarget > 0 ? phaseHpTarget : bossStats.hp,
       attackPower: bossStats.attack,
       attackSpeed: bossStats.attackSpeed,
       attackRange: bossStats.range,

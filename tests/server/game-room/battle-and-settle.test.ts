@@ -122,6 +122,7 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     expect((serverRoom.state as unknown as { playerPhase?: string }).playerPhase).toBe("purchase");
     expect((serverRoom.state as unknown as { playerPhaseDeadlineAtMs?: number }).playerPhaseDeadlineAtMs)
       .toBeGreaterThan(0);
+    expect(clients.every((client) => serverRoom.state.players.get(client.sessionId)?.ready === false)).toBe(true);
     expect(roomInternals.controller?.getHeroPlacementForPlayer(raidPlayerId)).not.toBeNull();
     expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([]);
     expect(roundStates.some((message) => (message as RoundStateMessage & { playerPhase?: string }).playerPhase === "purchase")).toBe(true);
@@ -160,8 +161,241 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
       2_000,
     );
 
+    expect(clients.every((client) => serverRoom.state.players.get(client.sessionId)?.ready === false)).toBe(true);
     expect(roomInternals.controller?.getBoardPlacementsForPlayer(raidPlayerId)).toEqual([]);
     expect(roomInternals.controller?.getHeroPlacementForPlayer(raidPlayerId)).not.toBeNull();
+  });
+
+  test("round 6 battle completion revives eliminated raid players and still advances to round 7 prep", async () => {
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(
+      getTestServer(),
+      {
+        prepDurationMs: 10_000,
+        battleDurationMs: 10_000,
+        settleDurationMs: 10_000,
+        eliminationDurationMs: 10_000,
+      },
+    );
+    const roomInternals = serverRoom as unknown as {
+      advanceLoop: (nowMs: number) => void;
+      controller?: {
+        roundIndex: number;
+        getPlayerStatus: (playerId: string) => {
+          remainingLives: number;
+          eliminated: boolean;
+          benchUnits: string[];
+        };
+        getBoardPlacementsForPlayer: (playerId: string) => Array<{ cell: number; unitType: string }>;
+        getHeroPlacementForPlayer: (playerId: string) => number | null;
+        getTestAccess: () => {
+          battleResultsByPlayer: Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>;
+        };
+      };
+    };
+    const controllerInternals = roomInternals.controller as unknown as {
+      gameLoopState: {
+        roundIndex: number;
+        players: Map<string, {
+          remainingLives: number;
+          eliminated: boolean;
+        }>;
+      };
+      boardPlacementsByPlayer: Map<string, Array<{
+        cell: number;
+        unitType: string;
+        starLevel: number;
+        sellValue: number;
+        unitCount: number;
+      }>>;
+      benchUnitsByPlayer: Map<string, Array<{
+        unitType: string;
+        cost: number;
+        starLevel: number;
+        unitCount: number;
+      }>>;
+    };
+
+    await resolveBossRoleSelectionToPrep(serverRoom, clients);
+
+    const bossPlayerId = clients[1]!.sessionId;
+    const revivedRaidPlayerId = clients[2]!.sessionId;
+    const survivingRaidPlayerIds = [clients[0]!.sessionId, clients[3]!.sessionId];
+    const revivedRaid = controllerInternals.gameLoopState.players.get(revivedRaidPlayerId);
+    const survivingRaidA = controllerInternals.gameLoopState.players.get(survivingRaidPlayerIds[0]!);
+    const survivingRaidB = controllerInternals.gameLoopState.players.get(survivingRaidPlayerIds[1]!);
+
+    if (!roomInternals.controller || !revivedRaid || !survivingRaidA || !survivingRaidB) {
+      throw new Error("Expected room controller and raid player states");
+    }
+
+    controllerInternals.gameLoopState.roundIndex = 6;
+    survivingRaidA.remainingLives = 2;
+    survivingRaidA.eliminated = false;
+    revivedRaid.remainingLives = 0;
+    revivedRaid.eliminated = true;
+    survivingRaidB.remainingLives = 2;
+    survivingRaidB.eliminated = false;
+
+    controllerInternals.boardPlacementsByPlayer.set(revivedRaidPlayerId, [
+      { cell: 30, unitType: "mage", starLevel: 1, sellValue: 2, unitCount: 1 },
+    ]);
+    controllerInternals.benchUnitsByPlayer.set(revivedRaidPlayerId, [
+      { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1 },
+    ]);
+
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+
+    expect(serverRoom.state.phase).toBe("Battle");
+    serverRoom.setPendingPhaseDamageForTest(100);
+
+    const { battleResultsByPlayer } = roomInternals.controller.getTestAccess();
+    for (const raidPlayerId of survivingRaidPlayerIds) {
+      battleResultsByPlayer.set(raidPlayerId, {
+        opponentId: bossPlayerId,
+        won: true,
+        damageDealt: 10,
+        damageTaken: 0,
+        survivors: 1,
+        opponentSurvivors: 0,
+      });
+    }
+
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+
+    const revivedRaidState = serverRoom.state.players.get(revivedRaidPlayerId);
+
+    expect({
+      phase: serverRoom.state.phase,
+      roundIndex: serverRoom.state.roundIndex,
+      playerPhase: (serverRoom.state as unknown as { playerPhase?: string }).playerPhase,
+      revivedEliminated: revivedRaidState?.eliminated,
+      revivedLives: revivedRaidState?.remainingLives,
+      revivedBench: Array.from(revivedRaidState?.benchUnits ?? []),
+      revivedBoardUnits: Array.from(revivedRaidState?.boardUnits ?? []),
+    }).toMatchObject({
+      phase: "Prep",
+      roundIndex: 7,
+      playerPhase: "purchase",
+      revivedEliminated: false,
+      revivedLives: 1,
+      revivedBench: ["vanguard", "mage"],
+      revivedBoardUnits: [],
+    });
+    expect(roomInternals.controller.getHeroPlacementForPlayer(revivedRaidPlayerId)).not.toBeNull();
+  });
+
+  test("round 6 battle completion still advances to round 7 prep when every raider is temporarily at zero lives", async () => {
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(
+      getTestServer(),
+      {
+        prepDurationMs: 10_000,
+        battleDurationMs: 10_000,
+        settleDurationMs: 10_000,
+        eliminationDurationMs: 10_000,
+      },
+    );
+    const roomInternals = serverRoom as unknown as {
+      advanceLoop: (nowMs: number) => void;
+      controller?: {
+        getPlayerStatus: (playerId: string) => {
+          remainingLives: number;
+          eliminated: boolean;
+          benchUnits: string[];
+        };
+        getHeroPlacementForPlayer: (playerId: string) => number | null;
+        getTestAccess: () => {
+          battleResultsByPlayer: Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+          }>;
+        };
+      };
+    };
+    const controllerInternals = roomInternals.controller as unknown as {
+      gameLoopState: {
+        roundIndex: number;
+        players: Map<string, {
+          remainingLives: number;
+          eliminated: boolean;
+        }>;
+      };
+    };
+
+    await resolveBossRoleSelectionToPrep(serverRoom, clients);
+
+    const bossPlayerId = clients[1]!.sessionId;
+    const raidPlayerIds = [clients[0]!.sessionId, clients[2]!.sessionId, clients[3]!.sessionId];
+
+    if (!roomInternals.controller) {
+      throw new Error("Expected room controller");
+    }
+
+    controllerInternals.gameLoopState.roundIndex = 6;
+    for (const raidPlayerId of raidPlayerIds) {
+      const raidState = controllerInternals.gameLoopState.players.get(raidPlayerId);
+      if (!raidState) {
+        throw new Error(`Expected raid player state for ${raidPlayerId}`);
+      }
+      raidState.remainingLives = 0;
+      raidState.eliminated = false;
+    }
+
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+
+    expect(serverRoom.state.phase).toBe("Battle");
+    serverRoom.setPendingPhaseDamageForTest(0);
+
+    const { battleResultsByPlayer } = roomInternals.controller.getTestAccess();
+    for (const raidPlayerId of raidPlayerIds) {
+      battleResultsByPlayer.set(raidPlayerId, {
+        opponentId: bossPlayerId,
+        won: false,
+        damageDealt: 0,
+        damageTaken: 10,
+        survivors: 0,
+        opponentSurvivors: 1,
+      });
+    }
+
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+
+    expect({
+      phase: serverRoom.state.phase,
+      roundIndex: serverRoom.state.roundIndex,
+      playerPhase: (serverRoom.state as unknown as { playerPhase?: string }).playerPhase,
+      raidStates: raidPlayerIds.map((playerId) => {
+        const playerState = serverRoom.state.players.get(playerId);
+        return {
+          eliminated: playerState?.eliminated,
+          remainingLives: playerState?.remainingLives,
+        };
+      }),
+    }).toMatchObject({
+      phase: "Prep",
+      roundIndex: 7,
+      playerPhase: "purchase",
+      raidStates: [
+        { eliminated: false, remainingLives: 1 },
+        { eliminated: false, remainingLives: 1 },
+        { eliminated: false, remainingLives: 1 },
+      ],
+    });
+    expect(raidPlayerIds.every((playerId) => roomInternals.controller?.getHeroPlacementForPlayer(playerId) !== null)).toBe(true);
   });
 
 

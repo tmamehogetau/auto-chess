@@ -1021,8 +1021,8 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
       targetCell.unitId = `battle:${unit.battleUnitId}`;
       targetCell.ownerId = unit.side;
-      targetCell.displayName = this.buildBattleReplayDisplayName(unit.battleUnitId);
-      targetCell.portraitKey = "";
+      targetCell.displayName = unit.displayName ?? this.buildBattleReplayDisplayName(unit.battleUnitId);
+      targetCell.portraitKey = unit.portraitKey ?? "";
       targetCell.lockedBy = "";
       targetCell.lockUntilMs = 0;
       applied += 1;

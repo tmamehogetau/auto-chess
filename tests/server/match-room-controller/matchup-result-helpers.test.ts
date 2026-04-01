@@ -81,7 +81,13 @@ describe("matchup-result-helpers", () => {
         bossIsLeft: true,
       }),
     ).toEqual([
-      { playerId: "boss", battleResult: resolutionResult.leftBattleResult },
+      {
+        playerId: "boss",
+        battleResult: {
+          ...resolutionResult.leftBattleResult,
+          phaseDamageToBoss: 0,
+        },
+      },
       {
         playerId: "raid-a",
         battleResult: { ...resolutionResult.rightBattleResult, opponentId: "boss" },
@@ -95,6 +101,45 @@ describe("matchup-result-helpers", () => {
         battleResult: { ...resolutionResult.rightBattleResult, opponentId: "boss" },
       },
     ]);
+  });
+
+  it("carries aggregate raid combat damage onto the boss result for phase HP tracking", () => {
+    const resolutionResult = createResolutionResult({
+      leftBattleResult: {
+        opponentId: "raid-lead",
+        won: true,
+        damageDealt: 12,
+        damageTaken: 2,
+        survivors: 1,
+        opponentSurvivors: 0,
+      },
+      rightBattleResult: {
+        opponentId: "boss",
+        won: false,
+        damageDealt: 2,
+        damageTaken: 12,
+        survivors: 0,
+        opponentSurvivors: 1,
+      },
+      combatDamageDealt: {
+        left: 24,
+        right: 180,
+      },
+    });
+
+    expect(
+      buildBattleResultAssignments("boss", "raid-lead", resolutionResult, {
+        bossPlayerId: "boss",
+        raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+        bossIsLeft: true,
+      })[0],
+    ).toEqual({
+      playerId: "boss",
+      battleResult: {
+        ...resolutionResult.leftBattleResult,
+        phaseDamageToBoss: 180,
+      },
+    });
   });
 
   it("builds a draw trace summary without damage attribution", () => {

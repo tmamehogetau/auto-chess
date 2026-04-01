@@ -46,6 +46,10 @@ export function buildReadyHint({
     return "Choose a hero first. Then finish your prep setup.";
   }
 
+  if (phase === "End") {
+    return "Match complete. Read the final judgment and recap before starting the next room.";
+  }
+
   if (phase !== "Prep" && phase !== "Waiting") {
     return "Battle in progress. Watch the result, then set up again on the next prep phase.";
   }
@@ -133,6 +137,10 @@ export function buildEntryFlowStatus({
 
   if (phase === "Settle") {
     return "Results are settling. Use the summary to decide what to change next round.";
+  }
+
+  if (phase === "End") {
+    return "Match finished. Read the final judgment and use it to plan the next room.";
   }
 
   return "Stay with the flow: Hero, buy, place, Ready, then read the result.";

@@ -729,12 +729,24 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
+    const previousPhase = this.state.phase;
+    const previousPlayerPhase = this.state.playerPhase;
+    const previousRoundIndex = this.state.roundIndex;
+    const playerFacingPhase = this.controller.getPlayerFacingPhaseState();
+    this.resetPrepReadyStateForNewPurchase({
+      previousPhase,
+      previousPlayerPhase,
+      previousRoundIndex,
+      nextPhase: this.controller.phase,
+      nextPlayerPhase: playerFacingPhase.phase,
+      nextRoundIndex: this.controller.roundIndex,
+    });
+
     this.state.phase = this.controller.phase;
     this.state.phaseDeadlineAtMs = this.controller.phaseDeadlineAtMs ?? 0;
     this.state.sharedBoardRoomId = this.sharedBoardRoomId ?? "";
     this.state.prepDeadlineAtMs =
       this.controller.phase === "Prep" ? this.controller.prepDeadlineAtMs ?? 0 : 0;
-    const playerFacingPhase = this.controller.getPlayerFacingPhaseState();
     this.state.playerPhase = playerFacingPhase.phase;
     this.state.playerPhaseDeadlineAtMs = playerFacingPhase.deadlineAtMs;
     this.state.lobbyStage = this.controller.phase === "Waiting"
@@ -809,6 +821,41 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       SERVER_MESSAGE_TYPES.ROUND_STATE,
       this.createRoundStateMessage(),
     );
+  }
+
+  private resetPrepReadyStateForNewPurchase(input: {
+    previousPhase: string;
+    previousPlayerPhase: string;
+    previousRoundIndex: number;
+    nextPhase: string;
+    nextPlayerPhase: string;
+    nextRoundIndex: number;
+  }): void {
+    if (!this.controller) {
+      return;
+    }
+
+    if (input.nextPhase !== "Prep" || input.nextPlayerPhase !== "purchase") {
+      return;
+    }
+
+    const isNewPurchaseWindow =
+      input.previousPhase !== "Prep"
+      || input.previousPlayerPhase !== "purchase"
+      || input.previousRoundIndex !== input.nextRoundIndex;
+
+    if (!isNewPurchaseWindow) {
+      return;
+    }
+
+    for (const [playerId, playerState] of this.state.players.entries()) {
+      if (playerState.isSpectator) {
+        continue;
+      }
+
+      playerState.ready = false;
+      this.controller.setReady(playerId, false);
+    }
   }
 
   private syncSinglePlayerStateFromController(playerId: string): void {

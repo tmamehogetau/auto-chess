@@ -196,19 +196,25 @@ describe("SharedBoardRoom integration", () => {
           units: [
             {
               battleUnitId: "raid-vanguard-1",
+              sourceUnitId: "nazrin",
               side: "raid",
               x: 0,
               y: 3,
               currentHp: 40,
               maxHp: 40,
+              displayName: "ナズーリン",
+              portraitKey: "nazrin",
             },
             {
               battleUnitId: "boss-ranger-1",
+              sourceUnitId: "remilia",
               side: "boss",
               x: 5,
               y: 0,
               currentHp: 50,
               maxHp: 50,
+              displayName: "レミリア",
+              portraitKey: "remilia",
             },
           ],
         }),
@@ -225,6 +231,10 @@ describe("SharedBoardRoom integration", () => {
     expect(serverRoom.state.battleId).toBe("battle-raid-1");
     expect(serverRoom.state.cells.get("18")?.unitId).toContain("battle:");
     expect(serverRoom.state.cells.get("5")?.unitId).toContain("battle:");
+    expect(serverRoom.state.cells.get("18")?.displayName).toBe("ナズーリン");
+    expect(serverRoom.state.cells.get("18")?.portraitKey).toBe("nazrin");
+    expect(serverRoom.state.cells.get("5")?.displayName).toBe("レミリア");
+    expect(serverRoom.state.cells.get("5")?.portraitKey).toBe("remilia");
 
     client.send(CLIENT_MESSAGE_TYPES.RESET);
     const result = await client.waitForMessage(SERVER_MESSAGE_TYPES.ACTION_RESULT, 5_000);

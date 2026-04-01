@@ -4,7 +4,7 @@
  */
 
 import { mapEntries, mapGet, shortPlayerId } from "./utils/pure-utils.js";
-import { resolveFrontPortraitUrl } from "./portrait-resolver.js";
+import { resolveFrontPortraitUrl, resolvePortraitKeyByUnitId } from "./portrait-resolver.js";
 
 /**
  * @typedef {Object} SharedBoardDOMRefs
@@ -85,7 +85,7 @@ let sharedDraggedUnitId = null;
 /** @type {string|null} */
 let selectedSharedUnitId = null;
 
-/** @type {{ battleId: string, boardWidth: number, boardHeight: number, lastAttackMarkerAtMs: number | null, units: Map<string, { battleUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null, impactAmount: number | null }> } | null} */
+/** @type {{ battleId: string, timelineSignature: string, boardWidth: number, boardHeight: number, lastAttackMarkerAtMs: number | null, units: Map<string, { battleUnitId: string, sourceUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null, impactAmount: number | null, displayName: string, portraitKey: string }> } | null} */
 let currentSharedBattleReplay = null;
 
 /** @type {ReturnType<typeof setTimeout>[]} */
@@ -467,6 +467,12 @@ function renderSharedBoard(state) {
     } else if (isBlockedDropTarget) {
       cellElement.classList.add("blocked-target");
     }
+
+    const zoneLabel = document.createElement("span");
+    zoneLabel.className = "shared-board-zone-label";
+    zoneLabel.textContent = resolveSharedBoardZoneLabel(cell, deploymentZone);
+    cellElement.appendChild(zoneLabel);
+
     cellElement.ondragover = (event) => {
       handleSharedDragOver(event, state, cellElement, i);
     };
@@ -515,7 +521,7 @@ function renderSharedBoard(state) {
       }
 
       const unit = document.createElement("div");
-      unit.className = "shared-board-unit";
+      unit.className = "shared-board-unit shared-board-unit-card";
 
       const ownerDot = document.createElement("span");
       ownerDot.className = "shared-board-owner";
@@ -527,18 +533,30 @@ function renderSharedBoard(state) {
         portrait.src = resolveFrontPortraitUrl(cell.portraitKey, "meiling");
         portrait.alt = cell.displayName;
 
+        const metaWrap = document.createElement("div");
+        metaWrap.className = "shared-board-unit-meta-wrap";
+
+        const typeLabel = document.createElement("span");
+        typeLabel.className = "shared-board-unit-type shared-board-unit-meta";
+        typeLabel.textContent = resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
+
         const displayName = document.createElement("span");
-        displayName.className = "shared-board-display-name";
+        displayName.className = "shared-board-display-name shared-board-unit-meta";
         displayName.textContent = cell.displayName;
 
-        unit.append(ownerDot, portrait, displayName);
+        metaWrap.append(typeLabel, displayName);
+        unit.append(ownerDot, portrait, metaWrap);
       } else {
+        const metaWrap = document.createElement("div");
+        metaWrap.className = "shared-board-unit-meta-wrap";
+
         const unitIdLabel = document.createElement("span");
-        unitIdLabel.className = "shared-board-unit-id";
+        unitIdLabel.className = "shared-board-unit-id shared-board-unit-meta";
         unitIdLabel.textContent = typeof cell?.displayName === "string" && cell.displayName.length > 0
           ? cell.displayName
           : shortPlayerId(unitId);
-        unit.append(ownerDot, unitIdLabel);
+        metaWrap.appendChild(unitIdLabel);
+        unit.append(ownerDot, metaWrap);
       }
 
       if (isSharedBoardBattleMode(state) && Number.isFinite(Number(cell?.maxHp))) {
@@ -837,8 +855,30 @@ function buildSharedBoardHoverDetail(cell, subUnitToken = null) {
   return {
     kicker: "Board Unit",
     title,
+    portraitKey: typeof cell?.portraitKey === "string" && cell.portraitKey.length > 0
+      ? cell.portraitKey
+      : resolvePortraitKeyByUnitId(cell?.unitId),
     lines,
   };
+}
+
+function resolveSharedBoardZoneLabel(cell, deploymentZone) {
+  if (isHeroSharedUnitId(cell?.unitId)) {
+    return "hero";
+  }
+
+  if (
+    deploymentZone === "boss"
+    && (!cell?.unitId || cell.unitId === "dummy-boss" || isBossSharedUnitId(cell.unitId))
+  ) {
+    return "boss";
+  }
+
+  if (typeof cell?.unitId === "string" && cell.unitId.length > 0 && cell.unitId !== "dummy-boss") {
+    return "slot";
+  }
+
+  return "empty";
 }
 
 function buildSharedBoardSubHoverDetail(subUnitToken, hostCell = null) {
@@ -853,11 +893,33 @@ function buildSharedBoardSubHoverDetail(subUnitToken, hostCell = null) {
   return {
     kicker: "Sub Unit",
     title: resolveSubUnitHoverTitle(subUnitToken),
+    portraitKey: resolveSharedBoardSubUnitPortraitKey(subUnitToken),
     lines: [
       ...(hostTitle && hostTitle !== "Unknown" ? [`装着先: ${hostTitle}`] : []),
       ...buildSubUnitRuleLines(subUnitToken),
     ],
   };
+}
+
+function resolveSharedBoardSubUnitPortraitKey(subUnitToken) {
+  const detail = typeof subUnitToken?.detail === "string" ? subUnitToken.detail.trim() : "";
+  if (detail.length > 0 && !/^\d+$/.test(detail)) {
+    return resolvePortraitKeyByUnitId(detail) ?? "";
+  }
+
+  return "";
+}
+
+function buildSharedBattleReplayTimelineSignature(timeline) {
+  if (!Array.isArray(timeline)) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(timeline);
+  } catch {
+    return "";
+  }
 }
 
 function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
@@ -902,8 +964,10 @@ function buildSharedBoardSubSlotElement(cellIndex, subUnitToken) {
 
   if (subUnitToken) {
     subSlot.classList.add("attached");
+    subSlot.classList.add("shared-board-sub-slot-attached");
     subSlot.textContent = UNIT_ICONS[subUnitToken.unitType] ?? UNIT_ICONS.hero;
   } else {
+    subSlot.classList.add("shared-board-sub-slot-empty");
     subSlot.textContent = "+";
   }
 
@@ -1433,8 +1497,8 @@ function resolveSharedBoardCellsForRender(state) {
       index: cellIndex,
       unitId: `battle:${unit.battleUnitId}`,
       ownerId: unit.side,
-      displayName: resolveBattleReplayLabel(unit.battleUnitId),
-      portraitKey: "",
+      displayName: unit.displayName || resolveBattleReplayLabel(unit.battleUnitId),
+      portraitKey: unit.portraitKey || "",
       currentHp: unit.currentHp,
       maxHp: unit.maxHp,
       battleState: unit.state,
@@ -1552,11 +1616,19 @@ function resolveSharedBattleAttackDirection(unit) {
 
 function startSharedBattleReplay(message) {
   const timeline = Array.isArray(message?.timeline) ? message.timeline : [];
+  const timelineSignature = buildSharedBattleReplayTimelineSignature(timeline);
   const battleStartEvent = timeline.find((event) => event?.type === "battleStart");
 
   if (!battleStartEvent || typeof message?.battleId !== "string") {
     clearSharedBattleReplay();
     renderSharedBoardState(currentSharedBoardState);
+    return;
+  }
+
+  if (
+    currentSharedBattleReplay?.battleId === message.battleId
+    && currentSharedBattleReplay.timelineSignature === timelineSignature
+  ) {
     return;
   }
 
@@ -1566,6 +1638,7 @@ function startSharedBattleReplay(message) {
   for (const unit of battleStartEvent.units ?? []) {
     units.set(unit.battleUnitId, {
       battleUnitId: unit.battleUnitId,
+      sourceUnitId: typeof unit.sourceUnitId === "string" ? unit.sourceUnitId : "",
       side: unit.side,
       x: unit.x,
       y: unit.y,
@@ -1576,11 +1649,18 @@ function startSharedBattleReplay(message) {
       attackTargetBattleUnitId: null,
       targetedByBattleUnitId: null,
       impactAmount: null,
+      displayName: typeof unit.displayName === "string" && unit.displayName.length > 0
+        ? unit.displayName
+        : resolveBattleReplayLabel(unit.battleUnitId),
+      portraitKey: typeof unit.portraitKey === "string" && unit.portraitKey.length > 0
+        ? unit.portraitKey
+        : resolvePortraitKeyByUnitId(unit.sourceUnitId),
     });
   }
 
   currentSharedBattleReplay = {
     battleId: message.battleId,
+    timelineSignature,
     boardWidth: battleStartEvent.boardConfig?.width ?? 6,
     boardHeight: battleStartEvent.boardConfig?.height ?? 6,
     lastAttackMarkerAtMs: null,
@@ -1666,7 +1746,7 @@ function applySharedBattleReplayEvent(event) {
     sharedBattleMovementGhosts.set(event.battleUnitId, {
       battleUnitId: unit.battleUnitId,
       side: unit.side,
-      displayName: resolveBattleReplayLabel(unit.battleUnitId),
+      displayName: unit.displayName || resolveBattleReplayLabel(unit.battleUnitId),
       currentHp: unit.currentHp,
       maxHp: unit.maxHp,
       fromX,

@@ -50,7 +50,11 @@ interface MatchupContextBuilderOptions {
     battleUnits: BattleUnit[],
     modifiers: SpellCombatModifiers | null,
   ) => void;
-  appendHeroBattleUnits: (playerIds: string[], battleUnits: BattleUnit[]) => string[];
+  appendHeroBattleUnits: (
+    playerIds: string[],
+    battleUnits: BattleUnit[],
+    side: "left" | "right",
+  ) => string[];
   buildHeroSynergyBonusTypes: (playerIds: string[]) => BoardUnitType[];
 }
 
@@ -128,7 +132,11 @@ interface MatchupSideContextOptions {
     battleUnits: BattleUnit[],
     modifiers: SpellCombatModifiers | null,
   ) => void;
-  appendHeroBattleUnits: (playerIds: string[], battleUnits: BattleUnit[]) => string[];
+  appendHeroBattleUnits: (
+    playerIds: string[],
+    battleUnits: BattleUnit[],
+    side: "left" | "right",
+  ) => string[];
   buildHeroSynergyBonusTypes: (playerIds: string[]) => BoardUnitType[];
 }
 
@@ -154,7 +162,7 @@ export function createMatchupSideContext(
   applySpellModifiers(battleUnits, buildSpellModifiers(playerIds));
 
   return {
-    heroIds: appendHeroBattleUnits(playerIds, battleUnits),
+    heroIds: appendHeroBattleUnits(playerIds, battleUnits, side),
     resolvedPlacements,
     battleUnits,
     heroSynergyBonusTypes: buildHeroSynergyBonusTypes(playerIds),

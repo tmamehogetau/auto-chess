@@ -8,6 +8,10 @@ import type {
 import type { ControllerPlayerStatus } from "../types/player-state-types";
 import { comparePlayerIds } from "./player-compare";
 import type { ActiveSynergy } from "./synergy-helpers";
+import {
+  getMaxBoardUnitsForPlayerRole,
+  MAX_STANDARD_BOARD_UNITS,
+} from "../player-slot-limits";
 
 type PhaseResult = "pending" | "success" | "failed";
 
@@ -93,6 +97,7 @@ export interface PlayerStateQueryServiceDeps {
   getEliminatedFromBottom(): string[];
   getCurrentRoundPairings(): PlayerStateQueryPairing[];
   getCurrentPhaseProgress(): PlayerStateQueryPhaseProgress;
+  getActiveSharedBattleReplay?(): SharedBattleReplayMessage | null;
   wantsBossByPlayer: ReadonlyMap<string, boolean>;
   selectedBossByPlayer: ReadonlyMap<string, string>;
   roleByPlayer: ReadonlyMap<string, "unassigned" | "raid" | "boss">;
@@ -294,6 +299,10 @@ export class PlayerStateQueryService {
       .filter((placement): placement is BoardUnitPlacement & { subUnit: NonNullable<BoardUnitPlacement["subUnit"]> } =>
         placement.subUnit !== undefined)
       .map((placement) => this.deps.formatBoardSubUnitToken(placement.cell, placement.subUnit));
+    const role = this.deps.roleByPlayer.get(playerId) ?? "unassigned";
+    const fallbackBoardUnitCount = role === "unassigned"
+      ? MAX_STANDARD_BOARD_UNITS
+      : getMaxBoardUnitsForPlayerRole(role === "boss");
 
     if (Number.isInteger(heroSubHostCell) && heroSubHostCell >= 0 && selectedHeroId.length > 0) {
       boardSubUnits.push(
@@ -310,7 +319,7 @@ export class PlayerStateQueryService {
       remainingLives: isActivePlayer ? state.getRemainingLives(playerId) : 0,
       finalRoundShield: this.deps.getFinalRoundShield(playerId),
       eliminated: isActivePlayer ? state.isPlayerEliminated(playerId) : false,
-      boardUnitCount: this.deps.boardUnitCountByPlayer.get(playerId) ?? 4,
+      boardUnitCount: this.deps.boardUnitCountByPlayer.get(playerId) ?? fallbackBoardUnitCount,
       gold: this.deps.goldByPlayer.get(playerId) ?? this.deps.initialGold,
       xp: this.deps.xpByPlayer.get(playerId) ?? this.deps.initialXp,
       level: this.deps.levelByPlayer.get(playerId) ?? this.deps.initialLevel,
@@ -321,6 +330,7 @@ export class PlayerStateQueryService {
           ? `${benchUnit.unitType}:${benchUnit.starLevel}`
           : benchUnit.unitType,
       ),
+      benchUnitIds: benchUnits.map((benchUnit) => benchUnit.unitId ?? ""),
       benchDisplayNames: benchUnits.map((benchUnit) => this.deps.resolveBenchUnitDisplayName(benchUnit)),
       boardUnits: boardPlacements.map((placement) => this.deps.formatBoardUnitToken(playerId, placement)),
       boardSubUnits,
@@ -348,6 +358,14 @@ export class PlayerStateQueryService {
   }
 
   public getSharedBattleReplay(phase: "Battle" | "Settle"): SharedBattleReplayMessage | null {
+    const activeReplay = this.deps.getActiveSharedBattleReplay?.();
+    if (activeReplay) {
+      return {
+        ...activeReplay,
+        phase,
+      };
+    }
+
     const state = this.deps.ensureStarted();
     const candidatePlayerIds = [
       state.bossPlayerId,

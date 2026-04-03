@@ -298,11 +298,25 @@ export function handlePrepCommandMessage(
 
   if (result.accepted && player) {
     deps.syncPlayerFromCommandResult(player, client.sessionId, message.cmdSeq);
-    const latestBoardPlacements = controller.getBoardPlacementsForPlayer(client.sessionId);
-    void deps.getSharedBoardBridge()?.sendPlacementToSharedBoard(
-      client.sessionId,
-      latestBoardPlacements,
-    );
+    const bridge = deps.getSharedBoardBridge();
+    const requiresSharedBoardViewSync = commandPayload?.heroPlacementCell !== undefined
+      || commandPayload?.subUnitMove !== undefined
+      || commandPayload?.boardUnitMove !== undefined
+      || commandPayload?.boardToBenchCell !== undefined
+      || (
+        commandPayload?.benchToBoardCell !== undefined
+        && commandPayload.benchToBoardCell.slot === "sub"
+      );
+
+    if (requiresSharedBoardViewSync) {
+      bridge?.syncSharedBoardViewFromController(true);
+    } else {
+      const latestBoardPlacements = controller.getBoardPlacementsForPlayer(client.sessionId);
+      void bridge?.sendPlacementToSharedBoard(
+        client.sessionId,
+        latestBoardPlacements,
+      );
+    }
   }
 
   client.send(SERVER_MESSAGE_TYPES.COMMAND_RESULT, result);

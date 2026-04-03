@@ -77,7 +77,7 @@ describe("RoundStateReceiver", () => {
 
     room.emit(SERVER_MESSAGE_TYPES.ROUND_STATE, message);
 
-    expect(receiver.roundLabelForDisplay).toBe("Round 3");
+    expect(receiver.roundLabelForDisplay).toBe("Round 4");
     expect(receiver.rankingForDisplay).toEqual([
       "playerA",
       "playerB",
@@ -125,7 +125,7 @@ describe("RoundStateReceiver", () => {
 
     room.emit(SERVER_MESSAGE_TYPES.ROUND_STATE, message);
 
-    expect(receiver.roundLabelForDisplay).toBe("Round 1");
+    expect(receiver.roundLabelForDisplay).toBe("Round 2");
     expect(receiver.setIdForDisplay).toBe("-");
   });
 
@@ -165,7 +165,7 @@ describe("RoundStateReceiver", () => {
     } satisfies RoundStateMessage);
     room.emitStateChange({ setId: "set2" });
 
-    expect(receiver.roundLabelForDisplay).toBe("Round 2");
+    expect(receiver.roundLabelForDisplay).toBe("Round 3");
     expect(receiver.setIdForDisplay).toBe("set1");
   });
 
@@ -200,7 +200,7 @@ describe("RoundStateReceiver", () => {
       ranking: ["playerA", "playerD", "playerB", "playerC"],
     } satisfies RoundStateMessage);
 
-    expect(receiver.roundLabelForDisplay).toBe("Round 2");
+    expect(receiver.roundLabelForDisplay).toBe("Round 3");
     expect(receiver.setIdForDisplay).toBe("set2");
   });
 });

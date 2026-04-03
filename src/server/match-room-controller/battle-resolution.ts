@@ -478,6 +478,8 @@ export class BattleResolutionService {
 
     return {
       id: `hero-${playerId}`,
+      ownerPlayerId: playerId,
+      sourceUnitId: hero.id,
       battleSide,
       type: "vanguard" as BoardUnitType,
       starLevel: 1,
@@ -521,6 +523,7 @@ export class BattleResolutionService {
 
     return {
       id: `boss-${playerId}`,
+      ownerPlayerId: playerId,
       sourceUnitId: boss.id,
       battleSide,
       type: "vanguard" as BoardUnitType,

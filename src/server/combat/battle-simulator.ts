@@ -60,6 +60,7 @@ export interface Action {
  */
 export interface BattleUnit {
   id: string;
+  ownerPlayerId?: string;
   sourceUnitId?: string;
   battleSide?: "left" | "right";
   type: BoardUnitType;
@@ -286,6 +287,9 @@ function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
 
   return {
     battleUnitId: unit.id,
+    ...(typeof unit.ownerPlayerId === "string" && unit.ownerPlayerId.length > 0
+      ? { ownerPlayerId: unit.ownerPlayerId }
+      : {}),
     side: resolveTimelineSide(unit),
     x: coordinate.x,
     y: coordinate.y,
@@ -407,6 +411,9 @@ export function createBattleUnit(
 
   return {
     id: `${side}-${unitType}-${index}`,
+    ...(typeof resolvedPlacement.ownerPlayerId === "string" && resolvedPlacement.ownerPlayerId.length > 0
+      ? { ownerPlayerId: resolvedPlacement.ownerPlayerId }
+      : {}),
     sourceUnitId: resolvedPlacement.unitId ?? `${side}-${unitType}-${index}`,
     battleSide: side,
     type: unitType,

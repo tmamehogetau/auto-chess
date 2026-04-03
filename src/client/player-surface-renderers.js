@@ -93,12 +93,42 @@ function setElementMarkup(element, html, fallbackText = "") {
   }
 
   if (isFakeElement(element)) {
+    if (element.innerHTML === html && element.textContent === fallbackText) {
+      return;
+    }
     element.innerHTML = html;
     element.textContent = fallbackText;
     return;
   }
 
+  if (element.innerHTML === html) {
+    return;
+  }
   element.innerHTML = html;
+}
+
+function setElementChildren(element, children) {
+  const nextChildren = children.filter(Boolean);
+  if (typeof element?.replaceChildren === "function") {
+    element.replaceChildren(...nextChildren);
+    return;
+  }
+
+  if (Array.isArray(element?.children)) {
+    element.children = nextChildren;
+  }
+}
+
+function getElementRenderCache(element, cacheKey, createCache) {
+  if (!element) {
+    return createCache();
+  }
+
+  if (!element[cacheKey]) {
+    element[cacheKey] = createCache();
+  }
+
+  return element[cacheKey];
 }
 
 function getDisplayInitial(value = "") {
@@ -351,6 +381,24 @@ function renderPrepAllyRail({
     return;
   }
 
+  const allyRailSignature = JSON.stringify({
+    sessionId,
+    selfHeroId: typeof player?.selectedHeroId === "string" ? player.selectedHeroId : "",
+    selfBossId: typeof player?.selectedBossId === "string" ? player.selectedBossId : "",
+    selfLives: Number(player?.remainingLives ?? 0),
+    players: mapEntries(state?.players)
+      .filter(([, allyPlayer]) => allyPlayer?.isSpectator !== true)
+      .map(([playerId, allyPlayer]) => ({
+        playerId,
+        heroId: typeof allyPlayer?.selectedHeroId === "string" ? allyPlayer.selectedHeroId : "",
+        lives: Number(allyPlayer?.remainingLives ?? 0),
+      })),
+  });
+  if (allyRailElement.dataset.renderSignature === allyRailSignature) {
+    return;
+  }
+  allyRailElement.dataset.renderSignature = allyRailSignature;
+
   allyRailElement.innerHTML = "";
   allyRailElement.textContent = "";
 
@@ -422,6 +470,48 @@ function renderPrepAllyRail({
   if (allyRailElement.children.length <= 1) {
     allyRailElement.textContent = "味方情報の到着待ちです。";
   }
+}
+
+function updateBenchSlotButton(button, { unitText, portraitUrl, isSelected }) {
+  const cache = getElementRenderCache(button, "__benchRenderCache", () => ({
+    avatar: document.createElement("span"),
+    avatarImg: document.createElement("img"),
+    copy: document.createElement("span"),
+    name: document.createElement("span"),
+    state: document.createElement("span"),
+    empty: document.createElement("span"),
+  }));
+
+  cache.avatar.className = "player-bench-slot-avatar";
+  cache.copy.className = "player-bench-slot-copy";
+  cache.name.className = "player-bench-slot-name";
+  cache.state.className = "player-bench-slot-state";
+  cache.empty.className = "player-bench-slot-empty-copy";
+
+  if (unitText) {
+    if (portraitUrl) {
+      cache.avatarImg.className = "player-bench-slot-avatar-img";
+      cache.avatarImg.src = portraitUrl;
+      cache.avatarImg.alt = unitText;
+      cache.avatarImg.loading = "lazy";
+      setElementChildren(cache.avatar, [cache.avatarImg]);
+      cache.avatar.textContent = "";
+    } else {
+      setElementChildren(cache.avatar, []);
+      cache.avatar.textContent = getDisplayInitial(unitText);
+    }
+
+    cache.name.textContent = unitText;
+    cache.state.textContent = isSelected ? "selected" : "reserve";
+    setElementChildren(cache.copy, [cache.name, cache.state]);
+    setElementChildren(button, [cache.avatar, cache.copy]);
+    button.textContent = unitText;
+    return;
+  }
+
+  cache.empty.textContent = "empty";
+  setElementChildren(button, [cache.empty]);
+  button.textContent = "empty";
 }
 
 function resolvePlacementLimit(isBossPlayer) {
@@ -827,27 +917,16 @@ export function renderPlayerPrepSummary({
 
     const unitText = formatBenchUnitLabel(benchUnits[index], benchDisplayNames[index]);
     const portraitUrl = resolveBenchPortraitUrl(benchUnits[index], benchDisplayNames[index], benchUnitIds[index]);
-    button.disabled = !unitText || !benchActionsEnabled;
+    button.disabled = !benchActionsEnabled || (!unitText && !canReturnBoard);
     button.classList.toggle("selected", selectedBenchIndex === index);
     button.classList.toggle("player-bench-slot-filled", Boolean(unitText));
     button.classList.toggle("player-bench-slot-empty", !unitText);
     button.classList.toggle("player-bench-slot-selected", selectedBenchIndex === index);
-    button.textContent = unitText ? unitText : `Bench ${index + 1}`;
-    setElementMarkup(
-      button,
-      unitText
-        ? `
-          <span class="player-bench-slot-avatar">${portraitUrl
-            ? `<img class="player-bench-slot-avatar-img" src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(unitText)}" loading="lazy" />`
-            : escapeHtml(getDisplayInitial(unitText))}</span>
-          <span class="player-bench-slot-copy">
-            <span class="player-bench-slot-name">${escapeHtml(unitText)}</span>
-            <span class="player-bench-slot-state">${selectedBenchIndex === index ? "selected" : "reserve"}</span>
-          </span>
-        `
-        : `<span class="player-bench-slot-empty-copy">empty</span>`,
-      unitText ? `${unitText} ${selectedBenchIndex === index ? "selected" : "reserve"}` : "empty",
-    );
+    updateBenchSlotButton(button, {
+      unitText,
+      portraitUrl,
+      isSelected: selectedBenchIndex === index,
+    });
   });
 
   boardCellElements.forEach((button) => {

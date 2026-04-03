@@ -446,14 +446,74 @@ describe("MatchRoomController", () => {
           const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
           expect(firstCall).toBeDefined();
           expect([firstCall?.leftPlacements.length, firstCall?.rightPlacements.length].sort()).toEqual([1, 3]);
-          expect(firstCall?.leftPlacements.concat(firstCall.rightPlacements)).toEqual(
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+          const bossPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.leftPlacements : firstCall?.rightPlacements;
+          expect(bossPlacements).toEqual(
             expect.arrayContaining([
               expect.objectContaining({ cell: 0, unitType: "vanguard" }),
-              expect.objectContaining({ cell: 4, unitType: "ranger" }),
-              expect.objectContaining({ cell: 5, unitType: "mage" }),
-              expect.objectContaining({ cell: 6, unitType: "assassin" }),
             ]),
           );
+          expect(aggregateRaidPlacements).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ cell: 31, unitType: "ranger", ownerPlayerId: "p1" }),
+              expect.objectContaining({ cell: 33, unitType: "mage", ownerPlayerId: "p3" }),
+              expect.objectContaining({ cell: 35, unitType: "assassin", ownerPlayerId: "p4" }),
+            ]),
+          );
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid aggregate battle input remaps overlapping raid cells to unique team lanes", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [{ cell: 31, unitType: "ranger", unitId: "raid-a" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 31, unitType: "mage", unitId: "raid-b" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 31, unitType: "assassin", unitId: "raid-c" }])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+
+          expect(aggregateRaidPlacements).toBeDefined();
+          expect(aggregateRaidPlacements?.map((placement) => placement.cell)).toEqual([31, 33, 35]);
+          expect(new Set(aggregateRaidPlacements?.map((placement) => placement.cell)).size).toBe(3);
+          expect(aggregateRaidPlacements).toEqual(expect.arrayContaining([
+            expect.objectContaining({ ownerPlayerId: "p1", unitId: "raid-a", cell: 31 }),
+            expect.objectContaining({ ownerPlayerId: "p3", unitId: "raid-b", cell: 33 }),
+            expect.objectContaining({ ownerPlayerId: "p4", unitId: "raid-c", cell: 35 }),
+          ]));
         } finally {
           randomSpy.mockRestore();
         }
@@ -2854,6 +2914,119 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("raid R12 consumes shield only for players whose own units are wiped", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true, enableHeroSystem: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          const {
+            gameLoopState,
+            battleResultsByPlayer,
+            battleInputSnapshotByPlayer,
+          } = controller.getTestAccess();
+          if (!gameLoopState) {
+            throw new Error("Expected gameLoopState");
+          }
+
+          gameLoopState.consumeLife("p1", 1);
+
+          controller.advanceByTime(nowMs + 1);
+
+          battleInputSnapshotByPlayer.set("p1", [{ cell: 31, unitType: "ranger", unitId: "raid-a-unit-r12" }]);
+          battleInputSnapshotByPlayer.set("p3", [{ cell: 33, unitType: "mage", unitId: "raid-b-unit-r12" }]);
+          battleInputSnapshotByPlayer.set("p4", [{ cell: 35, unitType: "assassin", unitId: "raid-c-unit-r12" }]);
+
+          const sharedRaidBattleResult = {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 2,
+            opponentSurvivors: 1,
+            survivorSnapshots: [
+              {
+                unitId: "raid-b-unit-r12",
+                displayName: "raid-b-unit-r12",
+                unitType: "mage",
+                hp: 12,
+                maxHp: 40,
+                sharedBoardCellIndex: 18,
+              },
+              {
+                unitId: "raid-c-unit-r12",
+                displayName: "raid-c-unit-r12",
+                unitType: "assassin",
+                hp: 9,
+                maxHp: 45,
+                sharedBoardCellIndex: 19,
+              },
+            ],
+          };
+
+          battleResultsByPlayer.set("p1", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p3", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p4", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 2,
+          });
+          controller.setPendingPhaseDamageForTest(3_000);
+
+          controller.advanceByTime(nowMs + 2);
+          controller.advanceByTime(nowMs + 3);
+          controller.advanceByTime(nowMs + 4);
+
+          expect(controller.getPlayerStatus("p1")).toMatchObject({
+            remainingLives: 2,
+            finalRoundShield: 1,
+            eliminated: false,
+          });
+          expect(controller.getPlayerStatus("p3")).toMatchObject({
+            remainingLives: 3,
+            finalRoundShield: 3,
+            eliminated: false,
+          });
+          expect(controller.getPlayerStatus("p4")).toMatchObject({
+            remainingLives: 3,
+            finalRoundShield: 3,
+            eliminated: false,
+          });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("raid R12 simultaneous wipe and phase break is a boss victory", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
@@ -2998,10 +3171,100 @@ describe("MatchRoomController", () => {
 
           expect(controller.phase).toBe("Prep");
           expect(controller.roundIndex).toBe(2);
-          expect(controller.getPlayerStatus("p1")).toMatchObject({ gold: 15, eliminated: true });
-          expect(controller.getPlayerStatus("p2")).toMatchObject({ gold: 24 });
-          expect(controller.getPlayerStatus("p3")).toMatchObject({ gold: 20 });
-          expect(controller.getPlayerStatus("p4")).toMatchObject({ gold: 20 });
+          expect(controller.getPlayerStatus("p1")).toMatchObject({ gold: 5, eliminated: true });
+          expect(controller.getPlayerStatus("p2")).toMatchObject({ gold: 17 });
+          expect(controller.getPlayerStatus("p3")).toMatchObject({ gold: 10 });
+          expect(controller.getPlayerStatus("p4")).toMatchObject({ gold: 10 });
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid rounds consume life only for players whose own units are wiped", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true, enableHeroSystem: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [{ cell: 31, unitType: "ranger", unitId: "raid-a-unit" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 33, unitType: "mage", unitId: "raid-b-unit" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 35, unitType: "assassin", unitId: "raid-c-unit" }]))
+            .toMatchObject({ success: true });
+
+          controller.advanceByTime(1);
+
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          const sharedRaidBattleResult = {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 2,
+            opponentSurvivors: 1,
+            survivorSnapshots: [
+              {
+                unitId: "raid-b-unit",
+                displayName: "raid-b-unit",
+                unitType: "mage",
+                hp: 12,
+                maxHp: 40,
+                sharedBoardCellIndex: 18,
+              },
+              {
+                unitId: "raid-c-unit",
+                displayName: "raid-c-unit",
+                unitType: "assassin",
+                hp: 9,
+                maxHp: 45,
+                sharedBoardCellIndex: 19,
+              },
+            ],
+          };
+
+          battleResultsByPlayer.set("p1", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p3", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p4", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 2,
+          });
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.getPlayerStatus("p1").remainingLives).toBe(1);
+          expect(controller.getPlayerStatus("p3").remainingLives).toBe(2);
+          expect(controller.getPlayerStatus("p4").remainingLives).toBe(2);
         } finally {
           randomSpy.mockRestore();
         }
@@ -3055,10 +3318,10 @@ describe("MatchRoomController", () => {
           expect(controller.phase).toBe("Prep");
           expect(controller.roundIndex).toBe(2);
           expect(controller.getPhaseProgress()).toMatchObject({ result: "pending" });
-          expect(controller.getPlayerStatus("p1").gold).toBe(22);
-          expect(controller.getPlayerStatus("p3").gold).toBe(22);
-          expect(controller.getPlayerStatus("p4").gold).toBe(22);
-          expect(controller.getPlayerStatus("p2").gold).toBe(24);
+          expect(controller.getPlayerStatus("p1").gold).toBe(12);
+          expect(controller.getPlayerStatus("p3").gold).toBe(12);
+          expect(controller.getPlayerStatus("p4").gold).toBe(12);
+          expect(controller.getPlayerStatus("p2").gold).toBe(17);
         } finally {
           randomSpy.mockRestore();
         }
@@ -3110,10 +3373,77 @@ describe("MatchRoomController", () => {
 
           expect(controller.phase).toBe("Prep");
           expect(controller.roundIndex).toBe(2);
-          expect(controller.getPlayerStatus("p1").gold).toBe(20);
-          expect(controller.getPlayerStatus("p3").gold).toBe(20);
-          expect(controller.getPlayerStatus("p4").gold).toBe(20);
-          expect(controller.getPlayerStatus("p2").gold).toBe(24);
+          expect(controller.getPlayerStatus("p1").gold).toBe(10);
+          expect(controller.getPlayerStatus("p3").gold).toBe(10);
+          expect(controller.getPlayerStatus("p4").gold).toBe(10);
+          expect(controller.getPlayerStatus("p2").gold).toBe(17);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid wipe does not count as phase success even when phase damage reaches the target", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.advanceByTime(1);
+          controller.setPendingPhaseDamageForTest(600);
+          const { battleResultsByPlayer, battleInputSnapshotByPlayer } = controller.getTestAccess();
+          for (const raidPlayerId of ["p1", "p3", "p4"]) {
+            battleInputSnapshotByPlayer.set(raidPlayerId, [{
+              cell: 31,
+              unitType: "vanguard",
+              unitId: `${raidPlayerId}-unit`,
+            }]);
+            battleResultsByPlayer.set(raidPlayerId, {
+              opponentId: "p2",
+              won: false,
+              damageDealt: 0,
+              damageTaken: 10,
+              survivors: 0,
+              opponentSurvivors: 1,
+            });
+          }
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+          });
+
+          controller.advanceByTime(2);
+
+          expect(controller.phase).toBe("Settle");
+          expect(controller.getPhaseProgress()).toMatchObject({
+            targetHp: 600,
+            damageDealt: 600,
+            result: "failed",
+          });
         } finally {
           randomSpy.mockRestore();
         }

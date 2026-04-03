@@ -134,10 +134,10 @@ describe("player-app script contract", () => {
     expect(source.includes("cmdSeq: Date.now()")).toBe(false);
   });
 
-  test("bench deploy captures shared-board clicks before cell handlers stop propagation", () => {
+  test("player app captures non-sub-slot shared-board clicks before cell handlers stop propagation", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
-    expect(source.includes("if (selectedBenchIndex !== null && !isSubSlotTarget) {")).toBe(true);
+    expect(source.includes("if (!isSubSlotTarget) {")).toBe(true);
     expect(source.includes("event.stopPropagation();")).toBe(true);
     expect(source.includes("event.preventDefault();")).toBe(true);
     expect(source.includes("}, true);")).toBe(true);
@@ -147,7 +147,59 @@ describe("player-app script contract", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes('const isSubSlotTarget = target.closest("[data-shared-board-sub-slot]");')).toBe(true);
-    expect(source.includes("if (selectedBenchIndex !== null && !isSubSlotTarget) {")).toBe(true);
+    expect(source.includes("if (!isSubSlotTarget) {")).toBe(true);
+  });
+
+  test("empty bench click returns the selected board unit instead of stealing bench selection", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("const selectedBoardCell = resolveSelectedSharedBoardCell();")).toBe(true);
+    expect(source.includes("const clickedBenchUnit = latestPlayer?.benchUnits?.[index] ?? null;")).toBe(true);
+    expect(source.includes("selectedBoardCell")).toBe(true);
+    expect(source.includes("!clickedBenchUnit")).toBe(true);
+    expect(source.includes("boardToBenchCell: { cell: selectedBoardCell.cellIndex },")).toBe(true);
+  });
+
+  test("occupied bench click swaps with the selected board unit instead of keeping both selected", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("selectedBoardCell")).toBe(true);
+    expect(source.includes("&& clickedBenchUnit")).toBe(true);
+    expect(source.includes("benchToBoardCell: {")).toBe(true);
+    expect(source.includes("benchIndex: index,")).toBe(true);
+    expect(source.includes("cell: selectedBoardCell.cellIndex,")).toBe(true);
+  });
+
+  test("player app routes selected sub-unit interactions through dedicated prep commands", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("getSelectedSharedSubUnitCellIndex")).toBe(true);
+    expect(source.includes("setSelectedSharedSubUnitCellIndex")).toBe(true);
+    expect(source.includes("refreshSharedBoardRender")).toBe(true);
+    expect(source.includes("selectSharedUnitById")).toBe(false);
+    expect(source.includes("function resolveSelectedSharedSubUnitToken()")).toBe(true);
+    expect(source.includes("function isHeroAttachedSubUnitToken(")).toBe(true);
+    expect(source.includes("subUnitToBenchCell")).toBe(true);
+    expect(source.includes("subUnitMove")).toBe(true);
+    expect(source.includes("subUnitSwapBench")).toBe(true);
+    expect(source.includes('slot: "main"')).toBe(true);
+    expect(source.includes('slot: "sub"')).toBe(true);
+  });
+
+  test("player app routes Okina sub-slot clicks through a dedicated hero prep command", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("&& (latestPlayer?.selectedHeroId ?? \"\") === \"okina\"")).toBe(true);
+    expect(source.includes("heroPlacementCell: cellIndex")).toBe(true);
+  });
+
+  test("player app can move a selected normal board unit into another host sub slot", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("boardUnitMove")).toBe(true);
+    expect(source.includes("fromCell: selectedBoardCell.cellIndex,")).toBe(true);
+    expect(source.includes("toCell: cellIndex,")).toBe(true);
+    expect(source.includes('slot: "sub",')).toBe(true);
   });
 
   test("player app wires room code and dedicated shared-board room binding", () => {

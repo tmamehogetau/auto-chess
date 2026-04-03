@@ -488,6 +488,27 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
+  test("boss role prep starts with raid 5G and boss 8G", async () => {
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(getTestServer());
+
+    await resolveBossRoleSelectionToPrep(serverRoom, clients);
+
+    const bossPlayerId = serverRoom.state.bossPlayerId;
+    if (!bossPlayerId) {
+      throw new Error("Expected boss player id");
+    }
+
+    for (const client of clients) {
+      const player = serverRoom.state.players.get(client.sessionId);
+      if (!player) {
+        throw new Error(`Expected player state for ${client.sessionId}`);
+      }
+
+      expect(player.gold).toBe(client.sessionId === bossPlayerId ? 8 : 5);
+    }
+  });
+
+
   test("benchToBoardCellで自分のoccupied main cellを選ぶとboardとbenchを入れ替える", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([

@@ -115,6 +115,14 @@ export class PhaseOrchestrator {
     return this.getPhaseProgress();
   }
 
+  public overridePhaseResult(result: PhaseResult): PhaseProgressSnapshot {
+    this.phaseProgress = {
+      ...this.phaseProgress,
+      result,
+    };
+    return this.getPhaseProgress();
+  }
+
   public advanceByTime(nowMs: number): boolean {
     const state = this.deps.getState();
     if (!state) {

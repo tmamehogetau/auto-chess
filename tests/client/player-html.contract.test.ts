@@ -233,6 +233,18 @@ describe("player.html contract", () => {
     expect(prepSection.includes("State")).toBe(true);
   });
 
+  test("shared board shell keeps board and guide heights stable to avoid layout jumps", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    expect(html.includes("--shared-board-columns: 6;")).toBe(true);
+    expect(html.includes("--shared-board-rows: 6;")).toBe(true);
+    expect(html.includes("grid-template-rows: repeat(var(--shared-board-rows, 6), minmax(0, 1fr));")).toBe(true);
+    expect(html.includes("aspect-ratio: var(--shared-board-columns, 6) / var(--shared-board-rows, 6);")).toBe(true);
+    expect(html.includes("--shared-board-guide-lines: 3;")).toBe(true);
+    expect(html.includes("height: calc(1.45em * var(--shared-board-guide-lines));")).toBe(true);
+    expect(html.includes("overflow-y: auto;")).toBe(true);
+  });
+
   test("bench keeps a dedicated two-column grid and non-wrapping slot labels", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
 

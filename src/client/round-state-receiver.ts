@@ -113,7 +113,7 @@ export class RoundStateReceiver {
       return "Round -";
     }
 
-    return `Round ${this.latestRoundState.roundIndex}`;
+    return `Round ${this.latestRoundState.roundIndex + 1}`;
   }
 
   public get setIdForDisplay(): string {

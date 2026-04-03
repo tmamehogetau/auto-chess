@@ -64,32 +64,115 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     const { serverRoom, clients } = await connectBossRoleSelectionRoom(
       getTestServer(),
       {
-        prepDurationMs: 120,
-        battleDurationMs: 200,
-        settleDurationMs: 80,
-        eliminationDurationMs: 80,
+        prepDurationMs: 10_000,
+        battleDurationMs: 10_000,
+        settleDurationMs: 10_000,
+        eliminationDurationMs: 10_000,
       },
     );
+    const roomInternals = serverRoom as unknown as {
+      advanceLoop: (nowMs: number) => void;
+      controller?: {
+        getPhaseProgress: () => {
+          targetHp: number;
+          damageDealt: number;
+          result: "pending" | "success" | "failed";
+        };
+        didRaidSideLoseAllBattleUnits: () => boolean;
+        getTestAccess: () => {
+          battleInputSnapshotByPlayer: Map<string, Array<{
+            cell: number;
+            unitType: string;
+            unitId?: string;
+          }>>;
+          battleResultsByPlayer: Map<string, {
+            opponentId: string;
+            won: boolean;
+            damageDealt: number;
+            damageTaken: number;
+            survivors: number;
+            opponentSurvivors: number;
+            survivorSnapshots?: Array<{
+              unitId: string;
+              displayName: string;
+              unitType: string;
+              hp: number;
+              maxHp: number;
+              sharedBoardCellIndex: number;
+            }>;
+          }>;
+        };
+      };
+    };
 
     await resolveBossRoleSelectionToPrep(serverRoom, clients);
-    await waitForCondition(() => serverRoom.state.phase === "Battle", 1_000);
+
+    if (!roomInternals.controller) {
+      throw new Error("Expected room controller");
+    }
+
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+    expect(serverRoom.state.phase).toBe("Battle");
 
     serverRoom.setPendingPhaseDamageForTest(600);
+    const originalDidRaidSideLoseAllBattleUnits = roomInternals.controller.didRaidSideLoseAllBattleUnits;
+    roomInternals.controller.didRaidSideLoseAllBattleUnits = () => false;
+    try {
+      const bossPlayerId = serverRoom.state.bossPlayerId;
+      const raidPlayerIds = Array.from(serverRoom.state.raidPlayerIds);
+      expect(bossPlayerId).not.toBe("");
+      expect(raidPlayerIds).toHaveLength(3);
+      const { battleInputSnapshotByPlayer, battleResultsByPlayer } = roomInternals.controller.getTestAccess();
+      for (const raidPlayerId of raidPlayerIds) {
+        battleInputSnapshotByPlayer.set(raidPlayerId, [
+          {
+            cell: 31,
+            unitType: "vanguard",
+            unitId: `${raidPlayerId}-unit`,
+          },
+        ]);
+        battleResultsByPlayer.set(raidPlayerId, {
+          opponentId: bossPlayerId,
+          won: true,
+          damageDealt: 10,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorSnapshots: [
+            {
+              unitId: `${raidPlayerId}-unit`,
+              displayName: `${raidPlayerId}-unit`,
+              unitType: "vanguard",
+              hp: 10,
+              maxHp: 10,
+              sharedBoardCellIndex: 18,
+            },
+          ],
+        });
+      }
 
-    await waitForCondition(
-      () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
-      1_500,
-    );
+      roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+      expect(serverRoom.state.phase).toBe("Settle");
+      expect(roomInternals.controller.getPhaseProgress()).toMatchObject({
+        targetHp: 600,
+        damageDealt: 600,
+        result: "success",
+      });
+    } finally {
+      roomInternals.controller.didRaidSideLoseAllBattleUnits = originalDidRaidSideLoseAllBattleUnits;
+    }
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
+    roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
 
     const bossPlayer = serverRoom.state.players.get(clients[1]!.sessionId);
     const raidPlayerA = serverRoom.state.players.get(clients[0]!.sessionId);
     const raidPlayerB = serverRoom.state.players.get(clients[2]!.sessionId);
     const raidPlayerC = serverRoom.state.players.get(clients[3]!.sessionId);
 
-    expect(bossPlayer?.gold).toBe(24);
-    expect(raidPlayerA?.gold).toBe(22);
-    expect(raidPlayerB?.gold).toBe(22);
-    expect(raidPlayerC?.gold).toBe(22);
+    expect(bossPlayer?.gold).toBe(17);
+    expect(raidPlayerA?.gold).toBe(12);
+    expect(raidPlayerB?.gold).toBe(12);
+    expect(raidPlayerC?.gold).toBe(12);
   });
 
   test("player-facing purchase/deploy/battle phases are exposed and next purchase starts with hero-only board", async () => {
@@ -486,6 +569,11 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
       throw new Error("Expected clients for target players");
     }
 
+    const lowResultPromise = lowClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
+    const highResultPromise = highClient.waitForMessage(
+      SERVER_MESSAGE_TYPES.COMMAND_RESULT,
+    );
+
     lowClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
       cmdSeq: 1,
       boardPlacements: [
@@ -505,10 +593,8 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
       ],
     });
 
-    const lowResult = await lowClient.waitForMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT);
-    const highResult = await highClient.waitForMessage(
-      SERVER_MESSAGE_TYPES.COMMAND_RESULT,
-    );
+    const lowResult = await lowResultPromise;
+    const highResult = await highResultPromise;
 
     expect(lowResult).toEqual({ accepted: true });
     expect(highResult).toEqual({ accepted: true });

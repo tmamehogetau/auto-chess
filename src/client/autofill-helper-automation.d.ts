@@ -1,5 +1,12 @@
 export const AUTO_FILL_BOSS_ID: string;
 export const AUTO_FILL_HERO_IDS: string[];
+export function resolveAutoFillHelperPlayerPhase(
+  state?: {
+    playerPhase?: string | null;
+    playerPhaseDeadlineAtMs?: number | null;
+  } | null,
+  nowMs?: number,
+): string;
 
 export type AutoFillHelperAction =
   | {
@@ -52,5 +59,7 @@ export function buildAutoFillHelperActions(input: {
     featureFlagsEnableTouhouRoster?: boolean | null;
     lobbyStage?: string | null;
     phase?: string | null;
+    playerPhase?: string | null;
+    playerPhaseDeadlineAtMs?: number | null;
   } | null;
 }): AutoFillHelperAction[];

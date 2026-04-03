@@ -94,6 +94,26 @@ class FakeElement {
 
 class FakeButtonElement extends FakeElement {}
 
+function findDescendantByClass(root: FakeElement | undefined, className: string): FakeElement | null {
+  if (!root) {
+    return null;
+  }
+
+  const classes = root.className.split(" ").filter((entry) => entry.length > 0);
+  if (classes.includes(className)) {
+    return root;
+  }
+
+  for (const child of root.children) {
+    const found = findDescendantByClass(child, className);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
 describe("player surface renderers", () => {
   let originalDocument: typeof globalThis.document;
   let originalHTMLElement: typeof globalThis.HTMLElement | undefined;
@@ -617,9 +637,65 @@ describe("player surface renderers", () => {
     expect(benchSlotElements[1]?.className).toContain("player-bench-slot-selected");
     expect(benchSlotElements[0]?.textContent).toContain("紅美鈴");
     expect(benchSlotElements[1]?.textContent).toContain("パチュリー・ノーレッジ");
-    expect(benchSlotElements[0]?.innerHTML).toContain("player-bench-slot-avatar-img");
-    expect(benchSlotElements[0]?.innerHTML).toContain('/pics/processed/front/nazrin.png');
-    expect(benchSlotElements[1]?.innerHTML).toContain('/pics/processed/front/patchouli.png');
+    const firstAvatar = findDescendantByClass(benchSlotElements[0], "player-bench-slot-avatar-img") as unknown as { src?: string } | null;
+    const secondAvatar = findDescendantByClass(benchSlotElements[1], "player-bench-slot-avatar-img") as unknown as { src?: string } | null;
+    expect(firstAvatar?.src).toBe("/pics/processed/front/nazrin.png");
+    expect(secondAvatar?.src).toBe("/pics/processed/front/patchouli.png");
+  });
+
+  test("prep summary keeps bench portrait nodes when only selection changes", () => {
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: ["ranger", "mage"],
+        benchUnitIds: ["nazrin", "patchouli"],
+        benchDisplayNames: ["紅美鈴", "パチュリー・ノーレッジ"],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: 0,
+    });
+
+    const firstAvatar = findDescendantByClass(benchSlotElements[0], "player-bench-slot-avatar-img");
+    const secondAvatar = findDescendantByClass(benchSlotElements[1], "player-bench-slot-avatar-img");
+    expect(firstAvatar).not.toBeNull();
+    expect(secondAvatar).not.toBeNull();
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: ["ranger", "mage"],
+        benchUnitIds: ["nazrin", "patchouli"],
+        benchDisplayNames: ["紅美鈴", "パチュリー・ノーレッジ"],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: 1,
+    });
+
+    expect(findDescendantByClass(benchSlotElements[0], "player-bench-slot-avatar-img")).toBe(firstAvatar);
+    expect(findDescendantByClass(benchSlotElements[1], "player-bench-slot-avatar-img")).toBe(secondAvatar);
+  });
+
+  test("prep summary keeps empty bench slots clickable when a selected board unit can return", () => {
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: [],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: null,
+      canReturnBoard: true,
+    });
+
+    expect(benchSlotElements[0]?.disabled).toBe(false);
+    expect(benchSlotElements[1]?.disabled).toBe(false);
+    expect(benchSlotElements[0]?.className).toContain("player-bench-slot-empty");
   });
 
   test("prep summary omits inactive tier-zero synergies", () => {

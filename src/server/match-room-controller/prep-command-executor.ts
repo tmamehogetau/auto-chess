@@ -33,6 +33,11 @@ export interface ExecutionDependencies {
   // Unit operations
   deployBenchUnitToBoard: (playerId: string, benchIndex: number, cell: number, slot?: "main" | "sub") => void;
   returnBoardUnitToBench: (playerId: string, cell: number) => void;
+  moveBoardUnit: (playerId: string, fromCell: number, toCell: number, slot?: "main" | "sub") => void;
+  returnAttachedSubUnitToBench: (playerId: string, cell: number) => void;
+  moveAttachedSubUnit: (playerId: string, fromCell: number, toCell: number, slot?: "main" | "sub") => void;
+  swapAttachedSubUnitWithBench: (playerId: string, cell: number, benchIndex: number) => void;
+  applyHeroPlacement: (playerId: string, cell: number) => CommandResult;
   sellBenchUnit: (playerId: string, benchIndex: number) => void;
   sellBoardUnit: (playerId: string, cell: number) => void;
 
@@ -198,6 +203,43 @@ export function executePrepCommand(
   // 10. Execute board to bench
   if (payload.boardToBenchCell !== undefined) {
     deps.returnBoardUnitToBench(playerId, payload.boardToBenchCell.cell);
+  }
+
+  if (payload.heroPlacementCell !== undefined) {
+    const heroResult = deps.applyHeroPlacement(playerId, payload.heroPlacementCell);
+    if (!heroResult.accepted) {
+      return heroResult;
+    }
+  }
+
+  if (payload.boardUnitMove !== undefined) {
+    deps.moveBoardUnit(
+      playerId,
+      payload.boardUnitMove.fromCell,
+      payload.boardUnitMove.toCell,
+      payload.boardUnitMove.slot,
+    );
+  }
+
+  if (payload.subUnitToBenchCell !== undefined) {
+    deps.returnAttachedSubUnitToBench(playerId, payload.subUnitToBenchCell.cell);
+  }
+
+  if (payload.subUnitMove !== undefined) {
+    deps.moveAttachedSubUnit(
+      playerId,
+      payload.subUnitMove.fromCell,
+      payload.subUnitMove.toCell,
+      payload.subUnitMove.slot,
+    );
+  }
+
+  if (payload.subUnitSwapBench !== undefined) {
+    deps.swapAttachedSubUnitWithBench(
+      playerId,
+      payload.subUnitSwapBench.cell,
+      payload.subUnitSwapBench.benchIndex,
+    );
   }
 
   // 11. Execute bench sell

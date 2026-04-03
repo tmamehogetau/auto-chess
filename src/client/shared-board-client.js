@@ -24,6 +24,7 @@ import { resolveFrontPortraitUrl, resolvePortraitKeyByUnitId } from "./portrait-
  * @property {() => boolean} [isSubUnitSystemEnabled] sub unit system 有効判定
  * @property {() => string} [getSelectedHeroId] 選択中 hero id
  * @property {() => ("boss"|"raid")} [getPlayerPlacementSide] 現在の配置サイド
+ * @property {() => string[]} [getPlayerBoardUnits] 現在プレイヤーの board unit token 一覧
  * @property {() => string[]} [getPlayerBoardSubUnits] 現在プレイヤーの sub unit token 一覧
  * @property {() => string} [getPlayerFacingPhase] 現在の player-facing phase
  * @property {(payload: { cellIndex: number, subUnitToken: string | null }) => void} [onSubSlotActivate] sub slot click callback
@@ -56,6 +57,7 @@ const DEFAULT_DEPS = {
   isSubUnitSystemEnabled: () => false,
   getSelectedHeroId: () => "",
   getPlayerPlacementSide: () => "raid",
+  getPlayerBoardUnits: () => [],
   getPlayerBoardSubUnits: () => [],
   getPlayerFacingPhase: () => "",
   onSubSlotActivate: () => {},
@@ -76,6 +78,36 @@ let sharedBoardRoom = null;
 /** @type {object|null} */
 let currentSharedBoardState = null;
 
+/** @type {Map<number, ReturnType<typeof parseBoardSubUnitToken>>} */
+let lastKnownAttachedSubUnitByCell = new Map();
+
+/** @type {Map<number, {
+ *   cellElement: HTMLElement,
+ *   zoneLabel: HTMLElement,
+ *   unitElement: HTMLElement | null,
+ *   ownerDot: HTMLElement | null,
+ *   portrait: HTMLImageElement | null,
+ *   metaWrap: HTMLElement | null,
+ *   typeLabel: HTMLElement | null,
+ *   displayName: HTMLElement | null,
+ *   unitIdLabel: HTMLElement | null,
+ *   hpCopy: HTMLElement | null,
+ *   hpBar: HTMLElement | null,
+ *   hpFill: HTMLElement | null,
+ *   castFocus: HTMLElement | null,
+ *   attackDirection: HTMLElement | null,
+ *   tracer: HTMLElement | null,
+ *   stateTag: HTMLElement | null,
+ *   impactBurst: HTMLElement | null,
+ *   impactTag: HTMLElement | null,
+ *   subSlot: HTMLElement | null,
+ *   subSlotPortrait: HTMLImageElement | null,
+ * }>} */
+let renderedSharedBoardCells = new Map();
+
+/** @type {string} */
+let renderedSharedBoardGridKey = "";
+
 /** @type {boolean} */
 let sharedBoardSpectatorNoticeShown = false;
 
@@ -84,6 +116,9 @@ let sharedDraggedUnitId = null;
 
 /** @type {string|null} */
 let selectedSharedUnitId = null;
+
+/** @type {number|null} */
+let selectedSharedSubUnitCellIndex = null;
 
 /** @type {{ battleId: string, timelineSignature: string, boardWidth: number, boardHeight: number, lastAttackMarkerAtMs: number | null, units: Map<string, { battleUnitId: string, sourceUnitId: string, side: string, x: number, y: number, currentHp: number, maxHp: number, alive: boolean, state: string, attackTargetBattleUnitId: string | null, targetedByBattleUnitId: string | null, impactAmount: number | null, displayName: string, portraitKey: string }> } | null} */
 let currentSharedBattleReplay = null;
@@ -94,6 +129,78 @@ let sharedBattleReplayTimeoutIds = [];
 /** @type {Map<string, { battleUnitId: string, side: string, displayName: string, currentHp: number, maxHp: number, fromX: number, fromY: number, toX: number, toY: number }>} */
 let sharedBattleMovementGhosts = new Map();
 
+function resetSharedBoardRenderCache() {
+  renderedSharedBoardCells = new Map();
+  renderedSharedBoardGridKey = "";
+}
+
+function isFakeDomElement(element) {
+  return element && Array.isArray(element.children);
+}
+
+function setElementChildren(element, children) {
+  const nextChildren = children.filter(Boolean);
+  if (typeof element?.replaceChildren === "function") {
+    element.replaceChildren(...nextChildren);
+    return;
+  }
+
+  if (isFakeDomElement(element)) {
+    element.children = nextChildren;
+  }
+}
+
+function createSharedBoardCellEntry(cellElement, zoneLabel) {
+  return {
+    cellElement,
+    zoneLabel,
+    unitElement: null,
+    ownerDot: null,
+    portrait: null,
+    metaWrap: null,
+    typeLabel: null,
+    displayName: null,
+    unitIdLabel: null,
+    hpCopy: null,
+    hpBar: null,
+    hpFill: null,
+    castFocus: null,
+    attackDirection: null,
+    tracer: null,
+    stateTag: null,
+    impactBurst: null,
+    impactTag: null,
+    subSlot: null,
+    subSlotPortrait: null,
+  };
+}
+
+function ensureSharedBoardGridShell(boardWidth, boardHeight) {
+  if (!domRefs.gridElement) {
+    return;
+  }
+
+  const gridKey = `${boardWidth}x${boardHeight}`;
+  const expectedCellCount = boardWidth * boardHeight;
+  if (renderedSharedBoardGridKey === gridKey && renderedSharedBoardCells.size === expectedCellCount) {
+    return;
+  }
+
+  resetSharedBoardRenderCache();
+  domRefs.gridElement.innerHTML = "";
+
+  for (let i = 0; i < expectedCellCount; i += 1) {
+    const cellElement = document.createElement("div");
+    const zoneLabel = document.createElement("span");
+    zoneLabel.className = "shared-board-zone-label";
+    cellElement.appendChild(zoneLabel);
+    domRefs.gridElement.appendChild(cellElement);
+    renderedSharedBoardCells.set(i, createSharedBoardCellEntry(cellElement, zoneLabel));
+  }
+
+  renderedSharedBoardGridKey = gridKey;
+}
+
 /**
  * 共有ボードクライアント初期化
  * @param {SharedBoardDOMRefs} refs DOM参照
@@ -102,6 +209,8 @@ let sharedBattleMovementGhosts = new Map();
 export function initSharedBoardClient(refs, dependencies) {
   domRefs = { ...DEFAULT_DOM_REFS, ...refs };
   deps = { ...DEFAULT_DEPS, ...dependencies };
+  lastKnownAttachedSubUnitByCell = new Map();
+  resetSharedBoardRenderCache();
 }
 
 export function setSharedBoardGamePlayerId(gamePlayerId) {
@@ -171,9 +280,12 @@ export async function connectSharedBoard(client, options = {}) {
       );
     }
     currentSharedBoardState = null;
+    lastKnownAttachedSubUnitByCell = new Map();
+    resetSharedBoardRenderCache();
     sharedBoardSpectatorNoticeShown = false;
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
+    selectedSharedSubUnitCellIndex = null;
     clearSharedBattleReplay();
 
     bindSharedBoardRoomListeners(sharedBoardRoom);
@@ -198,6 +310,7 @@ function bindSharedBoardRoomListeners(room) {
     room.onMessage("shared_action_result", (message) => {
       if (message?.accepted === true && message.action === "place_unit") {
         selectedSharedUnitId = null;
+        selectedSharedSubUnitCellIndex = null;
         renderSharedBoardState(currentSharedBoardState);
         deps.showMessage("Shared board move applied. Keep covering open space before you press Ready.", "success");
       }
@@ -219,6 +332,7 @@ function bindSharedBoardRoomListeners(room) {
       if (state?.mode === "battle") {
         sharedDraggedUnitId = null;
         selectedSharedUnitId = null;
+        selectedSharedSubUnitCellIndex = null;
       } else if (currentSharedBattleReplay) {
         clearSharedBattleReplay();
       }
@@ -232,8 +346,11 @@ function bindSharedBoardRoomListeners(room) {
     room.onLeave(() => {
       sharedBoardRoom = null;
       currentSharedBoardState = null;
+      lastKnownAttachedSubUnitByCell = new Map();
+      resetSharedBoardRenderCache();
       sharedDraggedUnitId = null;
       selectedSharedUnitId = null;
+      selectedSharedSubUnitCellIndex = null;
       clearSharedBattleReplay();
       renderSharedBoardState(null);
     });
@@ -246,8 +363,11 @@ export function leaveSharedBoardRoom() {
   if (!sharedBoardRoom) {
     currentSharedBoardRoomId = "";
     currentSharedBoardState = null;
+    lastKnownAttachedSubUnitByCell = new Map();
+    resetSharedBoardRenderCache();
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
+    selectedSharedSubUnitCellIndex = null;
     clearSharedBattleReplay();
     renderSharedBoardState(null);
     sharedBoardSpectatorNoticeShown = false;
@@ -258,8 +378,11 @@ export function leaveSharedBoardRoom() {
   sharedBoardRoom = null;
   currentSharedBoardRoomId = "";
   currentSharedBoardState = null;
+  lastKnownAttachedSubUnitByCell = new Map();
+  resetSharedBoardRenderCache();
   sharedDraggedUnitId = null;
   selectedSharedUnitId = null;
+  selectedSharedSubUnitCellIndex = null;
   clearSharedBattleReplay();
   sharedBoardSpectatorNoticeShown = false;
   renderSharedBoardState(null);
@@ -297,6 +420,35 @@ export function getSelectedSharedUnitId() {
   return selectedSharedUnitId;
 }
 
+export function clearSelectedSharedUnit() {
+  selectedSharedUnitId = null;
+  renderSharedBoardState(currentSharedBoardState);
+}
+
+export function refreshSharedBoardRender() {
+  renderSharedBoardState(currentSharedBoardState);
+}
+
+export function selectSharedUnitById(unitId, shouldNotify = false) {
+  if (typeof unitId !== "string" || unitId.length === 0) {
+    return;
+  }
+
+  selectSharedUnit(unitId, shouldNotify);
+}
+
+export function getSelectedSharedSubUnitCellIndex() {
+  return selectedSharedSubUnitCellIndex;
+}
+
+export function setSelectedSharedSubUnitCellIndex(cellIndex) {
+  selectedSharedSubUnitCellIndex = Number.isInteger(cellIndex) && cellIndex >= 0 ? cellIndex : null;
+  if (selectedSharedSubUnitCellIndex !== null) {
+    selectedSharedUnitId = null;
+  }
+  renderSharedBoardState(currentSharedBoardState);
+}
+
 /**
  * 共有ボード状態をレンダリング
  * @param {object|null} state 共有ボード状態
@@ -305,6 +457,7 @@ function renderSharedBoardState(state) {
   if (!state) {
     sharedDraggedUnitId = null;
     selectedSharedUnitId = null;
+    selectedSharedSubUnitCellIndex = null;
     renderSharedBoard({ boardWidth: 6, boardHeight: 6, cells: {}, cursors: {}, players: {} });
     updateSharedBoardPlacementGuide(null);
 
@@ -409,14 +562,26 @@ function renderSharedBoard(state) {
     return;
   }
 
-  domRefs.gridElement.innerHTML = "";
-
   const { boardWidth = 6, boardHeight = 6 } = state;
+  domRefs.gridElement.style["--shared-board-columns"] = String(boardWidth);
+  domRefs.gridElement.style["--shared-board-rows"] = String(boardHeight);
+  domRefs.gridElement.style.gridTemplateColumns = `repeat(${boardWidth}, minmax(0, 1fr))`;
+  domRefs.gridElement.style.gridTemplateRows = `repeat(${boardHeight}, minmax(0, 1fr))`;
+  domRefs.gridElement.style.aspectRatio = `${boardWidth} / ${boardHeight}`;
+  ensureSharedBoardGridShell(boardWidth, boardHeight);
+  removeSharedBoardBattleOverlay();
   const cells = resolveSharedBoardCellsForRender(state);
   const legacyEmbeddedBoard = isLegacyEmbeddedBoard(state);
   const playerSubUnitsByCell = buildPlayerSubUnitMap();
 
   for (let i = 0; i < boardWidth * boardHeight; i += 1) {
+    const entry = renderedSharedBoardCells.get(i);
+    if (!entry) {
+      continue;
+    }
+
+    const cellElement = entry.cellElement;
+    const zoneLabel = entry.zoneLabel;
     const cell = mapGet(cells, String(i));
     const deploymentZone = resolveDeploymentZone(state, i);
     const unitId = cell?.unitId ?? "";
@@ -430,7 +595,6 @@ function renderSharedBoard(state) {
       selectedSharedUnitId && !canDropSelectedUnit,
     );
 
-    const cellElement = document.createElement("div");
     cellElement.className = "shared-board-cell";
     cellElement.tabIndex = 0;
     cellElement.dataset.cellIndex = String(i);
@@ -468,10 +632,8 @@ function renderSharedBoard(state) {
       cellElement.classList.add("blocked-target");
     }
 
-    const zoneLabel = document.createElement("span");
-    zoneLabel.className = "shared-board-zone-label";
     zoneLabel.textContent = resolveSharedBoardZoneLabel(cell, deploymentZone);
-    cellElement.appendChild(zoneLabel);
+    const cellChildren = [zoneLabel];
 
     cellElement.ondragover = (event) => {
       handleSharedDragOver(event, state, cellElement, i);
@@ -520,137 +682,7 @@ function renderSharedBoard(state) {
         cellElement.classList.add("occupied-ally");
       }
 
-      const unit = document.createElement("div");
-      unit.className = "shared-board-unit shared-board-unit-card";
-
-      const ownerDot = document.createElement("span");
-      ownerDot.className = "shared-board-owner";
-      ownerDot.style.backgroundColor = getSharedPlayerColor(state, ownerId);
-
-      if (shouldRenderTouhouPresentation(cell)) {
-        const portrait = document.createElement("img");
-        portrait.className = "shared-board-portrait";
-        portrait.src = resolveFrontPortraitUrl(cell.portraitKey, "meiling");
-        portrait.alt = cell.displayName;
-
-        const metaWrap = document.createElement("div");
-        metaWrap.className = "shared-board-unit-meta-wrap";
-
-        const typeLabel = document.createElement("span");
-        typeLabel.className = "shared-board-unit-type shared-board-unit-meta";
-        typeLabel.textContent = resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
-
-        const displayName = document.createElement("span");
-        displayName.className = "shared-board-display-name shared-board-unit-meta";
-        displayName.textContent = cell.displayName;
-
-        metaWrap.append(typeLabel, displayName);
-        unit.append(ownerDot, portrait, metaWrap);
-      } else {
-        const metaWrap = document.createElement("div");
-        metaWrap.className = "shared-board-unit-meta-wrap";
-
-        const unitIdLabel = document.createElement("span");
-        unitIdLabel.className = "shared-board-unit-id shared-board-unit-meta";
-        unitIdLabel.textContent = typeof cell?.displayName === "string" && cell.displayName.length > 0
-          ? cell.displayName
-          : shortPlayerId(unitId);
-        metaWrap.appendChild(unitIdLabel);
-        unit.append(ownerDot, metaWrap);
-      }
-
-      if (isSharedBoardBattleMode(state) && Number.isFinite(Number(cell?.maxHp))) {
-        unit.classList.add("shared-board-battle-unit");
-        unit.classList.add(cell?.ownerId === "boss" ? "shared-board-battle-boss" : "shared-board-battle-raid");
-        if (cell?.battleState === "attacking") {
-          unit.classList.add("shared-board-battle-attacking");
-        }
-        if (cell?.battleState === "casting") {
-          unit.classList.add("shared-board-battle-casting");
-        }
-        if (
-          Number.isFinite(cell?.battleAttackLungeX)
-          || Number.isFinite(cell?.battleAttackLungeY)
-        ) {
-          unit.classList.add("shared-board-battle-lunging");
-          unit.style["--shared-board-attack-lunge-x"] = `${cell.battleAttackLungeX ?? 0}px`;
-          unit.style["--shared-board-attack-lunge-y"] = `${cell.battleAttackLungeY ?? 0}px`;
-        }
-        if (cell?.battleState === "moving") {
-          unit.classList.add("shared-board-battle-moving");
-        }
-        if (cell?.battleState === "dead") {
-          unit.classList.add("shared-board-battle-dead");
-        }
-        if (cell?.battleGhostHidden === true) {
-          unit.classList.add("shared-board-battle-moving-anchor");
-        }
-        if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
-          unit.classList.add("shared-board-battle-targeted");
-        }
-        if (Number.isFinite(Number(cell?.battleImpactAmount)) && Number(cell?.battleImpactAmount) > 0) {
-          unit.classList.add("shared-board-battle-impacted");
-        }
-
-        const hpCopy = document.createElement("span");
-        hpCopy.className = "shared-board-battle-hp-copy";
-        const currentHp = Math.max(0, Math.round(Number(cell?.currentHp) || 0));
-        const maxHp = Math.max(currentHp, Math.round(Number(cell?.maxHp) || 0));
-        hpCopy.textContent = `${currentHp} / ${maxHp}`;
-
-        const hpBar = document.createElement("div");
-        hpBar.className = "shared-board-battle-hp-bar";
-
-        const hpFill = document.createElement("div");
-        hpFill.className = "shared-board-battle-hp-bar-fill";
-        hpFill.style.width = `${resolveSharedBattleHpPercent(cell)}%`;
-
-        hpBar.appendChild(hpFill);
-        unit.append(hpCopy, hpBar);
-
-        if (cell?.battleState === "casting") {
-          const castFocus = document.createElement("span");
-          castFocus.className = "shared-board-battle-cast-focus";
-          unit.appendChild(castFocus);
-        }
-
-        if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "melee") {
-          const attackDirection = document.createElement("span");
-          attackDirection.className = "shared-board-battle-attack-direction";
-          attackDirection.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
-          attackDirection.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
-          unit.appendChild(attackDirection);
-        }
-
-        if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "ranged") {
-          const tracer = document.createElement("span");
-          tracer.className = "shared-board-battle-projectile-tracer";
-          tracer.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
-          tracer.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
-          unit.appendChild(tracer);
-        }
-
-        const battleStateTagCopy = resolveSharedBattleStateTagCopy(cell);
-        if (battleStateTagCopy) {
-          const stateTag = document.createElement("span");
-          stateTag.className = "shared-board-battle-state-tag";
-          stateTag.textContent = battleStateTagCopy;
-          unit.appendChild(stateTag);
-        }
-
-        const impactTagCopy = resolveSharedBattleImpactTagCopy(cell);
-        if (impactTagCopy) {
-          const impactBurst = document.createElement("span");
-          impactBurst.className = "shared-board-battle-hit-burst";
-          unit.appendChild(impactBurst);
-
-          const impactTag = document.createElement("span");
-          impactTag.className = "shared-board-battle-impact-tag";
-          impactTag.textContent = impactTagCopy;
-          unit.appendChild(impactTag);
-        }
-      }
-      cellElement.appendChild(unit);
+      cellChildren.push(renderSharedBoardUnitElement(entry, cell, state, ownerId, unitId));
 
       const shouldRenderSubSlot = shouldRenderSharedBoardSubSlot({
         ownerId,
@@ -658,20 +690,243 @@ function renderSharedBoard(state) {
         deploymentZone,
       });
       if (shouldRenderSubSlot) {
-        const subSlot = buildSharedBoardSubSlotElement(i, playerSubUnitsByCell.get(i) ?? null);
+        const subSlot = updateSharedBoardSubSlotElement(entry, i, playerSubUnitsByCell.get(i) ?? null);
         if (subSlot) {
-          cellElement.appendChild(subSlot);
+          cellChildren.push(subSlot);
         }
       }
     } else {
       cellElement.onmouseenter = null;
       cellElement.onmouseleave = null;
+      cellElement.draggable = false;
+      cellElement.onpointerdown = null;
+      cellElement.ondragstart = null;
+      cellElement.ondragend = null;
       cellElement.classList.add("empty");
     }
-    domRefs.gridElement.appendChild(cellElement);
+    setElementChildren(cellElement, cellChildren);
   }
 
   renderSharedBattleMovementGhostOverlay(state);
+}
+
+function renderSharedBoardUnitElement(entry, cell, state, ownerId, unitId) {
+  const unit = entry.unitElement ?? document.createElement("div");
+  const ownerDot = entry.ownerDot ?? document.createElement("span");
+  const metaWrap = entry.metaWrap ?? document.createElement("div");
+
+  entry.unitElement = unit;
+  entry.ownerDot = ownerDot;
+  entry.metaWrap = metaWrap;
+
+  unit.className = "shared-board-unit shared-board-unit-card";
+  unit.style["--shared-board-attack-lunge-x"] = "";
+  unit.style["--shared-board-attack-lunge-y"] = "";
+
+  ownerDot.className = "shared-board-owner";
+  ownerDot.style.backgroundColor = getSharedPlayerColor(state, ownerId);
+
+  const unitChildren = [ownerDot];
+  if (shouldRenderTouhouPresentation(cell)) {
+    const portrait = entry.portrait ?? document.createElement("img");
+    const typeLabel = entry.typeLabel ?? document.createElement("span");
+    const displayName = entry.displayName ?? document.createElement("span");
+
+    entry.portrait = portrait;
+    entry.typeLabel = typeLabel;
+    entry.displayName = displayName;
+
+    portrait.className = "shared-board-portrait";
+    portrait.src = resolveFrontPortraitUrl(cell.portraitKey, "meiling");
+    portrait.alt = cell.displayName;
+
+    metaWrap.className = "shared-board-unit-meta-wrap";
+    typeLabel.className = "shared-board-unit-type shared-board-unit-meta";
+    typeLabel.textContent = resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
+    displayName.className = "shared-board-display-name shared-board-unit-meta";
+    displayName.textContent = cell.displayName;
+    setElementChildren(metaWrap, [typeLabel, displayName]);
+    unitChildren.push(portrait, metaWrap);
+  } else {
+    const unitIdLabel = entry.unitIdLabel ?? document.createElement("span");
+
+    entry.unitIdLabel = unitIdLabel;
+    metaWrap.className = "shared-board-unit-meta-wrap";
+    unitIdLabel.className = "shared-board-unit-id shared-board-unit-meta";
+    unitIdLabel.textContent = typeof cell?.displayName === "string" && cell.displayName.length > 0
+      ? cell.displayName
+      : shortPlayerId(unitId);
+    setElementChildren(metaWrap, [unitIdLabel]);
+    unitChildren.push(metaWrap);
+  }
+
+  if (isSharedBoardBattleMode(state) && Number.isFinite(Number(cell?.maxHp))) {
+    unit.classList.add("shared-board-battle-unit");
+    unit.classList.add(cell?.ownerId === "boss" ? "shared-board-battle-boss" : "shared-board-battle-raid");
+    if (cell?.battleState === "attacking") {
+      unit.classList.add("shared-board-battle-attacking");
+    }
+    if (cell?.battleState === "casting") {
+      unit.classList.add("shared-board-battle-casting");
+    }
+    if (Number.isFinite(cell?.battleAttackLungeX) || Number.isFinite(cell?.battleAttackLungeY)) {
+      unit.classList.add("shared-board-battle-lunging");
+      unit.style["--shared-board-attack-lunge-x"] = `${cell.battleAttackLungeX ?? 0}px`;
+      unit.style["--shared-board-attack-lunge-y"] = `${cell.battleAttackLungeY ?? 0}px`;
+    }
+    if (cell?.battleState === "moving") {
+      unit.classList.add("shared-board-battle-moving");
+    }
+    if (cell?.battleState === "dead") {
+      unit.classList.add("shared-board-battle-dead");
+    }
+    if (cell?.battleGhostHidden === true) {
+      unit.classList.add("shared-board-battle-moving-anchor");
+    }
+    if (typeof cell?.battleTargetedByBattleUnitId === "string" && cell.battleTargetedByBattleUnitId.length > 0) {
+      unit.classList.add("shared-board-battle-targeted");
+    }
+    if (Number.isFinite(Number(cell?.battleImpactAmount)) && Number(cell?.battleImpactAmount) > 0) {
+      unit.classList.add("shared-board-battle-impacted");
+    }
+
+    const hpCopy = entry.hpCopy ?? document.createElement("span");
+    const hpBar = entry.hpBar ?? document.createElement("div");
+    const hpFill = entry.hpFill ?? document.createElement("div");
+    entry.hpCopy = hpCopy;
+    entry.hpBar = hpBar;
+    entry.hpFill = hpFill;
+    hpCopy.className = "shared-board-battle-hp-copy";
+    const currentHp = Math.max(0, Math.round(Number(cell?.currentHp) || 0));
+    const maxHp = Math.max(currentHp, Math.round(Number(cell?.maxHp) || 0));
+    hpCopy.textContent = `${currentHp} / ${maxHp}`;
+    hpBar.className = "shared-board-battle-hp-bar";
+    hpFill.className = "shared-board-battle-hp-bar-fill";
+    hpFill.style.width = `${resolveSharedBattleHpPercent(cell)}%`;
+    setElementChildren(hpBar, [hpFill]);
+    unitChildren.push(hpCopy, hpBar);
+
+    if (cell?.battleState === "casting") {
+      const castFocus = entry.castFocus ?? document.createElement("span");
+      entry.castFocus = castFocus;
+      castFocus.className = "shared-board-battle-cast-focus";
+      unitChildren.push(castFocus);
+    }
+
+    if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "melee") {
+      const attackDirection = entry.attackDirection ?? document.createElement("span");
+      entry.attackDirection = attackDirection;
+      attackDirection.className = "shared-board-battle-attack-direction";
+      attackDirection.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
+      attackDirection.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
+      unitChildren.push(attackDirection);
+    }
+
+    if (Number.isFinite(cell?.battleAttackDirectionAngleDeg) && cell?.battleAttackPresentation === "ranged") {
+      const tracer = entry.tracer ?? document.createElement("span");
+      entry.tracer = tracer;
+      tracer.className = "shared-board-battle-projectile-tracer";
+      tracer.style["--shared-board-attack-angle"] = `${cell.battleAttackDirectionAngleDeg}deg`;
+      tracer.style["--shared-board-attack-length"] = `${cell.battleAttackDirectionLengthPx ?? 18}px`;
+      unitChildren.push(tracer);
+    }
+
+    const battleStateTagCopy = resolveSharedBattleStateTagCopy(cell);
+    if (battleStateTagCopy) {
+      const stateTag = entry.stateTag ?? document.createElement("span");
+      entry.stateTag = stateTag;
+      stateTag.className = "shared-board-battle-state-tag";
+      stateTag.textContent = battleStateTagCopy;
+      unitChildren.push(stateTag);
+    }
+
+    const impactTagCopy = resolveSharedBattleImpactTagCopy(cell);
+    if (impactTagCopy) {
+      const impactBurst = entry.impactBurst ?? document.createElement("span");
+      const impactTag = entry.impactTag ?? document.createElement("span");
+      entry.impactBurst = impactBurst;
+      entry.impactTag = impactTag;
+      impactBurst.className = "shared-board-battle-hit-burst";
+      impactTag.className = "shared-board-battle-impact-tag";
+      impactTag.textContent = impactTagCopy;
+      unitChildren.push(impactBurst, impactTag);
+    }
+  }
+
+  setElementChildren(unit, unitChildren);
+  return unit;
+}
+
+function updateSharedBoardSubSlotElement(entry, cellIndex, subUnitToken) {
+  const playerFacingPhase = deps.getPlayerFacingPhase?.() ?? "";
+  const showEmptySubSlot = playerFacingPhase === "deploy";
+  const showAttachedSubSlot = playerFacingPhase === "purchase"
+    || playerFacingPhase === "deploy"
+    || playerFacingPhase === "battle";
+
+  if (!subUnitToken && !showEmptySubSlot) {
+    return null;
+  }
+
+  if (subUnitToken && !showAttachedSubSlot) {
+    return null;
+  }
+
+  const subSlot = entry.subSlot ?? document.createElement("button");
+  entry.subSlot = subSlot;
+  subSlot.type = "button";
+  subSlot.className = "shared-board-sub-slot";
+  subSlot.textContent = "";
+  subSlot.dataset.sharedBoardSubSlot = String(cellIndex);
+  subSlot.dataset.sharedBoardTargetSlot = "sub";
+  subSlot.setAttribute("aria-label", `Sub slot for board cell ${cellIndex}`);
+
+  if (subUnitToken) {
+    subSlot.classList.add("attached");
+    subSlot.classList.add("shared-board-sub-slot-attached");
+    const portraitKey = resolveSharedBoardSubUnitPortraitKey(subUnitToken);
+    if (portraitKey) {
+      const portrait = entry.subSlotPortrait ?? document.createElement("img");
+      entry.subSlotPortrait = portrait;
+      portrait.className = "shared-board-sub-slot-portrait";
+      portrait.src = resolveFrontPortraitUrl(portraitKey, "meiling");
+      portrait.alt = resolveSubUnitHoverTitle(subUnitToken);
+      setElementChildren(subSlot, [portrait]);
+    } else {
+      setElementChildren(subSlot, []);
+      subSlot.textContent = UNIT_ICONS[subUnitToken.unitType] ?? UNIT_ICONS.hero;
+    }
+  } else {
+    setElementChildren(subSlot, []);
+    subSlot.classList.add("shared-board-sub-slot-empty");
+    subSlot.textContent = "+";
+  }
+
+  subSlot.classList.toggle(
+    "shared-board-sub-slot-selected",
+    selectedSharedSubUnitCellIndex === cellIndex && subUnitToken !== null,
+  );
+
+  subSlot.onpointerdown = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+  };
+  subSlot.onclick = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    deps.onSubSlotActivate?.({
+      cellIndex,
+      subUnitToken: subUnitToken?.rawToken ?? null,
+    });
+  };
+  subSlot.onmouseenter = () => {
+    deps.onHoverDetailChange?.(buildSharedBoardSubHoverDetail(subUnitToken, mapGet(currentSharedBoardState?.cells, String(cellIndex))));
+  };
+  subSlot.onmouseleave = () => {
+    deps.onHoverDetailChange?.(null);
+  };
+
+  return subSlot;
 }
 
 /**
@@ -738,6 +993,7 @@ function shouldRenderTouhouPresentation(cell) {
 function buildPlayerSubUnitMap() {
   const boardSubUnits = deps.getPlayerBoardSubUnits?.() ?? [];
   const subUnitMap = new Map();
+  const nextCachedSubUnits = new Map();
 
   for (const token of boardSubUnits) {
     const parsedToken = parseBoardSubUnitToken(token);
@@ -746,9 +1002,67 @@ function buildPlayerSubUnitMap() {
     }
 
     subUnitMap.set(parsedToken.cellIndex, parsedToken);
+    nextCachedSubUnits.set(parsedToken.cellIndex, parsedToken);
   }
 
+  for (const cellIndex of collectAttachedHostCells()) {
+    if (subUnitMap.has(cellIndex)) {
+      continue;
+    }
+
+    const cachedToken = lastKnownAttachedSubUnitByCell.get(cellIndex);
+    if (!cachedToken) {
+      continue;
+    }
+
+    subUnitMap.set(cellIndex, cachedToken);
+    nextCachedSubUnits.set(cellIndex, cachedToken);
+  }
+
+  lastKnownAttachedSubUnitByCell = nextCachedSubUnits;
+  if (
+    selectedSharedSubUnitCellIndex !== null
+    && !subUnitMap.has(selectedSharedSubUnitCellIndex)
+  ) {
+    selectedSharedSubUnitCellIndex = null;
+  }
   return subUnitMap;
+}
+
+function collectAttachedHostCells() {
+  const boardUnits = deps.getPlayerBoardUnits?.() ?? [];
+  const attachedHostCells = new Set();
+
+  for (const token of boardUnits) {
+    const parsedToken = parseBoardUnitToken(token);
+    if (!parsedToken?.hasSubMarker) {
+      continue;
+    }
+
+    attachedHostCells.add(parsedToken.cellIndex);
+  }
+
+  return attachedHostCells;
+}
+
+function parseBoardUnitToken(token) {
+  if (typeof token !== "string" || token.length === 0) {
+    return null;
+  }
+
+  const [cellText, unitType, third = "", fourth = ""] = token.split(":");
+  const cellIndex = Number.parseInt(cellText, 10);
+  if (!Number.isInteger(cellIndex) || typeof unitType !== "string" || unitType.length === 0) {
+    return null;
+  }
+
+  const starLevel = /^\d+$/.test(third) ? Number.parseInt(third, 10) : 1;
+  return {
+    cellIndex,
+    unitType,
+    starLevel,
+    hasSubMarker: third === "sub" || fourth === "sub",
+  };
 }
 
 function parseBoardSubUnitToken(token) {
@@ -756,15 +1070,20 @@ function parseBoardSubUnitToken(token) {
     return null;
   }
 
-  const [cellText, unitType, detail] = token.split(":");
+  const [cellText, unitType, third = "", fourth = ""] = token.split(":");
   const cellIndex = Number.parseInt(cellText, 10);
   if (!Number.isInteger(cellIndex) || typeof unitType !== "string" || unitType.length === 0) {
     return null;
   }
 
+  const hasExplicitStarLevel = /^\d+$/.test(third) && fourth.length > 0;
+  const starLevel = /^\d+$/.test(third) ? Number.parseInt(third, 10) : 1;
+  const detail = hasExplicitStarLevel ? fourth : third;
+
   return {
     cellIndex,
     unitType,
+    starLevel,
     detail: typeof detail === "string" ? detail : "",
     rawToken: token,
   };
@@ -935,7 +1254,7 @@ function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
     return false;
   }
 
-  if (!unitId || unitId === "dummy-boss" || isBossSharedUnitId(unitId) || isHeroSharedUnitId(unitId)) {
+  if (!unitId || unitId === "dummy-boss" || isBossSharedUnitId(unitId)) {
     return false;
   }
 
@@ -945,7 +1264,9 @@ function shouldRenderSharedBoardSubSlot({ ownerId, unitId, deploymentZone }) {
 function buildSharedBoardSubSlotElement(cellIndex, subUnitToken) {
   const playerFacingPhase = deps.getPlayerFacingPhase?.() ?? "";
   const showEmptySubSlot = playerFacingPhase === "deploy";
-  const showAttachedSubSlot = playerFacingPhase === "deploy" || playerFacingPhase === "battle";
+  const showAttachedSubSlot = playerFacingPhase === "purchase"
+    || playerFacingPhase === "deploy"
+    || playerFacingPhase === "battle";
 
   if (!subUnitToken && !showEmptySubSlot) {
     return null;
@@ -965,13 +1286,27 @@ function buildSharedBoardSubSlotElement(cellIndex, subUnitToken) {
   if (subUnitToken) {
     subSlot.classList.add("attached");
     subSlot.classList.add("shared-board-sub-slot-attached");
-    subSlot.textContent = UNIT_ICONS[subUnitToken.unitType] ?? UNIT_ICONS.hero;
+    const portraitKey = resolveSharedBoardSubUnitPortraitKey(subUnitToken);
+    if (portraitKey) {
+      const portrait = document.createElement("img");
+      portrait.className = "shared-board-sub-slot-portrait";
+      portrait.src = resolveFrontPortraitUrl(portraitKey, "meiling");
+      portrait.alt = resolveSubUnitHoverTitle(subUnitToken);
+      subSlot.appendChild(portrait);
+    } else {
+      subSlot.textContent = UNIT_ICONS[subUnitToken.unitType] ?? UNIT_ICONS.hero;
+    }
   } else {
     subSlot.classList.add("shared-board-sub-slot-empty");
     subSlot.textContent = "+";
   }
 
+  subSlot.onpointerdown = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+  };
   subSlot.onclick = (event) => {
+    event?.preventDefault?.();
     event?.stopPropagation?.();
     deps.onSubSlotActivate?.({
       cellIndex,
@@ -1071,6 +1406,7 @@ function selectSharedUnit(unitId, shouldNotify = true) {
   }
 
   selectedSharedUnitId = unitId;
+  selectedSharedSubUnitCellIndex = null;
   renderSharedBoardState(currentSharedBoardState);
 
   if (shouldNotify) {
@@ -1908,6 +2244,24 @@ function clearSharedBattleMovementGhost(battleUnitId = null) {
   sharedBattleMovementGhosts.clear();
 }
 
+function removeSharedBoardBattleOverlay() {
+  if (!domRefs.gridElement) {
+    return;
+  }
+
+  if (isFakeDomElement(domRefs.gridElement)) {
+    domRefs.gridElement.children = domRefs.gridElement.children.filter(
+      (child) => !child?.className?.split?.(" ").includes("shared-board-battle-overlay"),
+    );
+    return;
+  }
+
+  const overlays = domRefs.gridElement.querySelectorAll?.(".shared-board-battle-overlay") ?? [];
+  for (const overlay of overlays) {
+    overlay.remove?.();
+  }
+}
+
 function renderSharedBattleMovementGhostOverlay(state) {
   if (
     !domRefs.gridElement
@@ -1920,6 +2274,7 @@ function renderSharedBattleMovementGhostOverlay(state) {
   const overlay = document.createElement("div");
   overlay.className = "shared-board-battle-overlay";
   overlay.style.gridTemplateColumns = `repeat(${resolveSharedBattleBoardWidth(state)}, minmax(0, 1fr))`;
+  overlay.style.gridTemplateRows = `repeat(${resolveSharedBattleBoardHeight(state)}, minmax(0, 1fr))`;
 
   for (const ghost of sharedBattleMovementGhosts.values()) {
     const ghostElement = document.createElement("div");
@@ -1941,6 +2296,14 @@ function resolveSharedBattleBoardWidth(state) {
   }
 
   return Number.isInteger(state?.boardWidth) ? state.boardWidth : 6;
+}
+
+function resolveSharedBattleBoardHeight(state) {
+  if (Number.isInteger(currentSharedBattleReplay?.boardHeight)) {
+    return currentSharedBattleReplay.boardHeight;
+  }
+
+  return Number.isInteger(state?.boardHeight) ? state.boardHeight : 6;
 }
 
 function resolveSharedBattleGhostOffset(delta) {

@@ -51,6 +51,7 @@ export interface PrepCommandMessage {
   correlationId?: string;
   boardUnitCount?: number;
   boardPlacements?: BoardUnitPlacement[];
+  heroPlacementCell?: number;
   xpPurchaseCount?: number;
   shopRefreshCount?: number;
   shopBuySlotIndex?: number;
@@ -62,6 +63,23 @@ export interface PrepCommandMessage {
   };
   boardToBenchCell?: {
     cell: number;
+  };
+  boardUnitMove?: {
+    fromCell: number;
+    toCell: number;
+    slot?: "main" | "sub";
+  };
+  subUnitToBenchCell?: {
+    cell: number;
+  };
+  subUnitMove?: {
+    fromCell: number;
+    toCell: number;
+    slot?: "main" | "sub";
+  };
+  subUnitSwapBench?: {
+    cell: number;
+    benchIndex: number;
   };
   benchSellIndex?: number;
   boardSellIndex?: number;
@@ -90,6 +108,7 @@ export interface AttachedSubUnitPlacement {
 
 export interface BoardUnitPlacement {
   cell: number;
+  ownerPlayerId?: string;
   unitType: BoardUnitType;
   unitId?: UnitId;
   factionId?: TouhouFactionId | null;
@@ -244,6 +263,7 @@ export interface BattleTimelineBoardConfig {
 
 export interface BattleStartUnitSnapshot {
   battleUnitId: string;
+  ownerPlayerId?: string;
   sourceUnitId?: string;
   side: BattleTimelineSide;
   x: number;

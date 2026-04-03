@@ -4,9 +4,43 @@ import {
   AUTO_FILL_BOSS_ID,
   AUTO_FILL_HERO_IDS,
   buildAutoFillHelperActions,
+  resolveAutoFillHelperPlayerPhase,
 } from "../../src/client/autofill-helper-automation.js";
 
 describe("autofill helper automation", () => {
+  test("preference stage auto-readies a helper so bot-only lobbies can start", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "unassigned",
+      },
+      state: {
+        lobbyStage: "preference",
+        phase: "Waiting",
+      },
+    })).toEqual([
+      {
+        payload: { ready: true },
+        type: "ready",
+      },
+    ]);
+  });
+
+  test("preference stage keeps an already-readied helper idle", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: true,
+        role: "unassigned",
+      },
+      state: {
+        lobbyStage: "preference",
+        phase: "Waiting",
+      },
+    })).toEqual([]);
+  });
+
   test("selection phase auto-selects the default boss for a boss helper", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -67,12 +101,14 @@ describe("autofill helper automation", () => {
     })).toEqual([]);
   });
 
-  test("prep phase auto-readies a helper after selection resolves", () => {
+  test("prep phase auto-readies a helper once it has already deployed a purchased unit", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 1,
       player: {
         ready: false,
         role: "raid",
+        gold: 0,
+        boardUnits: ["30:reimu", "33:ranger"],
         selectedHeroId: AUTO_FILL_HERO_IDS[1]!,
       },
       state: {
@@ -82,6 +118,91 @@ describe("autofill helper automation", () => {
       {
         payload: { ready: true },
         type: "ready",
+      },
+    ]);
+  });
+
+  test("prep phase waits for the first shop sync before readying an empty raid helper", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 2,
+        benchUnits: [],
+        boardUnits: [],
+        selectedHeroId: AUTO_FILL_HERO_IDS[1]!,
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([]);
+  });
+
+  test("prep phase deploys an already purchased bench unit even before deploy phase is announced", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        benchUnits: ["vanguard"],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: AUTO_FILL_HERO_IDS[1]!,
+        shopOffers: [{ unitType: "mage", cost: 3 }],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        playerPhaseDeadlineAtMs: Date.now() + 1_000,
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 33,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("purchase phase deadline crossing is treated as deploy even before room state catches up", () => {
+    const nowMs = 1_000;
+
+    expect(resolveAutoFillHelperPlayerPhase({
+      playerPhase: "purchase",
+      playerPhaseDeadlineAtMs: nowMs - 1,
+    }, nowMs)).toBe("deploy");
+
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        benchUnits: ["vanguard"],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: AUTO_FILL_HERO_IDS[1]!,
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        playerPhaseDeadlineAtMs: nowMs - 1,
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 33,
+          },
+        },
+        type: "prep_command",
       },
     ]);
   });
@@ -109,6 +230,32 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase boss helper prefers patchouli over other affordable boss offers", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        benchUnits: [],
+        boardUnits: [],
+        bossShopOffers: [
+          { unitId: "meiling", unitType: "vanguard", cost: 2 },
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+          { unitId: "sakuya", unitType: "assassin", cost: 3 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: { bossShopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase raid helper buys from normal shop before readying", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,
@@ -127,6 +274,32 @@ describe("autofill helper automation", () => {
     })).toEqual([
       {
         payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper prefers nazrin over other affordable raid offers", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: [],
+        boardUnits: [],
+        shopOffers: [
+          { unitId: "sekibanki", unitType: "assassin", cost: 2 },
+          { unitId: "nazrin", unitType: "ranger", cost: 1 },
+          { unitId: "tsukasa", unitType: "mage", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
         type: "prep_command",
       },
     ]);
@@ -319,6 +492,140 @@ describe("autofill helper automation", () => {
           benchToBoardCell: {
             benchIndex: 0,
             cell: 33,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep purchase phase deploys bench units before buying more", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["ranger"],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitType: "vanguard", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 33,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep deploy phase places bench units instead of buying more", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["ranger"],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitType: "vanguard", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 33,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep deploy phase queues multiple deploys to fill the helper lane", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["ranger", "vanguard"],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitType: "mage", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 33,
+          },
+        },
+        type: "prep_command",
+      },
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 1,
+            cell: 27,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep deploy phase uses sub slots for extra raid bench units after the main lane is full", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["assassin"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitType: "ranger", unitId: "nazrin" },
+          { cell: 25, unitType: "vanguard", unitId: "yoshika" },
+          { cell: 19, unitType: "mage", unitId: "rin" },
+        ],
+        selectedHeroId: "reimu",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 31,
+            slot: "sub",
           },
         },
         type: "prep_command",

@@ -112,6 +112,18 @@ describe("manual-check script contract", () => {
     expect(source.includes("benchToBoardCell")).toBe(true);
   });
 
+  test("manual-check routes sub-slot clicks through dedicated prep commands including Okina hero placement", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const isSubSlotTarget = target.closest(\"[data-shared-board-sub-slot]\");")).toBe(true);
+    expect(source.includes("handleSharedSubSlotClickForManualCheck(cellIndex);")).toBe(true);
+    expect(source.includes("slot: \"sub\",")).toBe(true);
+    expect(source.includes("boardUnitMove: {")).toBe(true);
+    expect(source.includes("subUnitMove: {")).toBe(true);
+    expect(source.includes("heroPlacementCell: cellIndex")).toBe(true);
+    expect(source.includes("setSelectedSharedSubUnitCellIndex(cellIndex);")).toBe(true);
+  });
+
   test("bench deploy sends shared-board index directly and rejects non-playable cells", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
@@ -159,6 +171,8 @@ describe("manual-check script contract", () => {
     expect(source.includes("const hasBattleResult = Boolean(")).toBe(true);
     expect(source.includes("battleResult?.opponentId")).toBe(true);
     expect(source.includes("lastShownBattleRound !== state.roundIndex")).toBe(true);
+    expect(source.includes("const roundNumber = Number(state.roundIndex) + 1;")).toBe(true);
+    expect(source.includes("addCombatLogEntry(`--- Round ${roundNumber} ---`, 'info');")).toBe(true);
   });
 
   test("UI presentation updates do not depend on lastCmdSeq being present", () => {
@@ -246,9 +260,17 @@ describe("manual-check script contract", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});")).toBe(true);
-    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {});")).toBe(true);
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {")).toBe(true);
+    expect(source.includes("applyAutomation(helperRoom.state);")).toBe(true);
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});")).toBe(true);
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});")).toBe(true);
+  });
+
+  test("autofill helper automation state key uses resolved playerPhase so deploy retries can re-run after purchase", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("playerPhase: resolveAutoFillHelperPlayerPhase(state),")).toBe(true);
+    expect(source.includes("playerPhaseDeadlineAtMs:")).toBe(true);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

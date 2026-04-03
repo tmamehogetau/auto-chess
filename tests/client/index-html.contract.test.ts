@@ -165,4 +165,16 @@ describe("index.html contract", () => {
 
     expect(html.includes('data-autofill-input type="number" min="0" max="3" value="0"')).toBe(true);
   });
+
+  test("operator shared-board shell fixes board and guide dimensions to avoid layout jumps", () => {
+    const html = readFileSync(indexHtmlPath, "utf-8");
+
+    expect(html.includes("--shared-board-columns: 6;")).toBe(true);
+    expect(html.includes("--shared-board-rows: 6;")).toBe(true);
+    expect(html.includes("grid-template-rows: repeat(var(--shared-board-rows, 6), minmax(0, 1fr));")).toBe(true);
+    expect(html.includes("aspect-ratio: var(--shared-board-columns, 6) / var(--shared-board-rows, 6);")).toBe(true);
+    expect(html.includes("--shared-board-guide-lines: 3;")).toBe(true);
+    expect(html.includes("height: calc(1.45em * var(--shared-board-guide-lines));")).toBe(true);
+    expect(html.includes("overflow-y: auto;")).toBe(true);
+  });
 });

@@ -26,7 +26,10 @@ import {
   buildRoundSummaryTip,
 } from "./ui/player-facing-copy.js";
 import { playUiCue } from "./ui/audio-cues.js";
-import { buildAutoFillHelperActions } from "./autofill-helper-automation.js";
+import {
+  buildAutoFillHelperActions,
+  resolveAutoFillHelperPlayerPhase,
+} from "./autofill-helper-automation.js";
 
 import {
   initAdminMonitor,
@@ -45,6 +48,9 @@ import {
   getSharedBoardRoom,
   getSharedBoardState,
   getSelectedSharedUnitId,
+  clearSelectedSharedUnit,
+  getSelectedSharedSubUnitCellIndex,
+  setSelectedSharedSubUnitCellIndex,
   setSharedBoardGamePlayerId,
   setSharedBoardRoomId,
   sendSharedCursorMove,
@@ -363,6 +369,8 @@ let pendingAutoPrepTimeout = null;
 const autoFillRooms = [];
 let autoReadyCompleted = false;
 let autoPrepCompleted = false;
+const HELPER_AUTOMATION_RETRY_DELAY_MS = 10;
+const HELPER_AUTOMATION_RETRY_ATTEMPTS = 16;
 let lastMonitorTraceId = null;
 
 const autoConfig = {
@@ -510,13 +518,19 @@ sharedBoardGrid?.addEventListener("click", (event) => {
     return;
   }
 
+  const isSubSlotTarget = target.closest("[data-shared-board-sub-slot]");
+  if (isSubSlotTarget) {
+    handleSharedSubSlotClickForManualCheck(cellIndex);
+    return;
+  }
+
   if (selectedBenchIndex !== null) {
     deployBenchUnit(selectedBenchIndex, cellIndex);
     clearSelections();
     return;
   }
 
-  handleSharedCellClick(getSharedBoardState(), cellIndex);
+  handleSharedCellClickForManualCheck(cellIndex);
 });
 
 window.addEventListener("beforeunload", () => {
@@ -1025,6 +1039,157 @@ function deployBenchUnit(benchIndex, cellIndex) {
   showMessage(`Deploying bench unit to Shared Battle Board cell ${cellIndex}...`, "success");
 }
 
+function isSpecialSharedUnitId(unitId) {
+  return typeof unitId === "string"
+    && (unitId.startsWith("hero-") || unitId.startsWith("boss-") || unitId === "dummy-boss");
+}
+
+function resolveSelectedSharedBoardCell() {
+  const selectedUnitId = getSelectedSharedUnitId();
+  const sharedBoardState = getSharedBoardState();
+  if (!selectedUnitId || !sharedBoardState) {
+    return null;
+  }
+
+  const ownerId = sessionId ?? "";
+  for (const [cellKey, cell] of sharedBoardState.cells?.entries?.() ?? []) {
+    if (cell?.unitId !== selectedUnitId || cell.ownerId !== ownerId) {
+      continue;
+    }
+
+    return {
+      cellIndex: Number.parseInt(cellKey, 10),
+      unitId: cell.unitId,
+      ownerId: cell.ownerId,
+    };
+  }
+
+  return null;
+}
+
+function resolvePlayerSubUnitTokenForCell(cellIndex) {
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
+    return null;
+  }
+
+  const boardSubUnits = Array.isArray(currentPlayerState?.boardSubUnits)
+    ? currentPlayerState.boardSubUnits
+    : currentPlayerState?.boardSubUnits && typeof currentPlayerState.boardSubUnits[Symbol.iterator] === "function"
+      ? Array.from(currentPlayerState.boardSubUnits)
+      : [];
+
+  const cellPrefix = `${cellIndex}:`;
+  return boardSubUnits.find((token) => typeof token === "string" && token.startsWith(cellPrefix)) ?? null;
+}
+
+function handleSharedCellClickForManualCheck(cellIndex) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only change the board during Prep.", "error");
+    return;
+  }
+
+  const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
+  if (selectedSubUnitCellIndex !== null) {
+    sendPrepCommand({
+      subUnitMove: {
+        fromCell: selectedSubUnitCellIndex,
+        toCell: cellIndex,
+        slot: "main",
+      },
+    });
+    setSelectedSharedSubUnitCellIndex(null);
+    return;
+  }
+
+  const selectedBoardCell = resolveSelectedSharedBoardCell();
+  if (
+    selectedBoardCell
+    && isSpecialSharedUnitId(selectedBoardCell.unitId)
+    && typeof currentPlayerState?.selectedHeroId === "string"
+    && currentPlayerState.selectedHeroId.length > 0
+  ) {
+    sendPrepCommand({ heroPlacementCell: cellIndex });
+    clearSelectedSharedUnit();
+    return;
+  }
+
+  handleSharedCellClick(getSharedBoardState(), cellIndex);
+}
+
+function handleSharedSubSlotClickForManualCheck(cellIndex) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only change the board during Prep.", "error");
+    return;
+  }
+
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
+    showMessage("Could not resolve the target sub slot. Please try again.", "error");
+    return;
+  }
+
+  if (selectedBenchIndex !== null) {
+    sendPrepCommand({
+      benchToBoardCell: {
+        benchIndex: selectedBenchIndex,
+        cell: cellIndex,
+        slot: "sub",
+      },
+    });
+    setSelectedSharedSubUnitCellIndex(null);
+    return;
+  }
+
+  const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
+  if (selectedSubUnitCellIndex !== null) {
+    if (selectedSubUnitCellIndex === cellIndex) {
+      setSelectedSharedSubUnitCellIndex(null);
+      return;
+    }
+
+    sendPrepCommand({
+      subUnitMove: {
+        fromCell: selectedSubUnitCellIndex,
+        toCell: cellIndex,
+        slot: "sub",
+      },
+    });
+    setSelectedSharedSubUnitCellIndex(null);
+    return;
+  }
+
+  const selectedBoardCell = resolveSelectedSharedBoardCell();
+  if (selectedBoardCell && !isSpecialSharedUnitId(selectedBoardCell.unitId)) {
+    sendPrepCommand({
+      boardUnitMove: {
+        fromCell: selectedBoardCell.cellIndex,
+        toCell: cellIndex,
+        slot: "sub",
+      },
+    });
+    clearSelectedSharedUnit();
+    return;
+  }
+
+  if (
+    selectedBoardCell
+    && isSpecialSharedUnitId(selectedBoardCell.unitId)
+    && currentPlayerState?.selectedHeroId === "okina"
+  ) {
+    sendPrepCommand({ heroPlacementCell: cellIndex });
+    clearSelectedSharedUnit();
+    return;
+  }
+
+  const availableSubUnitToken = resolvePlayerSubUnitTokenForCell(cellIndex);
+  if (availableSubUnitToken) {
+    setSelectedSharedSubUnitCellIndex(cellIndex);
+    showMessage("Sub-unit selected. You can move it to the board, another sub slot, or back to the bench.", "success");
+    return;
+  }
+
+  showMessage("Select a bench unit, board unit, or existing sub-unit before using this sub slot.", "error");
+}
+
 function handleSell() {
   if (currentPhase !== "Prep") {
     showMessage("Can only sell during prep phase", "error");
@@ -1041,6 +1206,8 @@ function handleSell() {
 function clearSelections() {
   selectedBenchIndex = null;
   selectedShopSlot = null;
+  clearSelectedSharedUnit();
+  setSelectedSharedSubUnitCellIndex(null);
 
   document.querySelectorAll(".selected").forEach((el) => {
     el.classList.remove("selected");
@@ -1241,8 +1408,9 @@ function updateGameUI(state) {
       // Also log to combat log
       const resultText = isVictory ? '🏆 VICTORY!' : '💀 DEFEAT';
       const type = isVictory ? 'win' : 'lose';
+      const roundNumber = Number(state.roundIndex) + 1;
       
-      addCombatLogEntry(`--- Round ${state.roundIndex} ---`, 'info');
+      addCombatLogEntry(`--- Round ${roundNumber} ---`, 'info');
       addCombatLogEntry(`${resultText} vs Player`, type);
       addCombatLogEntry(`Survivors: ${battleResult.survivors} vs ${battleResult.opponentSurvivors}`, 'info');
       addCombatLogEntry(`Damage: ${isVictory ? '+' : '-'}${battleResult.damageTaken} HP`, type);
@@ -2367,6 +2535,9 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
     lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
     phase: typeof state?.phase === "string" ? state.phase : "",
+    playerPhase: resolveAutoFillHelperPlayerPhase(state),
+    playerPhaseDeadlineAtMs:
+      typeof state?.playerPhaseDeadlineAtMs === "number" ? state.playerPhaseDeadlineAtMs : null,
     ready: helperPlayer?.ready === true,
     role: helperPlayer?.role ?? "",
     selectedBossId: helperPlayer?.selectedBossId ?? null,
@@ -2411,9 +2582,26 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     }
   };
 
+  const reapplyAutomationSoon = (remainingRetries = HELPER_AUTOMATION_RETRY_ATTEMPTS) => {
+    setTimeout(() => {
+      if (helperRoom.state) {
+        applyAutomation(helperRoom.state);
+      }
+
+      if (remainingRetries > 1) {
+        reapplyAutomationSoon(remainingRetries - 1);
+      }
+    }, HELPER_AUTOMATION_RETRY_DELAY_MS);
+  };
+
   if (typeof helperRoom.onMessage === "function") {
     helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
-    helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {});
+    helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {
+      if (helperRoom.state) {
+        applyAutomation(helperRoom.state);
+      }
+      reapplyAutomationSoon();
+    });
     helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});
     helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});
   }

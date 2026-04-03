@@ -600,6 +600,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   ): void {
     if (!this.controller) return;
 
+    // Keep room-level playerPhase/deadline in sync with accepted prep commands so
+    // helper clients can observe purchase->deploy transitions within very short rounds.
+    this.syncStateFromController([sessionId]);
     const latestStatus = this.controller.getPlayerStatus(sessionId);
     syncPlayerStateFromCommandResult(player, latestStatus, cmdSeq);
   }

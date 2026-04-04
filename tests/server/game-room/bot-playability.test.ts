@@ -156,6 +156,7 @@ type BotOnlyRoundBattleReport = {
   leftLabel: string;
   rightPlayerId: string;
   rightLabel: string;
+  battleDurationMs?: number;
   leftSpecialUnits: string[];
   rightSpecialUnits: string[];
   winner: "left" | "right" | "draw";
@@ -911,6 +912,73 @@ const buildUnitBattleOutcomesForBattle = (
       || left.unitName.localeCompare(right.unitName));
 };
 
+const resolveBattleDurationMsFromTimeline = (
+  timeline: BattleTimelineEvent[] | undefined,
+): number | undefined => {
+  if (!Array.isArray(timeline) || timeline.length === 0) {
+    return undefined;
+  }
+
+  let maxAtMs: number | undefined;
+  for (const event of timeline) {
+    if ("atMs" in event && typeof event.atMs === "number" && Number.isFinite(event.atMs)) {
+      maxAtMs = maxAtMs === undefined ? event.atMs : Math.max(maxAtMs, event.atMs);
+    }
+  }
+
+  return maxAtMs;
+};
+
+const buildRoundBattleReport = (
+  serverRoom: BotOnlyServerRoom,
+  battle: {
+    battleIndex: number;
+    leftPlayerId: string;
+    rightPlayerId: string;
+    winner: "left" | "right" | "draw";
+    leftDamageDealt: number;
+    rightDamageDealt: number;
+    leftSurvivors: number;
+    rightSurvivors: number;
+  },
+  timeline: BattleTimelineEvent[],
+  playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
+  playerLabels: Map<string, string>,
+): BotOnlyRoundBattleReport => {
+  const battleDurationMs = resolveBattleDurationMsFromTimeline(timeline);
+  return {
+    battleIndex: battle.battleIndex,
+    leftPlayerId: battle.leftPlayerId,
+    leftLabel: getPlayerLabel(playerLabels, battle.leftPlayerId),
+    rightPlayerId: battle.rightPlayerId,
+    rightLabel: getPlayerLabel(playerLabels, battle.rightPlayerId),
+    ...(battleDurationMs !== undefined ? { battleDurationMs } : {}),
+    leftSpecialUnits: getSpecialBattleUnitsForPlayers(
+      serverRoom,
+      getBattleSidePlayerIds(serverRoom, battle.leftPlayerId),
+    ),
+    rightSpecialUnits: getSpecialBattleUnitsForPlayers(
+      serverRoom,
+      getBattleSidePlayerIds(serverRoom, battle.rightPlayerId),
+    ),
+    winner: battle.winner,
+    leftDamageDealt: battle.leftDamageDealt,
+    rightDamageDealt: battle.rightDamageDealt,
+    leftSurvivors: battle.leftSurvivors,
+    rightSurvivors: battle.rightSurvivors,
+    unitDamageBreakdown: buildUnitDamageBreakdownForBattle(
+      timeline,
+      playersAtBattleStart,
+      playerLabels,
+    ),
+    unitOutcomes: buildUnitBattleOutcomesForBattle(
+      timeline,
+      playersAtBattleStart,
+      playerLabels,
+    ),
+  };
+};
+
 const resolveBattleTimelineForReportBattle = (
   serverRoom: BotOnlyServerRoom,
   snapshot: BotOnlyRoundSnapshot | undefined,
@@ -1008,36 +1076,13 @@ const buildRoundBattleReportsFromCurrentState = (
 
   return roundLog.battles.map((battle) => {
     const timeline = resolveBattleTimelineForReportBattle(serverRoom, undefined, battle);
-    return {
-      battleIndex: battle.battleIndex,
-      leftPlayerId: battle.leftPlayerId,
-      leftLabel: getPlayerLabel(playerLabels, battle.leftPlayerId),
-      rightPlayerId: battle.rightPlayerId,
-      rightLabel: getPlayerLabel(playerLabels, battle.rightPlayerId),
-      leftSpecialUnits: getSpecialBattleUnitsForPlayers(
-        serverRoom,
-        getBattleSidePlayerIds(serverRoom, battle.leftPlayerId),
-      ),
-      rightSpecialUnits: getSpecialBattleUnitsForPlayers(
-        serverRoom,
-        getBattleSidePlayerIds(serverRoom, battle.rightPlayerId),
-      ),
-      winner: battle.winner,
-      leftDamageDealt: battle.leftDamageDealt,
-      rightDamageDealt: battle.rightDamageDealt,
-      leftSurvivors: battle.leftSurvivors,
-      rightSurvivors: battle.rightSurvivors,
-      unitDamageBreakdown: buildUnitDamageBreakdownForBattle(
-        timeline,
-        playersAtBattleStart,
-        playerLabels,
-      ),
-      unitOutcomes: buildUnitBattleOutcomesForBattle(
-        timeline,
-        playersAtBattleStart,
-        playerLabels,
-      ),
-    };
+    return buildRoundBattleReport(
+      serverRoom,
+      battle,
+      timeline,
+      playersAtBattleStart,
+      playerLabels,
+    );
   });
 };
 
@@ -2093,36 +2138,13 @@ const buildBotOnlyMatchRoundReport = (
             snapshot,
             battle,
           );
-          return {
-            battleIndex: battle.battleIndex,
-            leftPlayerId: battle.leftPlayerId,
-            leftLabel: getPlayerLabel(playerLabels, battle.leftPlayerId),
-            rightPlayerId: battle.rightPlayerId,
-            rightLabel: getPlayerLabel(playerLabels, battle.rightPlayerId),
-            leftSpecialUnits: getSpecialBattleUnitsForPlayers(
-              artifacts.serverRoom,
-              getBattleSidePlayerIds(artifacts.serverRoom, battle.leftPlayerId),
-            ),
-            rightSpecialUnits: getSpecialBattleUnitsForPlayers(
-              artifacts.serverRoom,
-              getBattleSidePlayerIds(artifacts.serverRoom, battle.rightPlayerId),
-            ),
-            winner: battle.winner,
-            leftDamageDealt: battle.leftDamageDealt,
-            rightDamageDealt: battle.rightDamageDealt,
-            leftSurvivors: battle.leftSurvivors,
-            rightSurvivors: battle.rightSurvivors,
-            unitDamageBreakdown: buildUnitDamageBreakdownForBattle(
-              timeline,
-              snapshot?.playersAtBattleStart ?? [],
-              playerLabels,
-            ),
-            unitOutcomes: buildUnitBattleOutcomesForBattle(
-              timeline,
-              snapshot?.playersAtBattleStart ?? [],
-              playerLabels,
-            ),
-          };
+          return buildRoundBattleReport(
+            artifacts.serverRoom,
+            battle,
+            timeline,
+            snapshot?.playersAtBattleStart ?? [],
+            playerLabels,
+          );
         });
 
       return {
@@ -2284,6 +2306,7 @@ const buildBotOnlyHumanReadableRoundReport = (
       }
 
       lines.push("Boss");
+      lines.push(`バトル時間 ${primaryBattle.battleDurationMs ?? round.durationMs}ms`);
       for (const unit of bossUnits) {
         const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
         lines.push(
@@ -2435,6 +2458,7 @@ test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for r
         leftLabel: "P1",
         rightPlayerId: "raid-a",
         rightLabel: "P2",
+        battleDurationMs: 1234,
         leftSpecialUnits: ["レミリア"],
         rightSpecialUnits: ["霊夢"],
         winner: "left",
@@ -2496,6 +2520,7 @@ test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for r
     }],
   });
 
+  expect(text).toContain("Boss\nバトル時間 1234ms");
   expect(text).toContain("P2 生存");
 });
 

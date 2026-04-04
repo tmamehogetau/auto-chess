@@ -10,6 +10,7 @@ import type { BattleUnit } from "../../../src/server/combat/battle-simulator";
 import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import type { MatchLogger } from "../../../src/server/match-logger";
 import { createBattleStartEvent } from "../../../src/server/combat/battle-timeline";
+import { HEROES } from "../../../src/data/heroes";
 
 // Mock BattleSimulator
 const createMockBattleSimulator = () => ({
@@ -21,6 +22,33 @@ const createMockMatchLogger = () =>
   ({
     logBattleResult: vi.fn(),
   }) as unknown as MatchLogger;
+
+const expectHeroBattleUnitToMatchDefinition = (
+  heroUnit: BattleUnit | null,
+  heroId: string,
+  playerId: string,
+  cell: number,
+) => {
+  const hero = HEROES.find((candidate) => candidate.id === heroId);
+  expect(hero).toBeDefined();
+  expect(heroUnit).not.toBeNull();
+  expect(heroUnit).toMatchObject({
+    id: `hero-${playerId}`,
+    sourceUnitId: heroId,
+    type: hero?.unitType,
+    hp: hero?.hp,
+    maxHp: hero?.hp,
+    attackPower: hero?.attack,
+    attackSpeed: hero?.attackSpeed,
+    attackRange: hero?.range,
+    defense: hero?.defense,
+    critRate: hero?.critRate,
+    critDamageMultiplier: hero?.critDamageMultiplier,
+    physicalReduction: hero?.physicalReduction,
+    magicReduction: hero?.magicReduction,
+    cell,
+  });
+};
 
 describe("BattleResolutionService", () => {
   let service: BattleResolutionService;
@@ -542,23 +570,28 @@ describe("BattleResolutionService", () => {
     it("should use hero-specific combat parameters", () => {
       const heroUnit = service.createHeroBattleUnit("marisa", "player1", 14, "left");
 
-      expect(heroUnit).not.toBeNull();
-      expect(heroUnit).toMatchObject({
-        id: "hero-player1",
-        sourceUnitId: "marisa",
-        type: "ranger",
-        hp: 100,
-        maxHp: 100,
-        attackPower: 25,
-        attackSpeed: 0.8,
-        attackRange: 3,
-        defense: 0,
-        critRate: 0,
-        critDamageMultiplier: 1.5,
-        physicalReduction: 0,
-        magicReduction: 0,
-        cell: 14,
-      });
+      expectHeroBattleUnitToMatchDefinition(heroUnit, "marisa", "player1", 14);
+    });
+
+    it("should keep hero combat stats wired to the configured role profile", () => {
+      const reimu = service.createHeroBattleUnit("reimu", "player1", 10, "left");
+      const marisa = service.createHeroBattleUnit("marisa", "player2", 11, "left");
+      const okina = service.createHeroBattleUnit("okina", "player3", 12, "left");
+      const keiki = service.createHeroBattleUnit("keiki", "player4", 13, "left");
+      const jyoon = service.createHeroBattleUnit("jyoon", "player5", 14, "left");
+
+      expectHeroBattleUnitToMatchDefinition(reimu, "reimu", "player1", 10);
+      expectHeroBattleUnitToMatchDefinition(marisa, "marisa", "player2", 11);
+      expectHeroBattleUnitToMatchDefinition(okina, "okina", "player3", 12);
+      expectHeroBattleUnitToMatchDefinition(keiki, "keiki", "player4", 13);
+      expectHeroBattleUnitToMatchDefinition(jyoon, "jyoon", "player5", 14);
+
+      expect(keiki?.maxHp ?? 0).toBeGreaterThan(reimu?.maxHp ?? 0);
+      expect(reimu?.maxHp ?? 0).toBeGreaterThan(marisa?.maxHp ?? 0);
+      expect(marisa?.attackPower ?? 0).toBeGreaterThan(reimu?.attackPower ?? 0);
+      expect(marisa?.attackRange ?? 0).toBeGreaterThan(reimu?.attackRange ?? 0);
+      expect(jyoon?.attackSpeed ?? 0).toBeGreaterThan(reimu?.attackSpeed ?? 0);
+      expect(okina?.attackRange ?? 0).toBeGreaterThan(jyoon?.attackRange ?? 0);
     });
   });
 });

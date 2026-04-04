@@ -1,6 +1,6 @@
 import type { TouhouFactionId } from "../../data/touhou-units";
 import type { FeatureFlags } from "../../shared/feature-flags";
-import type { BoardUnitType, UnitSkill } from "../../shared/types";
+import type { BoardUnitType, CombatStats, UnitSkill } from "../../shared/types";
 import mvpPhase1UnitsData from "../../data/mvp_phase1_units.json";
 import { TOUHOU_UNITS } from "../../data/touhou-units";
 
@@ -8,17 +8,13 @@ import { TOUHOU_UNITS } from "../../data/touhou-units";
  * Generic roster unit interface - not tied to MVP-specific types.
  * Supports both the legacy MVP regression path and the Touhou mainline roster.
  */
-export interface RosterUnit {
+export interface RosterUnit extends CombatStats {
   id: string;
   unitId: string;
   name: string;
   type: BoardUnitType;
   factionId?: TouhouFactionId | null;
   cost: number;
-  hp: number;
-  attack: number;
-  attackSpeed: number;
-  range: number;
   synergy: string[];
   subUnit?: {
     unitId: string;
@@ -73,7 +69,17 @@ function selectRosterSource(flags: FeatureFlags): RosterSource {
  * @returns RosterUnit[] - MVP roster units
  */
 function loadMvpRosterUnits(): RosterUnit[] {
-  return mvpPhase1UnitsData.units as RosterUnit[];
+  return (mvpPhase1UnitsData.units as Array<
+    Omit<RosterUnit, "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
+    & Partial<Pick<RosterUnit, "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
+  >).map((unit) => ({
+    ...unit,
+    defense: unit.defense ?? (unit.type === "vanguard" ? 3 : 0),
+    critRate: unit.critRate ?? 0,
+    critDamageMultiplier: unit.critDamageMultiplier ?? 1.5,
+    physicalReduction: unit.physicalReduction ?? 0,
+    magicReduction: unit.magicReduction ?? 0,
+  }));
 }
 
 export function getTouhouDraftRosterUnits(): RosterUnit[] {
@@ -88,6 +94,11 @@ export function getTouhouDraftRosterUnits(): RosterUnit[] {
     attack: unit.attack,
     attackSpeed: unit.attackSpeed,
     range: unit.range,
+    defense: unit.defense,
+    critRate: unit.critRate,
+    critDamageMultiplier: unit.critDamageMultiplier,
+    physicalReduction: unit.physicalReduction,
+    magicReduction: unit.magicReduction,
     synergy: unit.factionId ? [unit.factionId] : [],
   }));
 }

@@ -14,6 +14,11 @@ type ResolvedUnitMetadata = {
   attack?: number;
   attackSpeed?: number;
   range?: number;
+  defense?: number;
+  critRate?: number;
+  critDamageMultiplier?: number;
+  physicalReduction?: number;
+  magicReduction?: number;
 };
 
 const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
@@ -21,6 +26,15 @@ const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
     unitType: unit.unitType,
     cost: unit.cost,
     archetype: unit.id,
+    hp: unit.hp,
+    attack: unit.attack,
+    attackSpeed: unit.attackSpeed,
+    range: unit.range,
+    defense: unit.defense,
+    critRate: unit.critRate,
+    critDamageMultiplier: unit.critDamageMultiplier,
+    physicalReduction: unit.physicalReduction,
+    magicReduction: unit.magicReduction,
   }]),
 );
 
@@ -63,6 +77,11 @@ function getResolvedUnitMetadata(
       resolvedMetadata.attack = rosterUnit.attack;
       resolvedMetadata.attackSpeed = rosterUnit.attackSpeed;
       resolvedMetadata.range = rosterUnit.range;
+      resolvedMetadata.defense = rosterUnit.defense;
+      resolvedMetadata.critRate = rosterUnit.critRate;
+      resolvedMetadata.critDamageMultiplier = rosterUnit.critDamageMultiplier;
+      resolvedMetadata.physicalReduction = rosterUnit.physicalReduction;
+      resolvedMetadata.magicReduction = rosterUnit.magicReduction;
     }
 
     if (rosterUnit.factionId !== undefined) {
@@ -125,6 +144,26 @@ export function resolveBattlePlacement(
       resolvedPlacement.range = resolvedMetadata.range;
     }
 
+    if (resolvedMetadata.defense !== undefined) {
+      resolvedPlacement.defense = resolvedMetadata.defense;
+    }
+
+    if (resolvedMetadata.critRate !== undefined) {
+      resolvedPlacement.critRate = resolvedMetadata.critRate;
+    }
+
+    if (resolvedMetadata.critDamageMultiplier !== undefined) {
+      resolvedPlacement.critDamageMultiplier = resolvedMetadata.critDamageMultiplier;
+    }
+
+    if (resolvedMetadata.physicalReduction !== undefined) {
+      resolvedPlacement.physicalReduction = resolvedMetadata.physicalReduction;
+    }
+
+    if (resolvedMetadata.magicReduction !== undefined) {
+      resolvedPlacement.magicReduction = resolvedMetadata.magicReduction;
+    }
+
     return resolvedPlacement;
   }
 
@@ -151,6 +190,26 @@ export function resolveBattlePlacement(
 
   if (resolvedMetadata.range !== undefined) {
     resolvedPlacement.range = resolvedMetadata.range;
+  }
+
+  if (resolvedMetadata.defense !== undefined) {
+    resolvedPlacement.defense = resolvedMetadata.defense;
+  }
+
+  if (resolvedMetadata.critRate !== undefined) {
+    resolvedPlacement.critRate = resolvedMetadata.critRate;
+  }
+
+  if (resolvedMetadata.critDamageMultiplier !== undefined) {
+    resolvedPlacement.critDamageMultiplier = resolvedMetadata.critDamageMultiplier;
+  }
+
+  if (resolvedMetadata.physicalReduction !== undefined) {
+    resolvedPlacement.physicalReduction = resolvedMetadata.physicalReduction;
+  }
+
+  if (resolvedMetadata.magicReduction !== undefined) {
+    resolvedPlacement.magicReduction = resolvedMetadata.magicReduction;
   }
 
   return resolvedPlacement;

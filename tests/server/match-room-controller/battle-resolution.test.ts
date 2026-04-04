@@ -537,4 +537,28 @@ describe("BattleResolutionService", () => {
       expect(service.calculateDamage(8, 0)).toBe(21);
     });
   });
+
+  describe("createHeroBattleUnit", () => {
+    it("should use hero-specific combat parameters", () => {
+      const heroUnit = service.createHeroBattleUnit("marisa", "player1", 14, "left");
+
+      expect(heroUnit).not.toBeNull();
+      expect(heroUnit).toMatchObject({
+        id: "hero-player1",
+        sourceUnitId: "marisa",
+        type: "ranger",
+        hp: 100,
+        maxHp: 100,
+        attackPower: 25,
+        attackSpeed: 0.8,
+        attackRange: 3,
+        defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: 0,
+        magicReduction: 0,
+        cell: 14,
+      });
+    });
+  });
 });

@@ -771,6 +771,11 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedRin.attack).toBe(40);
           expect(resolvedRin.attackSpeed).toBe(0.85);
           expect(resolvedRin.range).toBe(1);
+          expect(resolvedRin.defense).toBe(3);
+          expect(resolvedRin.critRate).toBe(0);
+          expect(resolvedRin.critDamageMultiplier).toBe(1.5);
+          expect(resolvedRin.physicalReduction).toBe(0);
+          expect(resolvedRin.magicReduction).toBe(0);
 
           expect(resolvedZanmu.unitType).toBe("mage");
           expect(resolvedZanmu.unitId).toBe("zanmu");
@@ -779,6 +784,11 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedZanmu.attack).toBe(118);
           expect(resolvedZanmu.attackSpeed).toBe(0.85);
           expect(resolvedZanmu.range).toBe(3);
+          expect(resolvedZanmu.defense).toBe(0);
+          expect(resolvedZanmu.critRate).toBe(0);
+          expect(resolvedZanmu.critDamageMultiplier).toBe(1.5);
+          expect(resolvedZanmu.physicalReduction).toBe(0);
+          expect(resolvedZanmu.magicReduction).toBe(0);
         });
       });
 

@@ -340,6 +340,9 @@ export const attachAutoFillHelperAutomationForTest = (
     onMessage: (type: string, handler: (_message: unknown) => void) => void;
   },
   helperIndex: number,
+  options: {
+    strategy?: "upgrade" | "highCost";
+  } = {},
 ): {
   getResults: () => unknown[];
 } => {
@@ -393,7 +396,9 @@ export const attachAutoFillHelperAutomationForTest = (
     const actions = buildAutoFillHelperActions({
       helperIndex,
       player: helperPlayer,
+      sessionId: helperRoom.sessionId,
       state: helperState,
+      ...(options.strategy ? { strategy: options.strategy } : {}),
     });
 
     for (const action of actions) {

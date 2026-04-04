@@ -305,6 +305,208 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase raid helper leans into an established faction when two allies already share it", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: [],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "yoshika", factionId: "shinreibyou" },
+          { cell: 33, unitId: "tojiko", factionId: "shinreibyou" },
+        ],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper still prioritizes raw strength before a faction is established", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: [],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "yoshika", factionId: "shinreibyou" },
+        ],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper prefers a matching bench duplicate when upgrade odds outweigh small base-score gaps", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["reserve"],
+        benchUnitIds: ["yoshika"],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper still prioritizes raw strength when the duplicate signal is absent from bench", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: [],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid upgrade helper keeps chasing a bench duplicate over an affordable higher-cost pivot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      strategy: "upgrade",
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["reserve"],
+        benchUnitIds: ["yoshika"],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+          { unitId: "junko", unitType: "mage", factionId: "lunarian", cost: 3 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid high-cost helper pivots into an affordable higher-cost offer over a bench duplicate", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      strategy: "highCost",
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["reserve"],
+        benchUnitIds: ["yoshika"],
+        boardUnits: ["30:reimu"],
+        shopOffers: [
+          { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+          { unitId: "junko", unitType: "mage", factionId: "lunarian", cost: 3 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase last raid helper defaults into the high-cost route during mixed bot runs", () => {
+    const raidPlayer = {
+      ready: false,
+      role: "raid",
+      gold: 5,
+      benchUnits: ["reserve"],
+      benchUnitIds: ["yoshika"],
+      boardUnits: ["30:reimu"],
+      shopOffers: [
+        { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
+        { unitId: "junko", unitType: "mage", factionId: "lunarian", cost: 3 },
+      ],
+    };
+
+    expect(buildAutoFillHelperActions({
+      helperIndex: 3,
+      sessionId: "p4",
+      player: raidPlayer,
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        players: new Map([
+          ["p1", { role: "raid" }],
+          ["p2", { role: "boss" }],
+          ["p3", { role: "raid" }],
+          ["p4", { role: "raid" }],
+        ]),
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase raid helper still buys when only the hero is already on board", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 1,
@@ -625,6 +827,46 @@ describe("autofill helper automation", () => {
           benchToBoardCell: {
             benchIndex: 0,
             cell: 31,
+            slot: "sub",
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep deploy phase can use the hero host sub slot when the raid lane is already full", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["assassin"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitType: "ranger", unitId: "nazrin", subUnit: { unitType: "mage" } },
+          { cell: 25, unitType: "vanguard", unitId: "yoshika", subUnit: { unitType: "assassin" } },
+          { cell: 19, unitType: "mage", unitId: "rin", subUnit: { unitType: "ranger" } },
+        ],
+        boardSubUnits: [
+          "31:mage",
+          "25:assassin",
+          "19:ranger",
+        ],
+        selectedHeroId: "reimu",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 30,
             slot: "sub",
           },
         },

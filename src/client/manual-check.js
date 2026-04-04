@@ -2563,6 +2563,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     const actions = buildAutoFillHelperActions({
       helperIndex,
       player: helperPlayer,
+      sessionId: helperRoom.sessionId,
       state,
     });
 

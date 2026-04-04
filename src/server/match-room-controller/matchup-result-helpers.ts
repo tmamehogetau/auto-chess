@@ -41,9 +41,7 @@ export function buildBattleResultAssignments(
   const raidBattleResult = raidBattleContext.bossIsLeft
     ? resolutionResult.rightBattleResult
     : resolutionResult.leftBattleResult;
-  const phaseDamageToBoss = raidBattleContext.bossIsLeft
-    ? resolutionResult.combatDamageDealt?.right ?? 0
-    : resolutionResult.combatDamageDealt?.left ?? 0;
+  const phaseDamageToBoss = resolutionResult.phaseDamageToBossSide ?? resolutionResult.bossDamageToBoss ?? 0;
 
   return [
     {

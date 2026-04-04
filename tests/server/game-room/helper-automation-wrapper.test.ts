@@ -8,8 +8,9 @@ type FakeHelperPlayer = {
   ready: boolean;
   gold: number;
   benchUnits: string[];
+  benchUnitIds?: string[];
   boardUnits: string[];
-  shopOffers: Array<{ unitType: string; cost: number }>;
+  shopOffers: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
   bossShopOffers: Array<{ unitType: string; cost: number }>;
   selectedHeroId: string;
   selectedBossId: string;
@@ -373,5 +374,44 @@ describe("helper automation wrapper", () => {
       }),
     });
     expect(state.players.get("player-1")?.boardUnits).toEqual(["31:vanguard"]);
+  });
+
+  test("wrapper can drive a high-cost raid helper that buys before deploying a duplicate bench unit", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 5,
+          benchUnits: ["reserve"],
+          benchUnitIds: ["yoshika"],
+          boardUnits: [],
+          shopOffers: [
+            { unitType: "vanguard", unitId: "yoshika", factionId: "shinreibyou", cost: 1 },
+            { unitType: "mage", unitId: "junko", factionId: "lunarian", cost: 3 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0, { strategy: "highCost" });
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        shopBuySlotIndex: 1,
+      }),
+    });
   });
 });

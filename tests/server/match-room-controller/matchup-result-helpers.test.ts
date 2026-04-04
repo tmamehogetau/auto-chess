@@ -125,6 +125,7 @@ describe("matchup-result-helpers", () => {
         left: 24,
         right: 180,
       },
+      phaseDamageToBossSide: 180,
     });
 
     expect(
@@ -138,6 +139,84 @@ describe("matchup-result-helpers", () => {
       battleResult: {
         ...resolutionResult.leftBattleResult,
         phaseDamageToBoss: 180,
+      },
+    });
+  });
+
+  it("uses boss-only damage instead of aggregate side damage for phase HP tracking", () => {
+    const resolutionResult = createResolutionResult({
+      leftBattleResult: {
+        opponentId: "raid-lead",
+        won: true,
+        damageDealt: 12,
+        damageTaken: 0,
+        survivors: 3,
+        opponentSurvivors: 0,
+      },
+      rightBattleResult: {
+        opponentId: "boss",
+        won: false,
+        damageDealt: 0,
+        damageTaken: 12,
+        survivors: 0,
+        opponentSurvivors: 3,
+      },
+      combatDamageDealt: {
+        left: 24,
+        right: 750,
+      },
+      bossDamageToBoss: 0,
+      phaseDamageToBossSide: 0,
+    });
+
+    expect(
+      buildBattleResultAssignments("boss", "raid-lead", resolutionResult, {
+        bossPlayerId: "boss",
+        raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+        bossIsLeft: true,
+      })[0],
+    ).toEqual({
+      playerId: "boss",
+      battleResult: {
+        ...resolutionResult.leftBattleResult,
+        phaseDamageToBoss: 0,
+      },
+    });
+  });
+
+  it("uses escort defeat bonus as phase HP damage when the boss itself is unharmed", () => {
+    const resolutionResult = createResolutionResult({
+      leftBattleResult: {
+        opponentId: "raid-lead",
+        won: true,
+        damageDealt: 12,
+        damageTaken: 0,
+        survivors: 2,
+        opponentSurvivors: 0,
+      },
+      rightBattleResult: {
+        opponentId: "boss",
+        won: false,
+        damageDealt: 0,
+        damageTaken: 12,
+        survivors: 0,
+        opponentSurvivors: 2,
+      },
+      bossDamageToBoss: 0,
+      phaseDamageToBossSide: 40,
+    });
+
+    expect(
+      buildBattleResultAssignments("boss", "raid-lead", resolutionResult, {
+        bossPlayerId: "boss",
+        raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+        bossIsLeft: true,
+      })[0],
+    ).toEqual({
+      playerId: "boss",
+      battleResult: {
+        ...resolutionResult.leftBattleResult,
+        phaseDamageToBoss: 40,
       },
     });
   });

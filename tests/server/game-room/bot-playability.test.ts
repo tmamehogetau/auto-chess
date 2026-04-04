@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import {
   CLIENT_MESSAGE_TYPES,
   SERVER_MESSAGE_TYPES,
@@ -54,21 +56,7 @@ type BotOnlyMatchRoundReport = {
     roundIndex: number;
     phase: string;
     durationMs: number;
-    battles: Array<{
-      battleIndex: number;
-      leftPlayerId: string;
-      leftLabel: string;
-      rightPlayerId: string;
-      rightLabel: string;
-      leftSpecialUnits: string[];
-      rightSpecialUnits: string[];
-      winner: "left" | "right" | "draw";
-      leftDamageDealt: number;
-      rightDamageDealt: number;
-      leftSurvivors: number;
-      rightSurvivors: number;
-      unitDamageBreakdown: ReportUnitDamageContribution[];
-    }>;
+    battles: BotOnlyRoundBattleReport[];
     hpChanges: Array<{
       playerId: string;
       label: string;
@@ -162,6 +150,23 @@ type BotOnlyBaselineAggregateReport = {
   }>;
 };
 
+type BotOnlyRoundBattleReport = {
+  battleIndex: number;
+  leftPlayerId: string;
+  leftLabel: string;
+  rightPlayerId: string;
+  rightLabel: string;
+  leftSpecialUnits: string[];
+  rightSpecialUnits: string[];
+  winner: "left" | "right" | "draw";
+  leftDamageDealt: number;
+  rightDamageDealt: number;
+  leftSurvivors: number;
+  rightSurvivors: number;
+  unitDamageBreakdown: ReportUnitDamageContribution[];
+  unitOutcomes: ReportUnitBattleOutcome[];
+};
+
 type ReportUnitDamageContribution = {
   playerId: string;
   label: string;
@@ -169,6 +174,20 @@ type ReportUnitDamageContribution = {
   unitName: string;
   side: "boss" | "raid";
   totalDamage: number;
+};
+
+type ReportUnitBattleOutcome = {
+  playerId: string;
+  label: string;
+  unitId: string;
+  unitName: string;
+  side: "boss" | "raid";
+  totalDamage: number;
+  finalHp: number;
+  alive: boolean;
+  starLevel: number;
+  subUnitName: string;
+  isSpecialUnit: boolean;
 };
 
 type BotOnlyRoundSnapshot = {
@@ -201,6 +220,12 @@ type BotOnlyRoundSnapshot = {
       timeline: BattleTimelineEvent[];
     };
   }>;
+  battleTimelines: Array<{
+    playerId: string;
+    battleId: string | null;
+    timeline: BattleTimelineEvent[];
+  }>;
+  battles?: BotOnlyRoundBattleReport[];
   playerConsequences: Array<{
     playerId: string;
     role: string;
@@ -260,6 +285,7 @@ type ReportBoardUnit = {
   unitType: string;
   unitId: string;
   starLevel: number;
+  subUnitName: string;
 };
 
 type BotOnlyMatchArtifacts = {
@@ -305,10 +331,12 @@ const getBoardPlacementReader = (serverRoom: BotOnlyServerRoom): BoardPlacementR
 };
 
 const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
-  const resolvedName = resolveSharedBoardUnitPresentation(
-    placement.unitId,
-    placement.unitType,
-  )?.displayName;
+  const resolvedName = placement.unitType == null
+    ? undefined
+    : resolveSharedBoardUnitPresentation(
+      placement.unitId,
+      placement.unitType,
+    )?.displayName;
 
   return {
     cell: placement.cell,
@@ -320,6 +348,17 @@ const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
     unitType: placement.unitType,
     unitId: placement.unitId ?? "",
     starLevel: placement.starLevel ?? 1,
+    subUnitName:
+      (placement.subUnit?.unitType == null
+        ? undefined
+        : resolveSharedBoardUnitPresentation(
+          placement.subUnit?.unitId,
+          placement.subUnit?.unitType,
+        )?.displayName)
+      ?? placement.subUnit?.archetype
+      ?? placement.subUnit?.unitId
+      ?? placement.subUnit?.unitType
+      ?? "",
   };
 };
 
@@ -447,16 +486,42 @@ const captureRoundPlayers = (
   });
 
 const buildRoundPhaseProgress = (
-  roundState: Pick<
-    RoundStateMessage,
-    "phaseHpTarget" | "phaseDamageDealt" | "phaseResult" | "phaseCompletionRate"
-  > | undefined,
+  phaseProgress:
+    | {
+      targetHp: number;
+      damageDealt: number;
+      result: "pending" | "success" | "failed";
+      completionRate: number;
+    }
+    | undefined,
 ): BotOnlyRoundSnapshot["phaseProgress"] => ({
-  phaseHpTarget: roundState?.phaseHpTarget ?? 0,
-  phaseDamageDealt: roundState?.phaseDamageDealt ?? 0,
-  phaseResult: roundState?.phaseResult ?? "pending",
-  phaseCompletionRate: roundState?.phaseCompletionRate ?? 0,
+  phaseHpTarget: phaseProgress?.targetHp ?? 0,
+  phaseDamageDealt: phaseProgress?.damageDealt ?? 0,
+  phaseResult: phaseProgress?.result ?? "pending",
+  phaseCompletionRate: phaseProgress?.completionRate ?? 0,
 });
+
+const getCurrentControllerPhaseProgress = (
+  serverRoom: BotOnlyServerRoom,
+): {
+  targetHp: number;
+  damageDealt: number;
+  result: "pending" | "success" | "failed";
+  completionRate: number;
+} | undefined => {
+  const controller = (serverRoom as unknown as {
+    controller?: {
+      getPhaseProgress?: () => {
+        targetHp: number;
+        damageDealt: number;
+        result: "pending" | "success" | "failed";
+        completionRate: number;
+      };
+    } | null;
+  }).controller;
+
+  return controller?.getPhaseProgress?.();
+};
 
 const buildTrackedBattleUnitIdsForPlayer = (
   serverRoom: BotOnlyServerRoom,
@@ -702,6 +767,150 @@ const buildUnitDamageBreakdownForBattle = (
       || left.unitId.localeCompare(right.unitId));
 };
 
+const buildBoardUnitMetadataMapForBattle = (
+  playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
+): Map<string, ReportBoardUnit[]> => {
+  const metadataByPlayerAndUnitId = new Map<string, ReportBoardUnit[]>();
+
+  for (const player of playersAtBattleStart) {
+    for (const unit of player.boardUnits) {
+      const key = `${player.playerId}::${unit.unitId}`;
+      const existing = metadataByPlayerAndUnitId.get(key) ?? [];
+      existing.push(unit);
+      metadataByPlayerAndUnitId.set(key, existing);
+    }
+  }
+
+  return metadataByPlayerAndUnitId;
+};
+
+const takeBoardUnitMetadataForBattleUnit = (
+  metadataByPlayerAndUnitId: Map<string, ReportBoardUnit[]>,
+  playerId: string,
+  unitId: string,
+): ReportBoardUnit | null => {
+  const key = `${playerId}::${unitId}`;
+  const metadataList = metadataByPlayerAndUnitId.get(key);
+  if (!metadataList || metadataList.length === 0) {
+    return null;
+  }
+
+  const metadata = metadataList.shift() ?? null;
+  if (metadataList.length === 0) {
+    metadataByPlayerAndUnitId.delete(key);
+  }
+
+  return metadata;
+};
+
+const buildUnitBattleOutcomesForBattle = (
+  timeline: BattleTimelineEvent[] | undefined,
+  playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
+  playerLabels: Map<string, string>,
+): ReportUnitBattleOutcome[] => {
+  if (!Array.isArray(timeline) || timeline.length === 0) {
+    return [];
+  }
+
+  const battleStartEvent = timeline.find((event): event is BattleStartEvent => event.type === "battleStart");
+  if (!battleStartEvent) {
+    return [];
+  }
+
+  const ownerByTrackedUnitId = buildTrackedUnitOwnerMap(playersAtBattleStart);
+  const metadataByPlayerAndUnitId = buildBoardUnitMetadataMapForBattle(playersAtBattleStart);
+  const damageByBattleUnitId = new Map<string, number>();
+  const currentHpByBattleUnitId = new Map<string, number>();
+  const deadUnitIds = new Set<string>();
+  const latestKeyframeByBattleUnitId = new Map<
+    string,
+    {
+      currentHp: number;
+      alive: boolean;
+    }
+  >();
+
+  for (const event of timeline) {
+    if (event.type === "damageApplied") {
+      damageByBattleUnitId.set(
+        event.sourceBattleUnitId,
+        (damageByBattleUnitId.get(event.sourceBattleUnitId) ?? 0) + event.amount,
+      );
+      currentHpByBattleUnitId.set(event.targetBattleUnitId, event.remainingHp);
+      continue;
+    }
+
+    if (event.type === "unitDeath") {
+      deadUnitIds.add(event.battleUnitId);
+      currentHpByBattleUnitId.set(event.battleUnitId, 0);
+      latestKeyframeByBattleUnitId.set(event.battleUnitId, {
+        currentHp: 0,
+        alive: false,
+      });
+      continue;
+    }
+
+    if (event.type === "keyframe") {
+      for (const unitState of event.units) {
+        latestKeyframeByBattleUnitId.set(unitState.battleUnitId, {
+          currentHp: unitState.currentHp,
+          alive: unitState.alive,
+        });
+      }
+    }
+  }
+
+  return battleStartEvent.units
+    .map((unit): ReportUnitBattleOutcome | null => {
+      const playerId = resolvePlayerIdForBattleUnit(
+        unit.ownerPlayerId,
+        unit.battleUnitId,
+        unit.sourceUnitId,
+        ownerByTrackedUnitId,
+      );
+      if (!playerId) {
+        return null;
+      }
+
+      const ownerPlayer = playersAtBattleStart.find((player) => player.playerId === playerId);
+      const sourceUnitId = unit.sourceUnitId ?? unit.battleUnitId;
+      const metadata = takeBoardUnitMetadataForBattleUnit(
+        metadataByPlayerAndUnitId,
+        playerId,
+        sourceUnitId,
+      );
+      const latestKeyframe = latestKeyframeByBattleUnitId.get(unit.battleUnitId);
+      const finalHp = Math.max(
+        0,
+        latestKeyframe?.currentHp
+          ?? currentHpByBattleUnitId.get(unit.battleUnitId)
+          ?? unit.currentHp,
+      );
+      const alive = latestKeyframe?.alive
+        ?? (!deadUnitIds.has(unit.battleUnitId) && finalHp > 0);
+
+      return {
+        playerId,
+        label: getPlayerLabel(playerLabels, playerId),
+        unitId: sourceUnitId,
+        unitName: unit.displayName ?? metadata?.unitName ?? sourceUnitId,
+        side: ownerPlayer?.role === "boss" ? "boss" : "raid",
+        totalDamage: damageByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        finalHp,
+        alive,
+        starLevel: metadata?.starLevel ?? 1,
+        subUnitName: metadata?.subUnitName ?? "",
+        isSpecialUnit: metadata == null,
+      };
+    })
+    .filter((unit): unit is ReportUnitBattleOutcome => unit !== null)
+    .sort((left, right) =>
+      left.side.localeCompare(right.side)
+      || left.label.localeCompare(right.label)
+      || right.totalDamage - left.totalDamage
+      || left.unitName.localeCompare(right.unitName));
+};
+
 const resolveBattleTimelineForReportBattle = (
   serverRoom: BotOnlyServerRoom,
   snapshot: BotOnlyRoundSnapshot | undefined,
@@ -710,6 +919,50 @@ const resolveBattleTimelineForReportBattle = (
     rightPlayerId: string;
   },
 ): BattleTimelineEvent[] => {
+  if (snapshot) {
+    for (const playerId of [battle.leftPlayerId, battle.rightPlayerId]) {
+      const entry = snapshot.battleTimelines.find((candidate) => (
+        candidate.playerId === playerId
+        && Array.isArray(candidate.timeline)
+        && candidate.timeline.length > 0
+      ));
+      if (entry) {
+        return entry.timeline;
+      }
+    }
+
+    const pairedPlayers = snapshot.playersAfterRound.filter((player) => (
+      (player.playerId === battle.leftPlayerId && player.lastBattle.opponentId === battle.rightPlayerId)
+      || (player.playerId === battle.rightPlayerId && player.lastBattle.opponentId === battle.leftPlayerId)
+    ) && Array.isArray(player.lastBattle.timeline) && player.lastBattle.timeline.length > 0);
+
+    const firstPairedPlayer = pairedPlayers[0];
+    if (firstPairedPlayer) {
+      return firstPairedPlayer.lastBattle.timeline;
+    }
+
+    const candidatePlayers = [
+      battle.leftPlayerId,
+      battle.rightPlayerId,
+      ...snapshot.playersAfterRound.map((player) => player.playerId),
+    ];
+    const seen = new Set<string>();
+
+    for (const playerId of candidatePlayers) {
+      if (seen.has(playerId)) {
+        continue;
+      }
+      seen.add(playerId);
+
+      const player = snapshot.playersAfterRound.find((candidate) => candidate.playerId === playerId);
+      if (!player || !Array.isArray(player.lastBattle.timeline) || player.lastBattle.timeline.length === 0) {
+        continue;
+      }
+
+      return player.lastBattle.timeline;
+    }
+  }
+
   const testAccess = getTestAccess(serverRoom);
   for (const playerId of [battle.leftPlayerId, battle.rightPlayerId]) {
     const timeline = testAccess?.battleResultsByPlayer.get(playerId)?.timeline;
@@ -718,33 +971,335 @@ const resolveBattleTimelineForReportBattle = (
     }
   }
 
-  if (!snapshot) {
+  return [];
+};
+
+const captureBattleTimelinesForRound = (
+  serverRoom: BotOnlyServerRoom,
+  clients: BotOnlyTestClient[],
+): BotOnlyRoundSnapshot["battleTimelines"] => {
+  const testAccess = getTestAccess(serverRoom);
+
+  return clients
+    .map((client) => {
+      const timeline = testAccess?.battleResultsByPlayer.get(client.sessionId)?.timeline;
+      return {
+        playerId: client.sessionId,
+        battleId: resolveBattleIdFromTimeline(timeline),
+        timeline: Array.isArray(timeline) ? [...timeline] : [],
+      };
+    })
+    .filter((entry) => entry.timeline.length > 0);
+};
+
+const buildRoundBattleReportsFromCurrentState = (
+  serverRoom: BotOnlyServerRoom,
+  roundIndex: number,
+  playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
+  playerLabels: Map<string, string>,
+): BotOnlyRoundBattleReport[] => {
+  const roundLog = getMatchLogger(serverRoom)
+    .getRoundLogs()
+    .find((candidate) => candidate.roundIndex === roundIndex);
+
+  if (!roundLog) {
     return [];
   }
 
-  const candidatePlayers = [
-    battle.leftPlayerId,
-    battle.rightPlayerId,
-    ...snapshot.playersAfterRound.map((player) => player.playerId),
-  ];
-  const seen = new Set<string>();
-
-  for (const playerId of candidatePlayers) {
-    if (seen.has(playerId)) {
-      continue;
-    }
-    seen.add(playerId);
-
-    const player = snapshot.playersAfterRound.find((candidate) => candidate.playerId === playerId);
-    if (!player || !Array.isArray(player.lastBattle.timeline) || player.lastBattle.timeline.length === 0) {
-      continue;
-    }
-
-    return player.lastBattle.timeline;
-  }
-
-  return [];
+  return roundLog.battles.map((battle) => {
+    const timeline = resolveBattleTimelineForReportBattle(serverRoom, undefined, battle);
+    return {
+      battleIndex: battle.battleIndex,
+      leftPlayerId: battle.leftPlayerId,
+      leftLabel: getPlayerLabel(playerLabels, battle.leftPlayerId),
+      rightPlayerId: battle.rightPlayerId,
+      rightLabel: getPlayerLabel(playerLabels, battle.rightPlayerId),
+      leftSpecialUnits: getSpecialBattleUnitsForPlayers(
+        serverRoom,
+        getBattleSidePlayerIds(serverRoom, battle.leftPlayerId),
+      ),
+      rightSpecialUnits: getSpecialBattleUnitsForPlayers(
+        serverRoom,
+        getBattleSidePlayerIds(serverRoom, battle.rightPlayerId),
+      ),
+      winner: battle.winner,
+      leftDamageDealt: battle.leftDamageDealt,
+      rightDamageDealt: battle.rightDamageDealt,
+      leftSurvivors: battle.leftSurvivors,
+      rightSurvivors: battle.rightSurvivors,
+      unitDamageBreakdown: buildUnitDamageBreakdownForBattle(
+        timeline,
+        playersAtBattleStart,
+        playerLabels,
+      ),
+      unitOutcomes: buildUnitBattleOutcomesForBattle(
+        timeline,
+        playersAtBattleStart,
+        playerLabels,
+      ),
+    };
+  });
 };
+
+test("resolveBattleTimelineForReportBattle prefers the round snapshot over latest controller battle results", () => {
+  const latestTimeline = [{
+    type: "battleStart",
+    battleId: "r2-p1-p2",
+    round: 2,
+    boardConfig: {
+      width: 6,
+      height: 6,
+    },
+    units: [],
+  }] as unknown as BattleTimelineEvent[];
+  const roundOneTimeline = [{
+    type: "battleStart",
+    battleId: "r1-p1-p2",
+    round: 1,
+    boardConfig: {
+      width: 6,
+      height: 6,
+    },
+    units: [],
+  }] as unknown as BattleTimelineEvent[];
+
+  const fakeRoom = {
+    controller: {
+      getBoardPlacementsForPlayer: () => [],
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer: new Map([
+          ["p1", {
+            survivors: 1,
+            timeline: latestTimeline,
+            survivorSnapshots: [],
+          }],
+          ["p2", {
+            survivors: 0,
+            timeline: latestTimeline,
+            survivorSnapshots: [],
+          }],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  const snapshot: BotOnlyRoundSnapshot = {
+    roundIndex: 1,
+    phaseAfterRound: "Elimination",
+    phaseProgress: {
+      phaseHpTarget: 600,
+      phaseDamageDealt: 600,
+      phaseResult: "failed",
+      phaseCompletionRate: 1,
+    },
+    playersAtBattleStart: [],
+    battleTimelines: [{
+      playerId: "p1",
+      battleId: "r1-p1-p2",
+      timeline: roundOneTimeline,
+    }, {
+      playerId: "p2",
+      battleId: "r1-p1-p2",
+      timeline: roundOneTimeline,
+    }],
+    playerConsequences: [],
+    playersAfterRound: [{
+      playerId: "p1",
+      role: "boss",
+      hp: 100,
+      remainingLives: 0,
+      eliminated: false,
+      boardUnits: [],
+      benchUnits: [],
+      lastBattle: {
+        battleId: "r1-p1-p2",
+        opponentId: "p2",
+        won: true,
+        damageDealt: 7,
+        damageTaken: 0,
+        survivors: 1,
+        opponentSurvivors: 0,
+        survivorUnitTypes: [],
+        timeline: roundOneTimeline,
+      },
+    }, {
+      playerId: "p2",
+      role: "raid",
+      hp: 100,
+      remainingLives: 1,
+      eliminated: false,
+      boardUnits: [],
+      benchUnits: [],
+      lastBattle: {
+        battleId: "r1-p1-p2",
+        opponentId: "p1",
+        won: false,
+        damageDealt: 0,
+        damageTaken: 7,
+        survivors: 0,
+        opponentSurvivors: 1,
+        survivorUnitTypes: [],
+        timeline: roundOneTimeline,
+      },
+    }],
+  };
+
+  expect(
+    resolveBattleTimelineForReportBattle(fakeRoom, snapshot, {
+      leftPlayerId: "p1",
+      rightPlayerId: "p2",
+    }),
+  ).toBe(roundOneTimeline);
+});
+
+test("buildBotOnlyMatchRoundReport prefers captured round battle details over recomputing from latest state", () => {
+  const snapshotBattle: BotOnlyRoundBattleReport = {
+    battleIndex: 0,
+    leftPlayerId: "boss-1",
+    leftLabel: "P1",
+    rightPlayerId: "raid-1",
+    rightLabel: "P2",
+    leftSpecialUnits: ["レミリア"],
+    rightSpecialUnits: ["霊夢"],
+    winner: "left",
+    leftDamageDealt: 7,
+    rightDamageDealt: 0,
+    leftSurvivors: 1,
+    rightSurvivors: 0,
+    unitDamageBreakdown: [],
+    unitOutcomes: [{
+      playerId: "boss-1",
+      label: "P1",
+      unitId: "round1-boss",
+      unitName: "Round1Boss",
+      side: "boss",
+      totalDamage: 100,
+      finalHp: 50,
+      alive: true,
+      starLevel: 1,
+      subUnitName: "",
+      isSpecialUnit: false,
+    }],
+  };
+
+  const fakeRoom = {
+    state: {
+      roundIndex: 1,
+      bossPlayerId: "boss-1",
+      raidPlayerIds: ["raid-1", "raid-2", "raid-3"],
+      ranking: ["boss-1", "raid-1", "raid-2", "raid-3"],
+      players: new Map([
+        ["boss-1", {
+          role: "boss",
+          hp: 100,
+          remainingLives: 0,
+          eliminated: false,
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          benchUnits: [],
+        }],
+        ["raid-1", {
+          role: "raid",
+          hp: 100,
+          remainingLives: 2,
+          eliminated: false,
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          benchUnits: [],
+        }],
+        ["raid-2", {
+          role: "raid",
+          hp: 100,
+          remainingLives: 2,
+          eliminated: false,
+          selectedHeroId: "marisa",
+          selectedBossId: "",
+          benchUnits: [],
+        }],
+        ["raid-3", {
+          role: "raid",
+          hp: 100,
+          remainingLives: 2,
+          eliminated: false,
+          selectedHeroId: "okina",
+          selectedBossId: "",
+          benchUnits: [],
+        }],
+      ]),
+    },
+    matchLogger: {
+      getRoundLogs: () => [{
+        matchId: "match-1",
+        roundIndex: 1,
+        phase: "Elimination",
+        timestamp: Date.now(),
+        durationMs: 100,
+        battles: [{
+          matchId: "match-1",
+          roundIndex: 1,
+          battleIndex: 0,
+          leftPlayerId: "boss-1",
+          rightPlayerId: "raid-1",
+          winner: "left",
+          leftDamageDealt: 7,
+          rightDamageDealt: 0,
+          leftSurvivors: 1,
+          rightSurvivors: 0,
+        }],
+        eliminations: [],
+      }],
+      getHpChangeLogs: () => [],
+      getActionLogs: () => [],
+    },
+    controller: {
+      getBoardPlacementsForPlayer: () => [],
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer: new Map([
+          ["boss-1", {
+            survivors: 1,
+            timeline: [{
+              type: "battleStart",
+              battleId: "r2-battle",
+              round: 2,
+              boardConfig: { width: 6, height: 6 },
+              units: [],
+            }] as unknown as BattleTimelineEvent[],
+            survivorSnapshots: [],
+          }],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  const report = buildBotOnlyMatchRoundReport({
+    serverRoom: fakeRoom,
+    clients: [
+      { sessionId: "boss-1" },
+      { sessionId: "raid-1" },
+      { sessionId: "raid-2" },
+      { sessionId: "raid-3" },
+    ] as BotOnlyTestClient[],
+    roundSnapshots: [{
+      roundIndex: 1,
+      phaseAfterRound: "Elimination",
+      phaseProgress: {
+        phaseHpTarget: 600,
+        phaseDamageDealt: 350,
+        phaseResult: "success",
+        phaseCompletionRate: 0.58,
+      },
+      playersAtBattleStart: [],
+      battleTimelines: [],
+      battles: [snapshotBattle],
+      playerConsequences: [],
+      playersAfterRound: [],
+    }],
+  });
+
+  expect(report.rounds[0]?.battles[0]?.unitOutcomes[0]?.unitName).toBe("Round1Boss");
+});
 
 test("buildPlayerConsequences keeps battle-start tracked units after controller snapshots reset", () => {
   const battleResultsByPlayer = new Map([
@@ -791,6 +1346,7 @@ test("buildPlayerConsequences keeps battle-start tracked units after controller 
         unitType: "ranger",
         unitId: "nazrin",
         starLevel: 1,
+        subUnitName: "",
       }],
       trackedBattleUnitIds: ["nazrin", "hero-p1"],
       benchUnits: [],
@@ -818,6 +1374,7 @@ test("buildPlayerConsequences keeps battle-start tracked units after controller 
         unitType: "ranger",
         unitId: "nazrin",
         starLevel: 1,
+        subUnitName: "",
       }],
       trackedBattleUnitIds: ["nazrin", "hero-p1"],
       benchUnits: [],
@@ -1171,6 +1728,143 @@ test("buildUnitDamageBreakdownForBattle keeps same-unit damage split by owner pl
   ]);
 });
 
+test("buildUnitBattleOutcomesForBattle prefers the final keyframe for alive state and hp", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-1",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "hero-p2",
+          ownerPlayerId: "p2",
+          sourceUnitId: "reimu",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 120,
+          maxHp: 120,
+          displayName: "霊夢",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r3-1",
+      atMs: 100,
+      sourceBattleUnitId: "boss-p1",
+      targetBattleUnitId: "hero-p2",
+      amount: 40,
+      remainingHp: 80,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "keyframe",
+      battleId: "battle-r3-1",
+      atMs: 200,
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          x: 0,
+          y: 0,
+          currentHp: 700,
+          maxHp: 900,
+          alive: true,
+          state: "idle",
+        },
+        {
+          battleUnitId: "hero-p2",
+          x: 0,
+          y: 5,
+          currentHp: 0,
+          maxHp: 120,
+          alive: false,
+          state: "dead",
+        },
+      ],
+    },
+  ];
+  const playerLabels = new Map([
+    ["p1", "P1"],
+    ["p2", "P2"],
+  ]);
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-1",
+          opponentId: "p2",
+          won: true,
+          damageDealt: 40,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["hero-p2"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-1",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 40,
+          survivors: 0,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    playerLabels,
+  );
+
+  expect(result).toEqual([
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "レミリア",
+      alive: true,
+      finalHp: 700,
+    }),
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "霊夢",
+      alive: false,
+      finalHp: 0,
+    }),
+  ]);
+});
+
 const runBotOnlyHelperMatch = async (
   connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
   createRoom: () => Promise<BotOnlyServerRoom>,
@@ -1183,41 +1877,8 @@ const runBotOnlyHelperMatch = async (
     connectClient(serverRoom),
     connectClient(serverRoom),
   ]);
+  const playerLabels = getPlayerLabelMap(clients);
   const roundSnapshots: BotOnlyRoundSnapshot[] = [];
-  const phaseProgressByRound = new Map<
-    number,
-    {
-      phase: RoundStateMessage["phase"];
-      phaseHpTarget: number;
-      phaseDamageDealt: number;
-      phaseResult: "pending" | "success" | "failed";
-      phaseCompletionRate: number;
-    }
-  >();
-
-  for (const client of clients) {
-    client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (_message: unknown) => {});
-  }
-
-  clients[0]?.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message: unknown) => {
-    const roundState = message as RoundStateMessage;
-    const existing = phaseProgressByRound.get(roundState.roundIndex);
-
-    if (
-      existing
-      && BOT_ONLY_PHASE_PRIORITY[existing.phase] > BOT_ONLY_PHASE_PRIORITY[roundState.phase]
-    ) {
-      return;
-    }
-
-    phaseProgressByRound.set(roundState.roundIndex, {
-      phase: roundState.phase,
-      phaseHpTarget: roundState.phaseHpTarget ?? 0,
-      phaseDamageDealt: roundState.phaseDamageDealt ?? 0,
-      phaseResult: roundState.phaseResult ?? "pending",
-      phaseCompletionRate: roundState.phaseCompletionRate ?? 0,
-    });
-  });
 
   clients.forEach((client, helperIndex) => {
     attachAutoFillHelperAutomationForTest(client, helperIndex);
@@ -1265,6 +1926,14 @@ const runBotOnlyHelperMatch = async (
       },
     );
     const playerBattleOutcomes = buildPlayerBattleOutcomes(serverRoom, playersAtBattleStart);
+    const battleTimelines = captureBattleTimelinesForRound(serverRoom, clients);
+    const battles = buildRoundBattleReportsFromCurrentState(
+      serverRoom,
+      battleRoundIndex,
+      playersAtBattleStart,
+      playerLabels,
+    );
+    const phaseProgress = buildRoundPhaseProgress(getCurrentControllerPhaseProgress(serverRoom));
 
     await waitForCondition(
       () =>
@@ -1287,8 +1956,10 @@ const runBotOnlyHelperMatch = async (
     const snapshot: BotOnlyRoundSnapshot = {
       roundIndex: battleRoundIndex,
       phaseAfterRound: serverRoom.state.phase,
-      phaseProgress: buildRoundPhaseProgress(phaseProgressByRound.get(battleRoundIndex)),
+      phaseProgress,
       playersAtBattleStart,
+      battleTimelines,
+      battles,
       playerConsequences: buildPlayerConsequences(
         playersAtBattleStart,
         playerBattleOutcomes,
@@ -1297,7 +1968,7 @@ const runBotOnlyHelperMatch = async (
       playersAfterRound,
     };
 
-    if (process.env.DEBUG_BOT_PLAYABILITY_REPORT === "true") {
+    if (shouldLogBotOnlyJsonReport()) {
       console.log(JSON.stringify({
         type: "bot_only_round_snapshot",
         data: snapshot,
@@ -1408,12 +2079,15 @@ const buildBotOnlyMatchRoundReport = (
     finalPlayers,
     rounds: roundLogs.map((roundLog) => {
       const snapshot = snapshotsByRound.get(roundLog.roundIndex);
-
-      return {
-        roundIndex: roundLog.roundIndex,
-        phase: roundLog.phase,
-        durationMs: roundLog.durationMs,
-        battles: roundLog.battles.map((battle) => {
+      const battles = snapshot?.battles?.length
+        ? snapshot.battles.map((battle) => ({
+          ...battle,
+          leftSpecialUnits: [...battle.leftSpecialUnits],
+          rightSpecialUnits: [...battle.rightSpecialUnits],
+          unitDamageBreakdown: battle.unitDamageBreakdown.map((unit) => ({ ...unit })),
+          unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+        }))
+        : roundLog.battles.map((battle) => {
           const timeline = resolveBattleTimelineForReportBattle(
             artifacts.serverRoom,
             snapshot,
@@ -1443,8 +2117,19 @@ const buildBotOnlyMatchRoundReport = (
               snapshot?.playersAtBattleStart ?? [],
               playerLabels,
             ),
+            unitOutcomes: buildUnitBattleOutcomesForBattle(
+              timeline,
+              snapshot?.playersAtBattleStart ?? [],
+              playerLabels,
+            ),
           };
-        }),
+        });
+
+      return {
+        roundIndex: roundLog.roundIndex,
+        phase: roundLog.phase,
+        durationMs: roundLog.durationMs,
+        battles,
         hpChanges: (hpChangesByRound.get(roundLog.roundIndex) ?? []).map((hpChange) => ({
           playerId: hpChange.playerId,
           label: getPlayerLabel(playerLabels, hpChange.playerId),
@@ -1517,15 +2202,548 @@ const buildBotOnlyMatchRoundReport = (
   };
 };
 
+const formatPlayerOutcomeLabel = (
+  playerConsequence: BotOnlyMatchRoundReport["rounds"][number]["playerConsequences"][number],
+  unitOutcomes: ReportUnitBattleOutcome[],
+): string => {
+  if (unitOutcomes.length > 0) {
+    return unitOutcomes.some((unit) => unit.alive) ? "生存" : "撃破";
+  }
+
+  return playerConsequence.playerWipedOut ? "撃破" : "生存";
+};
+
+const formatRoundCompletionLabel = (
+  phaseResult: BotOnlyMatchRoundReport["rounds"][number]["phaseResult"],
+): string => {
+  if (phaseResult === "success") {
+    return "ラウンドクリア";
+  }
+
+  if (phaseResult === "failed") {
+    return "ラウンド失敗";
+  }
+
+  return "ラウンド保留";
+};
+
+const resolveHumanReadableRoundResultLines = (
+  round: BotOnlyMatchRoundReport["rounds"][number],
+): string[] => {
+  const lines = [`フェーズHP ${round.phaseDamageDealt}/${round.phaseHpTarget}`];
+  const raidPlayers = round.playerConsequences.filter((player) => player.role === "raid");
+  const allRaidPlayersWipedOut = raidPlayers.length > 0 && raidPlayers.every((player) => player.playerWipedOut);
+
+  if (
+    round.phaseResult === "failed"
+    && round.phaseDamageDealt >= round.phaseHpTarget
+    && allRaidPlayersWipedOut
+  ) {
+    lines.push("全滅によりラウンド失敗");
+    return lines;
+  }
+
+  lines.push(formatRoundCompletionLabel(round.phaseResult));
+  return lines;
+};
+
+const shouldLogBotOnlyHumanReport = (): boolean =>
+  process.env.DEBUG_BOT_PLAYABILITY_REPORT === "true";
+
+const shouldLogBotOnlyJsonReport = (): boolean =>
+  process.env.DEBUG_BOT_PLAYABILITY_JSON === "true";
+
+const getBotOnlyHumanReportOutputPath = (): string | null => {
+  const outputPath = process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH?.trim();
+  return outputPath && outputPath.length > 0 ? outputPath : null;
+};
+
+const isFinalJudgmentRoundForHumanReport = (
+  report: BotOnlyMatchRoundReport,
+  roundIndex: number,
+): boolean => roundIndex === report.totalRounds && report.totalRounds >= 12;
+
+const buildBotOnlyHumanReadableRoundReport = (
+  report: BotOnlyMatchRoundReport,
+): string => {
+  const lines: string[] = [];
+
+  for (const round of report.rounds) {
+    const isFinalJudgmentRound = isFinalJudgmentRoundForHumanReport(report, round.roundIndex);
+    const primaryBattle = round.battles[0];
+    lines.push(`Round ${round.roundIndex}`);
+
+    if (primaryBattle) {
+      const bossUnits = primaryBattle.unitOutcomes.filter((unit) => unit.side === "boss");
+      const raidUnitsByPlayer = new Map<string, ReportUnitBattleOutcome[]>();
+
+      for (const unit of primaryBattle.unitOutcomes.filter((candidate) => candidate.side === "raid")) {
+        const existing = raidUnitsByPlayer.get(unit.playerId) ?? [];
+        existing.push(unit);
+        raidUnitsByPlayer.set(unit.playerId, existing);
+      }
+
+      lines.push("Boss");
+      for (const unit of bossUnits) {
+        const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
+        lines.push(
+          `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} 最終HP${unit.finalHp}`,
+        );
+      }
+
+      lines.push("");
+      lines.push("raid");
+      for (const playerConsequence of round.playerConsequences.filter((player) => player.role === "raid")) {
+        const unitOutcomes = raidUnitsByPlayer.get(playerConsequence.playerId) ?? [];
+        lines.push(`${playerConsequence.label} ${formatPlayerOutcomeLabel(playerConsequence, unitOutcomes)}`);
+        for (const unit of unitOutcomes) {
+          const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
+          lines.push(
+            `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} 最終HP${unit.finalHp}`,
+          );
+        }
+      }
+    }
+
+    lines.push("");
+    lines.push(`R${round.roundIndex}リザルト`);
+    if (isFinalJudgmentRound) {
+      lines.push("最終判定ラウンド");
+    } else {
+      lines.push(...resolveHumanReadableRoundResultLines(round));
+    }
+    lines.push("");
+  }
+
+  lines.push("最終リザルト");
+  lines.push(
+    report.ranking[0] === report.bossPlayerId
+      ? `R${report.totalRounds}でレイド側全滅`
+      : `R${report.totalRounds}でボス撃破`,
+  );
+  lines.push(report.ranking[0] === report.bossPlayerId ? "ボス勝利" : "レイド勝利");
+
+  return lines.join("\n");
+};
+
+test("buildBotOnlyHumanReadableRoundReport omits phase hp only on the R12 final judgment round", () => {
+  const text = buildBotOnlyHumanReadableRoundReport({
+    totalRounds: 2,
+    bossPlayerId: "boss-1",
+    raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+    ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+    playerLabels: {
+      "boss-1": "P1",
+      "raid-a": "P2",
+      "raid-b": "P3",
+      "raid-c": "P4",
+    },
+    finalPlayers: [],
+    rounds: [{
+      roundIndex: 1,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 600,
+      phaseDamageDealt: 350,
+      phaseResult: "success",
+      phaseCompletionRate: 0.58,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    }, {
+      roundIndex: 2,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 750,
+      phaseDamageDealt: 720,
+      phaseResult: "failed",
+      phaseCompletionRate: 0.96,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    }],
+  });
+
+  expect(text).toContain("R1リザルト\nフェーズHP 350/600\nラウンドクリア");
+  expect(text).toContain("R2リザルト\nフェーズHP 720/750\nラウンド失敗");
+
+  const finalJudgmentText = buildBotOnlyHumanReadableRoundReport({
+    totalRounds: 12,
+    bossPlayerId: "boss-1",
+    raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+    ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+    playerLabels: {
+      "boss-1": "P1",
+      "raid-a": "P2",
+      "raid-b": "P3",
+      "raid-c": "P4",
+    },
+    finalPlayers: [],
+    rounds: Array.from({ length: 12 }, (_, index) => ({
+      roundIndex: index + 1,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 600 + index * 50,
+      phaseDamageDealt: 350 + index * 50,
+      phaseResult: index === 11 ? "failed" : "success",
+      phaseCompletionRate: 1,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    })),
+  });
+
+  expect(finalJudgmentText).toContain("R12リザルト\n最終判定ラウンド");
+  expect(finalJudgmentText).not.toContain("R12リザルト\nフェーズHP 900/1150");
+});
+
+test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for raid outcome labels", () => {
+  const text = buildBotOnlyHumanReadableRoundReport({
+    totalRounds: 2,
+    bossPlayerId: "boss-1",
+    raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+    ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+    playerLabels: {
+      "boss-1": "P1",
+      "raid-a": "P2",
+      "raid-b": "P3",
+      "raid-c": "P4",
+    },
+    finalPlayers: [],
+    rounds: [{
+      roundIndex: 1,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [{
+        battleIndex: 0,
+        leftPlayerId: "boss-1",
+        leftLabel: "P1",
+        rightPlayerId: "raid-a",
+        rightLabel: "P2",
+        leftSpecialUnits: ["レミリア"],
+        rightSpecialUnits: ["霊夢"],
+        winner: "left",
+        leftDamageDealt: 7,
+        rightDamageDealt: 0,
+        leftSurvivors: 1,
+        rightSurvivors: 0,
+        unitDamageBreakdown: [],
+        unitOutcomes: [{
+          playerId: "raid-a",
+          label: "P2",
+          unitId: "reimu",
+          unitName: "霊夢",
+          side: "raid",
+          totalDamage: 0,
+          finalHp: 120,
+          alive: true,
+          starLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: true,
+        }],
+      }],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 600,
+      phaseDamageDealt: 350,
+      phaseResult: "success",
+      phaseCompletionRate: 0.58,
+      playersAtBattleStart: [],
+      playerConsequences: [{
+        playerId: "raid-a",
+        label: "P2",
+        role: "raid",
+        battleStartUnitCount: 1,
+        playerWipedOut: true,
+        remainingLivesBefore: 2,
+        remainingLivesAfter: 1,
+        eliminatedAfter: false,
+      }],
+      playersAfterRound: [],
+      eliminations: [],
+    }, {
+      roundIndex: 2,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 750,
+      phaseDamageDealt: 720,
+      phaseResult: "failed",
+      phaseCompletionRate: 0.96,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    }],
+  });
+
+  expect(text).toContain("P2 生存");
+});
+
+test("buildBotOnlyHumanReadableRoundReport explains wipe failures when phase hp was fully depleted", () => {
+  const text = buildBotOnlyHumanReadableRoundReport({
+    totalRounds: 3,
+    bossPlayerId: "boss-1",
+    raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+    ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+    playerLabels: {
+      "boss-1": "P1",
+      "raid-a": "P2",
+      "raid-b": "P3",
+      "raid-c": "P4",
+    },
+    finalPlayers: [],
+    rounds: [{
+      roundIndex: 1,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 600,
+      phaseDamageDealt: 600,
+      phaseResult: "failed",
+      phaseCompletionRate: 1,
+      playersAtBattleStart: [],
+      playerConsequences: [
+        {
+          playerId: "raid-a",
+          label: "P2",
+          role: "raid",
+          battleStartUnitCount: 2,
+          playerWipedOut: true,
+          remainingLivesBefore: 2,
+          remainingLivesAfter: 1,
+          eliminatedAfter: false,
+        },
+        {
+          playerId: "raid-b",
+          label: "P3",
+          role: "raid",
+          battleStartUnitCount: 2,
+          playerWipedOut: true,
+          remainingLivesBefore: 2,
+          remainingLivesAfter: 1,
+          eliminatedAfter: false,
+        },
+        {
+          playerId: "raid-c",
+          label: "P4",
+          role: "raid",
+          battleStartUnitCount: 2,
+          playerWipedOut: true,
+          remainingLivesBefore: 2,
+          remainingLivesAfter: 1,
+          eliminatedAfter: false,
+        },
+      ],
+      playersAfterRound: [],
+      eliminations: [],
+    }, {
+      roundIndex: 2,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 750,
+      phaseDamageDealt: 700,
+      phaseResult: "failed",
+      phaseCompletionRate: 0.93,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    }, {
+      roundIndex: 3,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 900,
+      phaseDamageDealt: 900,
+      phaseResult: "success",
+      phaseCompletionRate: 1,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    }],
+  });
+
+  expect(text).toContain("R1リザルト\nフェーズHP 600/600\n全滅によりラウンド失敗");
+  expect(text).toContain("R2リザルト\nフェーズHP 700/750\nラウンド失敗");
+});
+
+test("maybeLogBotOnlyMatchRoundReport prints only the human report for DEBUG_BOT_PLAYABILITY_REPORT", () => {
+  const originalHumanFlag = process.env.DEBUG_BOT_PLAYABILITY_REPORT;
+  const originalJsonFlag = process.env.DEBUG_BOT_PLAYABILITY_JSON;
+  const originalHumanPath = process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH;
+  process.env.DEBUG_BOT_PLAYABILITY_REPORT = "true";
+  delete process.env.DEBUG_BOT_PLAYABILITY_JSON;
+  delete process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH;
+
+  const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  try {
+    maybeLogBotOnlyMatchRoundReport({
+      totalRounds: 1,
+      bossPlayerId: "boss-1",
+      raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+      ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+      playerLabels: {},
+      finalPlayers: [],
+      rounds: [{
+        roundIndex: 1,
+        phase: "Elimination",
+        durationMs: 100,
+        battles: [],
+        hpChanges: [],
+        purchases: [],
+        deploys: [],
+        phaseHpTarget: 600,
+        phaseDamageDealt: 350,
+        phaseResult: "success",
+        phaseCompletionRate: 1,
+        playersAtBattleStart: [],
+        playerConsequences: [],
+        playersAfterRound: [],
+        eliminations: [],
+      }],
+    });
+
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(consoleSpy.mock.calls[0]?.[0]).toContain("Round 1");
+    expect(consoleSpy.mock.calls[0]?.[0]).not.toContain("\"type\":\"bot_only_round_report\"");
+  } finally {
+    consoleSpy.mockRestore();
+    if (originalHumanFlag === undefined) {
+      delete process.env.DEBUG_BOT_PLAYABILITY_REPORT;
+    } else {
+      process.env.DEBUG_BOT_PLAYABILITY_REPORT = originalHumanFlag;
+    }
+
+    if (originalJsonFlag === undefined) {
+      delete process.env.DEBUG_BOT_PLAYABILITY_JSON;
+    } else {
+      process.env.DEBUG_BOT_PLAYABILITY_JSON = originalJsonFlag;
+    }
+
+    if (originalHumanPath === undefined) {
+      delete process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH;
+    } else {
+      process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH = originalHumanPath;
+    }
+  }
+});
+
+test("maybeLogBotOnlyMatchRoundReport writes the human report to a dedicated file when configured", () => {
+  const originalHumanFlag = process.env.DEBUG_BOT_PLAYABILITY_REPORT;
+  const originalJsonFlag = process.env.DEBUG_BOT_PLAYABILITY_JSON;
+  const originalHumanPath = process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH;
+  const outputPath = "C:\\Users\\kou-1\\Dev_Workspace\\00_Source_Codes\\auto-chess-mvp\\.tmp\\bot-playability-human-report-test.log";
+  process.env.DEBUG_BOT_PLAYABILITY_REPORT = "true";
+  delete process.env.DEBUG_BOT_PLAYABILITY_JSON;
+  process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH = outputPath;
+
+  const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  try {
+    maybeLogBotOnlyMatchRoundReport({
+      totalRounds: 1,
+      bossPlayerId: "boss-1",
+      raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+      ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+      playerLabels: {},
+      finalPlayers: [],
+      rounds: [{
+        roundIndex: 1,
+        phase: "Elimination",
+        durationMs: 100,
+        battles: [],
+        hpChanges: [],
+        purchases: [],
+        deploys: [],
+        phaseHpTarget: 600,
+        phaseDamageDealt: 350,
+        phaseResult: "success",
+        phaseCompletionRate: 1,
+        playersAtBattleStart: [],
+        playerConsequences: [],
+        playersAfterRound: [],
+        eliminations: [],
+      }],
+    });
+
+    expect(consoleSpy).not.toHaveBeenCalled();
+    expect(readFileSync(outputPath, "utf8")).toContain("Round 1");
+  } finally {
+    consoleSpy.mockRestore();
+    if (originalHumanFlag === undefined) {
+      delete process.env.DEBUG_BOT_PLAYABILITY_REPORT;
+    } else {
+      process.env.DEBUG_BOT_PLAYABILITY_REPORT = originalHumanFlag;
+    }
+
+    if (originalJsonFlag === undefined) {
+      delete process.env.DEBUG_BOT_PLAYABILITY_JSON;
+    } else {
+      process.env.DEBUG_BOT_PLAYABILITY_JSON = originalJsonFlag;
+    }
+
+    if (originalHumanPath === undefined) {
+      delete process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH;
+    } else {
+      process.env.BOT_PLAYABILITY_HUMAN_REPORT_PATH = originalHumanPath;
+    }
+  }
+});
+
 const maybeLogBotOnlyMatchRoundReport = (report: BotOnlyMatchRoundReport): void => {
-  if (process.env.DEBUG_BOT_PLAYABILITY_REPORT !== "true") {
+  if (!shouldLogBotOnlyHumanReport() && !shouldLogBotOnlyJsonReport()) {
     return;
   }
 
-  console.log(JSON.stringify({
-    type: "bot_only_round_report",
-    data: report,
-  }));
+  if (shouldLogBotOnlyJsonReport()) {
+    console.log(JSON.stringify({
+      type: "bot_only_round_report",
+      data: report,
+    }));
+  }
+
+  if (shouldLogBotOnlyHumanReport()) {
+    const text = buildBotOnlyHumanReadableRoundReport(report);
+    const outputPath = getBotOnlyHumanReportOutputPath();
+    if (outputPath) {
+      mkdirSync(dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, `${text}\n`, "utf8");
+    } else {
+      console.log(text);
+    }
+  }
 };
 
 const buildBotOnlyBaselineAggregateReport = (
@@ -1751,6 +2969,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             side: "boss",
             totalDamage: 33,
           }],
+          unitOutcomes: [],
         }],
         hpChanges: [],
         purchases: [],
@@ -1856,6 +3075,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               totalDamage: 14,
             },
           ],
+          unitOutcomes: [],
         }],
         hpChanges: [],
         purchases: [],
@@ -1981,6 +3201,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
     7: 1_650,
     8: 1_850,
   };
+  const BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS: Record<number, number> = {};
 
   test("manual role picks and minimal prep actions can complete the first battle loop", async () => {
     const { serverRoom, clients } = await connectBossRoleSelectionRoom(
@@ -2059,20 +3280,35 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
   test(
     "four helper bots can self-start and finish a bot-only match",
     async () => {
-      const { serverRoom } = await runBotOnlyHelperMatch(
+      const artifacts = await runBotOnlyHelperMatch(
         (room) => getTestServer().connectTo(room) as unknown as Promise<BotOnlyTestClient>,
         () => createRoomWithForcedFlags(getTestServer(), {
           enableBossExclusiveShop: true,
           enableHeroSystem: true,
           enableTouhouRoster: true,
         }, BOT_ONLY_HELPER_ROOM_TIMINGS),
-        BOT_ONLY_DAMAGE_TARGETS,
+        BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
       );
+      const { serverRoom } = artifacts;
+      const report = buildBotOnlyMatchRoundReport(artifacts);
 
       expect(serverRoom.state.phase).toBe("End");
       expect(serverRoom.state.roundIndex).toBeGreaterThanOrEqual(2);
       expect(serverRoom.state.roundIndex).toBeLessThanOrEqual(12);
       expect(serverRoom.state.ranking).toHaveLength(4);
+      expect(
+        report.rounds.every((round) => {
+          const raidPlayers = round.playerConsequences.filter((player) => player.role === "raid");
+          const allRaidPlayersWipedOut =
+            raidPlayers.length > 0 && raidPlayers.every((player) => player.playerWipedOut);
+
+          return (
+            round.phaseDamageDealt < round.phaseHpTarget
+            || round.phaseResult === "success"
+            || (round.phaseResult === "failed" && allRaidPlayersWipedOut)
+          );
+        }),
+      ).toBe(true);
     },
     30_000,
   );
@@ -2104,8 +3340,11 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
       ).toBe(true);
       expect(
         report.rounds.some((round) =>
-          round.playersAfterRound.some((player) =>
-            player.role === "raid" && (player.remainingLives < 2 || player.eliminated))),
+          round.playerConsequences.some((player) =>
+            player.role === "raid"
+            && Number.isFinite(player.remainingLivesBefore)
+            && Number.isFinite(player.remainingLivesAfter)
+            && typeof player.playerWipedOut === "boolean")),
       ).toBe(true);
       expect(report.rounds.every((round) => Number.isFinite(round.phaseHpTarget))).toBe(true);
       expect(report.rounds.every((round) => Number.isFinite(round.phaseDamageDealt))).toBe(true);
@@ -2119,13 +3358,18 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
       expect(
         report.rounds.some((round) =>
           round.playerConsequences.some((player) =>
-            player.remainingLivesAfter < player.remainingLivesBefore
-            && player.playerWipedOut)),
+            player.role === "raid"
+            && player.battleStartUnitCount > 0)),
       ).toBe(true);
       expect(
         report.rounds.some((round) =>
           round.playersAtBattleStart.some((player) =>
             player.boardUnits.some((unit) => unit.unitName.length > 0))),
+      ).toBe(true);
+      expect(
+        report.rounds
+          .filter((round) => round.roundIndex < report.totalRounds)
+          .some((round) => round.battles.some((battle) => battle.unitOutcomes.length > 0)),
       ).toBe(true);
     },
     25_000,

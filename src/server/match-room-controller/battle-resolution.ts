@@ -80,6 +80,7 @@ export interface IBattleSimulator {
     rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null,
     flags?: FeatureFlags,
+    round?: number,
   ): SimulatorBattleResult;
 }
 
@@ -225,6 +226,7 @@ export class BattleResolutionService {
       rightHeroSynergyBonusType,
       this.deps.enableSubUnitSystem ? this.deps.subUnitAssistConfigByType : null,
       this.deps.featureFlags,
+      roundIndex,
     );
 
     // Process results based on winner

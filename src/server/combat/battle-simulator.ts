@@ -844,6 +844,7 @@ export class BattleSimulator {
     rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null = null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null = null,
     flags: FeatureFlags = DEFAULT_FLAGS,
+    round: number = 0,
   ): BattleResult {
     try {
       // Bug #3 fix: Validate input teams
@@ -873,7 +874,7 @@ export class BattleSimulator {
       combatLog.push(`Right units: ${rightUnits.length}`);
       timeline.push(createBattleStartEvent({
         battleId,
-        round: 0,
+        round,
         boardConfig: {
           width: DEFAULT_SHARED_BOARD_CONFIG.width,
           height: DEFAULT_SHARED_BOARD_CONFIG.height,

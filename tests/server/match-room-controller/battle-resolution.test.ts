@@ -428,6 +428,7 @@ describe("BattleResolutionService", () => {
         "ranger",
         null,
         undefined,
+        1,
       );
     });
 
@@ -479,6 +480,7 @@ describe("BattleResolutionService", () => {
         null,
         mockSubUnitConfig,
         undefined,
+        1,
       );
     });
   });

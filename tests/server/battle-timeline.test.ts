@@ -77,6 +77,40 @@ test("simulateBattle emits move, attack, damage, death, and keyframe events in o
   expect(result.timeline?.at(-1)?.type).toBe("battleEnd");
 });
 
+test("simulateBattle propagates the requested round into battleStart", () => {
+  const flags = { ...DEFAULT_FLAGS, enableBossExclusiveShop: true };
+  const simulator = new BattleSimulator();
+
+  const leftPlacements: BoardUnitPlacement[] = [{
+    cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }),
+    unitType: "vanguard",
+  }];
+  const rightPlacements: BoardUnitPlacement[] = [{
+    cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }),
+    unitType: "mage",
+  }];
+
+  const result = simulator.simulateBattle(
+    [createBattleUnit(leftPlacements[0]!, "left", 0, true, flags)],
+    [createBattleUnit(rightPlacements[0]!, "right", 0, false, flags)],
+    leftPlacements,
+    rightPlacements,
+    3_000,
+    null,
+    null,
+    null,
+    flags,
+    7,
+  );
+
+  const battleStart = result.timeline.find((event) => event.type === "battleStart");
+
+  expect(battleStart).toMatchObject({
+    type: "battleStart",
+    round: 7,
+  });
+});
+
 test("simulateBattle keeps full 6x6 shared-board coordinates in battleStart snapshots", () => {
   const flags = { ...DEFAULT_FLAGS, enableBossExclusiveShop: true };
   const simulator = new BattleSimulator();

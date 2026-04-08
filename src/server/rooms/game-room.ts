@@ -1,5 +1,6 @@
 import { CloseCode, type Client, Room } from "colyseus";
 import { ServerError } from "@colyseus/core";
+import { join } from "node:path";
 
 import { MatchRoomController } from "../match-room-controller";
 import { isBossCharacterId } from "../../shared/boss-characters";
@@ -37,6 +38,7 @@ import {
   SERVER_MESSAGE_TYPES,
   type AdminPlayerSnapshot,
   type AdminQueryMessage,
+  type BattleTimelineEvent,
   type BossPreferenceMessage,
   type BossSelectMessage,
   type PrepCommandMessage,
@@ -49,6 +51,17 @@ import {
   type UnitEffectSetId,
 } from "../combat/unit-effect-definitions";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
+import {
+  buildManualPlayUnitBattleOutcomes,
+  resolveManualPlayRoundTimeline,
+  toManualPlayBoardUnit,
+  writeManualPlayHumanReport,
+  type ManualPlayFinalPlayer,
+  type ManualPlayHumanReport,
+  type ManualPlayPlayerAtBattleStart,
+  type ManualPlayPlayerConsequence,
+  type ManualPlayRoundReport,
+} from "../manual-play-human-log";
 
 interface GameRoomOptions {
   readyAutoStartMs?: number;
@@ -102,6 +115,18 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private lastRoundIndex = 0;
 
   private lobbyReadyDeadlineAtMs = 0;
+
+  private manualPlayHumanRounds: ManualPlayRoundReport[] = [];
+
+  private manualPlayPlayerLabels: Map<string, string> = new Map();
+
+  private manualPlayRemainingLivesByPlayer: Map<string, number> = new Map();
+
+  private manualPlayBattlePhaseDeadlineAtMsByRound: Map<number, number> = new Map();
+
+  private manualPlayBattleDurationMsByRound: Map<number, number> = new Map();
+
+  private manualPlayHumanLogSavedPath: string | null = null;
 
   public onCreate(options: GameRoomOptions = {}): void {
     this.maxClients = GameRoom.MAX_PLAYERS + GameRoom.MAX_SPECTATORS;
@@ -353,6 +378,263 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     }
 
     this.controller?.setMatchLogger(this.matchLogger);
+    this.initializeManualPlayHumanLogState(connectedPlayerIds);
+  }
+
+  private initializeManualPlayHumanLogState(connectedPlayerIds: string[]): void {
+    this.manualPlayHumanRounds = [];
+    this.manualPlayPlayerLabels = new Map(
+      connectedPlayerIds.map((playerId, index) => [playerId, `P${index + 1}`] as const),
+    );
+    this.manualPlayRemainingLivesByPlayer.clear();
+    this.manualPlayBattlePhaseDeadlineAtMsByRound.clear();
+    this.manualPlayBattleDurationMsByRound.clear();
+    this.manualPlayHumanLogSavedPath = null;
+
+    if (!this.controller) {
+      return;
+    }
+
+    for (const playerId of connectedPlayerIds) {
+      this.manualPlayRemainingLivesByPlayer.set(
+        playerId,
+        this.controller.getPlayerStatus(playerId).remainingLives,
+      );
+    }
+  }
+
+  private trackManualPlayLifecycle(previousPhase: string, previousRoundIndex: number): void {
+    if (!this.controller) {
+      return;
+    }
+
+    if (
+      previousPhase !== "Battle"
+      && this.state.phase === "Battle"
+      && Number.isFinite(this.state.phaseDeadlineAtMs)
+      && this.state.phaseDeadlineAtMs > 0
+    ) {
+      this.manualPlayBattlePhaseDeadlineAtMsByRound.set(
+        this.state.roundIndex,
+        this.state.phaseDeadlineAtMs,
+      );
+    }
+
+    if (previousPhase === "Battle" && this.state.phase !== "Battle") {
+      this.captureManualPlayBattleDuration(previousRoundIndex);
+    }
+
+    if (previousPhase !== "Elimination" && this.state.phase === "Elimination") {
+      this.captureManualPlayRoundSnapshot(this.state.roundIndex);
+    }
+
+    if (previousPhase !== "End" && this.state.phase === "End") {
+      this.persistManualPlayHumanLogIfNeeded();
+    }
+  }
+
+  private captureManualPlayBattleDuration(roundIndex: number): void {
+    if (this.manualPlayBattleDurationMsByRound.has(roundIndex)) {
+      return;
+    }
+
+    const deadlineAtMs = this.manualPlayBattlePhaseDeadlineAtMsByRound.get(roundIndex);
+    if (!Number.isFinite(deadlineAtMs)) {
+      return;
+    }
+
+    const remainingAtCaptureMs = Math.max(0, Math.round(Number(deadlineAtMs) - Date.now()));
+    const elapsedMs = Math.max(0, Math.round(this.battleDurationMs - remainingAtCaptureMs));
+    this.manualPlayBattleDurationMsByRound.set(roundIndex, elapsedMs);
+  }
+
+  private captureManualPlayRoundSnapshot(roundIndex: number): void {
+    if (!this.controller) {
+      return;
+    }
+
+    if (this.manualPlayHumanRounds.some((round) => round.roundIndex === roundIndex)) {
+      return;
+    }
+
+    const playersAtBattleStart = this.buildManualPlayPlayersAtBattleStart();
+    const timeline = this.resolveManualPlayTimelineForRound(roundIndex);
+    const unitOutcomes = buildManualPlayUnitBattleOutcomes(
+      timeline,
+      playersAtBattleStart,
+      this.manualPlayPlayerLabels,
+    );
+    const playerConsequences = this.buildManualPlayPlayerConsequences(playersAtBattleStart, unitOutcomes);
+    const phaseProgress = this.controller.getPhaseProgress();
+    const roundLog = this.matchLogger?.getRoundLogs().find((candidate) => candidate.roundIndex === roundIndex);
+
+    const battleDurationMs = this.manualPlayBattleDurationMsByRound.get(roundIndex);
+
+    this.manualPlayHumanRounds.push({
+      roundIndex,
+      ...(battleDurationMs !== undefined ? { battleDurationMs } : {}),
+      phaseHpTarget: phaseProgress.targetHp,
+      phaseDamageDealt: phaseProgress.damageDealt,
+      phaseResult: phaseProgress.result,
+      battles: unitOutcomes.length > 0
+        ? [{
+          battleIndex: 0,
+          unitOutcomes,
+        }]
+        : [],
+      playerConsequences,
+      eliminations: [...(roundLog?.eliminations ?? [])],
+    });
+
+    for (const playerConsequence of playerConsequences) {
+      this.manualPlayRemainingLivesByPlayer.set(
+        playerConsequence.playerId,
+        playerConsequence.remainingLivesAfter,
+      );
+    }
+  }
+
+  private buildManualPlayPlayersAtBattleStart(): ManualPlayPlayerAtBattleStart[] {
+    const testAccess = this.controller?.getTestAccess();
+    const trackedPlayerIds = this.getTrackedActivePlayerIds();
+
+    return trackedPlayerIds
+      .map((playerId) => {
+        const playerState = this.state.players.get(playerId);
+        if (!playerState || (playerState.role !== "raid" && playerState.role !== "boss")) {
+          return null;
+        }
+
+        const battlePlacements = testAccess?.battleInputSnapshotByPlayer.get(playerId) ?? [];
+        const trackedBattleUnitIds = battlePlacements
+          .map((placement) => placement.unitId?.trim() ?? "")
+          .filter((unitId) => unitId.length > 0);
+
+        if (playerState.selectedHeroId.length > 0) {
+          trackedBattleUnitIds.push(`hero-${playerId}`);
+        }
+        if (playerState.role === "boss" && playerState.selectedBossId.length > 0) {
+          trackedBattleUnitIds.push(`boss-${playerId}`);
+        }
+
+        return {
+          playerId,
+          role: playerState.role,
+          boardUnits: battlePlacements.map(toManualPlayBoardUnit),
+          trackedBattleUnitIds,
+        } satisfies ManualPlayPlayerAtBattleStart;
+      })
+      .filter((player): player is ManualPlayPlayerAtBattleStart => player !== null);
+  }
+
+  private resolveManualPlayTimelineForRound(roundIndex: number): BattleTimelineEvent[] | undefined {
+    const trackedPlayerIds = this.getTrackedActivePlayerIds();
+    const controllerBattleResultsByPlayer = this.controller?.getTestAccess().battleResultsByPlayer;
+    const statePlayerBattleResults = new Map(
+      trackedPlayerIds.map((playerId) => [
+        playerId,
+        this.state.players.get(playerId)?.lastBattleResult as
+          | { timeline?: Iterable<BattleTimelineEvent> }
+          | undefined,
+      ] as const),
+    );
+
+    return resolveManualPlayRoundTimeline({
+      roundIndex,
+      trackedPlayerIds,
+      ...(controllerBattleResultsByPlayer ? { controllerBattleResultsByPlayer } : {}),
+      statePlayerBattleResults,
+    });
+  }
+
+  private buildManualPlayPlayerConsequences(
+    playersAtBattleStart: ManualPlayPlayerAtBattleStart[],
+    unitOutcomes: ReturnType<typeof buildManualPlayUnitBattleOutcomes>,
+  ): ManualPlayPlayerConsequence[] {
+    const aliveUnitIdsByPlayer = new Map<string, Set<string>>();
+
+    for (const unit of unitOutcomes) {
+      if (!unit.alive) {
+        continue;
+      }
+
+      const existing = aliveUnitIdsByPlayer.get(unit.playerId) ?? new Set<string>();
+      existing.add(unit.unitId);
+      aliveUnitIdsByPlayer.set(unit.playerId, existing);
+    }
+
+    return playersAtBattleStart.map((playerAtBattleStart) => {
+      const status = this.controller?.getPlayerStatus(playerAtBattleStart.playerId);
+      const trackedUnitIds = playerAtBattleStart.trackedBattleUnitIds;
+      const survivingUnitIds = aliveUnitIdsByPlayer.get(playerAtBattleStart.playerId) ?? new Set<string>();
+      const playerWipedOut = trackedUnitIds.length > 0
+        ? trackedUnitIds.every((unitId) => !survivingUnitIds.has(unitId))
+        : false;
+      const remainingLivesAfter = status?.remainingLives ?? 0;
+
+      return {
+        playerId: playerAtBattleStart.playerId,
+        label: this.manualPlayPlayerLabels.get(playerAtBattleStart.playerId) ?? playerAtBattleStart.playerId,
+        role: playerAtBattleStart.role,
+        battleStartUnitCount: trackedUnitIds.length,
+        playerWipedOut,
+        remainingLivesBefore:
+          this.manualPlayRemainingLivesByPlayer.get(playerAtBattleStart.playerId)
+          ?? remainingLivesAfter,
+        remainingLivesAfter,
+        eliminatedAfter: status?.eliminated ?? false,
+      };
+    });
+  }
+
+  private buildManualPlayHumanReport(): ManualPlayHumanReport {
+    const finalPlayers: ManualPlayFinalPlayer[] = this.getTrackedActivePlayerIds()
+      .map((playerId) => {
+        const playerState = this.state.players.get(playerId);
+        if (!playerState || (playerState.role !== "raid" && playerState.role !== "boss")) {
+          return null;
+        }
+
+        return {
+          playerId,
+          label: this.manualPlayPlayerLabels.get(playerId) ?? playerId,
+          role: playerState.role,
+          eliminated: playerState.eliminated,
+        } satisfies ManualPlayFinalPlayer;
+      })
+      .filter((player): player is ManualPlayFinalPlayer => player !== null);
+
+    return {
+      totalRounds: this.state.roundIndex,
+      bossPlayerId: this.state.bossPlayerId,
+      ranking: Array.from(this.state.ranking),
+      playerLabels: Object.fromEntries(this.manualPlayPlayerLabels),
+      finalPlayers,
+      rounds: [...this.manualPlayHumanRounds].sort((left, right) => left.roundIndex - right.roundIndex),
+    };
+  }
+
+  private persistManualPlayHumanLogIfNeeded(): void {
+    if (this.manualPlayHumanLogSavedPath !== null) {
+      return;
+    }
+
+    if (process.env.VITEST === "true") {
+      return;
+    }
+
+    if (this.manualPlayHumanRounds.length === 0) {
+      return;
+    }
+
+    const outputPath = join(
+      process.cwd(),
+      ".tmp",
+      `manual-play-human-${this.roomId}-${Date.now()}.log`,
+    );
+    const report = this.buildManualPlayHumanReport();
+    this.manualPlayHumanLogSavedPath = writeManualPlayHumanReport(report, outputPath);
+    console.log(`[manual_play_human_log_saved] ${this.manualPlayHumanLogSavedPath}`);
   }
 
   private resetSelectionToPreference(nowMs: number): void {
@@ -809,6 +1091,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.syncSinglePlayerStateFromController(playerId);
     }
 
+    this.trackManualPlayLifecycle(previousPhase, previousRoundIndex);
+
     // Track rounds survived for logging after state sync
     if (this.state.roundIndex > this.lastRoundIndex) {
       for (const playerId of this.getTrackedActivePlayerIds()) {
@@ -1050,6 +1334,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         featureFlags,
       );
     }
+
+    this.persistManualPlayHumanLogIfNeeded();
 
     // SharedBoardBridgeの破棄
     if (this.sharedBoardBridge) {

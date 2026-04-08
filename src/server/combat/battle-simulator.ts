@@ -60,6 +60,7 @@ export interface Action {
  */
 export interface BattleUnit {
   id: string;
+  ownerPlayerId?: string;
   sourceUnitId?: string;
   battleSide?: "left" | "right";
   type: BoardUnitType;
@@ -105,6 +106,7 @@ export interface BattleResult {
     right: number;  // 右チームが与えた合計ダメージ
   };
   bossDamage?: number;  // ボスが受けたダメージ（ボス戦時のみ）
+  phaseDamageToBossSide?: number; // フェーズHPに加算する累計ダメージ
 }
 
 /**
@@ -125,7 +127,15 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
 };
 
 function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
-  return resolveBattleSide(unit) === "left" ? "raid" : "boss";
+  if (unit.isBoss) {
+    return "boss";
+  }
+
+  if (typeof unit.ownerPlayerId === "string" && unit.ownerPlayerId.length > 0) {
+    return "raid";
+  }
+
+  return (unit.id.startsWith("left") || unit.id.startsWith("hero-")) ? "raid" : "boss";
 }
 
 function resolveBattleSide(unit: BattleUnit): "left" | "right" {
@@ -286,6 +296,9 @@ function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
 
   return {
     battleUnitId: unit.id,
+    ...(typeof unit.ownerPlayerId === "string" && unit.ownerPlayerId.length > 0
+      ? { ownerPlayerId: unit.ownerPlayerId }
+      : {}),
     side: resolveTimelineSide(unit),
     x: coordinate.x,
     y: coordinate.y,
@@ -352,6 +365,11 @@ export function createBattleUnit(
     attack: resolvedAttack,
     attackSpeed: resolvedAttackSpeed,
     range: resolvedRange,
+    defense: resolvedDefense,
+    critRate: resolvedCritRate,
+    critDamageMultiplier: resolvedCritDamageMultiplier,
+    physicalReduction: resolvedPhysicalReduction,
+    magicReduction: resolvedMagicReduction,
   } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
   const bossStats = isBoss && archetype === "remilia" ? getMvpPhase1Boss() : null;
@@ -362,6 +380,8 @@ export function createBattleUnit(
   let finalAttackSpeed: number;
   let finalRange: number;
   let finalDefense: number;
+  let finalCritRate: number;
+  let finalCritDamageMultiplier: number;
   let finalPhysicalReduction: number | undefined = undefined;
   let finalMagicReduction: number | undefined = undefined;
 
@@ -371,7 +391,9 @@ export function createBattleUnit(
     finalAttack = bossStats.attack;
     finalAttackSpeed = bossStats.attackSpeed;
     finalRange = bossStats.range;
-    finalDefense = 0; // ボスは reduction を使用
+    finalDefense = bossStats.defense;
+    finalCritRate = bossStats.critRate;
+    finalCritDamageMultiplier = bossStats.critDamageMultiplier;
     finalPhysicalReduction = bossStats.physicalReduction;
     finalMagicReduction = bossStats.magicReduction;
   } else if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
@@ -382,8 +404,9 @@ export function createBattleUnit(
       finalAttack = scarletUnit.attack;
       finalAttackSpeed = scarletUnit.attackSpeed;
       finalRange = scarletUnit.range;
-      // 物理軽減と魔法軽減の平均を防御力として適用
-      finalDefense = (scarletUnit.physicalReduction + scarletUnit.magicReduction) / 2;
+      finalDefense = scarletUnit.defense;
+      finalCritRate = scarletUnit.critRate;
+      finalCritDamageMultiplier = scarletUnit.critDamageMultiplier;
       finalPhysicalReduction = scarletUnit.physicalReduction;
       finalMagicReduction = scarletUnit.magicReduction;
     } else {
@@ -394,6 +417,10 @@ export function createBattleUnit(
       finalAttackSpeed = baseStats.attackSpeed;
       finalRange = baseStats.range;
       finalDefense = unitType === "vanguard" ? 3 : 0;
+      finalCritRate = 0;
+      finalCritDamageMultiplier = 1.5;
+      finalPhysicalReduction = 0;
+      finalMagicReduction = 0;
     }
   } else {
     // 通常ユニット: 星レベル倍率を適用
@@ -402,11 +429,18 @@ export function createBattleUnit(
     finalAttack = (resolvedAttack ?? baseStats.attack) * starMultiplier;
     finalAttackSpeed = resolvedAttackSpeed ?? baseStats.attackSpeed;
     finalRange = resolvedRange ?? baseStats.range;
-    finalDefense = unitType === "vanguard" ? 3 : 0;
+    finalDefense = resolvedDefense ?? (unitType === "vanguard" ? 3 : 0);
+    finalCritRate = resolvedCritRate ?? 0;
+    finalCritDamageMultiplier = resolvedCritDamageMultiplier ?? 1.5;
+    finalPhysicalReduction = resolvedPhysicalReduction ?? 0;
+    finalMagicReduction = resolvedMagicReduction ?? 0;
   }
 
   return {
     id: `${side}-${unitType}-${index}`,
+    ...(typeof resolvedPlacement.ownerPlayerId === "string" && resolvedPlacement.ownerPlayerId.length > 0
+      ? { ownerPlayerId: resolvedPlacement.ownerPlayerId }
+      : {}),
     sourceUnitId: resolvedPlacement.unitId ?? `${side}-${unitType}-${index}`,
     battleSide: side,
     type: unitType,
@@ -421,8 +455,8 @@ export function createBattleUnit(
     isBoss,
     attackCount: 0,
     defense: finalDefense,
-    critRate: 0,
-    critDamageMultiplier: 1.5,
+    critRate: finalCritRate,
+    critDamageMultiplier: finalCritDamageMultiplier,
     physicalReduction: finalPhysicalReduction,
     magicReduction: finalMagicReduction,
     buffModifiers: {
@@ -877,12 +911,19 @@ export class BattleSimulator {
       const allUnits = [...leftUnits, ...rightUnits];
       const actionQueue: Action[] = [];
       let currentTime = 0;
+      const bossBattleSide: "left" | "right" | null = leftUnits.some((unit) => unit.isBoss)
+        ? "left"
+        : rightUnits.some((unit) => unit.isBoss)
+          ? "right"
+          : null;
 
       // ダメージ追跡用変数
       let damageDealtLeft = 0;  // 左チームが与えたダメージ
       let damageDealtRight = 0; // 右チームが与えたダメージ
       let bossDamage = 0;       // ボスが受けたダメージ
+      let phaseDamageToBossSide = 0; // ボス本体ダメージ + boss側護衛撃破ボーナス
       let nextKeyframeAtMs = 250;
+      let forcedWinner: "left" | "right" | null = null;
 
       const appendDueKeyframes = (atMs: number) => {
         while (atMs >= nextKeyframeAtMs) {
@@ -893,6 +934,102 @@ export class BattleSimulator {
           }));
           nextKeyframeAtMs += 250;
         }
+      };
+
+      const resolveBossBreakWinner = (
+        actingSide: "left" | "right",
+        defeatedBoss: BattleUnit,
+      ): "left" | "right" => {
+        if (!defeatedBoss.isDead) {
+          defeatedBoss.isDead = true;
+          combatLog.push(`${generateUnitName(defeatedBoss)} has been defeated!`);
+          timeline.push(createUnitDeathEvent({
+            type: "unitDeath",
+            battleId,
+            atMs: currentTime,
+            battleUnitId: defeatedBoss.id,
+          }));
+        }
+
+        combatLog.push(
+          `Battle ended: ${actingSide === "left" ? "Left" : "Right"} wins (phase HP depleted)`,
+        );
+        return actingSide;
+      };
+
+      const recordAppliedDamage = (
+        sourceUnit: BattleUnit,
+        targetUnit: BattleUnit,
+        amount: number,
+      ): "left" | "right" | null => {
+        if (amount <= 0) {
+          return null;
+        }
+
+        const sourceSide = resolveBattleSide(sourceUnit);
+        timeline.push(createDamageAppliedEvent({
+          type: "damageApplied",
+          battleId,
+          atMs: currentTime,
+          sourceBattleUnitId: sourceUnit.id,
+          targetBattleUnitId: targetUnit.id,
+          amount,
+          remainingHp: Math.max(0, targetUnit.hp),
+        }));
+
+        if (sourceSide === "left") {
+          damageDealtLeft += amount;
+        } else {
+          damageDealtRight += amount;
+        }
+
+        if (targetUnit.isBoss) {
+          bossDamage += amount;
+          phaseDamageToBossSide += amount;
+        }
+
+        if (targetUnit.hp <= 0 && !targetUnit.isDead) {
+          if (targetUnit.isBoss) {
+            return resolveBossBreakWinner(sourceSide, targetUnit);
+          }
+
+          targetUnit.isDead = true;
+          combatLog.push(`${generateUnitName(targetUnit)} has been defeated!`);
+          timeline.push(createUnitDeathEvent({
+            type: "unitDeath",
+            battleId,
+            atMs: currentTime,
+            battleUnitId: targetUnit.id,
+          }));
+
+          const targetSide = resolveBattleSide(targetUnit);
+          if (bossBattleSide !== null && targetSide === bossBattleSide) {
+            phaseDamageToBossSide += Math.floor(targetUnit.maxHp / 2);
+          }
+        }
+
+        return null;
+      };
+
+      const recordSkillDamageAgainstEnemies = (
+        sourceUnit: BattleUnit,
+        enemies: BattleUnit[],
+        enemyHpBefore: Map<string, number>,
+      ): "left" | "right" | null => {
+        for (const enemy of enemies) {
+          const hpBefore = enemyHpBefore.get(enemy.id);
+          if (hpBefore === undefined) {
+            continue;
+          }
+
+          const appliedDamage = Math.max(0, hpBefore - Math.max(0, enemy.hp));
+          const forcedSkillWinner = recordAppliedDamage(sourceUnit, enemy, appliedDamage);
+          if (forcedSkillWinner) {
+            return forcedSkillWinner;
+          }
+        }
+
+        return null;
       };
 
       // 全ユニットの初期アクションをキューに追加
@@ -999,15 +1136,10 @@ export class BattleSimulator {
               `${generateUnitName(target)} reflects ${reflectedDamage} damage to ${generateUnitName(action.unit)}`,
             );
 
-            if (action.unit.hp <= 0) {
-              action.unit.isDead = true;
-              combatLog.push(`${generateUnitName(action.unit)} has been defeated!`);
-              timeline.push(createUnitDeathEvent({
-                type: "unitDeath",
-                battleId,
-                atMs: currentTime,
-                battleUnitId: action.unit.id,
-              }));
+            const forcedReflectWinner = recordAppliedDamage(target, action.unit, reflectedDamage);
+            if (forcedReflectWinner) {
+              forcedWinner = forcedReflectWinner;
+              break;
             }
           }
 
@@ -1048,6 +1180,7 @@ export class BattleSimulator {
           // ボスダメージ記録
           if (target.isBoss) {
             bossDamage += actualDamage;
+            phaseDamageToBossSide += actualDamage;
           }
 
           if (isCrit) {
@@ -1060,6 +1193,11 @@ export class BattleSimulator {
             );
           }
 
+          if (target.isBoss && target.hp <= 0) {
+            forcedWinner = resolveBossBreakWinner(unitSide, target);
+            break;
+          }
+
           if (target.hp <= 0) {
             target.isDead = true;
             combatLog.push(`${generateUnitName(target)} has been defeated!`);
@@ -1069,6 +1207,11 @@ export class BattleSimulator {
               atMs: currentTime,
               battleUnitId: target.id,
             }));
+
+            const targetSide = resolveBattleSide(target);
+            if (bossBattleSide !== null && targetSide === bossBattleSide) {
+              phaseDamageToBossSide += Math.floor(target.maxHp / 2);
+            }
           }
 
           // 攻撃カウントを増加
@@ -1140,6 +1283,7 @@ export class BattleSimulator {
             const isLeftSide = leftUnits.includes(action.unit);
             const allies = isLeftSide ? leftUnits : rightUnits;
             const enemies = isLeftSide ? rightUnits : leftUnits;
+            const enemyHpBefore = new Map(enemies.map((enemy) => [enemy.id, enemy.hp]));
 
             try {
               heroSkillDef.execute(action.unit, allies, enemies, combatLog);
@@ -1149,12 +1293,14 @@ export class BattleSimulator {
               combatLog.push(`Error executing hero skill for ${heroId}`);
             }
 
-            // スキルによる死亡をチェック
-            for (const enemy of enemies) {
-              if (enemy.hp <= 0 && !enemy.isDead) {
-                enemy.isDead = true;
-                combatLog.push(`${generateUnitName(enemy)} has been defeated!`);
-              }
+            const forcedSkillWinner = recordSkillDamageAgainstEnemies(
+              action.unit,
+              enemies,
+              enemyHpBefore,
+            );
+            if (forcedSkillWinner) {
+              forcedWinner = forcedSkillWinner;
+              break;
             }
           }
         } else {
@@ -1164,6 +1310,7 @@ export class BattleSimulator {
             const isLeftSide = leftUnits.includes(action.unit);
             const allies = isLeftSide ? leftUnits : rightUnits;
             const enemies = isLeftSide ? rightUnits : leftUnits;
+            const enemyHpBefore = new Map(enemies.map((enemy) => [enemy.id, enemy.hp]));
 
             try {
               skillDef.execute(action.unit, allies, enemies, combatLog);
@@ -1173,12 +1320,14 @@ export class BattleSimulator {
               combatLog.push(`Error executing skill for ${action.unit.type}`);
             }
 
-            // スキルによる死亡をチェック
-            for (const enemy of enemies) {
-              if (enemy.hp <= 0 && !enemy.isDead) {
-                enemy.isDead = true;
-                combatLog.push(`${generateUnitName(enemy)} has been defeated!`);
-              }
+            const forcedSkillWinner = recordSkillDamageAgainstEnemies(
+              action.unit,
+              enemies,
+              enemyHpBefore,
+            );
+            if (forcedSkillWinner) {
+              forcedWinner = forcedSkillWinner;
+              break;
             }
           }
         }
@@ -1187,17 +1336,19 @@ export class BattleSimulator {
       actionQueue.sort((a, b) => a.actionTime - b.actionTime);
     }
 
-    const result = this.determineBattleResult(
-      leftUnits, 
-      rightUnits, 
-      currentTime, 
+      const result = this.determineBattleResult(
+        leftUnits, 
+        rightUnits, 
+        currentTime, 
       maxDurationMs, 
       timeline,
-      combatLog,
-      damageDealtLeft, 
-      damageDealtRight,
-      bossDamage
-    );
+        combatLog,
+        damageDealtLeft, 
+        damageDealtRight,
+        bossDamage,
+        phaseDamageToBossSide,
+        forcedWinner,
+      );
 
     return result;
     } catch (error) {
@@ -1229,6 +1380,7 @@ export class BattleSimulator {
    * @param damageDealtLeft 左チームが与えたダメージ
    * @param damageDealtRight 右チームが与えたダメージ
    * @param bossDamage ボスが受けたダメージ
+   * @param phaseDamageToBossSide フェーズHPに入る累計ダメージ
    * @returns 戦闘結果
    */
   private determineBattleResult(
@@ -1241,6 +1393,8 @@ export class BattleSimulator {
     damageDealtLeft: number,
     damageDealtRight: number,
     bossDamage: number = 0,
+    phaseDamageToBossSide: number = 0,
+    forcedWinner: "left" | "right" | null = null,
   ): BattleResult {
     // BattleResult の基本オブジェクトを作成（bossDamage は条件付きで追加）
     const createResult = (winner: "left" | "right" | "draw"): BattleResult => {
@@ -1267,7 +1421,10 @@ export class BattleSimulator {
         },
       };
       
-      // bossDamage が 0 より大きい場合のみ追加
+      if (phaseDamageToBossSide > 0) {
+        return { ...baseResult, bossDamage, phaseDamageToBossSide };
+      }
+
       if (bossDamage > 0) {
         return { ...baseResult, bossDamage };
       }
@@ -1275,6 +1432,10 @@ export class BattleSimulator {
     };
     const leftSurvivors = leftUnits.filter((unit) => !unit.isDead);
     const rightSurvivors = rightUnits.filter((unit) => !unit.isDead);
+
+    if (forcedWinner) {
+      return createResult(forcedWinner);
+    }
 
     if (leftSurvivors.length === 0 && rightSurvivors.length === 0) {
       combatLog.push("Battle ended: Draw (all units defeated)");

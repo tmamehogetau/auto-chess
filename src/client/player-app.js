@@ -15,12 +15,16 @@ import {
   resolvePlayerFacingPhase,
 } from "./player-prep-phase.js";
 import {
+  clearSelectedSharedUnit,
   connectSharedBoard,
+  getSelectedSharedSubUnitCellIndex,
   getSelectedSharedUnitId,
   getSharedBoardState,
   handleSharedCellClick,
   initSharedBoardClient,
   leaveSharedBoardRoom,
+  refreshSharedBoardRender,
+  setSelectedSharedSubUnitCellIndex,
   setSharedBoardGamePlayerId,
   setSharedBoardRoomId,
 } from "./shared-board-client.js";
@@ -110,6 +114,7 @@ let latestPlayerFacingPhase = "lobby";
 let battleStartSweepTimeoutId = null;
 let latestPrepHoverDetail = null;
 let deadlineRefreshIntervalId = null;
+let selectedSharedSubUnitToken = null;
 
 function rememberSharedBoardRoomId(roomId) {
   const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
@@ -154,14 +159,19 @@ initSharedBoardClient(
     isTouhouRosterEnabled: () => latestState?.featureFlagsEnableTouhouRoster === true,
     isSubUnitSystemEnabled: () => latestState?.featureFlagsEnableSubUnitSystem === true,
     getSelectedHeroId: () => latestPlayer?.selectedHeroId ?? selectedHeroId ?? "",
+    getPlayerBoardUnits: () => Array.isArray(latestPlayer?.boardUnits)
+      ? latestPlayer.boardUnits
+      : latestPlayer?.boardUnits && typeof latestPlayer.boardUnits[Symbol.iterator] === "function"
+        ? Array.from(latestPlayer.boardUnits)
+        : [],
     getPlayerBoardSubUnits: () => Array.isArray(latestPlayer?.boardSubUnits)
       ? latestPlayer.boardSubUnits
       : latestPlayer?.boardSubUnits && typeof latestPlayer.boardSubUnits[Symbol.iterator] === "function"
         ? Array.from(latestPlayer.boardSubUnits)
         : [],
     getPlayerFacingPhase: () => latestPlayerFacingPhase,
-    onSubSlotActivate: ({ cellIndex }) => {
-      handlePlayerSharedSubSlotClick(cellIndex);
+    onSubSlotActivate: ({ cellIndex, subUnitToken }) => {
+      handlePlayerSharedSubSlotClick(cellIndex, subUnitToken);
     },
     onHoverDetailChange: (detail) => {
       setPrepHoverDetail(detail);
@@ -212,6 +222,7 @@ gameRoomSession.onConnectionState((connectionState) => {
   latestPlayerFacingPhase = "lobby";
   latestPrepHoverDetail = null;
   selectedBenchIndex = null;
+  selectedSharedSubUnitToken = null;
   clearPlayerBattleStartSweep();
   stopDeadlineRefreshLoop();
   leaveSharedBoardRoom();
@@ -235,9 +246,13 @@ gameRoomSession.onStateChange((state) => {
   if (!Number.isInteger(selectedBenchIndex) || selectedBenchIndex < 0 || selectedBenchIndex >= Number(player?.benchUnits?.length ?? 0)) {
     selectedBenchIndex = null;
   }
+  if (getSelectedSharedSubUnitCellIndex() !== null && !resolveSelectedSharedSubUnitToken()) {
+    clearSelectedSharedSubUnit();
+  }
   if (typeof state?.sharedBoardRoomId === "string" && state.sharedBoardRoomId.length > 0) {
     rememberSharedBoardRoomId(state.sharedBoardRoomId);
   }
+  refreshSharedBoardRender();
   showPlayerPhase(nextView);
   syncPlayerBattleStartSweep(previousPhase, state);
   renderPlayerHeaderTruth();
@@ -286,6 +301,7 @@ gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, (message) => {
   if (sharedBoardRoomId.length > 0) {
     rememberSharedBoardRoomId(sharedBoardRoomId);
   }
+  refreshSharedBoardRender();
   if (latestState && nextPlayerFacingPhase !== previousPlayerFacingPhase) {
     showPlayerPhase(resolvePlayerPhaseView(latestState));
   }
@@ -316,6 +332,9 @@ gameRoomSession.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
     code: message?.code,
     hint: message?.hint,
   });
+  if (message?.accepted === true) {
+    refreshSharedBoardRender();
+  }
 });
 
 if (playerShell instanceof HTMLElement) {
@@ -405,7 +424,7 @@ boardGridElement?.addEventListener("click", (event) => {
     10,
   );
 
-  if (selectedBenchIndex !== null && !isSubSlotTarget) {
+  if (!isSubSlotTarget) {
     event.preventDefault();
     event.stopPropagation();
   }
@@ -882,6 +901,62 @@ function handlePlayerBenchSelect(index) {
     return;
   }
 
+  const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
+  const selectedSubUnitToken = resolveSelectedSharedSubUnitToken();
+  if (selectedSubUnitCellIndex !== null) {
+    if (isHeroAttachedSubUnitToken(selectedSubUnitToken)) {
+      showPlayerStatus("主人公 sub は Bench と交換できません。移動したいときは board 側を選んでください。");
+      return;
+    }
+
+    if (latestPlayer?.benchUnits?.[index]) {
+      gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: nextCmdSeq(),
+        subUnitSwapBench: { cell: selectedSubUnitCellIndex, benchIndex: index },
+      });
+    } else {
+      gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+        cmdSeq: nextCmdSeq(),
+        subUnitToBenchCell: { cell: selectedSubUnitCellIndex },
+      });
+    }
+    clearSelectedSharedSubUnit();
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  const selectedBoardCell = resolveSelectedSharedBoardCell();
+  const clickedBenchUnit = latestPlayer?.benchUnits?.[index] ?? null;
+  if (
+    selectedBoardCell
+    && !clickedBenchUnit
+    && !isSpecialSharedUnitId(selectedBoardCell.unitId)
+  ) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      boardToBenchCell: { cell: selectedBoardCell.cellIndex },
+    });
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  if (
+    selectedBoardCell
+    && clickedBenchUnit
+    && !isSpecialSharedUnitId(selectedBoardCell.unitId)
+  ) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      benchToBoardCell: {
+        benchIndex: index,
+        cell: selectedBoardCell.cellIndex,
+      },
+    });
+    selectedBenchIndex = null;
+    renderPlayerPrepSurface();
+    return;
+  }
+
   selectedBenchIndex = selectedBenchIndex === index ? null : index;
   renderPlayerPrepSurface();
 }
@@ -944,6 +1019,23 @@ function handlePlayerBoardReturn() {
     return;
   }
 
+  const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
+  const selectedSubUnitToken = resolveSelectedSharedSubUnitToken();
+  if (selectedSubUnitCellIndex !== null) {
+    if (isHeroAttachedSubUnitToken(selectedSubUnitToken)) {
+      showPlayerStatus("主人公 sub は bench に戻せません。空きセルか host unit を選んで移動してください。");
+      return;
+    }
+
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      subUnitToBenchCell: { cell: selectedSubUnitCellIndex },
+    });
+    clearSelectedSharedSubUnit();
+    renderPlayerPrepSurface();
+    return;
+  }
+
   const selectedCell = resolveSelectedSharedBoardCell();
   const cellIndex = selectedCell?.cellIndex ?? null;
   if (cellIndex === null) {
@@ -971,16 +1063,47 @@ function handlePlayerSharedCellClick(cellIndex) {
     return;
   }
 
-  if (selectedBenchIndex === null) {
-    handleSharedCellClick(getSharedBoardState(), cellIndex);
-    renderPlayerPrepSurface();
-    return;
-  }
-
   if (!Number.isInteger(cellIndex) || cellIndex < 0) {
     showPlayerStatus(latestPlayer?.role === "boss"
       ? "いま配置できるのは、上側の boss 配置セルだけです。"
       : "いま配置できるのは、下側の raid 配置セルだけです。");
+    return;
+  }
+
+  const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
+  if (selectedSubUnitCellIndex !== null) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      subUnitMove: {
+        fromCell: selectedSubUnitCellIndex,
+        toCell: cellIndex,
+        slot: "main",
+      },
+    });
+    clearSelectedSharedSubUnit();
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  const selectedBoardCell = resolveSelectedSharedBoardCell();
+  if (
+    selectedBenchIndex === null
+    && selectedBoardCell
+    && isSpecialSharedUnitId(selectedBoardCell.unitId)
+    && (latestPlayer?.selectedHeroId ?? "") !== ""
+  ) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      heroPlacementCell: cellIndex,
+    });
+    clearSelectedSharedUnit();
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  if (selectedBenchIndex === null) {
+    handleSharedCellClick(getSharedBoardState(), cellIndex);
+    renderPlayerPrepSurface();
     return;
   }
 
@@ -995,7 +1118,7 @@ function handlePlayerSharedCellClick(cellIndex) {
   renderPlayerPrepSurface();
 }
 
-function handlePlayerSharedSubSlotClick(cellIndex) {
+function handlePlayerSharedSubSlotClick(cellIndex, rawSubUnitToken = null) {
   if (!canUseBoardAction({
     currentPhase: latestState?.phase,
     playerFacingPhase: latestPlayerFacingPhase,
@@ -1004,8 +1127,18 @@ function handlePlayerSharedSubSlotClick(cellIndex) {
     return;
   }
 
-  if (selectedBenchIndex === null) {
-    showPlayerStatus("sub slot に装着する unit を Bench から選んでください。");
+  if (selectedBenchIndex !== null) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      benchToBoardCell: {
+        benchIndex: selectedBenchIndex,
+        cell: cellIndex,
+        slot: "sub",
+      },
+    });
+    selectedBenchIndex = null;
+    clearSelectedSharedSubUnit();
+    renderPlayerPrepSurface();
     return;
   }
 
@@ -1014,16 +1147,67 @@ function handlePlayerSharedSubSlotClick(cellIndex) {
     return;
   }
 
-  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
-    cmdSeq: nextCmdSeq(),
-    benchToBoardCell: {
-      benchIndex: selectedBenchIndex,
-      cell: cellIndex,
-      slot: "sub",
-    },
-  });
-  selectedBenchIndex = null;
-  renderPlayerPrepSurface();
+  const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
+  if (selectedSubUnitCellIndex !== null) {
+    if (selectedSubUnitCellIndex === cellIndex) {
+      clearSelectedSharedSubUnit();
+      renderPlayerPrepSurface();
+      return;
+    }
+
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      subUnitMove: {
+        fromCell: selectedSubUnitCellIndex,
+        toCell: cellIndex,
+        slot: "sub",
+      },
+    });
+    clearSelectedSharedSubUnit();
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  const selectedBoardCell = resolveSelectedSharedBoardCell();
+  if (
+    selectedBoardCell
+    && !isSpecialSharedUnitId(selectedBoardCell.unitId)
+  ) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      boardUnitMove: {
+        fromCell: selectedBoardCell.cellIndex,
+        toCell: cellIndex,
+        slot: "sub",
+      },
+    });
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  if (
+    selectedBoardCell
+    && isSpecialSharedUnitId(selectedBoardCell.unitId)
+    && (latestPlayer?.selectedHeroId ?? "") === "okina"
+  ) {
+    gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: nextCmdSeq(),
+      heroPlacementCell: cellIndex,
+    });
+    clearSelectedSharedUnit();
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  const availableSubUnitToken = resolvePlayerSubUnitTokenForCell(cellIndex) ?? rawSubUnitToken;
+  if (availableSubUnitToken) {
+    selectSharedSubUnit(cellIndex, availableSubUnitToken);
+    showPlayerStatus("sub-unit を選択中です。Bench に戻す、Bench と交換する、別の cell に移動する操作ができます。");
+    renderPlayerPrepSurface();
+    return;
+  }
+
+  showPlayerStatus("sub slot に装着する unit を Bench から選ぶか、移動したい sub-unit を先に選んでください。");
 }
 
 function getCurrentBoardCellElements() {
@@ -1122,7 +1306,7 @@ function renderPlayerPrepSurface() {
     selectedBenchIndex,
     canSellBench: selectedBenchIndex !== null,
     canSellBoard: canManipulateSelectedBoardUnit(),
-    canReturnBoard: canManipulateSelectedBoardUnit(),
+    canReturnBoard: canManipulateSelectedBoardUnit() || getSelectedSharedSubUnitCellIndex() !== null,
     roomSummary: {
       roomId: typeof gameRoomSession.getRoom()?.roomId === "string"
         ? gameRoomSession.getRoom().roomId
@@ -1173,6 +1357,49 @@ function resolveSelectedSharedBoardCell() {
   }
 
   return null;
+}
+
+function resolvePlayerSubUnitTokenForCell(cellIndex) {
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
+    return null;
+  }
+
+  const boardSubUnits = Array.isArray(latestPlayer?.boardSubUnits)
+    ? latestPlayer.boardSubUnits
+    : latestPlayer?.boardSubUnits && typeof latestPlayer.boardSubUnits[Symbol.iterator] === "function"
+      ? Array.from(latestPlayer.boardSubUnits)
+      : [];
+
+  const cellPrefix = `${cellIndex}:`;
+  return boardSubUnits.find((token) => typeof token === "string" && token.startsWith(cellPrefix)) ?? null;
+}
+
+function resolveSelectedSharedSubUnitToken() {
+  const selectedCellIndex = getSelectedSharedSubUnitCellIndex();
+  if (selectedCellIndex === null) {
+    return null;
+  }
+
+  const liveToken = resolvePlayerSubUnitTokenForCell(selectedCellIndex);
+  if (selectedSharedSubUnitToken !== null && selectedSharedSubUnitToken === liveToken) {
+    return selectedSharedSubUnitToken;
+  }
+
+  return liveToken;
+}
+
+function isHeroAttachedSubUnitToken(token) {
+  return typeof token === "string" && token.includes(":hero:");
+}
+
+function selectSharedSubUnit(cellIndex, token) {
+  selectedSharedSubUnitToken = typeof token === "string" && token.length > 0 ? token : null;
+  setSelectedSharedSubUnitCellIndex(cellIndex);
+}
+
+function clearSelectedSharedSubUnit() {
+  selectedSharedSubUnitToken = null;
+  setSelectedSharedSubUnitCellIndex(null);
 }
 
 function resolveSelectedSharedBoardCellIndex() {

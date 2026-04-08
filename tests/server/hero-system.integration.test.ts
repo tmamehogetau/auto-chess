@@ -404,8 +404,8 @@ describe("Hero System Integration Tests", () => {
         expect(battleStart?.units).toEqual(expect.arrayContaining([
           expect.objectContaining({
             battleUnitId: "right-ranger-0",
-            x: 0,
-            y: 4,
+            x: 1,
+            y: 5,
           }),
           expect.objectContaining({
             battleUnitId: "left-vanguard-0",

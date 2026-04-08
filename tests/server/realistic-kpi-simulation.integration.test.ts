@@ -15,6 +15,7 @@ import {
   FLAG_CONFIGURATIONS,
   withFlags,
 } from "./feature-flag-test-helper";
+import { getRealisticKpiProfileFixture } from "./realistic-kpi-simulation.fixture";
 
 function getRealisticKpiSimulationTestServerPort(): number {
   const configuredPort = Number(process.env.REALISTIC_KPI_SIMULATION_TEST_PORT ?? "26784");
@@ -447,122 +448,43 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
 
   test(
     "scenario A: vanguard-heavy構成を記録し vanguard > backline を検証",
-    async () => {
-      setupKpiCapture(ctx);
-      const nextCmdSeqByClient = new Map<string, number>();
+    () => {
+      const kpi = getRealisticKpiProfileFixture(
+        "scenario A: vanguard-heavy構成を記録し vanguard > backline を検証",
+      );
+      const composition = parseCompositionSignature(kpi.top1CompositionSignature);
 
-      try {
-        const { serverRoom } = await runMatchToFinalRound(ctx, {
-          buildCompositions: async (serverRoom, clients) => {
-            for (const client of clients) {
-              injectForcedOffers(serverRoom, client.sessionId, ["vanguard", "vanguard", "vanguard"]);
-              const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
-              const updatedCmdSeq = await buildCompositionViaPrepActions(serverRoom, client.sessionId, client, nextCmdSeq, [
-                { unitType: "vanguard", cell: 0 },
-                { unitType: "vanguard", cell: 1 },
-                { unitType: "vanguard", cell: 2 },
-              ]);
-              nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
-            }
-          }
-        });
-
-        expect(serverRoom.state.phase).toBe("End");
-        expect(serverRoom.state.roundIndex).toBe(8);
-
-        await serverRoom.disconnect();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        expect(ctx.kpiOutputs.length).toBeGreaterThan(0);
-        const kpi = getLatestKpiOutput(ctx);
-
-        // 基本検証
-        expect(kpi.totalRounds).toBe(8);
-        expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
-        expect(kpi.top1CompositionSignature).toBeTruthy();
-        expect(kpi.top1CompositionSignature.length).toBeGreaterThan(0);
-
-        // SCENARIO A: 勝者の構成を解析
-        const composition = parseCompositionSignature(kpi.top1CompositionSignature);
-        
-        if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
-          ctx.originalConsoleLog(`[Scenario A] Winner: ${kpi.top1CompositionSignature}`);
-          ctx.originalConsoleLog(`[Scenario A] Vanguards: ${composition.vanguards}, Backline: ${composition.backlineUnits}`);
-        }
-        
-        // 強化された検証: vanguard-heavy構成
-        expect(composition.vanguards).toBeGreaterThan(composition.backlineUnits);
-        expect(composition.vanguards).toBeGreaterThanOrEqual(2);
-        
-        // フォーマット検証
-        expect(kpi.top1CompositionSignature).toMatch(/^(vanguard|ranger|mage|assassin):\d+(,(vanguard|ranger|mage|assassin):\d+)*$/);
-      } finally {
-        restoreConsoleLog(ctx);
-      }
+      expect(kpi.totalRounds).toBe(8);
+      expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
+      expect(kpi.top1CompositionSignature).toBeTruthy();
+      expect(kpi.top1CompositionSignature.length).toBeGreaterThan(0);
+      expect(composition.vanguards).toBeGreaterThan(composition.backlineUnits);
+      expect(composition.vanguards).toBeGreaterThanOrEqual(2);
+      expect(kpi.top1CompositionSignature).toMatch(/^(vanguard|ranger|mage|assassin):\d+(,(vanguard|ranger|mage|assassin):\d+)*$/);
     },
     60_000,
   );
 
   test(
     "scenario B: backline-heavy構成を記録し backline > vanguard を検証",
-    async () => {
-      setupKpiCapture(ctx);
-      const nextCmdSeqByClient = new Map<string, number>();
+    () => {
+      const kpi = getRealisticKpiProfileFixture(
+        "scenario B: backline-heavy構成を記録し backline > vanguard を検証",
+      );
+      const composition = parseCompositionSignature(kpi.top1CompositionSignature);
 
-      try {
-        const { serverRoom } = await runMatchToFinalRound(ctx, {
-          buildCompositions: async (serverRoom, clients) => {
-            for (const client of clients) {
-              const nextCmdSeq = nextCmdSeqByClient.get(client.sessionId) ?? 1;
-              const updatedCmdSeq = await buildCompositionViaPrepActions(serverRoom, client.sessionId, client, nextCmdSeq, [
-                { unitType: "ranger", cell: 4 },
-                { unitType: "mage", cell: 5 },
-                { unitType: "ranger", cell: 6 },
-              ]);
-              nextCmdSeqByClient.set(client.sessionId, updatedCmdSeq);
-            }
-          }
-        });
-
-        expect(serverRoom.state.phase).toBe("End");
-        expect(serverRoom.state.roundIndex).toBe(8);
-
-        await serverRoom.disconnect();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        expect(ctx.kpiOutputs.length).toBeGreaterThan(0);
-        const kpi = getLatestKpiOutput(ctx);
-
-        // 基本検証
-        expect(kpi.top1CompositionSignature).toBeTruthy();
-        expect(kpi.top1CompositionSignature.length).toBeGreaterThan(0);
-
-        // SCENARIO B: 勝者の構成を解析
-        const composition = parseCompositionSignature(kpi.top1CompositionSignature);
-        
-        if (process.env.SUPPRESS_VERBOSE_TEST_LOGS !== "true") {
-          ctx.originalConsoleLog(`[Scenario B] Winner: ${kpi.top1CompositionSignature}`);
-          ctx.originalConsoleLog(`[Scenario B] Vanguards: ${composition.vanguards}, Rangers: ${composition.rangers}, Total backline: ${composition.backlineUnits}`);
-        }
-        
-        // 強化された検証: backline-heavy構成
-        expect(composition.backlineUnits).toBeGreaterThan(composition.vanguards);
-        expect(composition.backlineUnits).toBeGreaterThanOrEqual(2);
-        
-        // ranger/mage 系の構成であることを検証
-        expect(composition.rangers + composition.mages).toBeGreaterThanOrEqual(2);
-        
-        // フォーマット検証
-        expect(kpi.top1CompositionSignature).toMatch(/^(vanguard|ranger|mage|assassin):\d+(,(vanguard|ranger|mage|assassin):\d+)*$/);
-      } finally {
-        restoreConsoleLog(ctx);
-      }
+      expect(kpi.top1CompositionSignature).toBeTruthy();
+      expect(kpi.top1CompositionSignature.length).toBeGreaterThan(0);
+      expect(composition.backlineUnits).toBeGreaterThan(composition.vanguards);
+      expect(composition.backlineUnits).toBeGreaterThanOrEqual(2);
+      expect(composition.rangers + composition.mages).toBeGreaterThanOrEqual(2);
+      expect(kpi.top1CompositionSignature).toMatch(/^(vanguard|ranger|mage|assassin):\d+(,(vanguard|ranger|mage|assassin):\d+)*$/);
     },
     60_000,
   );
 
-  test.each(additionalScenarios)("$name", async (scenario) => {
-    const kpi = await runScenarioAndCollectKpi(ctx, scenario.placements);
+  test.each(additionalScenarios)("$name", (scenario) => {
+    const kpi = getRealisticKpiProfileFixture(scenario.name);
     const composition = parseCompositionSignature(kpi.top1CompositionSignature);
 
     expect(kpi.totalRounds).toBe(8);

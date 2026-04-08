@@ -364,6 +364,31 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
+    test("boardUnitMove slot=sub rejects a source host that already carries its own sub-unit", () => {
+      const deps = createDependencies({
+        isSubUnitSystemEnabled: vi.fn().mockReturnValue(true),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          {
+            cell: 24,
+            unitType: "vanguard",
+            subUnit: {
+              unitType: "mage",
+              starLevel: 1,
+              unitCount: 1,
+              sellValue: 1,
+            },
+          },
+          { cell: 25, unitType: "ranger" },
+        ] satisfies BoardUnitPlacement[]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardUnitMove: { fromCell: 24, toCell: 25, slot: "sub" },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
     test("benchSellIndex with non-existent bench index returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         getBenchUnits: vi.fn().mockReturnValue([]),
@@ -864,6 +889,40 @@ describe("PrepCommandValidator", () => {
 
       const result = validatePrepCommand("p1", 1, 1000, {
         benchToBoardCell: { benchIndex: 0, cell: 2 },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("boardUnitMove without slot keeps the main-board move path valid", () => {
+      const deps = createDependencies({
+        getBoardPlacements: vi.fn().mockReturnValue([
+          { cell: 24, unitType: "vanguard" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardUnitMove: { fromCell: 24, toCell: 25 },
+      }, deps);
+
+      expect(result).toBeNull();
+    });
+
+    test("boardUnitMove slot=sub rejects a source host that already carries a sub unit", () => {
+      const deps = createDependencies({
+        isSubUnitSystemEnabled: vi.fn().mockReturnValue(true),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          {
+            cell: 24,
+            unitType: "vanguard",
+            subUnit: { unitType: "mage" },
+          },
+          { cell: 25, unitType: "ranger" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardUnitMove: { fromCell: 24, toCell: 25, slot: "sub" },
       }, deps);
 
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });

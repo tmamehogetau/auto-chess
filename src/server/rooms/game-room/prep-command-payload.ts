@@ -18,12 +18,17 @@ export function buildPrepCommandPayload(
   if (
     message.boardUnitCount === undefined &&
     message.boardPlacements === undefined &&
+    message.heroPlacementCell === undefined &&
     message.xpPurchaseCount === undefined &&
     message.shopRefreshCount === undefined &&
     message.shopBuySlotIndex === undefined &&
     message.shopLock === undefined &&
     message.benchToBoardCell === undefined &&
     message.boardToBenchCell === undefined &&
+    message.boardUnitMove === undefined &&
+    message.subUnitToBenchCell === undefined &&
+    message.subUnitMove === undefined &&
+    message.subUnitSwapBench === undefined &&
     message.benchSellIndex === undefined &&
     message.boardSellIndex === undefined &&
     message.mergeUnits === undefined &&
@@ -35,12 +40,17 @@ export function buildPrepCommandPayload(
   return {
     ...(message.boardUnitCount !== undefined && { boardUnitCount: message.boardUnitCount }),
     ...(message.boardPlacements !== undefined && { boardPlacements: message.boardPlacements }),
+    ...(message.heroPlacementCell !== undefined && { heroPlacementCell: message.heroPlacementCell }),
     ...(message.xpPurchaseCount !== undefined && { xpPurchaseCount: message.xpPurchaseCount }),
     ...(message.shopRefreshCount !== undefined && { shopRefreshCount: message.shopRefreshCount }),
     ...(message.shopBuySlotIndex !== undefined && { shopBuySlotIndex: message.shopBuySlotIndex }),
     ...(message.shopLock !== undefined && { shopLock: message.shopLock }),
     ...(message.benchToBoardCell !== undefined && { benchToBoardCell: message.benchToBoardCell }),
     ...(message.boardToBenchCell !== undefined && { boardToBenchCell: message.boardToBenchCell }),
+    ...(message.boardUnitMove !== undefined && { boardUnitMove: message.boardUnitMove }),
+    ...(message.subUnitToBenchCell !== undefined && { subUnitToBenchCell: message.subUnitToBenchCell }),
+    ...(message.subUnitMove !== undefined && { subUnitMove: message.subUnitMove }),
+    ...(message.subUnitSwapBench !== undefined && { subUnitSwapBench: message.subUnitSwapBench }),
     ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
     ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
     ...(message.mergeUnits !== undefined && { mergeUnits: message.mergeUnits }),

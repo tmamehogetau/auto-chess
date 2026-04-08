@@ -566,6 +566,10 @@ describeGameRoomIntegration("GameRoom integration / shared board", (context) => 
         () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
         1_500,
       );
+      await waitForCondition(
+        () => serverRoom.state.playerPhase === "deploy",
+        2_500,
+      );
 
       await waitForCondition(() => helperClients.every((helperClient) => {
         const placements = roomInternals.controller?.getBoardPlacementsForPlayer(helperClient.sessionId) ?? [];
@@ -784,6 +788,101 @@ describeGameRoomIntegration("GameRoom integration / shared board", (context) => 
         && sourceCell?.unitId === ""
       );
     }, SHARED_BOARD_BOSS_PROPAGATION_TIMEOUT_MS);
+  }, 20_000);
+
+  test("shared board lets Okina enter an occupied allied cell as a sub unit", async () => {
+    const sharedBoardRoom = await getTestServer().createRoom<SharedBoardRoom>("shared_board");
+    const { serverRoom, clients } = await connectBossRoleSelectionRoom(getTestServer(), {
+      prepDurationMs: 12_000,
+      battleDurationMs: 12_000,
+      settleDurationMs: 1_000,
+      eliminationDurationMs: 1_000,
+      sharedBoardRoomId: sharedBoardRoom.roomId,
+    }, {
+      enableSharedBoardShadow: true,
+      enableSubUnitSystem: true,
+    });
+
+    const okinaClient = clients[3];
+    if (!okinaClient) {
+      throw new Error("Expected Okina raid client");
+    }
+
+    const roomInternals = serverRoom as unknown as {
+      controller?: {
+        applyPrepPlacementForPlayer: (playerId: string, placements: Array<{ cell: number; unitType: "vanguard" }>) => { success: boolean };
+        getHeroPlacementForPlayer: (playerId: string) => number | null;
+        getPlayerStatus: (playerId: string) => { boardSubUnits?: string[]; boardUnits: string[] };
+      };
+      sharedBoardBridge?: {
+        getState: () => string;
+        syncSharedBoardViewFromController?: (forcePrepSync?: boolean) => void;
+      };
+    };
+
+    await resolveBossRoleSelectionToPrep(serverRoom, clients, 1_000);
+
+    if (!roomInternals.controller) {
+      throw new Error("Expected room controller");
+    }
+
+    const hostCell = sharedBoardCoordinateToIndex({ x: 1, y: 4 });
+    const initialHeroCell = roomInternals.controller.getHeroPlacementForPlayer(okinaClient.sessionId);
+    if (typeof initialHeroCell !== "number") {
+      throw new Error("Expected initial Okina hero placement");
+    }
+
+    expect(
+      roomInternals.controller.applyPrepPlacementForPlayer(okinaClient.sessionId, [
+        { cell: hostCell, unitType: "vanguard" },
+      ]),
+    ).toMatchObject({ success: true });
+
+    await waitForCondition(
+      () => roomInternals.sharedBoardBridge?.getState() === "READY" && serverRoom.state.phase === "Prep",
+      1_000,
+    );
+    roomInternals.sharedBoardBridge?.syncSharedBoardViewFromController?.(true);
+
+    await waitForSharedBoardPropagation(roomInternals.sharedBoardBridge, () => {
+      const host = sharedBoardRoom.state.cells.get(String(hostCell));
+      const hero = sharedBoardRoom.state.cells.get(String(initialHeroCell));
+      return host?.ownerId === okinaClient.sessionId
+        && (host?.unitId?.length ?? 0) > 0
+        && hero?.unitId === `hero:${okinaClient.sessionId}`;
+    }, SHARED_BOARD_PROPAGATION_TIMEOUT_MS);
+
+    const sharedClient = await getTestServer().connectTo(sharedBoardRoom, {
+      gamePlayerId: okinaClient.sessionId,
+    });
+    sharedClient.onMessage("shared_role", (_message: unknown) => {});
+    sharedClient.send("shared_request_role");
+    await sharedClient.waitForMessage("shared_role");
+
+    await waitForCondition(() => {
+      const sharedPlayer = sharedBoardRoom.state.players.get(sharedClient.sessionId);
+      return sharedPlayer?.isSpectator === false;
+    }, 1_000);
+
+    sharedClient.send("shared_place_unit", {
+      unitId: `hero:${okinaClient.sessionId}`,
+      toCell: hostCell,
+    });
+
+    const placeResult = await sharedClient.waitForMessage("shared_action_result");
+    expect(placeResult).toEqual({
+      accepted: true,
+      action: "place_unit",
+    });
+
+    await waitForSharedBoardPropagation(roomInternals.sharedBoardBridge, () => {
+      const status = roomInternals.controller?.getPlayerStatus(okinaClient.sessionId);
+      return status?.boardSubUnits?.includes(`${hostCell}:hero:okina`) === true;
+    }, SHARED_BOARD_PROPAGATION_TIMEOUT_MS);
+
+    const okinaStatus = roomInternals.controller.getPlayerStatus(okinaClient.sessionId);
+    expect(okinaStatus.boardSubUnits).toContain(`${hostCell}:hero:okina`);
+    expect(okinaStatus.boardUnits.some((token) => token.startsWith(`${hostCell}:vanguard`))).toBe(true);
   }, 20_000);
 
 });

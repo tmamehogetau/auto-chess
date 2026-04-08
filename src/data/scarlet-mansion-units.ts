@@ -6,9 +6,9 @@
  */
 
 import type { BoardUnitType } from "../shared/room-messages";
-import type { UnitId } from "../shared/types";
+import type { CombatStats, UnitId } from "../shared/types";
 
-export interface ScarletMansionUnit {
+export interface ScarletMansionUnit extends CombatStats {
   /** ユニットID */
   id: string;
   /** stable unitId */
@@ -19,18 +19,6 @@ export interface ScarletMansionUnit {
   unitType: BoardUnitType;
   /** コスト（2G-4G） */
   cost: 2 | 3 | 4;
-  /** HP */
-  hp: number;
-  /** 攻撃力 */
-  attack: number;
-  /** 攻撃速度 */
-  attackSpeed: number;
-  /** 射程 */
-  range: number;
-  /** 物理軽減率（0-100） */
-  physicalReduction: number;
-  /** 魔法軽減率（0-100） */
-  magicReduction: number;
   /** 役割説明 */
   role: string;
   /** スキル説明 */
@@ -54,6 +42,9 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     attack: 65,
     attackSpeed: 0.85,
     range: 1,
+    defense: 17.5,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
     physicalReduction: 20,
     magicReduction: 15,
     role: "序盤の壁",
@@ -70,6 +61,9 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     attack: 95,
     attackSpeed: 1.15,
     range: 2,
+    defense: 10,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
     physicalReduction: 10,
     magicReduction: 10,
     role: "守護サポート",
@@ -86,6 +80,9 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     attack: 140,
     attackSpeed: 0.75,
     range: 4,
+    defense: 15,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
     physicalReduction: 5,
     magicReduction: 25,
     role: "爆発補助",

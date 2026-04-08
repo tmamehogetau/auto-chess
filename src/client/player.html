@@ -5,15 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
     <title>Auto Chess - Player</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Shippori+Mincho:wght@700;800&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg: #0d1321;
-        --panel: #16213e;
-        --panel-strong: #1e2c52;
-        --border: #30415f;
+        --bg: #0b1120;
+        --panel: rgba(15, 27, 49, 0.75);
+        --panel-strong: rgba(20, 36, 64, 0.9);
+        --border: rgba(212, 175, 55, 0.4);
         --text: #f4f7fb;
         --muted: #a8b4c8;
-        --accent: #f5c16c;
+        --accent: #E64A19;
+        --accent-gold: #FFD700;
+        
+        --font-main: 'Noto Sans JP', sans-serif;
+        --font-accent: 'Shippori Mincho', serif;
       }
 
       * {
@@ -23,10 +30,10 @@
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: "Segoe UI", sans-serif;
+        font-family: var(--font-main);
         background:
-          radial-gradient(circle at top, rgba(245, 193, 108, 0.12), transparent 32%),
-          linear-gradient(180deg, #09101d, var(--bg));
+          radial-gradient(circle at top, rgba(230, 74, 25, 0.15), transparent 40%),
+          linear-gradient(180deg, #0b1120, var(--bg));
         color: var(--text);
       }
 
@@ -39,9 +46,12 @@
       .player-header,
       .player-phase,
       .player-host-help {
-        background: rgba(22, 33, 62, 0.94);
+        background: var(--panel);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
         border: 1px solid var(--border);
         border-radius: 18px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
       }
 
       .player-header {
@@ -51,7 +61,10 @@
 
       .player-title {
         margin: 0 0 6px;
-        font-size: 28px;
+        font-family: var(--font-accent);
+        font-size: 32px;
+        color: var(--accent-gold);
+        text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
       }
 
       .player-copy {
@@ -70,13 +83,21 @@
 
       .player-action-btn {
         appearance: none;
-        border: none;
+        border: 1px solid rgba(255, 255, 255, 0.4);
         border-radius: 999px;
-        padding: 10px 18px;
-        background: linear-gradient(135deg, #f5c16c, #d88f2d);
-        color: #101522;
-        font-weight: 700;
+        padding: 10px 24px;
+        background: linear-gradient(135deg, #FFD700, #E64A19);
+        color: #0b1120;
+        font-weight: 900;
         cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        box-shadow: 0 4px 15px rgba(230, 74, 25, 0.4);
+      }
+
+      .player-action-btn:hover:not(:disabled) {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(255, 215, 0, 0.6);
+        background: linear-gradient(135deg, #FFE066, #FF5722);
       }
 
       .player-room-code-input {
@@ -548,17 +569,32 @@
         align-items: start;
         padding: 10px 12px;
         border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(255, 255, 255, 0.04);
+        background: var(--panel);
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .player-bench-slot-filled:hover {
+        border-color: rgba(255, 215, 0, 0.4);
+        transform: translateY(-2px);
       }
 
       .player-bench-slot-selected {
-        border-color: rgba(243, 204, 123, 0.34);
-        background: linear-gradient(180deg, rgba(243, 204, 123, 0.12), rgba(255, 255, 255, 0.04));
+        border-color: rgba(255, 215, 0, 0.8);
+        background: linear-gradient(180deg, rgba(255, 215, 0, 0.15), rgba(255, 255, 255, 0.04));
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
       }
 
       .player-bench-slot-empty {
-        border: 1px dashed rgba(255, 255, 255, 0.12);
+        border: 2px dashed rgba(255, 255, 255, 0.12);
         background: rgba(255, 255, 255, 0.025);
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .player-bench-slot-empty:hover {
+        border-color: rgba(255, 215, 0, 0.4);
+        background: rgba(255, 215, 0, 0.05);
       }
 
       .player-bench-slot-avatar {
@@ -611,18 +647,27 @@
       .player-card {
         min-height: 0;
         padding: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--border);
         border-radius: 20px;
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
-          rgba(30, 44, 82, 0.78);
+          linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+          var(--panel-strong);
         box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+
+      .player-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 22px 40px rgba(0, 0, 0, 0.4), 0 0 15px rgba(255, 215, 0, 0.2);
+        border-color: rgba(255, 215, 0, 0.5);
       }
 
       .player-card strong {
         display: block;
         margin-bottom: 8px;
-        color: var(--accent);
+        color: var(--accent-gold);
+        font-family: var(--font-accent);
+        font-size: 16px;
       }
 
       .player-phase.battle-start-sweep .player-result-grid {
@@ -747,27 +792,44 @@
       }
 
       .shared-board-grid {
+        --shared-board-columns: 6;
+        --shared-board-rows: 6;
         --shared-board-gap: 10px;
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        width: 100%;
+        grid-template-columns: repeat(var(--shared-board-columns, 6), minmax(0, 1fr));
+        grid-template-rows: repeat(var(--shared-board-rows, 6), minmax(0, 1fr));
+        aspect-ratio: var(--shared-board-columns, 6) / var(--shared-board-rows, 6);
         gap: var(--shared-board-gap);
         margin-top: 16px;
         position: relative;
       }
 
       .shared-board-cell {
-        min-height: 104px;
+        min-height: 0;
+        width: 100%;
+        height: 100%;
         padding: 10px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 20px;
         background:
           linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
-          rgba(11, 17, 31, 0.82);
+          var(--panel);
         display: flex;
         align-items: stretch;
         justify-content: center;
         position: relative;
         overflow: hidden;
+        transition: all 0.2s ease;
+        cursor: pointer;
+      }
+
+      .shared-board-cell:hover {
+        background:
+          linear-gradient(180deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.02)),
+          var(--panel-strong);
+        border-color: rgba(255, 215, 0, 0.6);
+        box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.2);
       }
 
       .shared-board-cell.zone-boss {
@@ -1081,7 +1143,8 @@
         inset: 0;
         display: grid;
         gap: var(--shared-board-gap);
-        grid-auto-rows: minmax(72px, auto);
+        grid-template-columns: repeat(var(--shared-board-columns, 6), minmax(0, 1fr));
+        grid-template-rows: repeat(var(--shared-board-rows, 6), minmax(0, 1fr));
         pointer-events: none;
       }
 
@@ -1179,6 +1242,22 @@
         border-color: rgba(124, 195, 255, 0.38);
         box-shadow: 0 0 0 3px rgba(124, 195, 255, 0.08);
         color: #9ee7ff;
+      }
+
+      .shared-board-sub-slot-selected {
+        border-color: rgba(255, 214, 102, 0.92);
+        box-shadow:
+          0 0 0 3px rgba(255, 214, 102, 0.18),
+          0 0 18px rgba(255, 214, 102, 0.28);
+        transform: translateY(-1px);
+      }
+
+      .shared-board-sub-slot-portrait {
+        width: 100%;
+        height: 100%;
+        border-radius: 10px;
+        object-fit: cover;
+        display: block;
       }
 
       .result-imprint-grid {
@@ -1304,6 +1383,12 @@
         .player-prep-grid {
           grid-template-columns: 1fr;
         }
+      }
+      [data-shared-board-placement-guide] {
+        --shared-board-guide-lines: 3;
+        min-height: calc(1.45em * var(--shared-board-guide-lines));
+        height: calc(1.45em * var(--shared-board-guide-lines));
+        overflow-y: auto;
       }
     </style>
   </head>

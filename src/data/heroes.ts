@@ -3,15 +3,14 @@ import {
   sharedBoardIndexToCoordinate,
   sharedBoardManhattanDistance,
 } from "../shared/board-geometry";
-import type { BoardUnitType } from "../shared/types";
+import type { BoardUnitType, CombatStats } from "../shared/types";
 
-export interface Hero {
+export interface Hero extends CombatStats {
   id: string;
   name: string;
   role: 'tank' | 'dps' | 'support' | 'control' | 'balance' | 'economy';
+  unitType: BoardUnitType;
   synergyBonusType: BoardUnitType;
-  hp: number;
-  attack: number;
   skill: {
     name: string;
     description: string;
@@ -19,15 +18,25 @@ export interface Hero {
   };
 }
 
+// Hero combat stats are intentionally tuned around low-to-mid cost shop units.
+// They should survive long enough to express role identity without eclipsing bought units.
 export const HEROES: Hero[] = [
   // バランス型 - 防御バフ
   {
     id: 'reimu',
     name: '霊夢',
     role: 'balance',
+    unitType: 'vanguard',
     synergyBonusType: 'vanguard',
-    hp: 120,
-    attack: 18,
+    hp: 620,
+    attack: 52,
+    attackSpeed: 0.75,
+    range: 1,
+    defense: 10,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
+    physicalReduction: 0,
+    magicReduction: 0,
     skill: {
       name: '夢符「二重結界」',
       description: '味方全体に防御バフ（被ダメージ-20%）',
@@ -46,9 +55,17 @@ export const HEROES: Hero[] = [
     id: 'marisa',
     name: '魔理沙',
     role: 'dps',
+    unitType: 'ranger',
     synergyBonusType: 'ranger',
-    hp: 100,
-    attack: 25,
+    hp: 430,
+    attack: 82,
+    attackSpeed: 1.0,
+    range: 4,
+    defense: 0,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
+    physicalReduction: 0,
+    magicReduction: 0,
     skill: {
       name: '恋符「マスタースパーク」',
       description: '全敵に強力な魔法ダメージ（ATK × 3.0）',
@@ -68,9 +85,17 @@ export const HEROES: Hero[] = [
     id: 'okina',
     name: '隠岐奈',
     role: 'support',
+    unitType: 'mage',
     synergyBonusType: 'mage',
-    hp: 110,
-    attack: 16,
+    hp: 540,
+    attack: 40,
+    attackSpeed: 0.7,
+    range: 4,
+    defense: 4,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
+    physicalReduction: 0,
+    magicReduction: 0,
     skill: {
       name: '秘神「裏表の逆転」',
       description: '味方全体に攻撃力バフ（与ダメージ+25%）',
@@ -89,9 +114,17 @@ export const HEROES: Hero[] = [
     id: 'keiki',
     name: '袿姫',
     role: 'tank',
+    unitType: 'vanguard',
     synergyBonusType: 'vanguard',
-    hp: 180,
-    attack: 12,
+    hp: 880,
+    attack: 42,
+    attackSpeed: 0.55,
+    range: 1,
+    defense: 18,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
+    physicalReduction: 0,
+    magicReduction: 0,
     skill: {
       name: '埴安神「偶像の加護」',
       description: '自身の被ダメージ-40%、周囲の味方に被ダメージ-15%',
@@ -120,9 +153,17 @@ export const HEROES: Hero[] = [
     id: 'jyoon',
     name: '女苑',
     role: 'economy',
+    unitType: 'assassin',
     synergyBonusType: 'assassin',
-    hp: 90,
-    attack: 14,
+    hp: 560,
+    attack: 46,
+    attackSpeed: 1.2,
+    range: 1,
+    defense: 8,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
+    physicalReduction: 0,
+    magicReduction: 0,
     skill: {
       name: '吉凶「星の導き」',
       description: '味方全体に攻撃バフ（与ダメージ+15%）。※ゴールドボーナス効果は後で実装予定',

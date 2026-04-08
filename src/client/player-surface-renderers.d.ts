@@ -190,6 +190,8 @@ export function renderPlayerResultSummary(input: {
       timelineEvents?: Array<string | Record<string, unknown>> | Iterable<string | Record<string, unknown>>;
       survivorSnapshots?: Array<{
         unitId?: string;
+        battleUnitId?: string;
+        ownerPlayerId?: string;
         displayName?: string;
         unitType?: string;
         hp?: number;
@@ -197,6 +199,8 @@ export function renderPlayerResultSummary(input: {
         sharedBoardCellIndex?: number;
       }> | Iterable<{
         unitId?: string;
+        battleUnitId?: string;
+        ownerPlayerId?: string;
         displayName?: string;
         unitType?: string;
         hp?: number;

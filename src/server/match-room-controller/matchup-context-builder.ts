@@ -154,7 +154,18 @@ export function createMatchupSideContext(
     appendHeroBattleUnits,
     buildHeroSynergyBonusTypes,
   } = options;
-  const resolvedPlacements = resolveBattlePlacements(placements, rosterFlags);
+  const ownerPlayerId = playerIds.length === 1 ? playerIds[0] : null;
+  const placementsWithOwner = placements.map((placement) => ({
+    ...placement,
+    ...(
+      typeof placement.ownerPlayerId === "string" && placement.ownerPlayerId.length > 0
+        ? { ownerPlayerId: placement.ownerPlayerId }
+        : ownerPlayerId
+          ? { ownerPlayerId }
+          : {}
+    ),
+  }));
+  const resolvedPlacements = resolveBattlePlacements(placementsWithOwner, rosterFlags);
   const battleUnits = resolvedPlacements.map((placement, index) =>
     createBattleUnit(placement, side, index, isBossSide, rosterFlags),
   );

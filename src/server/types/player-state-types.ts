@@ -38,6 +38,8 @@ export interface BattleTimelineEndStateUnit {
 
 export interface BattleResultSurvivorSnapshot {
   unitId: string;
+  battleUnitId?: string;
+  ownerPlayerId?: string;
   displayName: string;
   unitType: string;
   hp: number;

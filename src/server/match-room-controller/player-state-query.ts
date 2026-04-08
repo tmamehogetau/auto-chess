@@ -117,6 +117,7 @@ export interface PlayerStateQueryServiceDeps {
   boardPlacementsByPlayer: ReadonlyMap<string, BoardUnitPlacement[]>;
   heroPlacementByPlayer: ReadonlyMap<string, number>;
   heroSubHostCellByPlayer?: ReadonlyMap<string, number>;
+  heroAttachedSubUnitByPlayer?: ReadonlyMap<string, NonNullable<BoardUnitPlacement["subUnit"]>>;
   bossPlacementByPlayer: ReadonlyMap<string, number>;
   enableBossExclusiveShop: boolean;
   enableSharedPool: boolean;
@@ -294,6 +295,8 @@ export class PlayerStateQueryService {
 
     const activeSynergies = this.deps.buildActiveSynergies(playerId, boardPlacements);
     const heroSubHostCell = this.deps.heroSubHostCellByPlayer?.get(playerId) ?? -1;
+    const heroAttachedSubUnit = this.deps.heroAttachedSubUnitByPlayer?.get(playerId);
+    const heroPlacement = this.deps.heroPlacementByPlayer.get(playerId) ?? -1;
     const selectedHeroId = this.deps.selectedHeroByPlayer.get(playerId) ?? "";
     const boardSubUnits = boardPlacements
       .filter((placement): placement is BoardUnitPlacement & { subUnit: NonNullable<BoardUnitPlacement["subUnit"]> } =>
@@ -309,6 +312,10 @@ export class PlayerStateQueryService {
         this.deps.formatHeroSubUnitToken?.(heroSubHostCell, selectedHeroId)
           ?? `${heroSubHostCell}:hero:${selectedHeroId}`,
       );
+    }
+
+    if (Number.isInteger(heroPlacement) && heroPlacement >= 0 && heroAttachedSubUnit) {
+      boardSubUnits.push(this.deps.formatBoardSubUnitToken(heroPlacement, heroAttachedSubUnit));
     }
 
     const baseStatus: ControllerPlayerStatus = {

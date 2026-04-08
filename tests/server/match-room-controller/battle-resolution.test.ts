@@ -10,6 +10,7 @@ import type { BattleUnit } from "../../../src/server/combat/battle-simulator";
 import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import type { MatchLogger } from "../../../src/server/match-logger";
 import { createBattleStartEvent } from "../../../src/server/combat/battle-timeline";
+import { HEROES } from "../../../src/data/heroes";
 
 // Mock BattleSimulator
 const createMockBattleSimulator = () => ({
@@ -21,6 +22,33 @@ const createMockMatchLogger = () =>
   ({
     logBattleResult: vi.fn(),
   }) as unknown as MatchLogger;
+
+const expectHeroBattleUnitToMatchDefinition = (
+  heroUnit: BattleUnit | null,
+  heroId: string,
+  playerId: string,
+  cell: number,
+) => {
+  const hero = HEROES.find((candidate) => candidate.id === heroId);
+  expect(hero).toBeDefined();
+  expect(heroUnit).not.toBeNull();
+  expect(heroUnit).toMatchObject({
+    id: `hero-${playerId}`,
+    sourceUnitId: heroId,
+    type: hero?.unitType,
+    hp: hero?.hp,
+    maxHp: hero?.hp,
+    attackPower: hero?.attack,
+    attackSpeed: hero?.attackSpeed,
+    attackRange: hero?.range,
+    defense: hero?.defense,
+    critRate: hero?.critRate,
+    critDamageMultiplier: hero?.critDamageMultiplier,
+    physicalReduction: hero?.physicalReduction,
+    magicReduction: hero?.magicReduction,
+    cell,
+  });
+};
 
 describe("BattleResolutionService", () => {
   let service: BattleResolutionService;
@@ -115,14 +143,15 @@ describe("BattleResolutionService", () => {
       expect(result.leftBattleResult.won).toBe(true);
       expect(result.rightBattleResult.won).toBe(false);
       expect(result.leftBattleResult.survivorSnapshots).toEqual([
-        {
+        expect.objectContaining({
           unitId: "unit1",
+          battleUnitId: "unit1",
           displayName: "vanguard",
           unitType: "vanguard",
           hp: 100,
           maxHp: 100,
           sharedBoardCellIndex: 0,
-        },
+        }),
       ]);
       expect(result.leftBattleResult.timeline).toEqual(mockTimeline);
       expect(result.rightBattleResult.timeline).toEqual(mockTimeline);
@@ -160,6 +189,46 @@ describe("BattleResolutionService", () => {
       expect(result.outcome.loserId).toBe("player1");
       expect(result.leftBattleResult.won).toBe(false);
       expect(result.rightBattleResult.won).toBe(true);
+    });
+
+    it("preserves hero battle identity on survivor snapshots", () => {
+      const heroBattleUnit = service.createHeroBattleUnit("reimu", "player1", 8, "left");
+      expect(heroBattleUnit).not.toBeNull();
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: heroBattleUnit ? [heroBattleUnit] : [],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
+      });
+
+      const result = service.resolveMatchup({
+        battleId: "r1-p1-p2",
+        roundIndex: 1,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits: heroBattleUnit ? [heroBattleUnit] : [],
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      expect(result.leftBattleResult.survivorSnapshots).toEqual([
+        expect.objectContaining({
+          unitId: "reimu",
+          battleUnitId: "hero-player1",
+          ownerPlayerId: "player1",
+          unitType: heroBattleUnit?.type,
+          sharedBoardCellIndex: 8,
+        }),
+      ]);
     });
 
     it("should handle draw", () => {
@@ -535,6 +604,35 @@ describe("BattleResolutionService", () => {
       expect(service.calculateDamage(1, 0)).toBe(7);
       expect(service.calculateDamage(3, 2)).toBe(11);
       expect(service.calculateDamage(8, 0)).toBe(21);
+    });
+  });
+
+  describe("createHeroBattleUnit", () => {
+    it("should use hero-specific combat parameters", () => {
+      const heroUnit = service.createHeroBattleUnit("marisa", "player1", 14, "left");
+
+      expectHeroBattleUnitToMatchDefinition(heroUnit, "marisa", "player1", 14);
+    });
+
+    it("should keep hero combat stats wired to the configured role profile", () => {
+      const reimu = service.createHeroBattleUnit("reimu", "player1", 10, "left");
+      const marisa = service.createHeroBattleUnit("marisa", "player2", 11, "left");
+      const okina = service.createHeroBattleUnit("okina", "player3", 12, "left");
+      const keiki = service.createHeroBattleUnit("keiki", "player4", 13, "left");
+      const jyoon = service.createHeroBattleUnit("jyoon", "player5", 14, "left");
+
+      expectHeroBattleUnitToMatchDefinition(reimu, "reimu", "player1", 10);
+      expectHeroBattleUnitToMatchDefinition(marisa, "marisa", "player2", 11);
+      expectHeroBattleUnitToMatchDefinition(okina, "okina", "player3", 12);
+      expectHeroBattleUnitToMatchDefinition(keiki, "keiki", "player4", 13);
+      expectHeroBattleUnitToMatchDefinition(jyoon, "jyoon", "player5", 14);
+
+      expect(keiki?.maxHp ?? 0).toBeGreaterThan(reimu?.maxHp ?? 0);
+      expect(reimu?.maxHp ?? 0).toBeGreaterThan(marisa?.maxHp ?? 0);
+      expect(marisa?.attackPower ?? 0).toBeGreaterThan(reimu?.attackPower ?? 0);
+      expect(marisa?.attackRange ?? 0).toBeGreaterThan(reimu?.attackRange ?? 0);
+      expect(jyoon?.attackSpeed ?? 0).toBeGreaterThan(reimu?.attackSpeed ?? 0);
+      expect(okina?.attackRange ?? 0).toBeGreaterThan(jyoon?.attackRange ?? 0);
     });
   });
 });

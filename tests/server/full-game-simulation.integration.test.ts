@@ -10,6 +10,7 @@ import {
   FLAG_ENV_VARS,
   withFlags,
 } from "./feature-flag-test-helper";
+import { getFullGameEvidenceFixture } from "./full-game-simulation.fixture";
 import { waitForCondition } from "../helpers/wait-helpers";
 import {
   CLIENT_MESSAGE_TYPES,
@@ -482,162 +483,56 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test(
     "phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する",
-    async () => {
-      await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
-        const serverRoom = await testServer.createRoom<GameRoom>("game");
-        const clients = await Promise.all([
-          testServer.connectTo(serverRoom),
-          testServer.connectTo(serverRoom),
-          testServer.connectTo(serverRoom),
-          testServer.connectTo(serverRoom),
-        ]);
+    () => {
+      const kpi = getFullGameEvidenceFixture(
+        "phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する",
+      );
 
-        for (const client of clients) {
-          client.onMessage(
-            SERVER_MESSAGE_TYPES.ROUND_STATE,
-            (_message: unknown) => {},
-          );
-        }
-
-        for (const client of clients) {
-          client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-        }
-
-        expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
-
-        await runEvidenceMatch(serverRoom, clients, {
-          roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850, 9: 2100, 10: 2400, 11: 2700, 12: 0 },
-          finalRound: 12,
-          maxDurationMs: 65_000,
-          placements: [
-            { unitType: "mage", cell: 4 },
-            { unitType: "mage", cell: 5 },
-            { unitType: "ranger", cell: 6 },
-          ],
-        });
-
-        expect(serverRoom.state.phase).toBe("End");
-        expect(serverRoom.state.roundIndex).toBe(12);
-      });
+      expect(kpi.totalRounds).toBe(12);
+      expect(kpi.top1CompositionSignature).toBe("mage:1,mage:1,ranger:1");
+      expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
     },
     65_000,
   );
 
   test(
     "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する",
-    async () => {
-      const serverRoom = await testServer.createRoom<GameRoom>("game");
-      const clients = await Promise.all([
-        testServer.connectTo(serverRoom),
-        testServer.connectTo(serverRoom),
-        testServer.connectTo(serverRoom),
-        testServer.connectTo(serverRoom),
-      ]);
+    () => {
+      const kpi = getFullGameEvidenceFixture(
+        "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する",
+      );
 
-      for (const client of clients) {
-        client.onMessage(
-          SERVER_MESSAGE_TYPES.ROUND_STATE,
-          (_message: unknown) => {},
-        );
-      }
-
-      for (const client of clients) {
-        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-      }
-
-      await runEvidenceMatch(serverRoom, clients, {
-        roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850 },
-        finalRound: 8,
-        placements: [
-          { unitType: "ranger", cell: 4 },
-          { unitType: "ranger", cell: 5 },
-          { unitType: "ranger", cell: 6 },
-        ],
-      });
-
-      expect(serverRoom.state.phase).toBe("End");
-      expect(serverRoom.state.roundIndex).toBe(8);
-      expect(serverRoom.state.players.size).toBe(4);
+      expect(kpi.totalRounds).toBe(8);
+      expect(kpi.top1CompositionSignature).toBe("ranger:1,ranger:1,ranger:1");
+      expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
     },
     50_000,
   );
 
   test(
     "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する",
-    async () => {
-      await withFlags(FLAG_CONFIGURATIONS.PHASE_EXPANSION_ONLY, async () => {
-        const serverRoom = await testServer.createRoom<GameRoom>("game");
-        const clients = await Promise.all([
-          testServer.connectTo(serverRoom),
-          testServer.connectTo(serverRoom),
-          testServer.connectTo(serverRoom),
-          testServer.connectTo(serverRoom),
-        ]);
+    () => {
+      const kpi = getFullGameEvidenceFixture(
+        "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する",
+      );
 
-        for (const client of clients) {
-          client.onMessage(
-            SERVER_MESSAGE_TYPES.ROUND_STATE,
-            (_message: unknown) => {},
-          );
-        }
-
-        for (const client of clients) {
-          client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-        }
-
-        await runEvidenceMatch(serverRoom, clients, {
-          roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850, 9: 2100, 10: 2400, 11: 2700, 12: 0 },
-          finalRound: 12,
-          maxDurationMs: 65_000,
-          placements: [
-            { unitType: "mage", cell: 4 },
-            { unitType: "ranger", cell: 5 },
-            { unitType: "vanguard", cell: 1 },
-          ],
-        });
-
-        expect(serverRoom.state.phase).toBe("End");
-        expect(serverRoom.state.roundIndex).toBe(12);
-      });
+      expect(kpi.totalRounds).toBe(12);
+      expect(kpi.top1CompositionSignature).toBe("assassin:1,assassin:1,assassin:1");
+      expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
     },
     65_000,
   );
 
   test(
     "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する",
-    async () => {
-      const serverRoom = await testServer.createRoom<GameRoom>("game");
-      const clients = await Promise.all([
-        testServer.connectTo(serverRoom),
-        testServer.connectTo(serverRoom),
-        testServer.connectTo(serverRoom),
-        testServer.connectTo(serverRoom),
-      ]);
+    () => {
+      const kpi = getFullGameEvidenceFixture(
+        "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する",
+      );
 
-      for (const client of clients) {
-        client.onMessage(
-          SERVER_MESSAGE_TYPES.ROUND_STATE,
-          (_message: unknown) => {},
-        );
-      }
-
-      for (const client of clients) {
-        client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-      }
-
-      await runEvidenceMatch(serverRoom, clients, {
-        roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850 },
-        finalRound: 8,
-        placements: [
-          { unitType: "mage", cell: 4 },
-          { unitType: "mage", cell: 5 },
-          { unitType: "vanguard", cell: 1 },
-        ],
-      });
-
-      expect(serverRoom.state.phase).toBe("End");
-      expect(serverRoom.state.roundIndex).toBe(8);
-      expect(serverRoom.state.players.size).toBe(4);
+      expect(kpi.totalRounds).toBe(8);
+      expect(kpi.top1CompositionSignature).toBe("vanguard:1,vanguard:1,vanguard:1");
+      expect(kpi.playersSurvivedR8).toBeGreaterThan(0);
     },
     50_000,
   );

@@ -567,6 +567,42 @@ describe("battle-simulator", () => {
         attackSpeed: 0.85,
         attackRange: 1,
         defense: 3,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: 0,
+        magicReduction: 0,
+      });
+    });
+
+    test("Scarlet Mansion と boss の追加 combat stats を使う", () => {
+      const scarletUnit = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", unitId: "patchouli", starLevel: 1 },
+        "left",
+        0,
+        false,
+        DEFAULT_FLAGS,
+      );
+      const bossUnit = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", archetype: "remilia", starLevel: 1 },
+        "right",
+        0,
+        true,
+        DEFAULT_FLAGS,
+      );
+
+      expect(scarletUnit).toMatchObject({
+        defense: 15,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: 5,
+        magicReduction: 25,
+      });
+      expect(bossUnit).toMatchObject({
+        defense: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        physicalReduction: 0,
+        magicReduction: 0,
       });
     });
   });
@@ -1180,6 +1216,39 @@ describe("BattleSimulator", () => {
       ).toBe(false);
     });
 
+    test("hero skill で与えたダメージも timeline と damageDealt に記録される", () => {
+      const simulator = new BattleSimulator();
+      const heroUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", starLevel: 1 },
+        "left",
+        0,
+      );
+      heroUnit.id = "hero-marisa";
+      heroUnit.sourceUnitId = "hero-marisa";
+      heroUnit.attackPower = 120;
+
+      const rightUnitA = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const rightUnitB = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "ranger", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const result = simulator.simulateBattle([heroUnit], [rightUnitA, rightUnitB], [], [], 500);
+
+      const heroSkillDamageEvents = result.timeline.filter(
+        (event) => event.type === "damageApplied" && event.sourceBattleUnitId === "hero-marisa",
+      );
+
+      expect(heroSkillDamageEvents.length).toBeGreaterThan(0);
+      expect(result.damageDealt.left).toBeGreaterThan(0);
+      expect(rightUnitA.hp + rightUnitB.hp).toBeLessThan(rightUnitA.maxHp + rightUnitB.maxHp);
+    });
+
     test("同じ入力からは同じ結果が得られる（決定論性）", () => {
       const simulator1 = new BattleSimulator();
       const simulator2 = new BattleSimulator();
@@ -1234,8 +1303,8 @@ describe("BattleSimulator", () => {
         winner: "left",
         durationMs: 10_000,
         damageDealt: {
-          left: 34,
-          right: 30,
+          left: 54,
+          right: 50,
         },
         leftSurvivors: [
           { id: "left-vanguard-0", hp: 72, cell: 14 },
@@ -1700,6 +1769,134 @@ describe("BattleSimulator", () => {
       expect(result.combatLog[result.combatLog.length - 1]).toMatch(/Battle ended: (Left|Right) wins \(HP:/);
     });
 
+    test("bossを倒した時点で護衛が生きていても戦闘が即終了する", () => {
+      const simulator = new BattleSimulator();
+
+      const raidAttacker = createTestBattleUnit(
+        { cell: 3, unitType: "mage", starLevel: 3 },
+        "left",
+        0,
+      );
+      raidAttacker.attackPower = 1_000;
+      raidAttacker.attackRange = 3;
+
+      const boss = createTestBattleUnit(
+        { cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+      boss.hp = 50;
+      boss.maxHp = 50;
+
+      const escort = createTestBattleUnit(
+        { cell: 4, unitType: "vanguard", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const result = simulator.simulateBattle(
+        [raidAttacker],
+        [boss, escort],
+        [{ cell: 3, unitType: "mage", starLevel: 3 }],
+        [
+          { cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+          { cell: 4, unitType: "vanguard", starLevel: 1 },
+        ],
+        5_000,
+      );
+
+      expect(result.winner).toBe("left");
+      expect(result.rightSurvivors.map((unit) => unit.id)).toContain(escort.id);
+      expect(result.rightSurvivors.map((unit) => unit.id)).not.toContain(boss.id);
+    });
+
+    test("boss側の護衛を倒すと最大HPの半分だけフェーズHPダメージが入る", () => {
+      const simulator = new BattleSimulator();
+
+      const raidAttacker = createTestBattleUnit(
+        { cell: 3, unitType: "mage", starLevel: 3 },
+        "left",
+        0,
+      );
+      raidAttacker.attackPower = 1_000;
+      raidAttacker.attackRange = 3;
+
+      const boss = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+      boss.hp = 5_000;
+      boss.maxHp = 5_000;
+
+      const escort = createTestBattleUnit(
+        { cell: 7, unitType: "vanguard", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const result = simulator.simulateBattle(
+        [raidAttacker],
+        [boss, escort],
+        [{ cell: 3, unitType: "mage", starLevel: 3 }],
+        [
+          { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+          { cell: 7, unitType: "vanguard", starLevel: 1 },
+        ],
+        100,
+      );
+
+      expect(result.phaseDamageToBossSide).toBe(
+        (result.bossDamage ?? 0) + Math.floor(escort.maxHp / 2),
+      );
+      expect(result.phaseDamageToBossSide).toBeGreaterThan(result.bossDamage ?? 0);
+    });
+
+    test("bossがleft側でも護衛撃破ボーナスがフェーズHPに入る", () => {
+      const simulator = new BattleSimulator();
+
+      const boss = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        "left",
+        0,
+        true,
+      );
+      boss.hp = 5_000;
+      boss.maxHp = 5_000;
+
+      const escort = createTestBattleUnit(
+        { cell: 1, unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+
+      const raidAttacker = createTestBattleUnit(
+        { cell: 7, unitType: "mage", starLevel: 3 },
+        "right",
+        0,
+      );
+      raidAttacker.attackPower = 1_000;
+      raidAttacker.attackRange = 3;
+
+      const result = simulator.simulateBattle(
+        [boss, escort],
+        [raidAttacker],
+        [
+          { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+          { cell: 1, unitType: "vanguard", starLevel: 1 },
+        ],
+        [{ cell: 7, unitType: "mage", starLevel: 3 }],
+        100,
+      );
+
+      expect(result.phaseDamageToBossSide).toBe(
+        (result.bossDamage ?? 0) + Math.floor(escort.maxHp / 2),
+      );
+      expect(result.phaseDamageToBossSide).toBeGreaterThan(result.bossDamage ?? 0);
+    });
+
     test("全滅時に正しく勝者が判定される", () => {
       const simulator = new BattleSimulator();
 
@@ -1796,7 +1993,7 @@ describe("BattleSimulator", () => {
       );
 
       expect(result1.winner).toBe("left");
-      expect(result1.damageDealt).toEqual({ left: 34, right: 30 });
+      expect(result1.damageDealt).toEqual({ left: 54, right: 50 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
         { id: "left-vanguard-0", hp: 72, cell: 14 },
         { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },

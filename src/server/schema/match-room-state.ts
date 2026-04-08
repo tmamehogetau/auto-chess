@@ -55,6 +55,8 @@ export class BattleResultSchema extends Schema {
 
 export class BattleResultSurvivorSchema extends Schema {
   declare public unitId: string;
+  declare public battleUnitId: string;
+  declare public ownerPlayerId: string;
   declare public displayName: string;
   declare public unitType: string;
   declare public hp: number;
@@ -64,6 +66,8 @@ export class BattleResultSurvivorSchema extends Schema {
   public constructor() {
     super();
     this.unitId = "";
+    this.battleUnitId = "";
+    this.ownerPlayerId = "";
     this.displayName = "";
     this.unitType = "vanguard";
     this.hp = 0;
@@ -329,6 +333,8 @@ defineTypes(BattleResultSchema, {
 
 defineTypes(BattleResultSurvivorSchema, {
   unitId: "string",
+  battleUnitId: "string",
+  ownerPlayerId: "string",
   displayName: "string",
   unitType: "string",
   hp: "number",

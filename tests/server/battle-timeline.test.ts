@@ -168,3 +168,44 @@ test("simulateBattle preserves shared-board indices in battleStart coordinates",
     }),
   ]));
 });
+
+test("simulateBattle keeps raid replay ownership when battleSide is remapped", () => {
+  const flags = { ...DEFAULT_FLAGS, enableBossExclusiveShop: true };
+  const simulator = new BattleSimulator();
+
+  const raidPlacement: BoardUnitPlacement = {
+    cell: sharedBoardCoordinateToIndex({ x: 3, y: 3 }),
+    unitType: "vanguard",
+    unitId: "raid-a",
+  };
+  const bossPlacement: BoardUnitPlacement = {
+    cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
+    unitType: "mage",
+    archetype: "remilia",
+  };
+
+  const raidUnit = {
+    ...createBattleUnit(raidPlacement, "right", 0, false, flags),
+    ownerPlayerId: "p1",
+  };
+  const bossUnit = createBattleUnit(bossPlacement, "right", 0, true, flags);
+
+  const result = simulator.simulateBattle(
+    [raidUnit],
+    [bossUnit],
+    [raidPlacement],
+    [bossPlacement],
+    3_000,
+    null,
+    null,
+    null,
+    flags,
+  );
+
+  const battleStart = result.timeline.find((event) => event.type === "battleStart");
+  const raidSnapshot = battleStart?.type === "battleStart"
+    ? battleStart.units.find((unit) => unit.battleUnitId === raidUnit.id)
+    : null;
+
+  expect(raidSnapshot?.side).toBe("raid");
+});

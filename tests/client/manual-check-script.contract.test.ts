@@ -112,6 +112,18 @@ describe("manual-check script contract", () => {
     expect(source.includes("benchToBoardCell")).toBe(true);
   });
 
+  test("manual-check routes sub-slot clicks through dedicated prep commands including Okina hero placement", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const isSubSlotTarget = target.closest(\"[data-shared-board-sub-slot]\");")).toBe(true);
+    expect(source.includes("handleSharedSubSlotClickForManualCheck(cellIndex);")).toBe(true);
+    expect(source.includes("slot: \"sub\",")).toBe(true);
+    expect(source.includes("boardUnitMove: {")).toBe(true);
+    expect(source.includes("subUnitMove: {")).toBe(true);
+    expect(source.includes("heroPlacementCell: cellIndex")).toBe(true);
+    expect(source.includes("setSelectedSharedSubUnitCellIndex(cellIndex);")).toBe(true);
+  });
+
   test("bench deploy sends shared-board index directly and rejects non-playable cells", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
@@ -159,6 +171,8 @@ describe("manual-check script contract", () => {
     expect(source.includes("const hasBattleResult = Boolean(")).toBe(true);
     expect(source.includes("battleResult?.opponentId")).toBe(true);
     expect(source.includes("lastShownBattleRound !== state.roundIndex")).toBe(true);
+    expect(source.includes("const roundNumber = Number(state.roundIndex) + 1;")).toBe(true);
+    expect(source.includes("addCombatLogEntry(`--- Round ${roundNumber} ---`, 'info');")).toBe(true);
   });
 
   test("UI presentation updates do not depend on lastCmdSeq being present", () => {
@@ -236,19 +250,61 @@ describe("manual-check script contract", () => {
 
     expect(source.includes("let helperCmdSeq = 1;")).toBe(true);
     expect(source.includes("let lastAutomationStateKey = \"\";")).toBe(true);
+    expect(source.includes("let optimisticHelperPlayer = null;")).toBe(true);
+    expect(source.includes("let pendingPrepCommand = null;")).toBe(true);
     expect(source.includes("if (automationStateKey === lastAutomationStateKey) {")).toBe(true);
-    expect(source.includes("if (action.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {")).toBe(true);
+    expect(source.includes("const [nextAction] = actions;")).toBe(true);
+    expect(source.includes("if (nextAction.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {")).toBe(true);
     expect(source.includes("correlationId: createCorrelationId(`helper_${helperIndex}`, cmdSeq),")).toBe(true);
     expect(source.includes("helperCmdSeq += 1;")).toBe(true);
+    expect(source.includes("optimisticHelperPlayer = applyOptimisticPrepCommandToPlayer(")).toBe(true);
+    expect(source.includes("pendingPrepCommand = {")).toBe(true);
   });
 
   test("autofill helper rooms register known server messages to avoid Colyseus warning noise", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});")).toBe(true);
-    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {});")).toBe(true);
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {")).toBe(true);
+    expect(source.includes("applyAutomation(helperRoom.state);")).toBe(true);
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});")).toBe(true);
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});")).toBe(true);
+  });
+
+  test("manual-check recognizes shared-board hero and boss ids with colon prefixes", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes('unitId.startsWith("hero:")')).toBe(true);
+    expect(source.includes('unitId.startsWith("boss:")')).toBe(true);
+    expect(source.includes('unitId.startsWith("hero-")')).toBe(false);
+  });
+
+  test("autofill helper automation state key uses resolved playerPhase so deploy retries can re-run after purchase", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("playerPhase: resolveAutoFillHelperPlayerPhase(state),")).toBe(true);
+    expect(source.includes("playerPhaseDeadlineAtMs:")).toBe(true);
+    expect(source.includes("offer?.unitId ?? null")).toBe(true);
+    expect(source.includes("offer?.factionId ?? null")).toBe(true);
+    expect(source.includes("offer?.cost ?? null")).toBe(true);
+    expect(source.includes("purchased: offer?.purchased === true")).toBe(true);
+  });
+
+  test("manual-check tracks the selected shared cell and clears bench selection after sub-slot deploy", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("let selectedSharedBoardCellIndex = null;")).toBe(true);
+    expect(source.includes("const selectedCellKey = String(selectedSharedBoardCellIndex);")).toBe(true);
+    expect(source.includes("selectedSharedBoardCellIndex = cellIndex;")).toBe(true);
+    expect(source.includes("clearSelections();")).toBe(true);
+  });
+
+  test("boss shop optimistic purchase keeps offer slots and marks them purchased", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("bossShopOffers[payload.bossShopBuySlotIndex] = {")).toBe(true);
+    expect(source.includes("purchased: true,")).toBe(true);
+    expect(source.includes("bossShopOffers.splice(payload.bossShopBuySlotIndex, 1);")).toBe(false);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

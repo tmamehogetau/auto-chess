@@ -41,6 +41,8 @@ interface QueuedSharedBoardCellSnapshot {
   index: number;
   unitId: string;
   ownerId: string;
+  displayName?: string;
+  portraitKey?: string;
 }
 
 /**
@@ -437,9 +439,17 @@ export class SharedBoardBridge {
 
     try {
       // SharedBoardセルをBoardUnitPlacementに変換
-      const placements = this.convertCellsToPlacements(cells);
+      const placements = this.preserveExistingAttachedSubUnits(
+        playerId,
+        this.convertCellsToPlacements(cells),
+      );
       const heroCellIndex = this.extractHeroCellIndex(playerId, cells);
       const bossCellIndex = this.extractBossCellIndex(playerId, cells);
+      const normalizedPlacements = this.normalizeHeroAttachmentPlacements(
+        playerId,
+        placements,
+        heroCellIndex,
+      );
 
       // 同期リクエスト作成
       const request: SyncOperationRequest = {
@@ -449,9 +459,9 @@ export class SharedBoardBridge {
         timestamp: startTime,
         actorId: playerId,
         playerId,
-        placements,
-        ...(heroCellIndex !== undefined ? { heroCellIndex } : {}),
-        ...(bossCellIndex !== undefined ? { bossCellIndex } : {}),
+        placements: normalizedPlacements,
+        ...(heroCellIndex !== null ? { heroCellIndex } : {}),
+        ...(bossCellIndex !== null ? { bossCellIndex } : {}),
       };
 
       // 配置を適用
@@ -544,9 +554,14 @@ export class SharedBoardBridge {
         continue;
       }
 
+      const portraitKey = typeof cell.portraitKey === "string" && cell.portraitKey.length > 0
+        ? cell.portraitKey
+        : undefined;
+
       placements.push({
         cell: cell.index,
         unitType,
+        ...(portraitKey ? { unitId: portraitKey } : {}),
         starLevel: 1,
       });
     }
@@ -554,10 +569,80 @@ export class SharedBoardBridge {
     return placements;
   }
 
+  private preserveExistingAttachedSubUnits(
+    playerId: string,
+    placements: BoardUnitPlacement[],
+  ): BoardUnitPlacement[] {
+    if (placements.length === 0) {
+      return placements;
+    }
+
+    const existingPlacements = this.controller.getBoardPlacementsForPlayer(playerId);
+    if (!existingPlacements.some((placement) => placement.subUnit !== undefined)) {
+      return placements;
+    }
+
+    const existingSubUnitByUnitId = new Map<string, Array<NonNullable<BoardUnitPlacement["subUnit"]>>>();
+    const existingSubUnitByCell = new Map<number, NonNullable<BoardUnitPlacement["subUnit"]>>();
+    const usedUnitIdFallbacks = new Set<string>();
+
+    for (const placement of existingPlacements) {
+      if (!placement?.subUnit) {
+        continue;
+      }
+
+      if (typeof placement.unitId === "string" && placement.unitId.length > 0) {
+        const subUnits = existingSubUnitByUnitId.get(placement.unitId) ?? [];
+        subUnits.push(placement.subUnit);
+        existingSubUnitByUnitId.set(placement.unitId, subUnits);
+      }
+
+      if (Number.isInteger(placement.cell)) {
+        existingSubUnitByCell.set(placement.cell, placement.subUnit);
+      }
+    }
+
+    return placements.map((placement) => {
+      if (placement.subUnit) {
+        return placement;
+      }
+
+      const preservedSubUnitByCell = existingSubUnitByCell.get(placement.cell);
+      const preservedSubUnitByUnitId = typeof placement.unitId === "string" && placement.unitId.length > 0
+        ? existingSubUnitByUnitId.get(placement.unitId)
+        : undefined;
+      const preservedSubUnit = preservedSubUnitByCell
+        ?? (
+          preservedSubUnitByUnitId?.length === 1
+          && typeof placement.unitId === "string"
+          && !usedUnitIdFallbacks.has(placement.unitId)
+            ? preservedSubUnitByUnitId[0]
+            : undefined
+        );
+
+      if (!preservedSubUnit) {
+        return placement;
+      }
+
+      if (
+        !preservedSubUnitByCell
+        && typeof placement.unitId === "string"
+        && placement.unitId.length > 0
+      ) {
+        usedUnitIdFallbacks.add(placement.unitId);
+      }
+
+      return {
+        ...placement,
+        subUnit: { ...preservedSubUnit },
+      };
+    });
+  }
+
   private extractHeroCellIndex(
     playerId: string,
     cells: QueuedSharedBoardCellSnapshot[],
-  ): number | null | undefined {
+  ): number | null {
     const heroUnitId = `hero:${playerId}`;
 
     for (const cell of cells) {
@@ -566,13 +651,62 @@ export class SharedBoardBridge {
       }
     }
 
-    return undefined;
+    return null;
+  }
+
+  private normalizeHeroAttachmentPlacements(
+    playerId: string,
+    placements: BoardUnitPlacement[],
+    heroCellIndex: number | null,
+  ): BoardUnitPlacement[] {
+    if (
+      typeof heroCellIndex !== "number"
+      || !Number.isInteger(heroCellIndex)
+      || heroCellIndex < 0
+    ) {
+      return placements;
+    }
+
+    const targetHeroCellIndex: number = heroCellIndex;
+
+    if (this.controller.getSelectedHero(playerId) !== "okina") {
+      return placements;
+    }
+
+    const previousHeroCellIndex = this.controller.getHeroPlacementForPlayer(playerId);
+    if (
+      typeof previousHeroCellIndex !== "number"
+      || !Number.isInteger(previousHeroCellIndex)
+      || previousHeroCellIndex < 0
+      || previousHeroCellIndex === targetHeroCellIndex
+    ) {
+      return placements;
+    }
+
+    const sourceHeroCellIndex: number = previousHeroCellIndex;
+
+    if (placements.some((placement) => placement.cell === targetHeroCellIndex)) {
+      return placements;
+    }
+
+    const sourcePlacementIndex = placements.findIndex(
+      (placement) => placement.cell === sourceHeroCellIndex,
+    );
+    if (sourcePlacementIndex < 0) {
+      return placements;
+    }
+
+    return placements.map((placement, index) => (
+      index === sourcePlacementIndex
+        ? { ...placement, cell: targetHeroCellIndex }
+        : placement
+    ));
   }
 
   private extractBossCellIndex(
     playerId: string,
     cells: QueuedSharedBoardCellSnapshot[],
-  ): number | null | undefined {
+  ): number | null {
     const bossUnitId = `boss:${playerId}`;
 
     for (const cell of cells) {
@@ -581,7 +715,7 @@ export class SharedBoardBridge {
       }
     }
 
-    return undefined;
+    return null;
   }
 
   private snapshotPlacementCells(
@@ -591,6 +725,8 @@ export class SharedBoardBridge {
       index: cell.index,
       unitId: cell.unitId,
       ownerId: cell.ownerId,
+      displayName: cell.displayName,
+      portraitKey: cell.portraitKey,
     }));
   }
 
@@ -824,6 +960,14 @@ export class SharedBoardBridge {
       console.error("[SharedBoardBridge] Send placement failed:", error);
       // fail-open: エラー時もGameRoom動作は継続
     }
+  }
+
+  public syncSharedBoardViewFromController(forcePrepSync = false): void {
+    if (this.state !== "READY") {
+      return;
+    }
+
+    this.diffBroadcaster.syncSharedBoardViewFromController(forcePrepSync);
   }
 
   /**

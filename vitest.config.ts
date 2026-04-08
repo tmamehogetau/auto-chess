@@ -8,6 +8,8 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     exclude: [
       ...configDefaults.exclude,
+      "dist/**",
+      "dist-esm/**",
       ".worktrees/**",
       "**/.worktrees/**",
       "tests/browser/**",

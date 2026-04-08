@@ -5,25 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
     <title>Auto Chess - Playable UI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Shippori+Mincho:wght@700;800&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg-color: #1a1a2e;
-        --panel-bg: #16213e;
-        --accent-bg: #0f3460;
-        --gold-color: #ffd700;
-        --hp-color: #e74c3c;
+        --bg-color: #0F1E38;
+        --panel-bg: rgba(15, 27, 49, 0.75);
+        --accent-bg: rgba(26, 42, 71, 0.8);
+        --gold-color: #FFD700;
+        --hp-color: #E64A19;
         --xp-color: #9b59b6;
         --bronze: #cd7f32;
         --silver: #c0c0c0;
-        --gold: #ffd700;
-        --text-color: #eee;
-        --border-color: #2a2a4a;
-        --scarlet-badge-bg: rgba(192, 57, 43, 0.24);
+        --gold: #FFD700;
+        --text-color: #f4f7fb;
+        --border-color: rgba(212, 175, 55, 0.3);
+        --scarlet-badge-bg: rgba(230, 74, 25, 0.24);
         --scarlet-text: #ffb3ad;
-        --scarlet-accent: #f5c16c;
-        --scarlet-accent-soft: #ffd6d1;
+        --scarlet-accent: #ff8a65;
+        --scarlet-accent-soft: #ffccbc;
         --scarlet-body-text: #d7e3f4;
         --scarlet-muted-text: #9fb2c8;
+        
+        --font-main: 'Noto Sans JP', sans-serif;
+        --font-accent: 'Shippori Mincho', serif;
       }
 
       * {
@@ -33,8 +39,8 @@
       }
 
       body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background: var(--bg-color);
+        font-family: var(--font-main);
+        background: radial-gradient(circle at top, rgba(230, 74, 25, 0.08), transparent 60%), var(--bg-color);
         color: var(--text-color);
         min-height: 100vh;
         padding: 20px;
@@ -44,15 +50,20 @@
         max-width: 900px;
         margin: 0 auto 16px;
         padding: 14px 16px;
-        background: rgba(12, 18, 34, 0.92);
-        border: 1px solid rgba(245, 193, 108, 0.32);
+        background: var(--panel-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       }
 
       .operator-guide h1 {
         margin: 0 0 6px;
-        font-size: 20px;
-        color: #f5c16c;
+        font-family: var(--font-accent);
+        font-size: 22px;
+        color: var(--gold-color);
+        text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
       }
 
       .operator-guide p {
@@ -72,8 +83,11 @@
         margin: 0 auto 20px;
         padding: 15px;
         background: var(--panel-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         border-radius: 10px;
         border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       }
 
       .connection-panel h2 {
@@ -154,9 +168,12 @@
         align-items: center;
         padding: 15px 20px;
         background: var(--panel-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         border-radius: 10px;
         margin-bottom: 15px;
         border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       }
 
       .status-left {
@@ -726,10 +743,13 @@
 
       .shared-board-section {
         background: var(--panel-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         border-radius: 10px;
         padding: 15px;
         margin-bottom: 15px;
         border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       }
 
       .shared-board-section.raid-stage {
@@ -801,10 +821,14 @@
       }
 
       .shared-board-placement-guide {
+        --shared-board-guide-lines: 3;
         margin-top: 8px;
         font-size: 12px;
         line-height: 1.45;
         color: #9ed0ff;
+        min-height: calc(1.45em * var(--shared-board-guide-lines));
+        height: calc(1.45em * var(--shared-board-guide-lines));
+        overflow-y: auto;
       }
 
       .shared-board-status-legend {
@@ -854,14 +878,18 @@
       }
 
       .shared-board-grid {
+        --shared-board-columns: 6;
+        --shared-board-rows: 6;
         display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        width: 100%;
+        grid-template-columns: repeat(var(--shared-board-columns, 6), minmax(0, 1fr));
+        grid-template-rows: repeat(var(--shared-board-rows, 6), minmax(0, 1fr));
+        aspect-ratio: var(--shared-board-columns, 6) / var(--shared-board-rows, 6);
         gap: 8px;
         margin-top: 10px;
       }
 
       .shared-board-cell {
-        aspect-ratio: 1;
         background: var(--accent-bg);
         border: 2px solid var(--border-color);
         border-radius: 8px;
@@ -869,7 +897,9 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 48px;
+        min-height: 0;
+        width: 100%;
+        height: 100%;
       }
 
       .shared-board-cell.empty {
@@ -1028,6 +1058,22 @@
         height: 9px;
         border-radius: 50%;
         border: 1px solid #ffffff;
+      }
+
+      .shared-board-sub-slot-portrait {
+        width: 100%;
+        height: 100%;
+        border-radius: 10px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .shared-board-sub-slot-selected {
+        border-color: rgba(255, 214, 102, 0.92);
+        box-shadow:
+          0 0 0 3px rgba(255, 214, 102, 0.18),
+          0 0 18px rgba(255, 214, 102, 0.28);
+        transform: translateY(-1px);
       }
 
       /* Shop Section */

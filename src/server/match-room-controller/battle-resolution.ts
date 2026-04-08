@@ -62,6 +62,8 @@ export interface BattleResolutionResult {
     left: number;
     right: number;
   };
+  bossDamageToBoss?: number;
+  phaseDamageToBossSide?: number;
 }
 
 /**
@@ -372,12 +374,21 @@ export class BattleResolutionService {
       );
     }
 
-    return {
+    const resolutionResult: BattleResolutionResult = {
       outcome,
       leftBattleResult,
       rightBattleResult,
       combatDamageDealt: battleResult.damageDealt,
     };
+
+    if (typeof battleResult.bossDamage === "number") {
+      resolutionResult.bossDamageToBoss = battleResult.bossDamage;
+    }
+    if (typeof battleResult.phaseDamageToBossSide === "number") {
+      resolutionResult.phaseDamageToBossSide = battleResult.phaseDamageToBossSide;
+    }
+
+    return resolutionResult;
   }
 
   private buildSurvivorSnapshots(survivors: BattleUnit[]): BattleResultSurvivorSnapshot[] {
@@ -388,6 +399,8 @@ export class BattleResolutionService {
       const presentation = resolveSharedBoardUnitPresentation(unitId, survivor.type);
       return {
         unitId,
+        battleUnitId: survivor.id,
+        ownerPlayerId: typeof survivor.ownerPlayerId === "string" ? survivor.ownerPlayerId : "",
         displayName: presentation?.displayName ?? survivor.type,
         unitType: survivor.type,
         hp: Math.max(0, Math.round(Number(survivor.hp) || 0)),
@@ -478,22 +491,24 @@ export class BattleResolutionService {
 
     return {
       id: `hero-${playerId}`,
+      ownerPlayerId: playerId,
+      sourceUnitId: hero.id,
       battleSide,
-      type: "vanguard" as BoardUnitType,
+      type: hero.unitType,
       starLevel: 1,
       hp: hero.hp,
       maxHp: hero.hp,
       attackPower: hero.attack,
-      attackSpeed: 0.5,
-      attackRange: 1,
+      attackSpeed: hero.attackSpeed,
+      attackRange: hero.range,
       cell: resolvedBoardCellIndex,
       isDead: false,
       attackCount: 0,
-      defense: 0,
-      critRate: 0,
-      critDamageMultiplier: 1.5,
-      physicalReduction: undefined,
-      magicReduction: undefined,
+      defense: hero.defense,
+      critRate: hero.critRate,
+      critDamageMultiplier: hero.critDamageMultiplier,
+      physicalReduction: hero.physicalReduction,
+      magicReduction: hero.magicReduction,
       buffModifiers: {
         attackMultiplier: 1,
         defenseMultiplier: 1,
@@ -521,6 +536,7 @@ export class BattleResolutionService {
 
     return {
       id: `boss-${playerId}`,
+      ownerPlayerId: playerId,
       sourceUnitId: boss.id,
       battleSide,
       type: "vanguard" as BoardUnitType,

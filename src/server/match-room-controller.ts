@@ -131,6 +131,8 @@ interface PlayerFacingPhaseState {
 }
 
 const INITIAL_GOLD = 15;
+const INITIAL_RAID_GOLD = 5;
+const INITIAL_BOSS_GOLD = 8;
 const INITIAL_XP = 0;
 const INITIAL_LEVEL = 1;
 const RAID_PREP_BASE_INCOME = 5;
@@ -199,6 +201,9 @@ const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   4: 10,
   5: 20,
 };
+
+const RAID_AGGREGATE_BATTLE_COLUMNS = [1, 3, 5, 0, 2, 4] as const;
+const RAID_AGGREGATE_BATTLE_ROWS = [5, 4, 3] as const;
 
 type UnitRarity = 1 | 2 | 3 | 4 | 5;
 interface ShopOffer {
@@ -307,6 +312,8 @@ interface BattleResult {
   timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
+    battleUnitId?: string;
+    ownerPlayerId?: string;
     displayName: string;
     unitType: string;
     hp: number;
@@ -326,6 +333,8 @@ export interface MatchRoomControllerTestBattleResult {
   timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
+    battleUnitId?: string;
+    ownerPlayerId?: string;
     displayName: string;
     unitType: string;
     hp: number;
@@ -381,6 +390,7 @@ export class MatchRoomController {
   private readonly selectedHeroByPlayer: Map<string, string>;
   private readonly heroPlacementByPlayer: Map<string, number>;
   private readonly heroSubHostCellByPlayer: Map<string, number>;
+  private readonly heroAttachedSubUnitByPlayer: Map<string, NonNullable<BoardUnitPlacement["subUnit"]>>;
 
   private readonly selectedBossByPlayer: Map<string, string>;
   private readonly bossPlacementByPlayer: Map<string, number>;
@@ -498,6 +508,7 @@ export class MatchRoomController {
     this.selectedHeroByPlayer = new Map<string, string>();
     this.heroPlacementByPlayer = new Map<string, number>();
     this.heroSubHostCellByPlayer = new Map<string, number>();
+    this.heroAttachedSubUnitByPlayer = new Map<string, NonNullable<BoardUnitPlacement["subUnit"]>>();
     this.selectedBossByPlayer = new Map<string, string>();
     this.bossPlacementByPlayer = new Map<string, number>();
     this.wantsBossByPlayer = new Map<string, boolean>();
@@ -781,6 +792,7 @@ export class MatchRoomController {
       boardPlacementsByPlayer: this.boardPlacementsByPlayer,
       heroPlacementByPlayer: this.heroPlacementByPlayer,
       heroSubHostCellByPlayer: this.heroSubHostCellByPlayer,
+      heroAttachedSubUnitByPlayer: this.heroAttachedSubUnitByPlayer,
       bossPlacementByPlayer: this.bossPlacementByPlayer,
       enableBossExclusiveShop: this.enableBossExclusiveShop,
       enableSharedPool: this.enableSharedPool,
@@ -814,6 +826,17 @@ export class MatchRoomController {
       },
       formatBoardSubUnitToken: (cell, subUnit) => {
         const starLevel = subUnit.starLevel ?? 1;
+        const detail = typeof subUnit.unitId === "string" && subUnit.unitId.length > 0
+          ? subUnit.unitId
+          : "";
+
+        if (starLevel > 1 && detail.length > 0) {
+          return `${cell}:${subUnit.unitType}:${starLevel}:${detail}`;
+        }
+
+        if (detail.length > 0) {
+          return `${cell}:${subUnit.unitType}:${detail}`;
+        }
 
         if (starLevel > 1) {
           return `${cell}:${subUnit.unitType}:${starLevel}`;
@@ -1017,12 +1040,16 @@ export class MatchRoomController {
       const occupiedOwnPlacement = ownBoardPlacements.some((placement) => placement.cell === cellIndex);
 
       if (occupiedOwnPlacement) {
-        if (!this.enableSubUnitSystem || selectedHeroId !== "okina") {
-          return { success: false, code: "INVALID_CELL", error: "Hero cannot enter occupied sub slot" };
-        }
+      if (!this.enableSubUnitSystem || selectedHeroId !== "okina") {
+        return { success: false, code: "INVALID_CELL", error: "Hero cannot enter occupied sub slot" };
+      }
 
-        this.heroPlacementByPlayer.set(playerId, -1);
-        this.heroSubHostCellByPlayer.set(playerId, cellIndex);
+      if (this.getHeroAttachedSubUnitForPlayer(playerId)) {
+        return { success: false, code: "INVALID_CELL", error: "Hero host already has an attached sub unit" };
+      }
+
+      this.heroPlacementByPlayer.set(playerId, -1);
+      this.heroSubHostCellByPlayer.set(playerId, cellIndex);
         return { success: true, code: "SUCCESS" };
       }
 
@@ -1145,6 +1172,7 @@ export class MatchRoomController {
       this.selectedBossByPlayer.set(playerId, isBossPlayer ? bossId : "");
       this.bossPlacementByPlayer.set(playerId, -1);
       this.heroSubHostCellByPlayer.set(playerId, -1);
+      this.heroAttachedSubUnitByPlayer.delete(playerId);
       this.selectedHeroByPlayer.set(
         playerId,
         isBossPlayer || !this.enableHeroSystem
@@ -1163,6 +1191,7 @@ export class MatchRoomController {
       this.selectedBossByPlayer.set(playerId, "");
       this.bossPlacementByPlayer.set(playerId, -1);
       this.heroSubHostCellByPlayer.set(playerId, -1);
+      this.heroAttachedSubUnitByPlayer.delete(playerId);
       this.selectedHeroByPlayer.set(playerId, "");
     }
 
@@ -1405,13 +1434,18 @@ export class MatchRoomController {
     const state = this.ensureStarted();
 
     if (state.roundIndex !== 12) {
-      this.battleOrchestrator.applyRaidRoundConsequences();
+      for (const playerId of state.raidPlayerIds) {
+        if (!this.didRaidPlayerLoseAllBattleUnits(playerId)) {
+          continue;
+        }
+
+        state.consumeLife(playerId);
+      }
       return;
     }
 
     for (const playerId of state.raidPlayerIds) {
-      const battleResult = this.battleResultsByPlayer.get(playerId);
-      if (battleResult === undefined || battleResult.survivors > 0) {
+      if (!this.didRaidPlayerLoseAllBattleUnits(playerId)) {
         continue;
       }
 
@@ -1423,6 +1457,95 @@ export class MatchRoomController {
         state.consumeLife(playerId, state.getRemainingLives(playerId));
       }
     }
+  }
+
+  private didRaidPlayerLoseAllBattleUnits(playerId: string): boolean {
+    const battleResult = this.battleResultsByPlayer.get(playerId);
+    if (battleResult === undefined) {
+      return false;
+    }
+
+    const trackedUnitIds = this.buildRaidPlayerBattleUnitIds(playerId);
+    if (trackedUnitIds.size === 0) {
+      return battleResult.survivors <= 0;
+    }
+
+    if (!Array.isArray(battleResult.survivorSnapshots)) {
+      return battleResult.survivors <= 0;
+    }
+
+    const hasOwnerAwareSnapshots = battleResult.survivorSnapshots.some(
+      (snapshot) => typeof snapshot?.ownerPlayerId === "string" && snapshot.ownerPlayerId.trim().length > 0,
+    );
+    if (hasOwnerAwareSnapshots) {
+      const survivingBattleUnitKeys = new Set(
+        battleResult.survivorSnapshots
+          .map((snapshot) => this.buildRaidPlayerBattleUnitKey(
+            snapshot?.ownerPlayerId,
+            snapshot?.unitId,
+          ))
+          .filter((battleUnitKey) => battleUnitKey !== null),
+      );
+
+      for (const unitId of trackedUnitIds) {
+        const trackedBattleUnitKey = this.buildRaidPlayerBattleUnitKey(playerId, unitId);
+        if (trackedBattleUnitKey && survivingBattleUnitKeys.has(trackedBattleUnitKey)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    const survivingUnitIds = new Set(
+      battleResult.survivorSnapshots
+        .map((snapshot) => typeof snapshot.unitId === "string" ? snapshot.unitId.trim() : "")
+        .filter((unitId) => unitId.length > 0),
+    );
+
+    for (const unitId of trackedUnitIds) {
+      if (survivingUnitIds.has(unitId)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private buildRaidPlayerBattleUnitKey(
+    playerId: string | undefined,
+    battleUnitId: string | undefined,
+  ): string | null {
+    const normalizedPlayerId = typeof playerId === "string" ? playerId.trim() : "";
+    const normalizedBattleUnitId = typeof battleUnitId === "string" ? battleUnitId.trim() : "";
+    if (normalizedPlayerId.length === 0 || normalizedBattleUnitId.length === 0) {
+      return null;
+    }
+
+    return `${normalizedPlayerId}:${normalizedBattleUnitId}`;
+  }
+
+  private buildRaidPlayerBattleUnitIds(playerId: string): Set<string> {
+    const trackedUnitIds = new Set<string>();
+    const battlePlacements = this.battleInputSnapshotByPlayer.get(playerId) ?? [];
+
+    for (const placement of battlePlacements) {
+      if (typeof placement.unitId !== "string") {
+        continue;
+      }
+
+      const normalizedUnitId = placement.unitId.trim();
+      if (normalizedUnitId.length > 0) {
+        trackedUnitIds.add(normalizedUnitId);
+      }
+    }
+
+    const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+    if (selectedHeroId.length > 0) {
+      trackedUnitIds.add(selectedHeroId);
+    }
+
+    return trackedUnitIds;
   }
 
   private resetForNextPrepRound(): void {
@@ -1449,6 +1572,11 @@ export class MatchRoomController {
       const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
       for (const placement of boardPlacements) {
         this.returnBoardUnitToBench(playerId, placement.cell);
+      }
+
+      const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+      if (heroPlacement !== null) {
+        this.returnHeroAttachedSubUnitToBench(playerId, heroPlacement);
       }
     }
   }
@@ -1482,6 +1610,7 @@ export class MatchRoomController {
   private restoreRevivedRaidPlayerBoardState(playerId: string): void {
     const boardPlacements = this.boardPlacementsByPlayer.get(playerId) ?? [];
     const nextBenchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const heroAttachedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
 
     for (const placement of boardPlacements) {
       nextBenchUnits.push({
@@ -1493,8 +1622,19 @@ export class MatchRoomController {
       });
     }
 
+    if (heroAttachedSubUnit) {
+      nextBenchUnits.push({
+        unitType: heroAttachedSubUnit.unitType,
+        cost: heroAttachedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[heroAttachedSubUnit.unitType] ?? 1,
+        starLevel: heroAttachedSubUnit.starLevel ?? 1,
+        unitCount: heroAttachedSubUnit.unitCount ?? 1,
+        ...(heroAttachedSubUnit.unitId !== undefined ? { unitId: heroAttachedSubUnit.unitId } : {}),
+      });
+    }
+
     this.boardPlacementsByPlayer.set(playerId, []);
     this.heroSubHostCellByPlayer.set(playerId, -1);
+    this.heroAttachedSubUnitByPlayer.delete(playerId);
     this.benchUnitsByPlayer.set(playerId, nextBenchUnits);
   }
 
@@ -1582,6 +1722,10 @@ export class MatchRoomController {
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
       getRosterFlags: () => this.rosterFlags,
       getReservedBoardCells: () => this.getReservedSpecialBoardCells(),
+      getSelectedHeroIdForPlayer: (id) => this.selectedHeroByPlayer.get(id) ?? "",
+      getHeroPlacementForPlayer: (id) => this.getHeroPlacementForPlayer(id),
+      getHeroAttachedSubUnitForPlayer: (id) => this.getHeroAttachedSubUnitForPlayer(id),
+      getHeroSubHostCellForPlayer: (id) => this.getHeroSubHostCellForPlayer(id),
     };
   }
 
@@ -1602,6 +1746,23 @@ export class MatchRoomController {
       deployBenchUnitToBoard: (id, benchIndex, cell, slot) =>
         this.deployBenchUnitToBoard(id, benchIndex, cell, slot),
       returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
+      moveBoardUnit: (id, fromCell, toCell, slot) => this.moveBoardUnit(id, fromCell, toCell, slot),
+      returnAttachedSubUnitToBench: (id, cell) => this.returnAttachedSubUnitToBench(id, cell),
+      moveAttachedSubUnit: (id, fromCell, toCell, slot) =>
+        this.moveAttachedSubUnit(id, fromCell, toCell, slot),
+      swapAttachedSubUnitWithBench: (id, cell, benchIndex) =>
+        this.swapAttachedSubUnitWithBench(id, cell, benchIndex),
+      applyHeroPlacement: (id, cell) => {
+        const result = this.applyHeroPlacementForPlayer(id, cell);
+        if (result.success) {
+          return { accepted: true };
+        }
+
+        return {
+          accepted: false,
+          code: result.code === "PHASE_MISMATCH" ? "PHASE_MISMATCH" : "INVALID_PAYLOAD",
+        };
+      },
       sellBenchUnit: (id, benchIndex) => this.sellBenchUnit(id, benchIndex),
       sellBoardUnit: (id, cell) => this.sellBoardUnit(id, cell),
       buyBossShopOffer: (id, slotIndex) => this.buyBossShopOffer(id, slotIndex),
@@ -1684,11 +1845,20 @@ export class MatchRoomController {
     cell: number,
     slot: "main" | "sub" = "main",
   ): void {
+    if (slot === "sub" && this.getHeroPlacementForPlayer(playerId) === cell) {
+      this.deployBenchUnitToHero(playerId, benchIndex);
+      return;
+    }
+
     this.shopManager.deployBenchUnitToBoard(playerId, benchIndex, cell, slot);
   }
 
   private returnBoardUnitToBench(playerId: string, cell: number): void {
     const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    if (this.returnHeroAttachedSubUnitToBench(playerId, cell)) {
+      return;
+    }
+
     this.shopManager.returnBoardUnitToBench(playerId, cell);
 
     const hostStillExists = (this.boardPlacementsByPlayer.get(playerId) ?? []).some(
@@ -1698,6 +1868,420 @@ export class MatchRoomController {
       this.heroSubHostCellByPlayer.set(playerId, -1);
       this.heroPlacementByPlayer.set(playerId, cell);
     }
+  }
+
+  private deployBenchUnitToHero(playerId: string, benchIndex: number): void {
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    if (heroPlacement === null) {
+      return;
+    }
+
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const benchUnit = benchUnits[benchIndex];
+    if (!benchUnit) {
+      return;
+    }
+
+    const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
+      unitType: benchUnit.unitType,
+      starLevel: benchUnit.starLevel,
+      sellValue: benchUnit.cost,
+      unitCount: benchUnit.unitCount,
+    };
+    if (benchUnit.unitId !== undefined) {
+      attachedSubUnit.unitId = benchUnit.unitId;
+    }
+
+    benchUnits.splice(benchIndex, 1);
+
+    const replacedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
+    if (replacedSubUnit) {
+      const returnedBenchUnit: BenchUnit = {
+        unitType: replacedSubUnit.unitType,
+        cost: replacedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[replacedSubUnit.unitType] ?? 1,
+        starLevel: replacedSubUnit.starLevel ?? 1,
+        unitCount: replacedSubUnit.unitCount ?? 1,
+      };
+      if (replacedSubUnit.unitId !== undefined) {
+        returnedBenchUnit.unitId = replacedSubUnit.unitId;
+      }
+      benchUnits.push(returnedBenchUnit);
+    }
+
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.heroAttachedSubUnitByPlayer.set(playerId, attachedSubUnit);
+  }
+
+  private returnHeroAttachedSubUnitToBench(playerId: string, cell: number): boolean {
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    const attachedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
+    if (heroPlacement !== cell || !attachedSubUnit) {
+      return false;
+    }
+
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    if (benchUnits.length >= MAX_BENCH_SIZE) {
+      return false;
+    }
+
+    const returnedBenchUnit: BenchUnit = {
+      unitType: attachedSubUnit.unitType,
+      cost: attachedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[attachedSubUnit.unitType] ?? 1,
+      starLevel: attachedSubUnit.starLevel ?? 1,
+      unitCount: attachedSubUnit.unitCount ?? 1,
+    };
+    if (attachedSubUnit.unitId !== undefined) {
+      returnedBenchUnit.unitId = attachedSubUnit.unitId;
+    }
+
+    benchUnits.push(returnedBenchUnit);
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.heroAttachedSubUnitByPlayer.delete(playerId);
+    return true;
+  }
+
+  private returnAttachedSubUnitToBench(playerId: string, cell: number): void {
+    const attachedSubUnit = this.takeAttachedSubUnitFromCell(playerId, cell);
+    if (!attachedSubUnit) {
+      return;
+    }
+
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    if (benchUnits.length >= MAX_BENCH_SIZE) {
+      this.setAttachedSubUnitAtCell(playerId, cell, attachedSubUnit);
+      return;
+    }
+
+    benchUnits.push(this.createBenchUnitFromAttachedSubUnit(attachedSubUnit));
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+  }
+
+  private moveBoardUnit(
+    playerId: string,
+    fromCell: number,
+    toCell: number,
+    slot: "main" | "sub" = "main",
+  ): void {
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const sourceIndex = boardPlacements.findIndex((placement) => placement.cell === fromCell);
+    if (sourceIndex < 0) {
+      return;
+    }
+
+    const sourcePlacement = boardPlacements[sourceIndex]!;
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    const targetsHeroCell = heroPlacement === toCell;
+    const reservedBoardCells = this.getReservedSpecialBoardCells();
+
+    if (slot !== "sub") {
+      const targetOccupied = boardPlacements.some((placement, index) => index !== sourceIndex && placement.cell === toCell);
+      if (targetOccupied || targetsHeroCell || reservedBoardCells.includes(toCell)) {
+        return;
+      }
+
+      boardPlacements[sourceIndex] = {
+        ...sourcePlacement,
+        cell: toCell,
+      };
+      this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+      this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+      return;
+    }
+
+    if (sourcePlacement.subUnit !== undefined) {
+      return;
+    }
+
+    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === toCell);
+    const targetHost = targetIndex >= 0 ? boardPlacements[targetIndex] : null;
+    const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    const heroAttachedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
+
+    if (
+      (!targetHost && !targetsHeroCell)
+      || targetHost?.subUnit
+      || heroSubHostCell === toCell
+      || (targetsHeroCell && heroAttachedSubUnit !== null)
+    ) {
+      return;
+    }
+
+    const attachedSubUnit = this.createAttachedSubUnitFromBoardPlacement(sourcePlacement);
+    boardPlacements.splice(sourceIndex, 1);
+    this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+
+    if (!this.setAttachedSubUnitAtCell(playerId, toCell, attachedSubUnit)) {
+      boardPlacements.push(sourcePlacement);
+      this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+      this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    }
+  }
+
+  private moveAttachedSubUnit(
+    playerId: string,
+    fromCell: number,
+    toCell: number,
+    slot: "main" | "sub" = "main",
+  ): void {
+    const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const targetOccupied = boardPlacements.some((placement) => placement.cell === toCell);
+    const reservedBoardCells = this.getReservedSpecialBoardCells();
+
+    if (heroSubHostCell === fromCell) {
+      if (slot === "sub") {
+        const targetPlacement = boardPlacements.find(
+          (placement) => placement.cell === toCell,
+        );
+        if (!targetPlacement || targetPlacement.subUnit) {
+          return;
+        }
+
+        this.heroSubHostCellByPlayer.set(playerId, toCell);
+        return;
+      }
+
+      const targetRow = Math.floor(toCell / DEFAULT_SHARED_BOARD_CONFIG.width);
+      if (targetRow < Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+        return;
+      }
+
+      if (targetOccupied || reservedBoardCells.includes(toCell)) {
+        return;
+      }
+
+      this.heroSubHostCellByPlayer.set(playerId, -1);
+      this.heroPlacementByPlayer.set(playerId, toCell);
+      return;
+    }
+
+    if (slot !== "sub") {
+      const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+      if (
+        targetOccupied
+        || heroPlacement === toCell
+        || reservedBoardCells.includes(toCell)
+        || boardPlacements.length >= this.resolveBoardUnitLimit(playerId)
+      ) {
+        return;
+      }
+    }
+
+    const attachedSubUnit = this.takeAttachedSubUnitFromCell(playerId, fromCell);
+    if (!attachedSubUnit) {
+      return;
+    }
+
+    if (slot === "sub") {
+      const replacedSubUnit = this.replaceAttachedSubUnitAtCell(playerId, toCell, attachedSubUnit);
+      if (replacedSubUnit) {
+        this.setAttachedSubUnitAtCell(playerId, fromCell, replacedSubUnit);
+      }
+      return;
+    }
+
+    const nextBoardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    nextBoardPlacements.push(this.createBoardPlacementFromAttachedSubUnit(toCell, attachedSubUnit));
+    this.setBoardPlacementsForPlayer(playerId, nextBoardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, nextBoardPlacements.length);
+  }
+
+  private swapAttachedSubUnitWithBench(playerId: string, cell: number, benchIndex: number): void {
+    const benchUnits = [...(this.benchUnitsByPlayer.get(playerId) ?? [])];
+    const benchUnit = benchUnits[benchIndex];
+    if (!benchUnit) {
+      return;
+    }
+
+    const currentAttachedSubUnit = this.getAttachedSubUnitAtCell(playerId, cell);
+    if (!currentAttachedSubUnit) {
+      return;
+    }
+
+    benchUnits[benchIndex] = this.createBenchUnitFromAttachedSubUnit(currentAttachedSubUnit);
+    this.benchUnitsByPlayer.set(playerId, benchUnits);
+    this.setAttachedSubUnitAtCell(playerId, cell, this.createAttachedSubUnitFromBenchUnit(benchUnit));
+  }
+
+  private getAttachedSubUnitAtCell(
+    playerId: string,
+    cell: number,
+  ): NonNullable<BoardUnitPlacement["subUnit"]> | null {
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    if (heroPlacement === cell) {
+      return this.getHeroAttachedSubUnitForPlayer(playerId);
+    }
+
+    return (this.boardPlacementsByPlayer.get(playerId) ?? []).find((placement) => placement.cell === cell)?.subUnit ?? null;
+  }
+
+  private takeAttachedSubUnitFromCell(
+    playerId: string,
+    cell: number,
+  ): NonNullable<BoardUnitPlacement["subUnit"]> | null {
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    if (heroPlacement === cell) {
+      const heroAttachedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
+      if (!heroAttachedSubUnit) {
+        return null;
+      }
+
+      this.heroAttachedSubUnitByPlayer.delete(playerId);
+      return { ...heroAttachedSubUnit };
+    }
+
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const hostIndex = boardPlacements.findIndex((placement) => placement.cell === cell && placement.subUnit !== undefined);
+    if (hostIndex < 0) {
+      return null;
+    }
+
+    const hostPlacement = boardPlacements[hostIndex]!;
+    const attachedSubUnit = hostPlacement.subUnit;
+    if (!attachedSubUnit) {
+      return null;
+    }
+
+    const { subUnit: _removedSubUnit, ...hostWithoutSubUnit } = hostPlacement;
+    boardPlacements[hostIndex] = {
+      ...hostWithoutSubUnit,
+    };
+    this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    return { ...attachedSubUnit };
+  }
+
+  private setAttachedSubUnitAtCell(
+    playerId: string,
+    cell: number,
+    attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]>,
+  ): boolean {
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    if (heroPlacement === cell) {
+      this.heroAttachedSubUnitByPlayer.set(playerId, { ...attachedSubUnit });
+      return true;
+    }
+
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const hostIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
+    if (hostIndex < 0) {
+      return false;
+    }
+
+    const hostPlacement = boardPlacements[hostIndex]!;
+    boardPlacements[hostIndex] = {
+      ...hostPlacement,
+      subUnit: { ...attachedSubUnit },
+    };
+    this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    return true;
+  }
+
+  private replaceAttachedSubUnitAtCell(
+    playerId: string,
+    cell: number,
+    attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]>,
+  ): NonNullable<BoardUnitPlacement["subUnit"]> | null {
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    if (heroPlacement === cell) {
+      const replacedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
+      this.heroAttachedSubUnitByPlayer.set(playerId, { ...attachedSubUnit });
+      return replacedSubUnit ? { ...replacedSubUnit } : null;
+    }
+
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const hostIndex = boardPlacements.findIndex((placement) => placement.cell === cell);
+    if (hostIndex < 0) {
+      return null;
+    }
+
+    const hostPlacement = boardPlacements[hostIndex]!;
+    const replacedSubUnit = hostPlacement.subUnit;
+    boardPlacements[hostIndex] = {
+      ...hostPlacement,
+      subUnit: { ...attachedSubUnit },
+    };
+    this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    return replacedSubUnit ? { ...replacedSubUnit } : null;
+  }
+
+  private createAttachedSubUnitFromBenchUnit(
+    benchUnit: BenchUnit,
+  ): NonNullable<BoardUnitPlacement["subUnit"]> {
+    const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
+      unitType: benchUnit.unitType,
+      starLevel: benchUnit.starLevel,
+      sellValue: benchUnit.cost,
+      unitCount: benchUnit.unitCount,
+    };
+    if (benchUnit.unitId !== undefined) {
+      attachedSubUnit.unitId = benchUnit.unitId;
+    }
+    return attachedSubUnit;
+  }
+
+  private createAttachedSubUnitFromBoardPlacement(
+    placement: BoardUnitPlacement,
+  ): NonNullable<BoardUnitPlacement["subUnit"]> {
+    const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
+      unitType: placement.unitType,
+      starLevel: placement.starLevel ?? 1,
+      sellValue: placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1,
+      unitCount: placement.unitCount ?? 1,
+    };
+    if (placement.unitId !== undefined) {
+      attachedSubUnit.unitId = placement.unitId;
+    }
+    if (placement.factionId !== undefined) {
+      attachedSubUnit.factionId = placement.factionId;
+    }
+    if (placement.archetype !== undefined) {
+      attachedSubUnit.archetype = placement.archetype;
+    }
+    return attachedSubUnit;
+  }
+
+  private createBenchUnitFromAttachedSubUnit(
+    attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]>,
+  ): BenchUnit {
+    const benchUnit: BenchUnit = {
+      unitType: attachedSubUnit.unitType,
+      cost: attachedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[attachedSubUnit.unitType] ?? 1,
+      starLevel: attachedSubUnit.starLevel ?? 1,
+      unitCount: attachedSubUnit.unitCount ?? 1,
+    };
+    if (attachedSubUnit.unitId !== undefined) {
+      benchUnit.unitId = attachedSubUnit.unitId;
+    }
+    return benchUnit;
+  }
+
+  private createBoardPlacementFromAttachedSubUnit(
+    cell: number,
+    attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]>,
+  ): BoardUnitPlacement {
+    const placement: BoardUnitPlacement = {
+      cell,
+      unitType: attachedSubUnit.unitType,
+      starLevel: attachedSubUnit.starLevel ?? 1,
+      unitCount: attachedSubUnit.unitCount ?? 1,
+    };
+    if (attachedSubUnit.sellValue !== undefined) {
+      placement.sellValue = attachedSubUnit.sellValue;
+    }
+    if (attachedSubUnit.unitId !== undefined) {
+      placement.unitId = attachedSubUnit.unitId;
+    }
+    if (attachedSubUnit.factionId !== undefined) {
+      placement.factionId = attachedSubUnit.factionId;
+    }
+    if (attachedSubUnit.archetype !== undefined) {
+      placement.archetype = attachedSubUnit.archetype;
+    }
+    return placement;
   }
 
   private sellBenchUnit(playerId: string, benchIndex: number): void {
@@ -1753,6 +2337,7 @@ export class MatchRoomController {
     this.selectedHeroByPlayer.delete(playerId);
     this.heroPlacementByPlayer.delete(playerId);
     this.heroSubHostCellByPlayer.delete(playerId);
+    this.heroAttachedSubUnitByPlayer.delete(playerId);
     this.selectedBossByPlayer.delete(playerId);
     this.bossPlacementByPlayer.delete(playerId);
     this.wantsBossByPlayer.delete(playerId);
@@ -1775,6 +2360,16 @@ export class MatchRoomController {
         this.gameLoopState.setBossPlayer(bossPlayerId);
       } else {
         this.gameLoopState.setRandomBoss();
+      }
+    }
+
+    const resolvedBossPlayerId = this.gameLoopState.bossPlayerId;
+    if (this.enableBossExclusiveShop && resolvedBossPlayerId) {
+      for (const playerId of activePlayerIds) {
+        this.goldByPlayer.set(
+          playerId,
+          playerId === resolvedBossPlayerId ? INITIAL_BOSS_GOLD : INITIAL_RAID_GOLD,
+        );
       }
     }
 
@@ -1882,11 +2477,10 @@ export class MatchRoomController {
     const bossPlacements = (this.battleInputSnapshotByPlayer.get(bossPlayerId) ?? []).map(
       (placement) => ({
         ...placement,
+        ownerPlayerId: bossPlayerId,
       }),
     );
-    const raidPlacements = raidPlayerIds.flatMap((playerId) =>
-      (this.battleInputSnapshotByPlayer.get(playerId) ?? []).map((placement) => ({ ...placement })),
-    );
+    const raidPlacements = this.buildRemappedRaidBattlePlacements(raidPlayerIds);
     const bossIsLeft = leftPlayerId === bossPlayerId;
 
     return {
@@ -1898,6 +2492,47 @@ export class MatchRoomController {
       leftPlacements: bossIsLeft ? bossPlacements : raidPlacements,
       rightPlacements: bossIsLeft ? raidPlacements : bossPlacements,
     };
+  }
+
+  private buildRemappedRaidBattlePlacements(raidPlayerIds: string[]): BoardUnitPlacement[] {
+    return raidPlayerIds.flatMap((playerId, raidPlayerIndex) =>
+      this.remapRaidPlayerBattlePlacements(playerId, raidPlayerIndex),
+    );
+  }
+
+  private remapRaidPlayerBattlePlacements(
+    playerId: string,
+    raidPlayerIndex: number,
+  ): BoardUnitPlacement[] {
+    const sourcePlacements = [...(this.battleInputSnapshotByPlayer.get(playerId) ?? [])];
+    const targetColumn =
+      RAID_AGGREGATE_BATTLE_COLUMNS[
+        raidPlayerIndex % RAID_AGGREGATE_BATTLE_COLUMNS.length
+      ]
+      ?? RAID_AGGREGATE_BATTLE_COLUMNS[0];
+
+    return sourcePlacements
+      .sort((left, right) =>
+        right.cell - left.cell
+        || (left.unitId ?? "").localeCompare(right.unitId ?? "")
+        || left.unitType.localeCompare(right.unitType))
+      .map((placement, placementIndex) => {
+        const targetRow =
+          RAID_AGGREGATE_BATTLE_ROWS[
+            Math.min(placementIndex, RAID_AGGREGATE_BATTLE_ROWS.length - 1)
+          ]
+          ?? RAID_AGGREGATE_BATTLE_ROWS[RAID_AGGREGATE_BATTLE_ROWS.length - 1]
+          ?? 5;
+
+        return {
+          ...placement,
+          cell: sharedBoardCoordinateToIndex({
+            x: targetColumn,
+            y: targetRow,
+          }),
+          ownerPlayerId: playerId,
+        };
+      });
   }
 
   private buildSideSpellModifiers(playerIds: string[]): SpellCombatModifiers | null {
@@ -1994,7 +2629,11 @@ export class MatchRoomController {
           0,
         ));
     this.pendingPhaseDamageForTest = null;
-    const phaseProgress = this.phaseOrchestrator.recordPhaseProgress(state.roundIndex, totalDamage);
+    let phaseProgress = this.phaseOrchestrator.recordPhaseProgress(state.roundIndex, totalDamage);
+
+    if (phaseProgress.result === "success" && this.didRaidSideLoseAllBattleUnits()) {
+      phaseProgress = this.phaseOrchestrator.overridePhaseResult("failed");
+    }
 
     this.applyRaidPhaseSuccessBonus(phaseProgress.result);
 
@@ -2035,6 +2674,23 @@ export class MatchRoomController {
         }
       }
     }
+  }
+
+  private didRaidSideLoseAllBattleUnits(): boolean {
+    if (!this.isRaidMode()) {
+      return false;
+    }
+
+    const state = this.ensureStarted();
+    const participatingRaidPlayerIds = state.raidPlayerIds.filter((playerId) =>
+      this.buildRaidPlayerBattleUnitIds(playerId).size > 0,
+    );
+
+    if (participatingRaidPlayerIds.length === 0) {
+      return false;
+    }
+
+    return participatingRaidPlayerIds.every((playerId) => this.didRaidPlayerLoseAllBattleUnits(playerId));
   }
 
   private applyRaidPhaseSuccessBonus(phaseResult: "pending" | "success" | "failed"): void {
@@ -2468,6 +3124,7 @@ export class MatchRoomController {
       if (!selectedHeroId) {
         this.heroPlacementByPlayer.set(playerId, -1);
         this.heroSubHostCellByPlayer.set(playerId, -1);
+        this.heroAttachedSubUnitByPlayer.delete(playerId);
         continue;
       }
 
@@ -2580,6 +3237,12 @@ export class MatchRoomController {
   private getHeroSubHostCellForPlayer(playerId: string): number | null {
     const cell = this.heroSubHostCellByPlayer.get(playerId) ?? -1;
     return Number.isInteger(cell) && cell >= 0 ? cell : null;
+  }
+
+  private getHeroAttachedSubUnitForPlayer(
+    playerId: string,
+  ): NonNullable<BoardUnitPlacement["subUnit"]> | null {
+    return this.heroAttachedSubUnitByPlayer.get(playerId) ?? null;
   }
 
   private resolveHeroBattleCell(playerId: string): number | undefined {

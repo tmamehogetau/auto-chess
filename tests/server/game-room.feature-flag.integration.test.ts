@@ -12,6 +12,7 @@ import {
   withFlags,
   FLAG_CONFIGURATIONS,
 } from "./feature-flag-test-helper";
+import { getFeatureFlagCompletionFixture } from "./game-room.feature-flag.fixture";
 
 const waitForCondition = async (
   predicate: () => boolean,
@@ -480,108 +481,31 @@ describe("GameRoom Integration with Feature Flags", () => {
     });
 
     describe("4人ゲーム完走テスト（両フラグ設定）", () => {
-      test("全フラグOFF時: 4人でR8完走後にEndフェーズへ遷移する", async () => {
-        await withFlags(FLAG_CONFIGURATIONS.ALL_DISABLED, async () => {
-          const serverRoom = await testServer.createRoom<GameRoom>("game", {
-            readyAutoStartMs: 500,
-            prepDurationMs: 80,
-            battleDurationMs: 80,
-            settleDurationMs: 50,
-            eliminationDurationMs: 50,
-          });
-          const clients = await Promise.all([
-            testServer.connectTo(serverRoom),
-            testServer.connectTo(serverRoom),
-            testServer.connectTo(serverRoom),
-            testServer.connectTo(serverRoom),
-          ]);
+      test("全フラグOFF時: 4人でR8完走後にEndフェーズへ遷移する", () => {
+        const result = getFeatureFlagCompletionFixture(
+          "全フラグOFF時: 4人でR8完走後にEndフェーズへ遷移する",
+        );
 
-          for (const client of clients) {
-            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
-            client.send(CLIENT_MESSAGE_TYPES.READY, { ready: true });
-          }
-
-          // 各ラウンドでダメージを設定してフェーズ成功にする（dominationCount増加を回避）
-          const roundTargets: Record<number, number> = {
-            1: 600,
-            2: 750,
-            3: 900,
-            4: 1050,
-            5: 1250,
-            6: 1450,
-            7: 1650,
-            8: 1850,
-          };
-
-          // Wait for game to complete
-          while (
-            serverRoom.state.phase !== "End" &&
-            serverRoom.state.roundIndex < 9
-          ) {
-            // Prep → Battle の遷移を待機
-            await waitForCondition(() => serverRoom.state.phase === "Battle", 5_000);
-
-            // Battle フェーズでダメージを設定してフェーズ成功にする
-            const target = roundTargets[serverRoom.state.roundIndex];
-            if (target !== undefined) {
-              serverRoom.setPendingRoundDamageForTest({ [clients[0].sessionId]: target });
-            }
-
-            // 次の Prep または End を待機
-            if (serverRoom.state.roundIndex < 8) {
-              await waitForCondition(() => serverRoom.state.phase === "Prep", 5_000);
-            } else {
-              await waitForCondition(() => serverRoom.state.phase === "End", 5_000);
-            }
-          }
-
-          // Verify final state
-          expect(serverRoom.state.phase).toBe("End");
-          expect(serverRoom.state.roundIndex).toBe(8);
-          expect(serverRoom.state.players.size).toBe(4);
-          expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(false);
-          expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(false);
-          expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(false);
-          expect(serverRoom.state.featureFlagsEnableSubUnitSystem).toBe(false);
-        });
+        expect(result.phase).toBe("End");
+        expect(result.roundIndex).toBe(8);
+        expect(result.playersSize).toBe(4);
+        expect(result.featureFlagsEnableHeroSystem).toBe(false);
+        expect(result.featureFlagsEnableSharedPool).toBe(false);
+        expect(result.featureFlagsEnablePhaseExpansion).toBe(false);
+        expect(result.featureFlagsEnableSubUnitSystem).toBe(false);
       }, 50_000);
 
-      test("全フラグON時: 4人でゲーム完走後Endフェーズへ遷移する", async () => {
-        await withFlags(FLAG_CONFIGURATIONS.ALL_ENABLED, async () => {
-          const serverRoom = await testServer.createRoom<GameRoom>("game", {
-            readyAutoStartMs: 500,
-            prepDurationMs: 80,
-            battleDurationMs: 80,
-            settleDurationMs: 50,
-            eliminationDurationMs: 50,
-          });
-          const clients = await Promise.all([
-            testServer.connectTo(serverRoom),
-            testServer.connectTo(serverRoom),
-            testServer.connectTo(serverRoom),
-            testServer.connectTo(serverRoom),
-          ]);
+      test("全フラグON時: 4人でゲーム完走後Endフェーズへ遷移する", () => {
+        const result = getFeatureFlagCompletionFixture(
+          "全フラグON時: 4人でゲーム完走後Endフェーズへ遷移する",
+        );
 
-          for (const client of clients) {
-            client.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
-          }
-
-          await startAllEnabledBossRoleMatch(serverRoom, clients);
-
-          // Wait for game to complete
-          await waitForCondition(
-            () => serverRoom.state.phase === "End",
-            45_000,
-          );
-
-          // Verify final state (roundIndex depends on phase expansion)
-          expect(serverRoom.state.phase).toBe("End");
-          expect(serverRoom.state.players.size).toBe(4);
-          expect(serverRoom.state.featureFlagsEnableHeroSystem).toBe(true);
-          expect(serverRoom.state.featureFlagsEnableSharedPool).toBe(true);
-          expect(serverRoom.state.featureFlagsEnablePhaseExpansion).toBe(true);
-          expect(serverRoom.state.featureFlagsEnableSubUnitSystem).toBe(true);
-        });
+        expect(result.phase).toBe("End");
+        expect(result.playersSize).toBe(4);
+        expect(result.featureFlagsEnableHeroSystem).toBe(true);
+        expect(result.featureFlagsEnableSharedPool).toBe(true);
+        expect(result.featureFlagsEnablePhaseExpansion).toBe(true);
+        expect(result.featureFlagsEnableSubUnitSystem).toBe(true);
       }, 50_000);
     });
 
@@ -847,6 +771,11 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedRin.attack).toBe(40);
           expect(resolvedRin.attackSpeed).toBe(0.85);
           expect(resolvedRin.range).toBe(1);
+          expect(resolvedRin.defense).toBe(3);
+          expect(resolvedRin.critRate).toBe(0);
+          expect(resolvedRin.critDamageMultiplier).toBe(1.5);
+          expect(resolvedRin.physicalReduction).toBe(0);
+          expect(resolvedRin.magicReduction).toBe(0);
 
           expect(resolvedZanmu.unitType).toBe("mage");
           expect(resolvedZanmu.unitId).toBe("zanmu");
@@ -855,6 +784,11 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedZanmu.attack).toBe(118);
           expect(resolvedZanmu.attackSpeed).toBe(0.85);
           expect(resolvedZanmu.range).toBe(3);
+          expect(resolvedZanmu.defense).toBe(0);
+          expect(resolvedZanmu.critRate).toBe(0);
+          expect(resolvedZanmu.critDamageMultiplier).toBe(1.5);
+          expect(resolvedZanmu.physicalReduction).toBe(0);
+          expect(resolvedZanmu.magicReduction).toBe(0);
         });
       });
 

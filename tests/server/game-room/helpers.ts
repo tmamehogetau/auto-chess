@@ -9,7 +9,10 @@ import {
   type BrowserClient,
   type BrowserRoom,
 } from "../../../src/client/main";
-import { buildAutoFillHelperActions } from "../../../src/client/autofill-helper-automation.js";
+import {
+  buildAutoFillHelperActions,
+  resolveAutoFillHelperPlayerPhase,
+} from "../../../src/client/autofill-helper-automation.js";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../../src/server/rooms/shared-board-room";
 import { resolveSharedBoardUnitPresentation } from "../../../src/server/shared-board-unit-presentation";
@@ -71,6 +74,8 @@ export type {
 
 export const SHARED_BOARD_PROPAGATION_TIMEOUT_MS = 10_000;
 export const SHARED_BOARD_BOSS_PROPAGATION_TIMEOUT_MS = 15_000;
+const HELPER_AUTOMATION_RETRY_DELAY_MS = 10;
+const HELPER_AUTOMATION_RETRY_ATTEMPTS = 16;
 
 export type GameRoomIntegrationContext = {
   readonly testServer: ColyseusTestServer;
@@ -273,6 +278,7 @@ type AutoFillHelperPlayer = NonNullable<
 type AutoFillHelperState = NonNullable<
   Parameters<typeof buildAutoFillHelperActions>[0]["state"]
 > & {
+  playerPhase?: string | null;
   players?:
     | { get: (key: string) => AutoFillHelperPlayer | null | undefined }
     | Record<string, AutoFillHelperPlayer>
@@ -334,6 +340,9 @@ export const attachAutoFillHelperAutomationForTest = (
     onMessage: (type: string, handler: (_message: unknown) => void) => void;
   },
   helperIndex: number,
+  options: {
+    strategy?: "upgrade" | "highCost";
+  } = {},
 ): {
   getResults: () => unknown[];
 } => {
@@ -356,6 +365,9 @@ export const attachAutoFillHelperAutomationForTest = (
       lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
       lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
       phase: typeof state?.phase === "string" ? state.phase : "",
+      playerPhase: resolveAutoFillHelperPlayerPhase(state),
+      playerPhaseDeadlineAtMs:
+        typeof state?.playerPhaseDeadlineAtMs === "number" ? state.playerPhaseDeadlineAtMs : null,
       ready: helperPlayer?.ready === true,
       role: helperPlayer?.role ?? "",
       selectedBossId: helperPlayer?.selectedBossId ?? null,
@@ -384,7 +396,9 @@ export const attachAutoFillHelperAutomationForTest = (
     const actions = buildAutoFillHelperActions({
       helperIndex,
       player: helperPlayer,
+      sessionId: helperRoom.sessionId,
       state: helperState,
+      ...(options.strategy ? { strategy: options.strategy } : {}),
     });
 
     for (const action of actions) {
@@ -403,9 +417,25 @@ export const attachAutoFillHelperAutomationForTest = (
     }
   };
 
+  const reapplyAutomationSoon = (remainingRetries = HELPER_AUTOMATION_RETRY_ATTEMPTS) => {
+    setTimeout(() => {
+      if (helperRoom.state) {
+        applyAutomation(helperRoom.state);
+      }
+
+      if (remainingRetries > 1) {
+        reapplyAutomationSoon(remainingRetries - 1);
+      }
+    }, HELPER_AUTOMATION_RETRY_DELAY_MS);
+  };
+
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
     results.push(message);
+    if (helperRoom.state) {
+      applyAutomation(helperRoom.state);
+    }
+    reapplyAutomationSoon();
   });
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});

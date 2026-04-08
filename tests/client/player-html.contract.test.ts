@@ -155,6 +155,21 @@ describe("player.html contract", () => {
     expect(html).toMatch(/<button[^>]*(?:data-player-connect-btn[^>]*disabled|disabled[^>]*data-player-connect-btn)[^>]*>/);
   });
 
+  test("shared board shell keeps board guide sizing inside the shared-board CSS block", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const sharedBoardGuideIndex = html.indexOf("[data-shared-board-placement-guide]");
+
+    expect(sharedBoardGuideIndex).toBeGreaterThan(0);
+
+    const blockEnd = html.indexOf("}", sharedBoardGuideIndex);
+    const block = html.slice(sharedBoardGuideIndex, blockEnd + 1);
+
+    expect(block.includes("--shared-board-guide-lines")).toBe(true);
+    expect(block.includes("height: calc(1.45em * var(--shared-board-guide-lines));")).toBe(true);
+    expect(block.includes("overflow-y: auto;")).toBe(true);
+    expect(html.lastIndexOf("</html>")).toBeGreaterThan(blockEnd);
+  });
+
   test("player prep shell seeds a 6x6 shared-board placeholder without legacy 4x2 copy", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
     const sharedCellCount = (html.match(/data-player-shared-cell="/g) ?? []).length;
@@ -231,6 +246,18 @@ describe("player.html contract", () => {
     expect(prepSection.includes("Gold、HP、残機、成長状況")).toBe(false);
     expect(prepSection.includes("Placement")).toBe(true);
     expect(prepSection.includes("State")).toBe(true);
+  });
+
+  test("shared board shell keeps board and guide heights stable to avoid layout jumps", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    expect(html.includes("--shared-board-columns: 6;")).toBe(true);
+    expect(html.includes("--shared-board-rows: 6;")).toBe(true);
+    expect(html.includes("grid-template-rows: repeat(var(--shared-board-rows, 6), minmax(0, 1fr));")).toBe(true);
+    expect(html.includes("aspect-ratio: var(--shared-board-columns, 6) / var(--shared-board-rows, 6);")).toBe(true);
+    expect(html.includes("--shared-board-guide-lines: 3;")).toBe(true);
+    expect(html.includes("height: calc(1.45em * var(--shared-board-guide-lines));")).toBe(true);
+    expect(html.includes("overflow-y: auto;")).toBe(true);
   });
 
   test("bench keeps a dedicated two-column grid and non-wrapping slot labels", () => {

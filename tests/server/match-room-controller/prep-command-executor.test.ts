@@ -18,6 +18,11 @@ describe("PrepCommandExecutor", () => {
     buyShopOffer: vi.fn(),
     deployBenchUnitToBoard: vi.fn(),
     returnBoardUnitToBench: vi.fn(),
+    moveBoardUnit: vi.fn(),
+    returnAttachedSubUnitToBench: vi.fn(),
+    moveAttachedSubUnit: vi.fn(),
+    swapAttachedSubUnitWithBench: vi.fn(),
+    applyHeroPlacement: vi.fn().mockReturnValue({ accepted: true }),
     sellBenchUnit: vi.fn(),
     sellBoardUnit: vi.fn(),
     buyBossShopOffer: vi.fn(),
@@ -216,6 +221,58 @@ describe("PrepCommandExecutor", () => {
       executePrepCommand("p1", 1, payload, deps);
 
       expect(deps.returnBoardUnitToBench).toHaveBeenCalledWith("p1", 3);
+    });
+
+    test("returns attached sub unit to bench when subUnitToBenchCell provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = { subUnitToBenchCell: { cell: 24 } };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.returnAttachedSubUnitToBench).toHaveBeenCalledWith("p1", 24);
+    });
+
+    test("applies dedicated hero placement when heroPlacementCell provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = { heroPlacementCell: 24 };
+
+      const result = executePrepCommand("p1", 1, payload, deps);
+
+      expect(result).toEqual({ accepted: true });
+      expect(deps.applyHeroPlacement).toHaveBeenCalledWith("p1", 24);
+    });
+
+    test("moves attached sub unit across board targets when subUnitMove provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = {
+        subUnitMove: { fromCell: 24, toCell: 31, slot: "sub" },
+      };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.moveAttachedSubUnit).toHaveBeenCalledWith("p1", 24, 31, "sub");
+    });
+
+    test("moves a board unit into a target sub slot when boardUnitMove provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = {
+        boardUnitMove: { fromCell: 24, toCell: 31, slot: "sub" },
+      };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.moveBoardUnit).toHaveBeenCalledWith("p1", 24, 31, "sub");
+    });
+
+    test("swaps attached sub unit with a bench slot when subUnitSwapBench provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = {
+        subUnitSwapBench: { cell: 24, benchIndex: 1 },
+      };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.swapAttachedSubUnitWithBench).toHaveBeenCalledWith("p1", 24, 1);
     });
   });
 

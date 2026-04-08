@@ -540,6 +540,7 @@ describeGameRoomIntegration("GameRoom integration / shared board", (context) => 
       const roomInternals = serverRoom as unknown as {
         controller?: {
           getBoardPlacementsForPlayer: (playerId: string) => Array<{ cell: number; unitType: string }>;
+          getHeroPlacementForPlayer: (playerId: string) => number | null;
         };
         sharedBoardBridge?: {
           getState: () => string;
@@ -594,12 +595,24 @@ describeGameRoomIntegration("GameRoom integration / shared board", (context) => 
         expect(placements.every((placement) => placement.cell >= 18)).toBe(true);
       }
 
+      const expectedHelperOccupiedCells = helperClients
+        .flatMap((helperClient) => {
+          const boardPlacementCells =
+            (roomInternals.controller?.getBoardPlacementsForPlayer(helperClient.sessionId) ?? [])
+              .map((placement) => placement.cell);
+          const heroPlacement = roomInternals.controller?.getHeroPlacementForPlayer(helperClient.sessionId) ?? null;
+
+          return heroPlacement === null
+            ? boardPlacementCells
+            : [...boardPlacementCells, heroPlacement];
+        })
+        .sort((left, right) => left - right);
       const helperOccupiedCells = Array.from(sharedBoardRoom.state.cells.values())
         .filter((cell) => helperClients.some((helperClient) => cell.ownerId === helperClient.sessionId))
         .map((cell) => cell.index)
         .sort((left, right) => left - right);
 
-      expect(helperOccupiedCells).toEqual(expect.arrayContaining([31, 33, 35]));
+      expect(helperOccupiedCells).toEqual(expectedHelperOccupiedCells);
 
       const helperResults = helperMonitors.flatMap((monitor) => monitor.getResults());
       expect(helperResults).toEqual(expect.arrayContaining([{ accepted: true }]));

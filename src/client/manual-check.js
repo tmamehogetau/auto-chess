@@ -1041,7 +1041,7 @@ function deployBenchUnit(benchIndex, cellIndex) {
 
 function isSpecialSharedUnitId(unitId) {
   return typeof unitId === "string"
-    && (unitId.startsWith("hero-") || unitId.startsWith("boss-") || unitId === "dummy-boss");
+    && (unitId.startsWith("hero:") || unitId.startsWith("boss:") || unitId === "dummy-boss");
 }
 
 function resolveSelectedSharedBoardCell() {

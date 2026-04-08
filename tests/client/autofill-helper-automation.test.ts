@@ -207,6 +207,35 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("raid helper can keep shopping when only sub-slot deploy capacity remains", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 3,
+        benchUnits: [],
+        boardUnits: [
+          { cell: 30, unitId: "hero:okina" },
+          { cell: 31, unitId: "front-a" },
+          { cell: 32, unitId: "front-b" },
+          { cell: 33, unitId: "front-c" },
+        ],
+        boardSubUnits: [],
+        selectedHeroId: "hero:okina",
+        shopOffers: [{ unitType: "mage", cost: 3 }],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase boss helper buys from boss shop before readying", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

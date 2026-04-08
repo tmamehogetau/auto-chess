@@ -1063,6 +1063,13 @@ function handlePlayerSharedCellClick(cellIndex) {
     return;
   }
 
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
+    showPlayerStatus(latestPlayer?.role === "boss"
+      ? "いま配置できるのは、上側の boss 配置セルだけです。"
+      : "いま配置できるのは、下側の raid 配置セルだけです。");
+    return;
+  }
+
   const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();
   if (selectedSubUnitCellIndex !== null) {
     gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
@@ -1097,13 +1104,6 @@ function handlePlayerSharedCellClick(cellIndex) {
   if (selectedBenchIndex === null) {
     handleSharedCellClick(getSharedBoardState(), cellIndex);
     renderPlayerPrepSurface();
-    return;
-  }
-
-  if (!Number.isInteger(cellIndex) || cellIndex < 0) {
-    showPlayerStatus(latestPlayer?.role === "boss"
-      ? "いま配置できるのは、上側の boss 配置セルだけです。"
-      : "いま配置できるのは、下側の raid 配置セルだけです。");
     return;
   }
 
@@ -1375,8 +1375,17 @@ function resolvePlayerSubUnitTokenForCell(cellIndex) {
 }
 
 function resolveSelectedSharedSubUnitToken() {
-  return selectedSharedSubUnitToken
-    ?? resolvePlayerSubUnitTokenForCell(getSelectedSharedSubUnitCellIndex());
+  const selectedCellIndex = getSelectedSharedSubUnitCellIndex();
+  if (selectedCellIndex === null) {
+    return null;
+  }
+
+  const liveToken = resolvePlayerSubUnitTokenForCell(selectedCellIndex);
+  if (selectedSharedSubUnitToken !== null && selectedSharedSubUnitToken === liveToken) {
+    return selectedSharedSubUnitToken;
+  }
+
+  return liveToken;
 }
 
 function isHeroAttachedSubUnitToken(token) {

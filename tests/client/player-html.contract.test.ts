@@ -155,6 +155,21 @@ describe("player.html contract", () => {
     expect(html).toMatch(/<button[^>]*(?:data-player-connect-btn[^>]*disabled|disabled[^>]*data-player-connect-btn)[^>]*>/);
   });
 
+  test("shared board shell keeps board guide sizing inside the shared-board CSS block", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const sharedBoardGuideIndex = html.indexOf("[data-shared-board-placement-guide]");
+
+    expect(sharedBoardGuideIndex).toBeGreaterThan(0);
+
+    const blockEnd = html.indexOf("}", sharedBoardGuideIndex);
+    const block = html.slice(sharedBoardGuideIndex, blockEnd + 1);
+
+    expect(block.includes("--shared-board-guide-lines")).toBe(true);
+    expect(block.includes("height: calc(1.45em * var(--shared-board-guide-lines));")).toBe(true);
+    expect(block.includes("overflow-y: auto;")).toBe(true);
+    expect(html.lastIndexOf("</html>")).toBeGreaterThan(blockEnd);
+  });
+
   test("player prep shell seeds a 6x6 shared-board placeholder without legacy 4x2 copy", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
     const sharedCellCount = (html.match(/data-player-shared-cell="/g) ?? []).length;

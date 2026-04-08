@@ -242,7 +242,11 @@ function getAvailableSubDeployCells(
     availableCells.push(placement.cell);
   }
 
-  if (heroPlacement && !occupiedSubHostCells.has(heroPlacement.cell)) {
+  if (
+    heroPlacement
+    && heroPlacement.subUnit === undefined
+    && !occupiedSubHostCells.has(heroPlacement.cell)
+  ) {
     availableCells.push(heroPlacement.cell);
   }
 
@@ -724,9 +728,16 @@ export function buildAutoFillHelperActions({
       player.boardUnits,
     );
     const reserveOffers = getReserveOffers(player);
-    const reserveBuyAction = nextDeployCell !== null
-      ? buildReserveBuyAction(player, helperStrategy)
-      : null;
+      const hasSubDeployCapacity = getAvailableSubDeployCells(
+        player.role,
+        player.boardUnits,
+        player.boardSubUnits,
+        player.selectedHeroId,
+        player.selectedBossId,
+      ).length > 0;
+      const reserveBuyAction = (nextDeployCell !== null || hasSubDeployCapacity)
+        ? buildReserveBuyAction(player, helperStrategy)
+        : null;
     const deployActions = hasUnits(player.benchUnits)
       ? buildDeployActions(
         player.role,

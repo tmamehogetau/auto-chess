@@ -257,6 +257,47 @@ describe("Sub Unit System Integration", () => {
     });
   });
 
+  test("subUnitMove slot=main は attached metadata を独立ユニットへ引き継ぐ", () => {
+    withSubUnitFlag(true, () => {
+      const controller = createStartedController();
+
+      const firstCommand = controller.submitPrepCommand("p1", 1, 3_000, {
+        boardPlacements: [{
+          cell: 24,
+          unitType: "vanguard",
+          starLevel: 1,
+          subUnit: {
+            unitType: "mage",
+            starLevel: 1,
+            unitId: "murasa",
+            factionId: "myourenji",
+            archetype: "remilia",
+          },
+        }],
+      });
+      expect(firstCommand).toEqual({ accepted: true });
+
+      const moveCommand = controller.submitPrepCommand("p1", 2, 3_100, {
+        subUnitMove: { fromCell: 24, toCell: 25, slot: "main" },
+      });
+
+      expect(moveCommand).toEqual({ accepted: true });
+
+      const internals = controller.getTestAccess() as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+      };
+      expect(internals.boardPlacementsByPlayer.get("p1")).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          cell: 25,
+          unitType: "mage",
+          unitId: "murasa",
+          factionId: "myourenji",
+          archetype: "remilia",
+        }),
+      ]));
+    });
+  });
+
   test("benchToBoardCell slot=sub で自分の main に sub を装着できる", () => {
     withSubUnitFlag(true, () => {
       const controller = createStartedController();
@@ -738,6 +779,25 @@ describe("Sub Unit System Integration", () => {
       expect(controller.getHeroPlacementForPlayer("p1")).toBe(25);
       expect(detachedStatus.boardUnits).toEqual(["24:vanguard"]);
       expect((detachedStatus as any).boardSubUnits).toEqual([]);
+    });
+  });
+
+  test("摩多羅隠岐奈subはsubUnitMove slot=main で boss 側 row へは戻せない", () => {
+    withSubUnitHeroMode(() => {
+      const controller = createStartedHeroModeController("okina");
+
+      expect(controller.applyPrepPlacementForPlayer("p1", [
+        { cell: 24, unitType: "vanguard" },
+      ])).toMatchObject({ success: true });
+      expect(controller.applyHeroPlacementForPlayer("p1", 24)).toMatchObject({ success: true });
+
+      const moveCommand = controller.submitPrepCommand("p1", 1, 3_100, {
+        subUnitMove: { fromCell: 24, toCell: 5, slot: "main" },
+      });
+
+      expect(moveCommand).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect(controller.getHeroPlacementForPlayer("p1")).toBeNull();
+      expect((controller.getPlayerStatus("p1") as any).boardSubUnits).toEqual(["24:hero:okina"]);
     });
   });
 

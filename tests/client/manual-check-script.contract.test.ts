@@ -271,6 +271,14 @@ describe("manual-check script contract", () => {
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});")).toBe(true);
   });
 
+  test("manual-check recognizes shared-board hero and boss ids with colon prefixes", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes('unitId.startsWith("hero:")')).toBe(true);
+    expect(source.includes('unitId.startsWith("boss:")')).toBe(true);
+    expect(source.includes('unitId.startsWith("hero-")')).toBe(false);
+  });
+
   test("autofill helper automation state key uses resolved playerPhase so deploy retries can re-run after purchase", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 

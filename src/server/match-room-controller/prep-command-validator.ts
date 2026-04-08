@@ -769,6 +769,13 @@ function validatePreconditions(
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
 
+      if (sourceIsHeroSubHost) {
+        const targetRow = Math.floor(payload.subUnitMove.toCell / DEFAULT_SHARED_BOARD_CONFIG.width);
+        if (targetRow < Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+          return { accepted: false, code: "INVALID_PAYLOAD" };
+        }
+      }
+
       if (targetPlacement || targetsOwnHeroCell || reservedBoardCells.has(payload.subUnitMove.toCell)) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }

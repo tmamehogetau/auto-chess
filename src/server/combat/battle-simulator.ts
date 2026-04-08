@@ -127,7 +127,15 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
 };
 
 function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
-  return resolveBattleSide(unit) === "left" ? "raid" : "boss";
+  if (unit.isBoss) {
+    return "boss";
+  }
+
+  if (typeof unit.ownerPlayerId === "string" && unit.ownerPlayerId.length > 0) {
+    return "raid";
+  }
+
+  return (unit.id.startsWith("left") || unit.id.startsWith("hero-")) ? "raid" : "boss";
 }
 
 function resolveBattleSide(unit: BattleUnit): "left" | "right" {
@@ -1128,15 +1136,10 @@ export class BattleSimulator {
               `${generateUnitName(target)} reflects ${reflectedDamage} damage to ${generateUnitName(action.unit)}`,
             );
 
-            if (action.unit.hp <= 0) {
-              action.unit.isDead = true;
-              combatLog.push(`${generateUnitName(action.unit)} has been defeated!`);
-              timeline.push(createUnitDeathEvent({
-                type: "unitDeath",
-                battleId,
-                atMs: currentTime,
-                battleUnitId: action.unit.id,
-              }));
+            const forcedReflectWinner = recordAppliedDamage(target, action.unit, reflectedDamage);
+            if (forcedReflectWinner) {
+              forcedWinner = forcedReflectWinner;
+              break;
             }
           }
 

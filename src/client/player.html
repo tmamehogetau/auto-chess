@@ -1384,6 +1384,12 @@
           grid-template-columns: 1fr;
         }
       }
+      [data-shared-board-placement-guide] {
+        --shared-board-guide-lines: 3;
+        min-height: calc(1.45em * var(--shared-board-guide-lines));
+        height: calc(1.45em * var(--shared-board-guide-lines));
+        overflow-y: auto;
+      }
     </style>
   </head>
   <body>
@@ -1689,9 +1695,3 @@
     <script type="module" src="./player-app.js"></script>
   </body>
 </html>
-      [data-shared-board-placement-guide] {
-        --shared-board-guide-lines: 3;
-        min-height: calc(1.45em * var(--shared-board-guide-lines));
-        height: calc(1.45em * var(--shared-board-guide-lines));
-        overflow-y: auto;
-      }

@@ -2020,6 +2020,11 @@ export class MatchRoomController {
         return;
       }
 
+      const targetRow = Math.floor(toCell / DEFAULT_SHARED_BOARD_CONFIG.width);
+      if (targetRow < Math.floor(DEFAULT_SHARED_BOARD_CONFIG.height / 2)) {
+        return;
+      }
+
       this.heroSubHostCellByPlayer.set(playerId, -1);
       this.heroPlacementByPlayer.set(playerId, toCell);
       return;
@@ -2231,6 +2236,12 @@ export class MatchRoomController {
     }
     if (attachedSubUnit.unitId !== undefined) {
       placement.unitId = attachedSubUnit.unitId;
+    }
+    if (attachedSubUnit.factionId !== undefined) {
+      placement.factionId = attachedSubUnit.factionId;
+    }
+    if (attachedSubUnit.archetype !== undefined) {
+      placement.archetype = attachedSubUnit.archetype;
     }
     return placement;
   }

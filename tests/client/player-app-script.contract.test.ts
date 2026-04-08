@@ -184,6 +184,7 @@ describe("player-app script contract", () => {
     expect(source.includes("subUnitSwapBench")).toBe(true);
     expect(source.includes('slot: "main"')).toBe(true);
     expect(source.includes('slot: "sub"')).toBe(true);
+    expect(source.includes("const liveToken = resolvePlayerSubUnitTokenForCell(selectedCellIndex);")).toBe(true);
   });
 
   test("player app routes Okina sub-slot clicks through a dedicated hero prep command", () => {
@@ -191,6 +192,13 @@ describe("player-app script contract", () => {
 
     expect(source.includes("&& (latestPlayer?.selectedHeroId ?? \"\") === \"okina\"")).toBe(true);
     expect(source.includes("heroPlacementCell: cellIndex")).toBe(true);
+  });
+
+  test("player app validates shared-board cell indexes before move and hero placement prep commands", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes("if (!Number.isInteger(cellIndex) || cellIndex < 0) {")).toBe(true);
+    expect(source.includes("const selectedSubUnitCellIndex = getSelectedSharedSubUnitCellIndex();")).toBe(true);
   });
 
   test("player app can move a selected normal board unit into another host sub slot", () => {

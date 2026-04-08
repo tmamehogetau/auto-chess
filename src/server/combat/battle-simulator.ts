@@ -287,6 +287,63 @@ function findShortestApproachStep(
   return null;
 }
 
+function countOccupiedAdjacentCoordinates(
+  coordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+): number {
+  return [
+    { x: coordinate.x + 1, y: coordinate.y },
+    { x: coordinate.x - 1, y: coordinate.y },
+    { x: coordinate.x, y: coordinate.y + 1 },
+    { x: coordinate.x, y: coordinate.y - 1 },
+  ].reduce((count, neighbor) => {
+    if (!isCoordinateWithinBoard(neighbor)) {
+      return count;
+    }
+
+    return count + (occupiedCoordinates.has(coordinateKey(neighbor)) ? 1 : 0);
+  }, 0);
+}
+
+function findFallbackApproachStep(
+  currentCoordinate: { x: number; y: number },
+  targetCoordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+): { x: number; y: number } | null {
+  const candidates = buildApproachCandidates(currentCoordinate, targetCoordinate).filter(
+    (candidate) => !occupiedCoordinates.has(coordinateKey(candidate)),
+  );
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((left, right) => {
+    const distanceDelta =
+      sharedBoardManhattanDistance(left, targetCoordinate)
+      - sharedBoardManhattanDistance(right, targetCoordinate);
+    if (distanceDelta !== 0) {
+      return distanceDelta;
+    }
+
+    const congestionDelta =
+      countOccupiedAdjacentCoordinates(left, occupiedCoordinates)
+      - countOccupiedAdjacentCoordinates(right, occupiedCoordinates);
+    if (congestionDelta !== 0) {
+      return congestionDelta;
+    }
+
+    const xDelta = left.x - right.x;
+    if (xDelta !== 0) {
+      return xDelta;
+    }
+
+    return left.y - right.y;
+  });
+
+  return candidates[0] ?? null;
+}
+
 function buildBattleStartSnapshot(unit: BattleUnit): BattleStartUnitSnapshot {
   const coordinate = resolveTimelineCoordinate(unit);
   const presentation = unit.isBoss
@@ -620,11 +677,13 @@ function moveUnitBySimpleApproach(
     occupiedCoordinates,
     unit.attackRange,
   );
-  if (!nextCoordinate) {
+  const fallbackCoordinate = nextCoordinate
+    ?? findFallbackApproachStep(currentCoordinate, targetCoordinate, occupiedCoordinates);
+  if (!fallbackCoordinate) {
     return false;
   }
 
-  unit.cell = sharedBoardCoordinateToIndex(nextCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
+  unit.cell = sharedBoardCoordinateToIndex(fallbackCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
 
   const sideLabel = resolveBattleSide(unit) === "left" ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);

@@ -1098,6 +1098,45 @@ describe("BattleSimulator", () => {
       });
     });
 
+    test("6x6 shared-board cells では到達経路がなくても詰まりを避ける1歩迂回を選ぶ", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 0 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 3 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const fallbackMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      expect(fallbackMove).toMatchObject({
+        type: "move",
+        from: { x: 1, y: 3 },
+        to: { x: 0, y: 3 },
+      });
+    });
+
     test("単一の対決で正しく戦闘が進行する", () => {
       const simulator = new BattleSimulator();
 

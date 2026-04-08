@@ -10,6 +10,7 @@ type FakeHelperPlayer = {
   benchUnits: string[];
   benchUnitIds?: string[];
   boardUnits: string[];
+  boardSubUnits?: string[];
   shopOffers: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
   bossShopOffers: Array<{ unitType: string; cost: number }>;
   selectedHeroId: string;
@@ -39,6 +40,7 @@ class FakeHelperRoom {
       advanceToDeployAfterBuy?: boolean;
       deferStateUpdateAfterBuy?: boolean;
       deferStateUpdateAfterBuyMs?: number;
+      deferStateUpdateAfterDeployMs?: number;
     } = {},
   ) {
     this.state = state;
@@ -54,7 +56,7 @@ class FakeHelperRoom {
     const payload = message as {
       cmdSeq?: number;
       shopBuySlotIndex?: number;
-      benchToBoardCell?: { benchIndex: number; cell: number };
+      benchToBoardCell?: { benchIndex: number; cell: number; slot?: "main" | "sub" };
     };
     const player = this.state?.players.get(this.sessionId);
     if (!player) {
@@ -85,15 +87,55 @@ class FakeHelperRoom {
     }
 
     if (payload.benchToBoardCell) {
+      const applyDeployStateUpdate = () => {
+        const { benchIndex, cell, slot } = payload.benchToBoardCell ?? {};
+        const safeBenchIndex = Number(benchIndex);
+        if (!Number.isInteger(safeBenchIndex) || safeBenchIndex < 0 || safeBenchIndex >= player.benchUnits.length) {
+          this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_bench_index" });
+          return;
+        }
+        const safeCell = Number(cell);
+        if (!Number.isInteger(safeCell)) {
+          this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_cell" });
+          return;
+        }
+
+        const [benchUnit] = player.benchUnits.splice(safeBenchIndex, 1);
+        player.boardSubUnits ??= [];
+
+        if (slot === "sub") {
+          const existingPlacementIndex = player.boardUnits.findIndex((placement) =>
+            placement.startsWith(`${safeCell}:`)
+          );
+          if (existingPlacementIndex >= 0) {
+            if (!player.boardUnits[existingPlacementIndex]?.endsWith(":sub")) {
+              player.boardUnits[existingPlacementIndex] = `${player.boardUnits[existingPlacementIndex]}:sub`;
+            }
+            player.boardSubUnits = [...player.boardSubUnits.filter((token) => !token.startsWith(`${safeCell}:`)), `${safeCell}:${benchUnit}`];
+          } else {
+            this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_sub_host" });
+            return;
+          }
+        } else {
+          player.boardUnits = [...player.boardUnits, `${safeCell}:${benchUnit}`];
+        }
+
+        player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+        this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      };
+
       if (this.state?.playerPhase === "purchase") {
         this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "phase_locked" });
         return;
       }
 
-      player.benchUnits = [];
-      player.boardUnits = [`${payload.benchToBoardCell.cell}:vanguard`];
-      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
-      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      if (typeof this.options.deferStateUpdateAfterDeployMs === "number") {
+        this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+        setTimeout(applyDeployStateUpdate, this.options.deferStateUpdateAfterDeployMs);
+        return;
+      }
+
+      applyDeployStateUpdate();
     }
   }
 
@@ -121,7 +163,7 @@ class FakeHelperRoom {
 }
 
 describe("helper automation wrapper", () => {
-  test("command result triggers a follow-up deploy after a buy updates bench state", () => {
+  test("command result triggers a follow-up deploy after a buy updates bench state", async () => {
     const state: FakeHelperState = {
       phase: "Prep",
       playerPhase: "purchase",
@@ -147,6 +189,8 @@ describe("helper automation wrapper", () => {
     room.state = state;
     room.emitState();
 
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
     expect(room.sentMessages).toHaveLength(2);
     expect(room.sentMessages[0]).toMatchObject({
       type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
@@ -161,13 +205,13 @@ describe("helper automation wrapper", () => {
         cmdSeq: 2,
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 31,
+          cell: 19,
         },
       }),
     });
   });
 
-  test("state changes in playerPhase retrigger deploy after an early deploy is rejected", () => {
+  test("state changes in playerPhase retrigger deploy after an early deploy is rejected", async () => {
     const state: FakeHelperState = {
       phase: "Prep",
       playerPhase: "purchase",
@@ -193,22 +237,14 @@ describe("helper automation wrapper", () => {
     room.state = state;
     room.emitState();
 
-    expect(room.sentMessages).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(room.sentMessages).toHaveLength(1);
     expect(room.sentMessages[0]).toMatchObject({
       type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       message: expect.objectContaining({
         cmdSeq: 1,
         shopBuySlotIndex: 0,
-      }),
-    });
-    expect(room.sentMessages[1]).toMatchObject({
-      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
-      message: expect.objectContaining({
-        cmdSeq: 2,
-        benchToBoardCell: {
-          benchIndex: 0,
-          cell: 31,
-        },
       }),
     });
     expect(state.players.get("player-1")?.boardUnits).toEqual([]);
@@ -217,18 +253,18 @@ describe("helper automation wrapper", () => {
     state.playerPhase = "deploy";
     room.emitState();
 
-    expect(room.sentMessages).toHaveLength(3);
-    expect(room.sentMessages[2]).toMatchObject({
+    expect(room.sentMessages).toHaveLength(2);
+    expect(room.sentMessages[1]).toMatchObject({
       type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       message: expect.objectContaining({
         cmdSeq: expect.any(Number),
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 31,
+          cell: 19,
         },
       }),
     });
-    expect(state.players.get("player-1")?.boardUnits).toEqual(["31:vanguard"]);
+    expect(state.players.get("player-1")?.boardUnits).toEqual(["19:vanguard"]);
   });
 
   test("delayed bench sync after command result still triggers follow-up deploy", async () => {
@@ -277,11 +313,11 @@ describe("helper automation wrapper", () => {
         cmdSeq: 2,
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 31,
+          cell: 19,
         },
       }),
     });
-    expect(state.players.get("player-1")?.boardUnits).toEqual(["31:vanguard"]);
+    expect(state.players.get("player-1")?.boardUnits).toEqual(["19:vanguard"]);
   });
 
   test("helper keeps retrying long enough to catch delayed post-buy state sync", async () => {
@@ -323,11 +359,11 @@ describe("helper automation wrapper", () => {
         cmdSeq: 2,
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 31,
+          cell: 19,
         },
       }),
     });
-    expect(state.players.get("player-1")?.boardUnits).toEqual(["31:vanguard"]);
+    expect(state.players.get("player-1")?.boardUnits).toEqual(["19:vanguard"]);
   });
 
   test("helper keeps retrying through a slow first-round bench sync", async () => {
@@ -369,11 +405,11 @@ describe("helper automation wrapper", () => {
         cmdSeq: 2,
         benchToBoardCell: {
           benchIndex: 0,
-          cell: 31,
+          cell: 19,
         },
       }),
     });
-    expect(state.players.get("player-1")?.boardUnits).toEqual(["31:vanguard"]);
+    expect(state.players.get("player-1")?.boardUnits).toEqual(["19:vanguard"]);
   });
 
   test("wrapper can drive a high-cost raid helper that buys before deploying a duplicate bench unit", () => {
@@ -413,5 +449,63 @@ describe("helper automation wrapper", () => {
         shopBuySlotIndex: 1,
       }),
     });
+  });
+
+  test("delayed deploy sync still lets the wrapper attach a raid sub unit after the first host lands", async () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 5,
+          benchUnits: ["ranger", "assassin"],
+          boardUnits: ["30:reimu"],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(undefined, {
+      deferStateUpdateAfterDeployMs: 25,
+    });
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages).toHaveLength(1);
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        benchToBoardCell: {
+          benchIndex: 0,
+          cell: 31,
+        },
+      }),
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(room.sentMessages.length).toBeGreaterThanOrEqual(2);
+    expect(room.sentMessages).toContainEqual(expect.objectContaining({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        benchToBoardCell: {
+          benchIndex: 0,
+          cell: 31,
+          slot: "sub",
+        },
+      }),
+    }));
+    expect(state.players.get("player-1")?.boardUnits).toEqual(["30:reimu", "31:ranger:sub"]);
+    expect(state.players.get("player-1")?.boardSubUnits).toEqual(["31:assassin"]);
   });
 });

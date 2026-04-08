@@ -6,21 +6,47 @@ export const AUTO_FILL_HERO_IDS = [
   "keiki",
   "jyoon",
 ];
+const AUTO_FILL_SPECIAL_UNIT_IDS = new Set([
+  AUTO_FILL_BOSS_ID,
+  ...AUTO_FILL_HERO_IDS,
+]);
 const AUTO_FILL_BOSS_DEPLOY_SEQUENCES = [
-  [4, 10, 16],
-  [1, 7, 13],
-  [5, 11, 17],
+  [4, 10, 16, 3, 9, 15, 5, 11, 17, 1, 7, 13, 2, 8, 14, 0, 6, 12],
+  [1, 7, 13, 0, 6, 12, 2, 8, 14, 3, 9, 15, 4, 10, 16, 5, 11, 17],
+  [5, 11, 17, 4, 10, 16, 3, 9, 15, 2, 8, 14, 1, 7, 13, 0, 6, 12],
 ];
 const AUTO_FILL_RAID_DEPLOY_SEQUENCES = [
-  [31, 25, 19],
-  [33, 27, 21],
-  [35, 29, 23],
+  [31, 25, 19, 30, 24, 18, 32, 26, 20, 33, 27, 21, 34, 28, 22, 35, 29, 23],
+  [33, 27, 21, 32, 26, 20, 34, 28, 22, 31, 25, 19, 35, 29, 23, 30, 24, 18],
+  [35, 29, 23, 34, 28, 22, 33, 27, 21, 32, 26, 20, 31, 25, 19, 30, 24, 18],
 ];
+const FRONTLINE_UNIT_TYPES = new Set(["vanguard"]);
+const BACKLINE_UNIT_TYPES = new Set(["ranger", "mage"]);
 const BOSS_OFFER_PRIORITY_BY_UNIT_ID = {
   patchouli: 300,
   sakuya: 200,
   meiling: 100,
 };
+const BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_ID = {
+  hecatia: 280,
+  byakuren: 270,
+  junko: 250,
+  utsuho: 240,
+  chimata: 230,
+  clownpiece: 210,
+  nazrin: 190,
+  yoshika: 185,
+  rin: 180,
+  wakasagihime: 175,
+};
+const BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_TYPE = {
+  mage: 35,
+  ranger: 30,
+  vanguard: 20,
+  assassin: 15,
+};
+const BOSS_DUPLICATE_OWNED_BONUS_PER_UNIT = 220;
+const BOSS_DUPLICATE_OWNED_BONUS_CAP = 440;
 const RAID_OFFER_PRIORITY_BY_UNIT_ID = {
   nazrin: 220,
   yoshika: 210,
@@ -59,9 +85,17 @@ const RAID_ESTABLISHED_FACTION_BONUS_PER_UNIT = 20;
 const RAID_ESTABLISHED_FACTION_BONUS_CAP = 40;
 const RAID_DUPLICATE_BENCH_BONUS_PER_UNIT = 30;
 const RAID_DUPLICATE_BENCH_BONUS_CAP = 60;
+const RAID_PREFERRED_MAIN_UNIT_COUNT_BEFORE_SUB = 1;
+const FRONTLINE_DEFICIT_PRIORITY_BONUS = 480;
+const BACKLINE_WITHOUT_FRONTLINE_PENALTY = 180;
+const BACKLINE_WITHOUT_BACKLINE_PENALTY = 40;
 const RAID_HIGH_COST_STRATEGY_COST_WEIGHT = 100;
 const RAID_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT = 0.45;
 const RAID_HIGH_COST_STRATEGY_DUPLICATE_WEIGHT = 0.25;
+const MAX_STANDARD_DEPLOY_SLOTS_BY_ROLE = {
+  boss: 6,
+  raid: 2,
+};
 
 function isTouhouAutoPickEnabled(state) {
   return state?.featureFlagsEnableTouhouRoster === true;
@@ -188,6 +222,76 @@ function getAvailableDeployCells(role, helperIndex, boardUnits) {
   return deploySequence.filter((cell) => !occupiedCells.has(cell));
 }
 
+function normalizeUnitType(value) {
+  return typeof value === "string"
+    ? value.trim().toLowerCase()
+    : "";
+}
+
+function parseBenchUnitType(value) {
+  if (value && typeof value === "object") {
+    return normalizeUnitType(value.unitType);
+  }
+
+  return normalizeUnitType(value);
+}
+
+function isFrontlineUnitType(unitType) {
+  return FRONTLINE_UNIT_TYPES.has(normalizeUnitType(unitType));
+}
+
+function isBacklineUnitType(unitType) {
+  return BACKLINE_UNIT_TYPES.has(normalizeUnitType(unitType));
+}
+
+function buildFrontlinePreferredDeploySequence(deploySequence) {
+  const chunks = [];
+  const preferredSequence = [];
+  const chunkSize = 3;
+
+  for (let index = 0; index < deploySequence.length; index += chunkSize) {
+    chunks.push(deploySequence.slice(index, index + chunkSize));
+  }
+
+  for (let rowIndex = chunkSize - 1; rowIndex >= 0; rowIndex -= 1) {
+    for (const chunk of chunks) {
+      const cell = chunk[rowIndex];
+      if (cell !== undefined) {
+        preferredSequence.push(cell);
+      }
+    }
+  }
+
+  return preferredSequence;
+}
+
+function sortDeployCellsForUnitType(role, helperIndex, unitType, deployCells) {
+  const deploySequence = getDeploySequence(role, helperIndex) ?? [];
+  const availableCells = new Set(deployCells);
+  const normalizedUnitType = normalizeUnitType(unitType);
+  const preferredSequence = isFrontlineUnitType(normalizedUnitType)
+    ? buildFrontlinePreferredDeploySequence(deploySequence)
+    : deploySequence;
+
+  return preferredSequence.filter((cell) => availableCells.has(cell));
+}
+
+function getDeployPriorityForUnitType(unitType) {
+  if (isFrontlineUnitType(unitType)) {
+    return 0;
+  }
+
+  if (isBacklineUnitType(unitType)) {
+    return 1;
+  }
+
+  return 2;
+}
+
+function getMaxStandardDeploySlotsForRole(role) {
+  return MAX_STANDARD_DEPLOY_SLOTS_BY_ROLE[role] ?? 0;
+}
+
 function getBoardSubUnitHostCells(boardSubUnits) {
   const hostCells = new Set();
 
@@ -253,6 +357,130 @@ function getAvailableSubDeployCells(
   return availableCells;
 }
 
+function getNonSpecialBoardUnitCount(boardUnits, selectedHeroId = "", selectedBossId = "") {
+  const specialUnitIds = new Set(AUTO_FILL_SPECIAL_UNIT_IDS);
+
+  for (const value of [selectedHeroId, selectedBossId]) {
+    if (typeof value === "string" && value.length > 0) {
+      specialUnitIds.add(value);
+    }
+  }
+
+  let count = 0;
+  for (const placement of toArray(boardUnits)
+    .map((unit) => parseBoardPlacement(unit))
+    .filter((placement) => placement !== null)) {
+    if (specialUnitIds.has(placement.unitId)) {
+      continue;
+    }
+    count += 1;
+  }
+
+  return count;
+}
+
+function getPlacedStandardBoardUnitCount(
+  role,
+  boardUnits,
+  selectedHeroId = "",
+  selectedBossId = "",
+) {
+  if (role !== "boss" && role !== "raid") {
+    return getNonSpecialBoardUnitCount(boardUnits, selectedHeroId, selectedBossId);
+  }
+
+  return getNonSpecialBoardUnitCount(boardUnits, selectedHeroId, selectedBossId);
+}
+
+function getFormationTypeCounts(
+  boardUnits,
+  benchUnits,
+  selectedHeroId = "",
+  selectedBossId = "",
+) {
+  const specialUnitIds = new Set(
+    [selectedHeroId, selectedBossId].filter(
+      (value) => typeof value === "string" && value.length > 0,
+    ),
+  );
+  let frontlineCount = 0;
+  let backlineCount = 0;
+
+  for (const placement of toArray(boardUnits)
+    .map((unit) => parseBoardPlacement(unit))
+    .filter((placement) => placement !== null)) {
+    if (specialUnitIds.has(placement.unitId)) {
+      continue;
+    }
+
+    if (isFrontlineUnitType(placement.unitType)) {
+      frontlineCount += 1;
+      continue;
+    }
+
+    if (isBacklineUnitType(placement.unitType)) {
+      backlineCount += 1;
+    }
+  }
+
+  for (const benchUnit of toArray(benchUnits)) {
+    const unitType = parseBenchUnitType(benchUnit);
+    if (isFrontlineUnitType(unitType)) {
+      frontlineCount += 1;
+      continue;
+    }
+
+    if (isBacklineUnitType(unitType)) {
+      backlineCount += 1;
+    }
+  }
+
+  return {
+    frontlineCount,
+    backlineCount,
+  };
+}
+
+function getFormationBalanceBonus(
+  offer,
+  boardUnits,
+  benchUnits,
+  selectedHeroId = "",
+  selectedBossId = "",
+) {
+  const offerUnitType = normalizeOfferUnitType(offer);
+  const { frontlineCount, backlineCount } = getFormationTypeCounts(
+    boardUnits,
+    benchUnits,
+    selectedHeroId,
+    selectedBossId,
+  );
+
+  if (isFrontlineUnitType(offerUnitType)) {
+    if (frontlineCount === 0 && backlineCount > 0) {
+      return FRONTLINE_DEFICIT_PRIORITY_BONUS;
+    }
+
+    if (frontlineCount > 0 && frontlineCount < backlineCount) {
+      return FRONTLINE_DEFICIT_PRIORITY_BONUS / 2;
+    }
+
+    return 0;
+  }
+
+  if (isBacklineUnitType(offerUnitType)) {
+    if (frontlineCount === 0 && backlineCount > 0) {
+      return -BACKLINE_WITHOUT_FRONTLINE_PENALTY;
+    }
+
+    if (frontlineCount > 0 && backlineCount === 0) {
+      return BACKLINE_WITHOUT_BACKLINE_PENALTY;
+    }
+  }
+
+  return 0;
+}
+
 function buildDeployActions(
   role,
   helperIndex,
@@ -263,27 +491,6 @@ function buildDeployActions(
   selectedBossId = "",
 ) {
   const availableDeployCells = getAvailableDeployCells(role, helperIndex, boardUnits);
-  const benchUnitList = toArray(benchUnits);
-  const mainDeployCount = Math.min(availableDeployCells.length, benchUnitList.length);
-  const actions = [];
-
-  for (let benchIndex = 0; benchIndex < mainDeployCount; benchIndex += 1) {
-    actions.push({
-      type: "prep_command",
-      payload: {
-        benchToBoardCell: {
-          benchIndex,
-          cell: availableDeployCells[benchIndex],
-        },
-      },
-    });
-  }
-
-  const remainingBenchCount = benchUnitList.length - mainDeployCount;
-  if (remainingBenchCount <= 0) {
-    return actions;
-  }
-
   const availableSubDeployCells = getAvailableSubDeployCells(
     role,
     boardUnits,
@@ -291,16 +498,121 @@ function buildDeployActions(
     selectedHeroId,
     selectedBossId,
   );
-  const subDeployCount = Math.min(remainingBenchCount, availableSubDeployCells.length);
+  const benchUnitList = toArray(benchUnits);
+  const benchEntries = benchUnitList.map((unit, index) => ({
+    benchIndex: index,
+    unitType: parseBenchUnitType(unit),
+  }));
+  const actions = [];
+  const existingMainUnitCount = getNonSpecialBoardUnitCount(
+    boardUnits,
+    selectedHeroId,
+    selectedBossId,
+  );
+  const remainingMainDeploySlots = Math.max(
+    0,
+    getMaxStandardDeploySlotsForRole(role) - existingMainUnitCount,
+  );
+  let mainDeployCount = Math.min(
+    availableDeployCells.length,
+    benchUnitList.length,
+    remainingMainDeploySlots,
+  );
 
-  for (let subIndex = 0; subIndex < subDeployCount; subIndex += 1) {
+  if (role === "raid" && availableSubDeployCells.length > 0) {
+    const minimumMainDeployCount = Math.min(
+      mainDeployCount,
+      Math.max(0, RAID_PREFERRED_MAIN_UNIT_COUNT_BEFORE_SUB - existingMainUnitCount),
+    );
+    mainDeployCount = minimumMainDeployCount;
+  }
+
+  const prioritizedBenchEntries = [...benchEntries].sort((leftEntry, rightEntry) =>
+    getDeployPriorityForUnitType(leftEntry.unitType) - getDeployPriorityForUnitType(rightEntry.unitType)
+    || leftEntry.benchIndex - rightEntry.benchIndex);
+  const mainDeployEntries = prioritizedBenchEntries.slice(0, mainDeployCount);
+  const usedDeployCells = new Set();
+
+  for (const deployEntry of mainDeployEntries) {
+    const preferredCells = sortDeployCellsForUnitType(
+      role,
+      helperIndex,
+      deployEntry.unitType,
+      availableDeployCells,
+    );
+    const targetCell = preferredCells.find((cell) => !usedDeployCells.has(cell));
+    if (targetCell === undefined) {
+      continue;
+    }
+
+    usedDeployCells.add(targetCell);
     actions.push({
       type: "prep_command",
       payload: {
         benchToBoardCell: {
-          benchIndex: mainDeployCount + subIndex,
+          benchIndex: deployEntry.benchIndex,
+          cell: targetCell,
+        },
+      },
+    });
+  }
+
+  const remainingBenchEntries = benchEntries.filter((entry) =>
+    !mainDeployEntries.some((mainDeployEntry) => mainDeployEntry.benchIndex === entry.benchIndex));
+  const remainingBenchCount = remainingBenchEntries.length;
+  if (remainingBenchCount <= 0) {
+    return actions;
+  }
+
+  const subDeployCount = Math.min(remainingBenchCount, availableSubDeployCells.length);
+
+  for (let subIndex = 0; subIndex < subDeployCount; subIndex += 1) {
+    const subDeployEntry = remainingBenchEntries[subIndex];
+    if (!subDeployEntry) {
+      continue;
+    }
+    actions.push({
+      type: "prep_command",
+      payload: {
+        benchToBoardCell: {
+          benchIndex: subDeployEntry.benchIndex,
           cell: availableSubDeployCells[subIndex],
           slot: "sub",
+        },
+      },
+      });
+  }
+
+  const remainingMainDeployCells = availableDeployCells.filter((cell) => !usedDeployCells.has(cell));
+  const remainingBenchAfterSubDeploy = remainingBenchCount - subDeployCount;
+  const remainingMainSlotsAfterInitialDeploy = Math.max(0, remainingMainDeploySlots - mainDeployEntries.length);
+  const extraMainDeployCount = Math.min(
+    remainingBenchAfterSubDeploy,
+    remainingMainDeployCells.length,
+    remainingMainSlotsAfterInitialDeploy,
+  );
+
+  for (let extraMainIndex = 0; extraMainIndex < extraMainDeployCount; extraMainIndex += 1) {
+    const extraMainEntry = remainingBenchEntries[subDeployCount + extraMainIndex];
+    if (!extraMainEntry) {
+      continue;
+    }
+    const preferredCells = sortDeployCellsForUnitType(
+      role,
+      helperIndex,
+      extraMainEntry.unitType,
+      remainingMainDeployCells,
+    );
+    const targetCell = preferredCells[0];
+    if (targetCell === undefined) {
+      continue;
+    }
+    actions.push({
+      type: "prep_command",
+      payload: {
+        benchToBoardCell: {
+          benchIndex: extraMainEntry.benchIndex,
+          cell: targetCell,
         },
       },
     });
@@ -397,8 +709,63 @@ export function resolveAutoFillHelperStrategy({
   return "upgrade";
 }
 
-function getBossOfferPriorityScore(offer) {
-  return BOSS_OFFER_PRIORITY_BY_UNIT_ID[normalizeOfferUnitId(offer)] ?? 0;
+function getPlacedUnitIds(boardUnits, selectedHeroId = "", selectedBossId = "") {
+  const specialUnitIds = new Set(
+    [selectedHeroId, selectedBossId].filter(
+      (value) => typeof value === "string" && value.length > 0,
+    ),
+  );
+
+  return toArray(boardUnits)
+    .map((value) => parseBoardPlacement(value))
+    .filter((placement) => placement !== null)
+    .map((placement) => placement.unitId)
+    .filter((unitId) => unitId && !specialUnitIds.has(unitId));
+}
+
+function getBossOfferDuplicateOwnedBonus(offer, boardUnits, benchUnitIds) {
+  const offerUnitId = normalizeOfferUnitId(offer);
+  if (!offerUnitId) {
+    return 0;
+  }
+
+  const ownedUnitIdCounts = getUnitIdCounts([
+    ...toArray(benchUnitIds),
+    ...getPlacedUnitIds(boardUnits),
+  ]);
+  const ownedCount = ownedUnitIdCounts.get(offerUnitId) ?? 0;
+  if (ownedCount <= 0) {
+    return 0;
+  }
+
+  return Math.min(
+    ownedCount * BOSS_DUPLICATE_OWNED_BONUS_PER_UNIT,
+    BOSS_DUPLICATE_OWNED_BONUS_CAP,
+  );
+}
+
+function getBossOfferPriorityScore(offer, boardUnits = [], benchUnitIds = []) {
+  const unitId = normalizeOfferUnitId(offer);
+  const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, []);
+  const duplicateOwnedBonus = getBossOfferDuplicateOwnedBonus(
+    offer,
+    boardUnits,
+    benchUnitIds,
+  );
+  const bossExclusiveScore = BOSS_OFFER_PRIORITY_BY_UNIT_ID[unitId];
+  if (bossExclusiveScore !== undefined) {
+    return bossExclusiveScore + duplicateOwnedBonus + formationBalanceBonus;
+  }
+
+  const commonOfferScore = BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_ID[unitId];
+  if (commonOfferScore !== undefined) {
+    return commonOfferScore + duplicateOwnedBonus + formationBalanceBonus;
+  }
+
+  const cost = getOfferCost(offer) ?? 0;
+  const typeScore =
+    BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_TYPE[normalizeOfferUnitType(offer)] ?? 0;
+  return cost * 40 + typeScore + duplicateOwnedBonus + formationBalanceBonus;
 }
 
 function getFactionCounts(boardUnits) {
@@ -466,43 +833,50 @@ function getRaidOfferDuplicateBenchBonus(offer, benchUnitIds) {
   );
 }
 
-function getRaidUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds) {
+function getRaidUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits = []) {
   const unitIdPriority = RAID_OFFER_PRIORITY_BY_UNIT_ID[normalizeOfferUnitId(offer)] ?? 0;
   const unitTypePriority = RAID_OFFER_PRIORITY_BY_UNIT_TYPE[normalizeOfferUnitType(offer)] ?? 0;
   const offerCost = getOfferCost(offer) ?? 0;
   const factionBonus = getRaidOfferFactionBonus(offer, boardUnits);
   const duplicateBenchBonus = getRaidOfferDuplicateBenchBonus(offer, benchUnitIds);
-  return unitIdPriority + unitTypePriority + factionBonus + duplicateBenchBonus - offerCost * 3;
+  const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, benchUnits);
+  return unitIdPriority
+    + unitTypePriority
+    + factionBonus
+    + duplicateBenchBonus
+    + formationBalanceBonus
+    - offerCost * 3;
 }
 
-function getRaidHighCostOfferPriorityScore(offer, boardUnits, benchUnitIds) {
+function getRaidHighCostOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits = []) {
   const unitIdPriority = RAID_OFFER_PRIORITY_BY_UNIT_ID[normalizeOfferUnitId(offer)] ?? 0;
   const unitTypePriority = RAID_OFFER_PRIORITY_BY_UNIT_TYPE[normalizeOfferUnitType(offer)] ?? 0;
   const offerCost = getOfferCost(offer) ?? 0;
   const factionBonus = getRaidOfferFactionBonus(offer, boardUnits);
   const duplicateBenchBonus = getRaidOfferDuplicateBenchBonus(offer, benchUnitIds);
+  const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, benchUnits);
   const baseScore = unitIdPriority + unitTypePriority + factionBonus;
 
   return offerCost * RAID_HIGH_COST_STRATEGY_COST_WEIGHT
-    + baseScore * RAID_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT
+    + (baseScore + formationBalanceBonus) * RAID_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT
     + duplicateBenchBonus * RAID_HIGH_COST_STRATEGY_DUPLICATE_WEIGHT;
 }
 
-function getRaidOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy) {
+function getRaidOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy, benchUnits = []) {
   if (strategy === "highCost") {
-    return getRaidHighCostOfferPriorityScore(offer, boardUnits, benchUnitIds);
+    return getRaidHighCostOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits);
   }
 
-  return getRaidUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds);
+  return getRaidUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits);
 }
 
-function getOfferPriorityScore(role, offer, boardUnits, benchUnitIds, strategy) {
+function getOfferPriorityScore(role, offer, boardUnits, benchUnitIds, strategy, benchUnits = []) {
   if (role === "boss") {
-    return getBossOfferPriorityScore(offer);
+    return getBossOfferPriorityScore(offer, boardUnits, benchUnitIds);
   }
 
   if (role === "raid") {
-    return getRaidOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy);
+    return getRaidOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy, benchUnits);
   }
 
   return 0;
@@ -515,6 +889,7 @@ function pickAffordableOfferIndex(
   boardUnits = [],
   benchUnitIds = [],
   strategy = "upgrade",
+  benchUnits = [],
 ) {
   const offerList = toArray(offers);
 
@@ -538,6 +913,7 @@ function pickAffordableOfferIndex(
         boardUnits,
         benchUnitIds,
         strategy,
+        benchUnits,
       );
       if (bestOfferIndex === null || offerScore > bestOfferScore) {
         bestOfferIndex = index;
@@ -549,22 +925,66 @@ function pickAffordableOfferIndex(
   return bestOfferIndex;
 }
 
+function buildBossShopReserveBuyAction(player) {
+  const affordableBossSlotIndex = pickAffordableOfferIndex(
+    player?.bossShopOffers,
+    player?.gold,
+    "boss",
+    player?.boardUnits,
+    player?.benchUnitIds,
+    "upgrade",
+    player?.benchUnits,
+  );
+  if (affordableBossSlotIndex === null) {
+    return null;
+  }
+
+  const offer = toArray(player?.bossShopOffers)[affordableBossSlotIndex];
+  return {
+    action: {
+      type: "prep_command",
+      payload: { bossShopBuySlotIndex: affordableBossSlotIndex },
+    },
+    score: getBossOfferPriorityScore(offer, player?.boardUnits, player?.benchUnitIds),
+  };
+}
+
+function buildBossNormalReserveBuyAction(player) {
+  const affordableShopSlotIndex = pickAffordableOfferIndex(
+    player?.shopOffers,
+    player?.gold,
+    "boss",
+    player?.boardUnits,
+    player?.benchUnitIds,
+    "upgrade",
+    player?.benchUnits,
+  );
+  if (affordableShopSlotIndex === null) {
+    return null;
+  }
+
+  const offer = toArray(player?.shopOffers)[affordableShopSlotIndex];
+  return {
+    action: {
+      type: "prep_command",
+      payload: { shopBuySlotIndex: affordableShopSlotIndex },
+    },
+    score: getBossOfferPriorityScore(offer, player?.boardUnits, player?.benchUnitIds),
+  };
+}
+
 function buildReserveBuyAction(player, strategy) {
-  if (player?.role === "boss" && hasOffers(player.bossShopOffers)) {
-    const affordableBossSlotIndex = pickAffordableOfferIndex(
-      player.bossShopOffers,
-      player.gold,
-      player.role,
-      player.boardUnits,
-      player.benchUnitIds,
-      strategy,
-    );
-    if (affordableBossSlotIndex !== null) {
-      return {
-        type: "prep_command",
-        payload: { bossShopBuySlotIndex: affordableBossSlotIndex },
-      };
+  if (player?.role === "boss") {
+    const bossShopBuy = buildBossShopReserveBuyAction(player);
+    const normalShopBuy = buildBossNormalReserveBuyAction(player);
+
+    if (bossShopBuy && normalShopBuy) {
+      return normalShopBuy.score > bossShopBuy.score
+        ? normalShopBuy.action
+        : bossShopBuy.action;
     }
+
+    return bossShopBuy?.action ?? normalShopBuy?.action ?? null;
   }
 
   if (player?.role === "raid" && hasOffers(player.shopOffers)) {
@@ -575,6 +995,7 @@ function buildReserveBuyAction(player, strategy) {
       player.boardUnits,
       player.benchUnitIds,
       strategy,
+      player.benchUnits,
     );
     if (affordableShopSlotIndex !== null) {
       return {
@@ -598,16 +1019,19 @@ function parseBoardPlacement(value) {
       cell,
       factionId: typeof value.factionId === "string" ? value.factionId : "",
       unitId: typeof value.unitId === "string" ? value.unitId : "",
+      unitType: normalizeUnitType(value.unitType),
       subUnit: value.subUnit,
     };
   }
 
   if (typeof value === "string") {
     const [, rawUnitId = ""] = value.split(":");
+    const normalizedUnitType = normalizeUnitType(rawUnitId);
     return {
       cell,
       factionId: "",
       unitId: rawUnitId,
+      unitType: normalizedUnitType,
       subUnit: undefined,
     };
   }
@@ -616,13 +1040,17 @@ function parseBoardPlacement(value) {
     cell,
     factionId: "",
     unitId: "",
+    unitType: "",
     subUnit: undefined,
   };
 }
 
 function getReserveOffers(player) {
   if (player?.role === "boss") {
-    return player.bossShopOffers;
+    return [
+      ...toArray(player.bossShopOffers),
+      ...toArray(player.shopOffers),
+    ];
   }
 
   if (player?.role === "raid") {
@@ -634,8 +1062,8 @@ function getReserveOffers(player) {
 
 function shouldPrioritizeReserveBuyBeforeDeploy(player, reserveBuyAction, playerPhase, strategy) {
   if (
-    player?.role !== "raid"
-    || playerPhase !== "purchase"
+    (player?.role !== "raid" && player?.role !== "boss")
+    || playerPhase === "deploy"
     || !reserveBuyAction
     || !hasUnits(player.benchUnits)
   ) {
@@ -643,11 +1071,37 @@ function shouldPrioritizeReserveBuyBeforeDeploy(player, reserveBuyAction, player
   }
 
   const shopBuySlotIndex = reserveBuyAction.payload?.shopBuySlotIndex;
-  if (!Number.isInteger(shopBuySlotIndex)) {
+  const bossShopBuySlotIndex = reserveBuyAction.payload?.bossShopBuySlotIndex;
+  const targetOffer = Number.isInteger(shopBuySlotIndex)
+    ? toArray(player.shopOffers)[shopBuySlotIndex]
+    : Number.isInteger(bossShopBuySlotIndex)
+      ? toArray(player.bossShopOffers)[bossShopBuySlotIndex]
+      : null;
+  if (!targetOffer) {
     return false;
   }
 
-  const targetOffer = toArray(player.shopOffers)[shopBuySlotIndex];
+  const formationBalanceBonus = getFormationBalanceBonus(
+    targetOffer,
+    player.boardUnits,
+    player.benchUnits,
+    player.selectedHeroId,
+    player.selectedBossId,
+  );
+  if (formationBalanceBonus >= FRONTLINE_DEFICIT_PRIORITY_BONUS) {
+    return true;
+  }
+
+  if (player?.role !== "raid" || playerPhase !== "purchase") {
+    return false;
+  }
+
+  const raidReserveUnitCount =
+    getPlacedPurchasedUnitCount("raid", player.boardUnits) + toArray(player.benchUnits).length;
+  if (raidReserveUnitCount < 2) {
+    return true;
+  }
+
   if (strategy === "highCost") {
     return (getOfferCost(targetOffer) ?? 0) >= 3;
   }
@@ -721,8 +1175,17 @@ export function buildAutoFillHelperActions({
       return [];
     }
 
-    const playerPhase = resolveAutoFillHelperPlayerPhase(state);
-    const nextDeployCell = getNextDeployCell(player.role, helperIndex, player.boardUnits);
+  const playerPhase = resolveAutoFillHelperPlayerPhase(state);
+    const placedStandardBoardUnitCount = getPlacedStandardBoardUnitCount(
+      player.role,
+      player.boardUnits,
+      player.selectedHeroId,
+      player.selectedBossId,
+    );
+    const mainBoardAtCapacity = placedStandardBoardUnitCount >= getMaxStandardDeploySlotsForRole(player.role);
+    const nextDeployCell = mainBoardAtCapacity
+      ? null
+      : getNextDeployCell(player.role, helperIndex, player.boardUnits);
     const placedPurchasedUnitCount = getPlacedPurchasedUnitCount(
       player.role,
       player.boardUnits,
@@ -754,10 +1217,6 @@ export function buildAutoFillHelperActions({
       return [reserveBuyAction];
     }
 
-    if (deployActions.length > 0) {
-      return deployActions;
-    }
-
     if (playerPhase === "purchase") {
       if (reserveBuyAction) {
         return [reserveBuyAction];
@@ -772,6 +1231,15 @@ export function buildAutoFillHelperActions({
             {
               type: "prep_command",
               payload: { bossShopBuySlotIndex: 0 },
+            },
+          ];
+        }
+
+        if (player.role === "boss" && hasOffers(player.shopOffers)) {
+          return [
+            {
+              type: "prep_command",
+              payload: { shopBuySlotIndex: 0 },
             },
           ];
         }
@@ -853,6 +1321,15 @@ export function buildAutoFillHelperActions({
           {
             type: "prep_command",
             payload: { bossShopBuySlotIndex: 0 },
+          },
+        ];
+      }
+
+      if (player.role === "boss" && hasOffers(player.shopOffers)) {
+        return [
+          {
+            type: "prep_command",
+            payload: { shopBuySlotIndex: 0 },
           },
         ];
       }

@@ -184,6 +184,7 @@ type ReportUnitBattleOutcome = {
   unitName: string;
   side: "boss" | "raid";
   totalDamage: number;
+  phaseContributionDamage: number;
   finalHp: number;
   alive: boolean;
   starLevel: number;
@@ -194,6 +195,7 @@ type ReportUnitBattleOutcome = {
 type BotOnlyRoundSnapshot = {
   roundIndex: number;
   phaseAfterRound: string;
+  battlePhaseElapsedMs?: number;
   phaseProgress: {
     phaseHpTarget: number;
     phaseDamageDealt: number;
@@ -804,6 +806,51 @@ const takeBoardUnitMetadataForBattleUnit = (
   return metadata;
 };
 
+const distributeIntegerTotalByWeight = (
+  total: number,
+  weightedBattleUnitIds: Array<{ battleUnitId: string; weight: number }>,
+): Map<string, number> => {
+  const sanitizedEntries = weightedBattleUnitIds.filter((entry) => entry.weight > 0);
+  if (total <= 0 || sanitizedEntries.length === 0) {
+    return new Map();
+  }
+
+  const totalWeight = sanitizedEntries.reduce((sum, entry) => sum + entry.weight, 0);
+  if (totalWeight <= 0) {
+    return new Map();
+  }
+
+  const shares = sanitizedEntries.map((entry) => {
+    const exactShare = (total * entry.weight) / totalWeight;
+    return {
+      battleUnitId: entry.battleUnitId,
+      floorShare: Math.floor(exactShare),
+      remainder: exactShare - Math.floor(exactShare),
+    };
+  });
+
+  let remaining = total - shares.reduce((sum, entry) => sum + entry.floorShare, 0);
+  shares.sort((left, right) =>
+    right.remainder - left.remainder
+    || right.floorShare - left.floorShare
+    || left.battleUnitId.localeCompare(right.battleUnitId));
+
+  const distributed = new Map(
+    shares.map((entry) => [entry.battleUnitId, entry.floorShare] as const),
+  );
+
+  for (const entry of shares) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    distributed.set(entry.battleUnitId, (distributed.get(entry.battleUnitId) ?? 0) + 1);
+    remaining -= 1;
+  }
+
+  return distributed;
+};
+
 const buildUnitBattleOutcomesForBattle = (
   timeline: BattleTimelineEvent[] | undefined,
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
@@ -820,9 +867,16 @@ const buildUnitBattleOutcomesForBattle = (
 
   const ownerByTrackedUnitId = buildTrackedUnitOwnerMap(playersAtBattleStart);
   const metadataByPlayerAndUnitId = buildBoardUnitMetadataMapForBattle(playersAtBattleStart);
+  const playerById = new Map(playersAtBattleStart.map((player) => [player.playerId, player] as const));
   const damageByBattleUnitId = new Map<string, number>();
+  const phaseContributionByBattleUnitId = new Map<string, number>();
+  const damageBySourceToTargetBattleUnitId = new Map<string, Map<string, number>>();
   const currentHpByBattleUnitId = new Map<string, number>();
   const deadUnitIds = new Set<string>();
+  const battleStartUnitByBattleUnitId = new Map(
+    battleStartEvent.units.map((unit) => [unit.battleUnitId, unit] as const),
+  );
+  const latestDamageSourceByTargetBattleUnitId = new Map<string, string>();
   const latestKeyframeByBattleUnitId = new Map<
     string,
     {
@@ -830,6 +884,26 @@ const buildUnitBattleOutcomesForBattle = (
       alive: boolean;
     }
   >();
+  const resolvePlayerRoleForBattleUnit = (
+    battleUnitId: string,
+  ): "boss" | "raid" | null => {
+    const unit = battleStartUnitByBattleUnitId.get(battleUnitId);
+    if (!unit) {
+      return null;
+    }
+
+    const playerId = resolvePlayerIdForBattleUnit(
+      unit.ownerPlayerId,
+      unit.battleUnitId,
+      unit.sourceUnitId,
+      ownerByTrackedUnitId,
+    );
+    if (!playerId) {
+      return null;
+    }
+
+    return playerById.get(playerId)?.role === "boss" ? "boss" : "raid";
+  };
 
   for (const event of timeline) {
     if (event.type === "damageApplied") {
@@ -837,11 +911,69 @@ const buildUnitBattleOutcomesForBattle = (
         event.sourceBattleUnitId,
         (damageByBattleUnitId.get(event.sourceBattleUnitId) ?? 0) + event.amount,
       );
+      const sourceDamageByTarget = damageBySourceToTargetBattleUnitId.get(event.targetBattleUnitId)
+        ?? new Map<string, number>();
+      sourceDamageByTarget.set(
+        event.sourceBattleUnitId,
+        (sourceDamageByTarget.get(event.sourceBattleUnitId) ?? 0) + event.amount,
+      );
+      damageBySourceToTargetBattleUnitId.set(event.targetBattleUnitId, sourceDamageByTarget);
+      latestDamageSourceByTargetBattleUnitId.set(event.targetBattleUnitId, event.sourceBattleUnitId);
+      const targetUnit = battleStartUnitByBattleUnitId.get(event.targetBattleUnitId);
+      if (
+        targetUnit?.battleUnitId.startsWith("boss-")
+        && resolvePlayerRoleForBattleUnit(event.sourceBattleUnitId) === "raid"
+      ) {
+        phaseContributionByBattleUnitId.set(
+          event.sourceBattleUnitId,
+          (phaseContributionByBattleUnitId.get(event.sourceBattleUnitId) ?? 0) + event.amount,
+        );
+      }
       currentHpByBattleUnitId.set(event.targetBattleUnitId, event.remainingHp);
       continue;
     }
 
     if (event.type === "unitDeath") {
+      const defeatedUnit = battleStartUnitByBattleUnitId.get(event.battleUnitId);
+      const defeatedUnitIsBossSide = defeatedUnit != null
+        && resolvePlayerRoleForBattleUnit(event.battleUnitId) === "boss";
+      const defeatedUnitIsMainBoss = defeatedUnit?.battleUnitId.startsWith("boss-") ?? false;
+      if (defeatedUnitIsBossSide && !defeatedUnitIsMainBoss) {
+        const escortDefeatBonus = typeof defeatedUnit?.maxHp === "number"
+          ? Math.floor(defeatedUnit.maxHp / 2)
+          : 0;
+        const raidDamageContributors = Array.from(
+          damageBySourceToTargetBattleUnitId.get(event.battleUnitId)?.entries() ?? [],
+        )
+          .filter(([battleUnitId, damage]) =>
+            damage > 0 && resolvePlayerRoleForBattleUnit(battleUnitId) === "raid")
+          .map(([battleUnitId, damage]) => ({ battleUnitId, weight: damage }));
+
+        const distributedEscortBonus = distributeIntegerTotalByWeight(
+          escortDefeatBonus,
+          raidDamageContributors,
+        );
+        if (distributedEscortBonus.size > 0) {
+          for (const [battleUnitId, bonus] of distributedEscortBonus) {
+            phaseContributionByBattleUnitId.set(
+              battleUnitId,
+              (phaseContributionByBattleUnitId.get(battleUnitId) ?? 0) + bonus,
+            );
+          }
+        } else {
+          const killerBattleUnitId = latestDamageSourceByTargetBattleUnitId.get(event.battleUnitId);
+          if (
+            killerBattleUnitId
+            && resolvePlayerRoleForBattleUnit(killerBattleUnitId) === "raid"
+            && escortDefeatBonus > 0
+          ) {
+            phaseContributionByBattleUnitId.set(
+              killerBattleUnitId,
+              (phaseContributionByBattleUnitId.get(killerBattleUnitId) ?? 0) + escortDefeatBonus,
+            );
+          }
+        }
+      }
       deadUnitIds.add(event.battleUnitId);
       currentHpByBattleUnitId.set(event.battleUnitId, 0);
       latestKeyframeByBattleUnitId.set(event.battleUnitId, {
@@ -897,6 +1029,7 @@ const buildUnitBattleOutcomesForBattle = (
         unitName: unit.displayName ?? metadata?.unitName ?? sourceUnitId,
         side: ownerPlayer?.role === "boss" ? "boss" : "raid",
         totalDamage: damageByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        phaseContributionDamage: phaseContributionByBattleUnitId.get(unit.battleUnitId) ?? 0,
         finalHp,
         alive,
         starLevel: metadata?.starLevel ?? 1,
@@ -929,6 +1062,46 @@ const resolveBattleDurationMsFromTimeline = (
   return maxAtMs;
 };
 
+const resolveRemainingTimeFromDeadlineAtMs = (
+  deadlineAtMs: number | null | undefined,
+  nowMs: number = Date.now(),
+): number | undefined => {
+  if (!Number.isFinite(deadlineAtMs) || !Number.isFinite(nowMs)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.round(Number(deadlineAtMs) - nowMs));
+};
+
+const resolveBattlePhaseElapsedMs = (
+  remainingAtBattleStartMs: number | undefined,
+  remainingAtCaptureMs: number | undefined,
+): number | undefined => {
+  if (
+    !Number.isFinite(remainingAtBattleStartMs)
+    || !Number.isFinite(remainingAtCaptureMs)
+  ) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.round(Number(remainingAtBattleStartMs) - Number(remainingAtCaptureMs)));
+};
+
+const REAL_PLAY_BATTLE_DURATION_MS = 40_000;
+const BOT_ONLY_BATTLE_DURATION_MS = 80;
+
+const convertToRealPlayBattleDurationMs = (
+  battleDurationMs: number | undefined,
+): number | undefined => {
+  if (!Number.isFinite(battleDurationMs)) {
+    return undefined;
+  }
+
+  return Math.round(
+    Number(battleDurationMs) * (REAL_PLAY_BATTLE_DURATION_MS / BOT_ONLY_BATTLE_DURATION_MS),
+  );
+};
+
 const buildRoundBattleReport = (
   serverRoom: BotOnlyServerRoom,
   battle: {
@@ -944,8 +1117,9 @@ const buildRoundBattleReport = (
   timeline: BattleTimelineEvent[],
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
   playerLabels: Map<string, string>,
+  battleDurationOverrideMs?: number,
 ): BotOnlyRoundBattleReport => {
-  const battleDurationMs = resolveBattleDurationMsFromTimeline(timeline);
+  const battleDurationMs = battleDurationOverrideMs ?? resolveBattleDurationMsFromTimeline(timeline);
   return {
     battleIndex: battle.battleIndex,
     leftPlayerId: battle.leftPlayerId,
@@ -1065,6 +1239,7 @@ const buildRoundBattleReportsFromCurrentState = (
   roundIndex: number,
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
   playerLabels: Map<string, string>,
+  battleDurationOverrideMs?: number,
 ): BotOnlyRoundBattleReport[] => {
   const roundLog = getMatchLogger(serverRoom)
     .getRoundLogs()
@@ -1082,6 +1257,7 @@ const buildRoundBattleReportsFromCurrentState = (
       timeline,
       playersAtBattleStart,
       playerLabels,
+      battleDurationOverrideMs,
     );
   });
 };
@@ -1220,6 +1396,7 @@ test("buildBotOnlyMatchRoundReport prefers captured round battle details over re
       unitName: "Round1Boss",
       side: "boss",
       totalDamage: 100,
+      phaseContributionDamage: 0,
       finalHp: 50,
       alive: true,
       starLevel: 1,
@@ -1900,20 +2077,544 @@ test("buildUnitBattleOutcomesForBattle prefers the final keyframe for alive stat
       unitName: "レミリア",
       alive: true,
       finalHp: 700,
+      phaseContributionDamage: 0,
     }),
     expect.objectContaining({
       playerId: "p2",
       unitName: "霊夢",
       alive: false,
       finalHp: 0,
+      phaseContributionDamage: 0,
     }),
   ]);
+});
+
+test("buildUnitBattleOutcomesForBattle tracks per-unit phase contribution damage", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r4-1",
+      round: 4,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "guard-p1-a",
+          ownerPlayerId: "p1",
+          sourceUnitId: "sakuya",
+          side: "boss",
+          x: 1,
+          y: 0,
+          currentHp: 720,
+          maxHp: 720,
+          displayName: "十六夜咲夜",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "nazrin",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "ナズーリン",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r4-1",
+      atMs: 100,
+      sourceBattleUnitId: "unit-p2-a",
+      targetBattleUnitId: "boss-p1",
+      amount: 120,
+      remainingHp: 780,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r4-1",
+      atMs: 140,
+      sourceBattleUnitId: "unit-p2-a",
+      targetBattleUnitId: "guard-p1-a",
+      amount: 800,
+      remainingHp: 0,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "unitDeath",
+      battleId: "battle-r4-1",
+      atMs: 150,
+      battleUnitId: "guard-p1-a",
+    },
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1", "guard-p1-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r4-1",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 920,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r4-1",
+          opponentId: "p1",
+          won: true,
+          damageDealt: 920,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "ナズーリン",
+      totalDamage: 920,
+      phaseContributionDamage: 480,
+    }),
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "レミリア",
+      phaseContributionDamage: 0,
+    }),
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "十六夜咲夜",
+      phaseContributionDamage: 0,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle uses owner player role instead of timeline side for phase contribution", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r5-1",
+      round: 5,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "raid",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "nazrin",
+          side: "boss",
+          x: 0,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "ナズーリン",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r5-1",
+      atMs: 100,
+      sourceBattleUnitId: "unit-p2-a",
+      targetBattleUnitId: "boss-p1",
+      amount: 250,
+      remainingHp: 650,
+    } satisfies DamageAppliedEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r5-1",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 250,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r5-1",
+          opponentId: "p1",
+          won: true,
+          damageDealt: 250,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "ナズーリン",
+      phaseContributionDamage: 250,
+    }),
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "レミリア",
+      phaseContributionDamage: 0,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle uses owner player role for boss-side escort defeat bonus", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r6-1",
+      round: 6,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "guard-p1-a",
+          ownerPlayerId: "p1",
+          sourceUnitId: "meiling",
+          side: "raid",
+          x: 1,
+          y: 0,
+          currentHp: 850,
+          maxHp: 850,
+          displayName: "紅美鈴",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "nazrin",
+          side: "boss",
+          x: 0,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "ナズーリン",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r6-1",
+      atMs: 100,
+      sourceBattleUnitId: "unit-p2-a",
+      targetBattleUnitId: "guard-p1-a",
+      amount: 900,
+      remainingHp: 0,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "unitDeath",
+      battleId: "battle-r6-1",
+      atMs: 120,
+      battleUnitId: "guard-p1-a",
+    },
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["guard-p1-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r6-1",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 900,
+          survivors: 0,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r6-1",
+          opponentId: "p1",
+          won: true,
+          damageDealt: 900,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "ナズーリン",
+      phaseContributionDamage: Math.floor(850 / 2),
+    }),
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "紅美鈴",
+      phaseContributionDamage: 0,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle distributes boss-side escort defeat bonus across raid contributors", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r6-2",
+      round: 6,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "guard-p1-a",
+          ownerPlayerId: "p1",
+          sourceUnitId: "meiling",
+          side: "boss",
+          x: 1,
+          y: 0,
+          currentHp: 800,
+          maxHp: 800,
+          displayName: "紅美鈴",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "nazrin",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "ナズーリン",
+        },
+        {
+          battleUnitId: "unit-p3-a",
+          ownerPlayerId: "p3",
+          sourceUnitId: "rin",
+          side: "raid",
+          x: 2,
+          y: 5,
+          currentHp: 420,
+          maxHp: 420,
+          displayName: "火焔猫燐",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r6-2",
+      atMs: 100,
+      sourceBattleUnitId: "unit-p2-a",
+      targetBattleUnitId: "guard-p1-a",
+      amount: 300,
+      remainingHp: 500,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r6-2",
+      atMs: 180,
+      sourceBattleUnitId: "unit-p3-a",
+      targetBattleUnitId: "guard-p1-a",
+      amount: 500,
+      remainingHp: 0,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "unitDeath",
+      battleId: "battle-r6-2",
+      atMs: 200,
+      battleUnitId: "guard-p1-a",
+    },
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["guard-p1-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r6-2",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 800,
+          survivors: 0,
+          opponentSurvivors: 2,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r6-2",
+          opponentId: "p1",
+          won: true,
+          damageDealt: 300,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p3",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p3-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r6-2",
+          opponentId: "p1",
+          won: true,
+          damageDealt: 500,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+      ["p3", "P3"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "ナズーリン",
+      phaseContributionDamage: 150,
+    }),
+    expect.objectContaining({
+      playerId: "p3",
+      unitName: "火焔猫燐",
+      phaseContributionDamage: 250,
+    }),
+  ]));
 });
 
 const runBotOnlyHelperMatch = async (
   connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
   createRoom: () => Promise<BotOnlyServerRoom>,
-  damageTargets: Record<number, number>,
+  damageTargets?: Record<number, number>,
 ): Promise<BotOnlyMatchArtifacts> => {
   const serverRoom = await createRoom();
   const clients = await Promise.all([
@@ -1942,6 +2643,10 @@ const runBotOnlyHelperMatch = async (
       timeoutMessage: `Timed out while waiting for Battle phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
     });
     const battleRoundIndex = serverRoom.state.roundIndex;
+    const battlePhaseDeadlineAtMs = Number.isFinite(serverRoom.state.phaseDeadlineAtMs)
+      ? serverRoom.state.phaseDeadlineAtMs
+      : null;
+    const battlePhaseRemainingAtStartMs = resolveRemainingTimeFromDeadlineAtMs(battlePhaseDeadlineAtMs);
     const playersAtBattleStart = captureRoundPlayers(
       serverRoom,
       clients,
@@ -1954,7 +2659,7 @@ const runBotOnlyHelperMatch = async (
       ),
     }));
 
-    const phaseDamage = damageTargets[serverRoom.state.roundIndex];
+    const phaseDamage = damageTargets?.[serverRoom.state.roundIndex];
     if (typeof phaseDamage === "number") {
       serverRoom.setPendingPhaseDamageForTest(phaseDamage);
     }
@@ -1972,11 +2677,17 @@ const runBotOnlyHelperMatch = async (
     );
     const playerBattleOutcomes = buildPlayerBattleOutcomes(serverRoom, playersAtBattleStart);
     const battleTimelines = captureBattleTimelinesForRound(serverRoom, clients);
+    const battlePhaseRemainingAtCaptureMs = resolveRemainingTimeFromDeadlineAtMs(battlePhaseDeadlineAtMs);
+    const battlePhaseElapsedMs = resolveBattlePhaseElapsedMs(
+      battlePhaseRemainingAtStartMs,
+      battlePhaseRemainingAtCaptureMs,
+    );
     const battles = buildRoundBattleReportsFromCurrentState(
       serverRoom,
       battleRoundIndex,
       playersAtBattleStart,
       playerLabels,
+      battlePhaseElapsedMs,
     );
     const phaseProgress = buildRoundPhaseProgress(getCurrentControllerPhaseProgress(serverRoom));
 
@@ -2001,6 +2712,7 @@ const runBotOnlyHelperMatch = async (
     const snapshot: BotOnlyRoundSnapshot = {
       roundIndex: battleRoundIndex,
       phaseAfterRound: serverRoom.state.phase,
+      ...(battlePhaseElapsedMs !== undefined ? { battlePhaseElapsedMs } : {}),
       phaseProgress,
       playersAtBattleStart,
       battleTimelines,
@@ -2144,6 +2856,7 @@ const buildBotOnlyMatchRoundReport = (
             timeline,
             snapshot?.playersAtBattleStart ?? [],
             playerLabels,
+            snapshot?.battlePhaseElapsedMs,
           );
         });
 
@@ -2220,7 +2933,7 @@ const buildBotOnlyMatchRoundReport = (
         })),
         eliminations: [...roundLog.eliminations],
       };
-    }),
+    }).map((round) => normalizeRoundPhaseContributionDamage(round)),
   };
 };
 
@@ -2228,11 +2941,55 @@ const formatPlayerOutcomeLabel = (
   playerConsequence: BotOnlyMatchRoundReport["rounds"][number]["playerConsequences"][number],
   unitOutcomes: ReportUnitBattleOutcome[],
 ): string => {
-  if (unitOutcomes.length > 0) {
-    return unitOutcomes.some((unit) => unit.alive) ? "生存" : "撃破";
+  if (playerConsequence.playerWipedOut) {
+    return "撃破";
   }
 
-  return playerConsequence.playerWipedOut ? "撃破" : "生存";
+  if (unitOutcomes.length > 0) {
+    return "生存";
+  }
+
+  return playerConsequence.remainingLivesAfter > 0 ? "生存" : "撃破";
+};
+
+const normalizeRoundPhaseContributionDamage = (
+  round: BotOnlyMatchRoundReport["rounds"][number],
+): BotOnlyMatchRoundReport["rounds"][number] => {
+  const weightedEntries = round.battles.flatMap((battle, battleIndex) =>
+    battle.unitOutcomes.flatMap((unit, unitIndex) => (
+      unit.side === "raid" && (unit.totalDamage > 0 || unit.phaseContributionDamage > 0)
+        ? [{
+          battleUnitId: `${battleIndex}::${unitIndex}`,
+          weight: Math.max(unit.phaseContributionDamage, unit.totalDamage, 0),
+        }]
+        : []
+    )));
+
+  const distributed = distributeIntegerTotalByWeight(
+    Math.max(0, Math.round(round.phaseDamageDealt)),
+    weightedEntries,
+  );
+
+  return {
+    ...round,
+    battles: round.battles.map((battle, battleIndex) => ({
+      ...battle,
+      unitOutcomes: battle.unitOutcomes.map((unit, unitIndex) => {
+        if (unit.side !== "raid") {
+          return {
+            ...unit,
+            phaseContributionDamage: 0,
+          };
+        }
+
+        const key = `${battleIndex}::${unitIndex}`;
+        return {
+          ...unit,
+          phaseContributionDamage: distributed.get(key) ?? 0,
+        };
+      }),
+    })),
+  };
 };
 
 const formatRoundCompletionLabel = (
@@ -2269,6 +3026,25 @@ const resolveHumanReadableRoundResultLines = (
   return lines;
 };
 
+const resolveHumanReadableRoundEliminationLabels = (
+  report: BotOnlyMatchRoundReport,
+  round: BotOnlyMatchRoundReport["rounds"][number],
+): string[] => {
+  const labels = new Set<string>();
+
+  for (const eliminatedPlayerId of round.eliminations) {
+    labels.add(report.playerLabels[eliminatedPlayerId] ?? eliminatedPlayerId);
+  }
+
+  for (const player of round.playerConsequences) {
+    if (player.eliminatedAfter && player.remainingLivesBefore > 0) {
+      labels.add(player.label);
+    }
+  }
+
+  return [...labels].sort((left, right) => left.localeCompare(right));
+};
+
 const shouldLogBotOnlyHumanReport = (): boolean =>
   process.env.DEBUG_BOT_PLAYABILITY_REPORT === "true";
 
@@ -2285,6 +3061,32 @@ const isFinalJudgmentRoundForHumanReport = (
   roundIndex: number,
 ): boolean => roundIndex === report.totalRounds && report.totalRounds >= 12;
 
+const resolveHumanReadableFinalResultReason = (
+  report: BotOnlyMatchRoundReport,
+): string => {
+  if (report.ranking[0] !== report.bossPlayerId) {
+    return `R${report.totalRounds}でボス撃破`;
+  }
+
+  const survivingRaidPlayers = report.finalPlayers.filter(
+    (player) => player.role === "raid" && !player.eliminated,
+  );
+  if (survivingRaidPlayers.length === 0) {
+    return `R${report.totalRounds}でレイド側全滅`;
+  }
+
+  const failedRounds = report.rounds.filter((round) => round.phaseResult === "failed").length;
+  if (report.totalRounds < 12 && failedRounds >= 5) {
+    return `R${report.totalRounds}で規定回数失敗`;
+  }
+
+  if (report.totalRounds >= 12) {
+    return `R${report.totalRounds}最終判定でボス勝利`;
+  }
+
+  return `R${report.totalRounds}でボス勝利`;
+};
+
 const buildBotOnlyHumanReadableRoundReport = (
   report: BotOnlyMatchRoundReport,
 ): string => {
@@ -2298,6 +3100,9 @@ const buildBotOnlyHumanReadableRoundReport = (
     if (primaryBattle) {
       const bossUnits = primaryBattle.unitOutcomes.filter((unit) => unit.side === "boss");
       const raidUnitsByPlayer = new Map<string, ReportUnitBattleOutcome[]>();
+      const realPlayBattleDurationMs = convertToRealPlayBattleDurationMs(
+        primaryBattle.battleDurationMs ?? round.durationMs,
+      );
 
       for (const unit of primaryBattle.unitOutcomes.filter((candidate) => candidate.side === "raid")) {
         const existing = raidUnitsByPlayer.get(unit.playerId) ?? [];
@@ -2306,11 +3111,13 @@ const buildBotOnlyHumanReadableRoundReport = (
       }
 
       lines.push("Boss");
-      lines.push(`バトル時間 ${primaryBattle.battleDurationMs ?? round.durationMs}ms`);
+      if (realPlayBattleDurationMs !== undefined) {
+        lines.push(`バトル時間(実プレイ換算) ${realPlayBattleDurationMs}ms`);
+      }
       for (const unit of bossUnits) {
         const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
         lines.push(
-          `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} 最終HP${unit.finalHp}`,
+          `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
         );
       }
 
@@ -2322,7 +3129,7 @@ const buildBotOnlyHumanReadableRoundReport = (
         for (const unit of unitOutcomes) {
           const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
           lines.push(
-            `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} 最終HP${unit.finalHp}`,
+            `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
           );
         }
       }
@@ -2335,15 +3142,15 @@ const buildBotOnlyHumanReadableRoundReport = (
     } else {
       lines.push(...resolveHumanReadableRoundResultLines(round));
     }
+    const eliminationLabels = resolveHumanReadableRoundEliminationLabels(report, round);
+    if (eliminationLabels.length > 0) {
+      lines.push(`脱落: ${eliminationLabels.join(", ")}`);
+    }
     lines.push("");
   }
 
   lines.push("最終リザルト");
-  lines.push(
-    report.ranking[0] === report.bossPlayerId
-      ? `R${report.totalRounds}でレイド側全滅`
-      : `R${report.totalRounds}でボス撃破`,
-  );
+  lines.push(resolveHumanReadableFinalResultReason(report));
   lines.push(report.ranking[0] === report.bossPlayerId ? "ボス勝利" : "レイド勝利");
 
   return lines.join("\n");
@@ -2435,7 +3242,7 @@ test("buildBotOnlyHumanReadableRoundReport omits phase hp only on the R12 final 
   expect(finalJudgmentText).not.toContain("R12リザルト\nフェーズHP 900/1150");
 });
 
-test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for raid outcome labels", () => {
+test("buildBotOnlyHumanReadableRoundReport prefers player wipe status for raid outcome labels", () => {
   const text = buildBotOnlyHumanReadableRoundReport({
     totalRounds: 2,
     bossPlayerId: "boss-1",
@@ -2474,6 +3281,7 @@ test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for r
           unitName: "霊夢",
           side: "raid",
           totalDamage: 0,
+          phaseContributionDamage: 0,
           finalHp: 120,
           alive: true,
           starLevel: 1,
@@ -2496,8 +3304,8 @@ test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for r
         battleStartUnitCount: 1,
         playerWipedOut: true,
         remainingLivesBefore: 2,
-        remainingLivesAfter: 1,
-        eliminatedAfter: false,
+        remainingLivesAfter: 0,
+        eliminatedAfter: true,
       }],
       playersAfterRound: [],
       eliminations: [],
@@ -2520,8 +3328,248 @@ test("buildBotOnlyHumanReadableRoundReport prefers displayed unit survival for r
     }],
   });
 
-  expect(text).toContain("Boss\nバトル時間 1234ms");
-  expect(text).toContain("P2 生存");
+  expect(text).toContain("Boss\nバトル時間(実プレイ換算) 617000ms");
+  expect(text).toContain("P2 撃破");
+  expect(text).toContain("霊夢 Lv1 与ダメージ0 フェーズ貢献ダメージ0 最終HP120");
+  expect(text).toContain("R1リザルト\nフェーズHP 350/600\nラウンドクリア\n脱落: P2");
+});
+
+test("convertToRealPlayBattleDurationMs converts bot battle duration to real-play scale", () => {
+  expect(convertToRealPlayBattleDurationMs(80)).toBe(40_000);
+  expect(convertToRealPlayBattleDurationMs(57)).toBe(28_500);
+  expect(convertToRealPlayBattleDurationMs(undefined)).toBeUndefined();
+});
+
+test("buildBotOnlyHumanReadableRoundReport describes domination losses without claiming a wipe", () => {
+  const text = buildBotOnlyHumanReadableRoundReport({
+    totalRounds: 5,
+    bossPlayerId: "boss-1",
+    raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
+    ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+    playerLabels: {
+      "boss-1": "P1",
+      "raid-a": "P2",
+      "raid-b": "P3",
+      "raid-c": "P4",
+    },
+    finalPlayers: [
+      {
+        playerId: "boss-1",
+        label: "P1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        rank: 1,
+        selectedHeroId: "",
+        selectedBossId: "remilia",
+        boardUnits: [],
+      },
+      {
+        playerId: "raid-a",
+        label: "P2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 1,
+        eliminated: false,
+        rank: 2,
+        selectedHeroId: "reimu",
+        selectedBossId: "",
+        boardUnits: [],
+      },
+    ],
+    rounds: Array.from({ length: 5 }, (_, index) => ({
+      roundIndex: index + 1,
+      phase: "Elimination",
+      durationMs: 100,
+      battles: [],
+      hpChanges: [],
+      purchases: [],
+      deploys: [],
+      phaseHpTarget: 600 + index * 150,
+      phaseDamageDealt: 300,
+      phaseResult: "failed" as const,
+      phaseCompletionRate: 0.5,
+      playersAtBattleStart: [],
+      playerConsequences: [],
+      playersAfterRound: [],
+      eliminations: [],
+    })),
+  });
+
+  expect(text).toContain("R5で規定回数失敗");
+  expect(text).not.toContain("R5でレイド側全滅");
+});
+
+test("resolveBattlePhaseElapsedMs derives elapsed time from battle phase remaining time", () => {
+  expect(resolveBattlePhaseElapsedMs(80, 23)).toBe(57);
+  expect(resolveBattlePhaseElapsedMs(80, 0)).toBe(80);
+  expect(resolveBattlePhaseElapsedMs(undefined, 0)).toBeUndefined();
+});
+
+test("normalizeRoundPhaseContributionDamage aligns raid contribution totals to phase damage", () => {
+  const normalizedRound = normalizeRoundPhaseContributionDamage({
+    roundIndex: 1,
+    phase: "Elimination",
+    durationMs: 100,
+    battles: [{
+      battleIndex: 0,
+      leftPlayerId: "boss-1",
+      leftLabel: "P1",
+      rightPlayerId: "raid-a",
+      rightLabel: "P2",
+      battleDurationMs: 1234,
+      leftSpecialUnits: [],
+      rightSpecialUnits: [],
+      winner: "right",
+      leftDamageDealt: 0,
+      rightDamageDealt: 0,
+      leftSurvivors: 0,
+      rightSurvivors: 2,
+      unitDamageBreakdown: [],
+      unitOutcomes: [
+        {
+          playerId: "boss-1",
+          label: "P1",
+          unitId: "boss-escort",
+          unitName: "紅美鈴",
+          side: "boss",
+          totalDamage: 80,
+          phaseContributionDamage: 50,
+          finalHp: 0,
+          alive: false,
+          starLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: false,
+        },
+        {
+          playerId: "raid-a",
+          label: "P2",
+          unitId: "marisa",
+          unitName: "魔理沙",
+          side: "raid",
+          totalDamage: 200,
+          phaseContributionDamage: 80,
+          finalHp: 100,
+          alive: true,
+          starLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: true,
+        },
+        {
+          playerId: "raid-b",
+          label: "P3",
+          unitId: "nazrin",
+          unitName: "ナズーリン",
+          side: "raid",
+          totalDamage: 100,
+          phaseContributionDamage: 20,
+          finalHp: 120,
+          alive: true,
+          starLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: false,
+        },
+      ],
+    }],
+    hpChanges: [],
+    purchases: [],
+    deploys: [],
+    phaseHpTarget: 750,
+    phaseDamageDealt: 300,
+    phaseResult: "success",
+    phaseCompletionRate: 0.4,
+    playersAtBattleStart: [],
+    playerConsequences: [],
+    playersAfterRound: [],
+    eliminations: [],
+  });
+
+  const normalizedRaidContribution = normalizedRound.battles[0]?.unitOutcomes
+    .filter((unit) => unit.side === "raid")
+    .reduce((sum, unit) => sum + unit.phaseContributionDamage, 0);
+  const normalizedBossContribution = normalizedRound.battles[0]?.unitOutcomes
+    .filter((unit) => unit.side === "boss")
+    .reduce((sum, unit) => sum + unit.phaseContributionDamage, 0);
+
+  expect(normalizedRaidContribution).toBe(300);
+  expect(normalizedBossContribution).toBe(0);
+});
+
+test("normalizeRoundPhaseContributionDamage keeps duplicate raid units distinct", () => {
+  const normalizedRound = normalizeRoundPhaseContributionDamage({
+    roundIndex: 1,
+    phase: "Elimination",
+    durationMs: 100,
+    battles: [{
+      battleIndex: 0,
+      leftPlayerId: "boss-1",
+      leftLabel: "P1",
+      rightPlayerId: "raid-a",
+      rightLabel: "P2",
+      battleDurationMs: 1234,
+      leftSpecialUnits: [],
+      rightSpecialUnits: [],
+      winner: "right",
+      leftDamageDealt: 0,
+      rightDamageDealt: 0,
+      leftSurvivors: 0,
+      rightSurvivors: 2,
+      unitDamageBreakdown: [],
+      unitOutcomes: [
+        {
+          playerId: "raid-a",
+          label: "P2",
+          unitId: "nazrin",
+          unitName: "ナズーリン",
+          side: "raid",
+          totalDamage: 200,
+          phaseContributionDamage: 120,
+          finalHp: 90,
+          alive: true,
+          starLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: false,
+        },
+        {
+          playerId: "raid-a",
+          label: "P2",
+          unitId: "nazrin",
+          unitName: "ナズーリン",
+          side: "raid",
+          totalDamage: 100,
+          phaseContributionDamage: 80,
+          finalHp: 60,
+          alive: true,
+          starLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: false,
+        },
+      ],
+    }],
+    hpChanges: [],
+    purchases: [],
+    deploys: [],
+    phaseHpTarget: 500,
+    phaseDamageDealt: 300,
+    phaseResult: "success",
+    phaseCompletionRate: 0.6,
+    playersAtBattleStart: [],
+    playerConsequences: [],
+    playersAfterRound: [],
+    eliminations: [],
+  });
+
+  expect(normalizedRound.battles[0]?.unitOutcomes).toEqual([
+    expect.objectContaining({
+      unitId: "nazrin",
+      phaseContributionDamage: 200,
+    }),
+    expect.objectContaining({
+      unitId: "nazrin",
+      phaseContributionDamage: 100,
+    }),
+  ]);
 });
 
 test("buildBotOnlyHumanReadableRoundReport explains wipe failures when phase hp was fully depleted", () => {
@@ -3270,6 +4318,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
     const serverRoom = await createRoomWithForcedFlags(getTestServer(), {
       enableBossExclusiveShop: true,
       enableHeroSystem: true,
+      enableSubUnitSystem: true,
       enableTouhouRoster: true,
     }, BOT_ONLY_MANUAL_ROOM_TIMINGS);
     const clients = await Promise.all([
@@ -3310,6 +4359,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
         () => createRoomWithForcedFlags(getTestServer(), {
           enableBossExclusiveShop: true,
           enableHeroSystem: true,
+          enableSubUnitSystem: true,
           enableTouhouRoster: true,
         }, BOT_ONLY_HELPER_ROOM_TIMINGS),
         BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
@@ -3346,9 +4396,10 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
         () => createRoomWithForcedFlags(getTestServer(), {
           enableBossExclusiveShop: true,
           enableHeroSystem: true,
+          enableSubUnitSystem: true,
           enableTouhouRoster: true,
         }, BOT_ONLY_HELPER_ROOM_TIMINGS),
-        BOT_ONLY_DAMAGE_TARGETS,
+        BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
       );
       const report = buildBotOnlyMatchRoundReport(artifacts);
       maybeLogBotOnlyMatchRoundReport(report);
@@ -3408,9 +4459,10 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
         () => createRoomWithForcedFlags(getTestServer(), {
           enableBossExclusiveShop: true,
           enableHeroSystem: true,
+          enableSubUnitSystem: true,
           enableTouhouRoster: true,
         }, BOT_ONLY_HELPER_ROOM_TIMINGS),
-        BOT_ONLY_DAMAGE_TARGETS,
+        BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
       );
       const report = buildBotOnlyMatchRoundReport(artifacts);
       const firstRound = report.rounds[0];
@@ -3436,9 +4488,10 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
             () => createRoomWithForcedFlags(getTestServer(), {
               enableBossExclusiveShop: true,
               enableHeroSystem: true,
+              enableSubUnitSystem: true,
               enableTouhouRoster: true,
             }, BOT_ONLY_HELPER_ROOM_TIMINGS),
-            BOT_ONLY_DAMAGE_TARGETS,
+            BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
           );
           return buildBotOnlyMatchRoundReport(artifacts);
         },

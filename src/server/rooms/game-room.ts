@@ -548,7 +548,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private resolveManualPlayTimelineForRound(roundIndex: number): BattleTimelineEvent[] | undefined {
     const trackedPlayerIds = this.getTrackedActivePlayerIds();
-    const controllerBattleResultsByPlayer = this.controller?.getTestAccess().battleResultsByPlayer;
+    const controllerBattleResultsByPlayer = this.controller?.getTestAccess()?.battleResultsByPlayer;
     const statePlayerBattleResults = new Map(
       trackedPlayerIds.map((playerId) => [
         playerId,

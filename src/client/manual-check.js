@@ -2723,7 +2723,6 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
 
     return nextPlayer;
   };
-
   const serializeHelperOffer = (offer) => {
     if (!offer || typeof offer !== "object") {
       return offer;
@@ -2745,6 +2744,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
     boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
     benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
+    boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
     lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
     lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
     phase: typeof state?.phase === "string" ? state.phase : "",

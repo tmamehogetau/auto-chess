@@ -63,9 +63,22 @@ describe("prep-command-payload", () => {
     });
   });
 
+  it("preserves zero-valued hero and board move cells", () => {
+    const message: PrepCommandMessage = {
+      cmdSeq: 6,
+      heroPlacementCell: 0,
+      boardUnitMove: { fromCell: 0, toCell: 0, slot: "main" },
+    };
+
+    expect(buildPrepCommandPayload(message)).toEqual({
+      heroPlacementCell: 0,
+      boardUnitMove: { fromCell: 0, toCell: 0, slot: "main" },
+    });
+  });
+
   it("preserves legacy mergeUnits payloads so the server can reject them explicitly", () => {
     const message = {
-      cmdSeq: 6,
+      cmdSeq: 7,
       mergeUnits: {
         unitType: "vanguard",
         starLevel: 2,

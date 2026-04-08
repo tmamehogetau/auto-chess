@@ -185,9 +185,8 @@ test("simulateBattle keeps raid replay ownership when battleSide is remapped", (
   };
 
   const raidUnit = {
-    ...createBattleUnit(raidPlacement, "left", 0, false, flags),
+    ...createBattleUnit(raidPlacement, "right", 0, false, flags),
     ownerPlayerId: "p1",
-    battleSide: "right" as const,
   };
   const bossUnit = createBattleUnit(bossPlacement, "right", 0, true, flags);
 

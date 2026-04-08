@@ -495,7 +495,9 @@ function updateBenchSlotButton(button, { unitText, portraitUrl, isSelected }) {
       cache.avatarImg.alt = unitText;
       cache.avatarImg.loading = "lazy";
       setElementChildren(cache.avatar, [cache.avatarImg]);
-      cache.avatar.textContent = "";
+      if (isFakeElement(cache.avatar)) {
+        cache.avatar.textContent = "";
+      }
     } else {
       setElementChildren(cache.avatar, []);
       cache.avatar.textContent = getDisplayInitial(unitText);
@@ -505,13 +507,17 @@ function updateBenchSlotButton(button, { unitText, portraitUrl, isSelected }) {
     cache.state.textContent = isSelected ? "selected" : "reserve";
     setElementChildren(cache.copy, [cache.name, cache.state]);
     setElementChildren(button, [cache.avatar, cache.copy]);
-    button.textContent = unitText;
+    if (isFakeElement(button)) {
+      button.textContent = unitText;
+    }
     return;
   }
 
   cache.empty.textContent = "empty";
   setElementChildren(button, [cache.empty]);
-  button.textContent = "empty";
+  if (isFakeElement(button)) {
+    button.textContent = "empty";
+  }
 }
 
 function resolvePlacementLimit(isBossPlayer) {

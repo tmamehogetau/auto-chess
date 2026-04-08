@@ -483,7 +483,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test(
     "phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する",
-    async () => {
+    () => {
       const kpi = getFullGameEvidenceFixture(
         "phase expansion有効時は4人でR12完走後にEndフェーズへ遷移する",
       );
@@ -497,7 +497,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test(
     "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する",
-    async () => {
+    () => {
       const kpi = getFullGameEvidenceFixture(
         "4人でR8完走しphase progress onlyでもEndフェーズへ遷移する",
       );
@@ -511,7 +511,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test(
     "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する",
-    async () => {
+    () => {
       const kpi = getFullGameEvidenceFixture(
         "phase expansion有効時はphase progress onlyでもR12完走後にEndフェーズへ遷移する",
       );
@@ -525,7 +525,7 @@ describe("Full Game Simulation (R1-R8)", () => {
 
   test(
     "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する",
-    async () => {
+    () => {
       const kpi = getFullGameEvidenceFixture(
         "4人でR8完走し別プレイヤーへphase damageを集約してもEndフェーズへ遷移する",
       );

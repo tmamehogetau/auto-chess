@@ -448,7 +448,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
 
   test(
     "scenario A: vanguard-heavy構成を記録し vanguard > backline を検証",
-    async () => {
+    () => {
       const kpi = getRealisticKpiProfileFixture(
         "scenario A: vanguard-heavy構成を記録し vanguard > backline を検証",
       );
@@ -467,7 +467,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
 
   test(
     "scenario B: backline-heavy構成を記録し backline > vanguard を検証",
-    async () => {
+    () => {
       const kpi = getRealisticKpiProfileFixture(
         "scenario B: backline-heavy構成を記録し backline > vanguard を検証",
       );
@@ -483,7 +483,7 @@ describe("Realistic KPI Simulation (W6-3 Task 3)", () => {
     60_000,
   );
 
-  test.each(additionalScenarios)("$name", async (scenario) => {
+  test.each(additionalScenarios)("$name", (scenario) => {
     const kpi = getRealisticKpiProfileFixture(scenario.name);
     const composition = parseCompositionSignature(kpi.top1CompositionSignature);
 

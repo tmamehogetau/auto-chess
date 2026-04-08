@@ -139,6 +139,38 @@ describe("game-room/message-handler", () => {
     expect(client.send).toHaveBeenCalledWith(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
   });
 
+  it("uses full shared-board resync when returning a sub-unit to the bench", () => {
+    deps.state.phase = "Prep";
+
+    handlePrepCommandMessage(
+      client,
+      {
+        cmdSeq: 3,
+        subUnitToBenchCell: { cell: 24 },
+      },
+      deps,
+    );
+
+    expect(bridge.syncSharedBoardViewFromController).toHaveBeenCalledWith(true);
+    expect(bridge.sendPlacementToSharedBoard).not.toHaveBeenCalled();
+  });
+
+  it("uses full shared-board resync when swapping a sub-unit with the bench", () => {
+    deps.state.phase = "Prep";
+
+    handlePrepCommandMessage(
+      client,
+      {
+        cmdSeq: 4,
+        subUnitSwapBench: { cell: 24, benchIndex: 0 },
+      },
+      deps,
+    );
+
+    expect(bridge.syncSharedBoardViewFromController).toHaveBeenCalledWith(true);
+    expect(bridge.sendPlacementToSharedBoard).not.toHaveBeenCalled();
+  });
+
   it("keeps the lighter placement sync for ordinary board placement commands", () => {
     deps.state.phase = "Prep";
 

@@ -481,7 +481,7 @@ describe("GameRoom Integration with Feature Flags", () => {
     });
 
     describe("4人ゲーム完走テスト（両フラグ設定）", () => {
-      test("全フラグOFF時: 4人でR8完走後にEndフェーズへ遷移する", async () => {
+      test("全フラグOFF時: 4人でR8完走後にEndフェーズへ遷移する", () => {
         const result = getFeatureFlagCompletionFixture(
           "全フラグOFF時: 4人でR8完走後にEndフェーズへ遷移する",
         );
@@ -495,7 +495,7 @@ describe("GameRoom Integration with Feature Flags", () => {
         expect(result.featureFlagsEnableSubUnitSystem).toBe(false);
       }, 50_000);
 
-      test("全フラグON時: 4人でゲーム完走後Endフェーズへ遷移する", async () => {
+      test("全フラグON時: 4人でゲーム完走後Endフェーズへ遷移する", () => {
         const result = getFeatureFlagCompletionFixture(
           "全フラグON時: 4人でゲーム完走後Endフェーズへ遷移する",
         );

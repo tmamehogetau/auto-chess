@@ -460,6 +460,69 @@ describe("Sub Unit System Integration", () => {
     });
   });
 
+  test("boardUnitMove slot=sub は hero sub-host 済みの host cell を対象にできない", () => {
+    withSubUnitHeroMode(() => {
+      const controller = createStartedHeroModeController("okina");
+
+      expect(controller.applyPrepPlacementForPlayer("p1", [
+        { cell: 24, unitType: "ranger" },
+        { cell: 25, unitType: "vanguard" },
+      ])).toMatchObject({ success: true });
+      expect(controller.applyHeroPlacementForPlayer("p1", 25)).toMatchObject({ success: true });
+
+      const moveCommand = controller.submitPrepCommand("p1", 1, 3_100, {
+        boardUnitMove: { fromCell: 24, toCell: 25, slot: "sub" },
+      });
+
+      expect(moveCommand).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+
+      const status = controller.getPlayerStatus("p1");
+      expect(status.boardUnits).toContain("24:ranger");
+      expect(status.boardUnits).toContain("25:vanguard:1:sub");
+      expect((status as any).boardSubUnits).toEqual(["25:hero:okina"]);
+    });
+  });
+
+  test("boardUnitMove slot omitted で通常 board unit を main board 上で移動できる", () => {
+    withSubUnitFlag(true, () => {
+      const controller = createStartedController();
+
+      const firstCommand = controller.submitPrepCommand("p1", 1, 3_000, {
+        boardPlacements: [
+          { cell: 24, unitType: "vanguard", unitId: "meiling", starLevel: 1, sellValue: 1, unitCount: 1 },
+        ],
+      });
+      expect(firstCommand).toEqual({ accepted: true });
+
+      const moveCommand = controller.submitPrepCommand("p1", 2, 3_100, {
+        boardUnitMove: { fromCell: 24, toCell: 25 },
+      });
+
+      expect(moveCommand).toEqual({ accepted: true });
+      expect(controller.getPlayerStatus("p1").boardUnits).toEqual(["25:vanguard"]);
+    });
+  });
+
+  test("subUnitMove slot=main は occupied cell への detach を拒否する", () => {
+    withSubUnitFlag(true, () => {
+      const controller = createStartedController();
+
+      expect(controller.submitPrepCommand("p1", 1, 3_000, {
+        boardPlacements: [
+          createAttachedPlacement(24, "vanguard", "mage"),
+          { cell: 25, unitType: "ranger", unitId: "nazrin", starLevel: 1, sellValue: 1, unitCount: 1 },
+        ],
+      })).toEqual({ accepted: true });
+
+      const moveCommand = controller.submitPrepCommand("p1", 2, 3_100, {
+        subUnitMove: { fromCell: 24, toCell: 25, slot: "main" },
+      });
+
+      expect(moveCommand).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+      expect((controller.getPlayerStatus("p1") as any).boardSubUnits).toEqual(["24:mage"]);
+    });
+  });
+
   test("subUnitSwapBench で bench の unit と入れ替えても inventory が壊れない", () => {
     withSubUnitFlag(true, () => {
       const controller = createStartedController();

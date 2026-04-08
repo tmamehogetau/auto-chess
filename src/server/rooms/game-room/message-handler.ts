@@ -303,6 +303,8 @@ export function handlePrepCommandMessage(
       || commandPayload?.subUnitMove !== undefined
       || commandPayload?.boardUnitMove !== undefined
       || commandPayload?.boardToBenchCell !== undefined
+      || commandPayload?.subUnitToBenchCell !== undefined
+      || commandPayload?.subUnitSwapBench !== undefined
       || (
         commandPayload?.benchToBoardCell !== undefined
         && commandPayload.benchToBoardCell.slot === "sub"

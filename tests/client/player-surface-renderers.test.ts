@@ -679,6 +679,28 @@ describe("player surface renderers", () => {
     expect(findDescendantByClass(benchSlotElements[1], "player-bench-slot-avatar-img")).toBe(secondAvatar);
   });
 
+  test("prep summary keeps bench slot structure while exposing fallback text for fake buttons", () => {
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: ["ranger"],
+        benchUnitIds: ["nazrin"],
+        benchDisplayNames: ["ナズーリン"],
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: null,
+    });
+
+    expect(findDescendantByClass(benchSlotElements[0], "player-bench-slot-copy")).not.toBeNull();
+    expect(findDescendantByClass(benchSlotElements[0], "player-bench-slot-avatar-img")).not.toBeNull();
+    expect(benchSlotElements[0]?.textContent).toContain("ナズーリン");
+    expect(findDescendantByClass(benchSlotElements[1], "player-bench-slot-empty-copy")).not.toBeNull();
+    expect(benchSlotElements[1]?.textContent).toContain("empty");
+  });
+
   test("prep summary keeps empty bench slots clickable when a selected board unit can return", () => {
     const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
 

@@ -460,8 +460,8 @@ export class SharedBoardBridge {
         actorId: playerId,
         playerId,
         placements: normalizedPlacements,
-        ...(heroCellIndex !== undefined ? { heroCellIndex } : {}),
-        ...(bossCellIndex !== undefined ? { bossCellIndex } : {}),
+        ...(heroCellIndex !== null ? { heroCellIndex } : {}),
+        ...(bossCellIndex !== null ? { bossCellIndex } : {}),
       };
 
       // 配置を適用

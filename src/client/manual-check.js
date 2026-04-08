@@ -359,6 +359,7 @@ let bossSelectionConfirmed = false;
 // Selection state
 let selectedBenchIndex = null;
 let selectedShopSlot = null;
+let selectedSharedBoardCellIndex = null;
 
 // Timer state
 let timerInterval = null;
@@ -1052,13 +1053,28 @@ function resolveSelectedSharedBoardCell() {
   }
 
   const ownerId = sessionId ?? "";
+  if (Number.isInteger(selectedSharedBoardCellIndex) && selectedSharedBoardCellIndex >= 0) {
+    const selectedCellKey = String(selectedSharedBoardCellIndex);
+    const selectedCell = sharedBoardState.cells?.get?.(selectedCellKey);
+    if (selectedCell?.unitId === selectedUnitId && selectedCell.ownerId === ownerId) {
+      return {
+        cellIndex: selectedSharedBoardCellIndex,
+        unitId: selectedCell.unitId,
+        ownerId: selectedCell.ownerId,
+      };
+    }
+
+    selectedSharedBoardCellIndex = null;
+  }
+
   for (const [cellKey, cell] of sharedBoardState.cells?.entries?.() ?? []) {
     if (cell?.unitId !== selectedUnitId || cell.ownerId !== ownerId) {
       continue;
     }
 
+    selectedSharedBoardCellIndex = Number.parseInt(cellKey, 10);
     return {
-      cellIndex: Number.parseInt(cellKey, 10),
+      cellIndex: selectedSharedBoardCellIndex,
       unitId: cell.unitId,
       ownerId: cell.ownerId,
     };
@@ -1097,7 +1113,7 @@ function handleSharedCellClickForManualCheck(cellIndex) {
         slot: "main",
       },
     });
-    setSelectedSharedSubUnitCellIndex(null);
+    clearSelections();
     return;
   }
 
@@ -1109,8 +1125,21 @@ function handleSharedCellClickForManualCheck(cellIndex) {
     && currentPlayerState.selectedHeroId.length > 0
   ) {
     sendPrepCommand({ heroPlacementCell: cellIndex });
-    clearSelectedSharedUnit();
+    clearSelections();
     return;
+  }
+
+  const sharedBoardState = getSharedBoardState();
+  const clickedCell = sharedBoardState?.cells?.get?.(String(cellIndex));
+  const ownerId = sessionId ?? "";
+  const isOwnOccupiedCell = clickedCell?.ownerId === ownerId
+    && typeof clickedCell?.unitId === "string"
+    && clickedCell.unitId.length > 0
+    && clickedCell.unitId !== "dummy-boss";
+  if (isOwnOccupiedCell && selectedBoardCell?.cellIndex === cellIndex && selectedBoardCell.unitId === clickedCell.unitId) {
+    selectedSharedBoardCellIndex = null;
+  } else if (isOwnOccupiedCell) {
+    selectedSharedBoardCellIndex = cellIndex;
   }
 
   handleSharedCellClick(getSharedBoardState(), cellIndex);
@@ -1135,7 +1164,7 @@ function handleSharedSubSlotClickForManualCheck(cellIndex) {
         slot: "sub",
       },
     });
-    setSelectedSharedSubUnitCellIndex(null);
+    clearSelections();
     return;
   }
 
@@ -1153,7 +1182,7 @@ function handleSharedSubSlotClickForManualCheck(cellIndex) {
         slot: "sub",
       },
     });
-    setSelectedSharedSubUnitCellIndex(null);
+    clearSelections();
     return;
   }
 
@@ -1166,7 +1195,7 @@ function handleSharedSubSlotClickForManualCheck(cellIndex) {
         slot: "sub",
       },
     });
-    clearSelectedSharedUnit();
+    clearSelections();
     return;
   }
 
@@ -1176,7 +1205,7 @@ function handleSharedSubSlotClickForManualCheck(cellIndex) {
     && currentPlayerState?.selectedHeroId === "okina"
   ) {
     sendPrepCommand({ heroPlacementCell: cellIndex });
-    clearSelectedSharedUnit();
+    clearSelections();
     return;
   }
 
@@ -1206,6 +1235,7 @@ function handleSell() {
 function clearSelections() {
   selectedBenchIndex = null;
   selectedShopSlot = null;
+  selectedSharedBoardCellIndex = null;
   clearSelectedSharedUnit();
   setSelectedSharedSubUnitCellIndex(null);
 
@@ -2620,7 +2650,10 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       const bossShopOffers = toUnknownArray(nextPlayer.bossShopOffers);
       const offer = bossShopOffers[payload.bossShopBuySlotIndex];
       if (offer) {
-        bossShopOffers.splice(payload.bossShopBuySlotIndex, 1);
+        bossShopOffers[payload.bossShopBuySlotIndex] = {
+          ...offer,
+          purchased: true,
+        };
         nextPlayer.bossShopOffers = bossShopOffers;
         const benchUnits = toUnknownArray(nextPlayer.benchUnits);
         benchUnits.push(
@@ -2701,6 +2734,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       unitId: offer?.unitId ?? null,
       factionId: offer?.factionId ?? null,
       cost: offer?.cost ?? null,
+      purchased: offer?.purchased === true,
     };
   };
 

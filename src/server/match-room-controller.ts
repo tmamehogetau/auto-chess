@@ -1482,9 +1482,7 @@ export class MatchRoomController {
         battleResult.survivorSnapshots
           .map((snapshot) => this.buildRaidPlayerBattleUnitKey(
             snapshot?.ownerPlayerId,
-            typeof snapshot?.battleUnitId === "string" && snapshot.battleUnitId.length > 0
-              ? snapshot.battleUnitId
-              : snapshot?.unitId,
+            snapshot?.unitId,
           ))
           .filter((battleUnitKey) => battleUnitKey !== null),
       );
@@ -1544,7 +1542,7 @@ export class MatchRoomController {
 
     const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
     if (selectedHeroId.length > 0) {
-      trackedUnitIds.add(`hero-${playerId}`);
+      trackedUnitIds.add(selectedHeroId);
     }
 
     return trackedUnitIds;
@@ -1964,10 +1962,6 @@ export class MatchRoomController {
     toCell: number,
     slot: "main" | "sub" = "main",
   ): void {
-    if (slot !== "sub") {
-      return;
-    }
-
     const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
     const sourceIndex = boardPlacements.findIndex((placement) => placement.cell === fromCell);
     if (sourceIndex < 0) {
@@ -1975,16 +1969,40 @@ export class MatchRoomController {
     }
 
     const sourcePlacement = boardPlacements[sourceIndex]!;
+    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+    const targetsHeroCell = heroPlacement === toCell;
+    const reservedBoardCells = this.getReservedSpecialBoardCells();
+
+    if (slot !== "sub") {
+      const targetOccupied = boardPlacements.some((placement, index) => index !== sourceIndex && placement.cell === toCell);
+      if (targetOccupied || targetsHeroCell || reservedBoardCells.includes(toCell)) {
+        return;
+      }
+
+      boardPlacements[sourceIndex] = {
+        ...sourcePlacement,
+        cell: toCell,
+      };
+      this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+      this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+      return;
+    }
+
     if (sourcePlacement.subUnit !== undefined) {
       return;
     }
 
     const targetIndex = boardPlacements.findIndex((placement) => placement.cell === toCell);
-    const heroPlacement = this.getHeroPlacementForPlayer(playerId);
-    const targetsHeroCell = heroPlacement === toCell;
     const targetHost = targetIndex >= 0 ? boardPlacements[targetIndex] : null;
+    const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    const heroAttachedSubUnit = this.getHeroAttachedSubUnitForPlayer(playerId);
 
-    if ((!targetHost && !targetsHeroCell) || targetHost?.subUnit) {
+    if (
+      (!targetHost && !targetsHeroCell)
+      || targetHost?.subUnit
+      || heroSubHostCell === toCell
+      || (targetsHeroCell && heroAttachedSubUnit !== null)
+    ) {
       return;
     }
 
@@ -2007,9 +2025,13 @@ export class MatchRoomController {
     slot: "main" | "sub" = "main",
   ): void {
     const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const targetOccupied = boardPlacements.some((placement) => placement.cell === toCell);
+    const reservedBoardCells = this.getReservedSpecialBoardCells();
+
     if (heroSubHostCell === fromCell) {
       if (slot === "sub") {
-        const targetPlacement = (this.boardPlacementsByPlayer.get(playerId) ?? []).find(
+        const targetPlacement = boardPlacements.find(
           (placement) => placement.cell === toCell,
         );
         if (!targetPlacement || targetPlacement.subUnit) {
@@ -2025,9 +2047,25 @@ export class MatchRoomController {
         return;
       }
 
+      if (targetOccupied || reservedBoardCells.includes(toCell)) {
+        return;
+      }
+
       this.heroSubHostCellByPlayer.set(playerId, -1);
       this.heroPlacementByPlayer.set(playerId, toCell);
       return;
+    }
+
+    if (slot !== "sub") {
+      const heroPlacement = this.getHeroPlacementForPlayer(playerId);
+      if (
+        targetOccupied
+        || heroPlacement === toCell
+        || reservedBoardCells.includes(toCell)
+        || boardPlacements.length >= this.resolveBoardUnitLimit(playerId)
+      ) {
+        return;
+      }
     }
 
     const attachedSubUnit = this.takeAttachedSubUnitFromCell(playerId, fromCell);
@@ -2043,10 +2081,10 @@ export class MatchRoomController {
       return;
     }
 
-    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
-    boardPlacements.push(this.createBoardPlacementFromAttachedSubUnit(toCell, attachedSubUnit));
-    this.setBoardPlacementsForPlayer(playerId, boardPlacements);
-    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
+    const nextBoardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    nextBoardPlacements.push(this.createBoardPlacementFromAttachedSubUnit(toCell, attachedSubUnit));
+    this.setBoardPlacementsForPlayer(playerId, nextBoardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, nextBoardPlacements.length);
   }
 
   private swapAttachedSubUnitWithBench(playerId: string, cell: number, benchIndex: number): void {

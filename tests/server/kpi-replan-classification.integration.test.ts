@@ -455,19 +455,19 @@ async function collectNoProgressHarnessResult(): Promise<HarnessNoProgressResult
   }
 }
 
-async function collectRoundSurvivalClassification(): Promise<RoundSurvivalClassification> {
+function collectRoundSurvivalClassification(): RoundSurvivalClassification {
   return getKpiReplanClassificationEvidenceFixture().roundSurvivalClassification;
 }
 
-async function collectCurrentRealisticAggregate(): Promise<AggregateReport> {
+function collectCurrentRealisticAggregate(): AggregateReport {
   return getKpiReplanClassificationEvidenceFixture().currentRealisticAggregate;
 }
 
-async function collectRefinedEligibleBundle(): Promise<RefinedEligibleAggregate> {
+function collectRefinedEligibleBundle(): RefinedEligibleAggregate {
   return getKpiReplanClassificationEvidenceFixture().refinedEligibleBundle;
 }
 
-async function collectEligibleFailureClassification(): Promise<EligibleFailureClassification> {
+function collectEligibleFailureClassification(): EligibleFailureClassification {
   return getKpiReplanClassificationEvidenceFixture().eligibleFailureClassification;
 }
 
@@ -542,16 +542,16 @@ describe("KPI REPLAN classification", () => {
     ).toBe(true);
   });
 
-  test("refined eligible bundle is still too concentrated", async () => {
-    const aggregate = await collectRefinedEligibleBundle();
+  test("refined eligible bundle is still too concentrated", () => {
+    const aggregate = collectRefinedEligibleBundle();
 
     expect(aggregate.sampledMatches).toBe(11);
     expect(aggregate.r8CompletionRate).toBeGreaterThanOrEqual(0.97);
     expect(aggregate.top1CompositionShare).toBeLessThanOrEqual(0.35);
   }, 300_000);
 
-  test("eligible R8 misses are classified explicitly", async () => {
-    const result = await collectEligibleFailureClassification();
+  test("eligible R8 misses are classified explicitly", () => {
+    const result = collectEligibleFailureClassification();
 
     expect(result.totalEligibleMatches).toBe(11);
     expect(result.matchesBelowR8Threshold).toBe(0);
@@ -560,8 +560,8 @@ describe("KPI REPLAN classification", () => {
     expect(result.earlyEliminationCases).toBe(0);
   }, 120_000);
 
-  test("eligible R8 misses are eliminated after phase-progress-only adjustment", async () => {
-    const result = await collectEligibleFailureClassification();
+  test("eligible R8 misses are eliminated after phase-progress-only adjustment", () => {
+    const result = collectEligibleFailureClassification();
 
     expect(result.totalEligibleMatches).toBe(11);
     expect(result.matchesBelowR8Threshold).toBe(0);
@@ -588,8 +588,8 @@ describe("KPI REPLAN classification", () => {
     expect(evidence.refinedEligibleBundle.mostCommonTop1Composition).toBe("mage:1,mage:1,mage:1");
   });
 
-  test("current realistic aggregate keeps completion and non-empty composition signal", async () => {
-    const aggregate = await collectCurrentRealisticAggregate();
+  test("current realistic aggregate keeps completion and non-empty composition signal", () => {
+    const aggregate = collectCurrentRealisticAggregate();
 
     expect(aggregate.sampledMatches).toBe(11);
     expect(aggregate.r8CompletionRate).toBeGreaterThan(0.97);
@@ -613,8 +613,8 @@ describe("KPI REPLAN classification", () => {
     expect(result.rejectedCommands).toBe(0);
   }, 60_000);
 
-  test("R8 completion miss comes from early eliminations, not missing KPI emission", async () => {
-    const result = await collectRoundSurvivalClassification();
+  test("R8 completion miss comes from early eliminations, not missing KPI emission", () => {
+    const result = collectRoundSurvivalClassification();
 
     expect(result.matchesWithKpi).toBe(result.totalMatches);
     expect(result.matchesEndingBeforeR8).toBe(2);

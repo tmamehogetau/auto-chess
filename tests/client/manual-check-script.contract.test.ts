@@ -287,6 +287,24 @@ describe("manual-check script contract", () => {
     expect(source.includes("offer?.unitId ?? null")).toBe(true);
     expect(source.includes("offer?.factionId ?? null")).toBe(true);
     expect(source.includes("offer?.cost ?? null")).toBe(true);
+    expect(source.includes("purchased: offer?.purchased === true")).toBe(true);
+  });
+
+  test("manual-check tracks the selected shared cell and clears bench selection after sub-slot deploy", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("let selectedSharedBoardCellIndex = null;")).toBe(true);
+    expect(source.includes("const selectedCellKey = String(selectedSharedBoardCellIndex);")).toBe(true);
+    expect(source.includes("selectedSharedBoardCellIndex = cellIndex;")).toBe(true);
+    expect(source.includes("clearSelections();")).toBe(true);
+  });
+
+  test("boss shop optimistic purchase keeps offer slots and marks them purchased", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("bossShopOffers[payload.bossShopBuySlotIndex] = {")).toBe(true);
+    expect(source.includes("purchased: true,")).toBe(true);
+    expect(source.includes("bossShopOffers.splice(payload.bossShopBuySlotIndex, 1);")).toBe(false);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

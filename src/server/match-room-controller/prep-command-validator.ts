@@ -669,6 +669,7 @@ function validatePreconditions(
     const targetPlacement = boardPlacements.find((placement) => placement.cell === payload.boardUnitMove?.toCell);
     const targetSlot = payload.boardUnitMove.slot ?? "main";
     const heroPlacement = deps.getHeroPlacementForPlayer?.(playerId) ?? null;
+    const heroSubHostCell = deps.getHeroSubHostCellForPlayer?.(playerId) ?? null;
     const targetsOwnHeroCell = heroPlacement === payload.boardUnitMove.toCell;
 
     if (!sourcePlacement || payload.boardUnitMove.fromCell === payload.boardUnitMove.toCell) {
@@ -676,10 +677,18 @@ function validatePreconditions(
     }
 
     if (targetSlot !== "sub") {
-      return { accepted: false, code: "INVALID_PAYLOAD" };
+      if (targetPlacement || targetsOwnHeroCell || reservedBoardCells.has(payload.boardUnitMove.toCell)) {
+        return { accepted: false, code: "INVALID_PAYLOAD" };
+      }
+
+      return null;
     }
 
     if (!deps.isSubUnitSystemEnabled() || deps.isBossPlayer(playerId)) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (sourcePlacement.subUnit !== undefined) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
@@ -687,7 +696,7 @@ function validatePreconditions(
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 
-    if (targetPlacement?.subUnit !== undefined) {
+    if (targetPlacement?.subUnit !== undefined || heroSubHostCell === payload.boardUnitMove.toCell) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
 

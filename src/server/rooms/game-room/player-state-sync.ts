@@ -45,6 +45,8 @@ function syncBattleResultSurvivorSnapshots(
   for (const snapshot of snapshots ?? []) {
     const nextSnapshot = new BattleResultSurvivorSchema();
     nextSnapshot.unitId = snapshot?.unitId ?? "";
+    nextSnapshot.battleUnitId = snapshot?.battleUnitId ?? "";
+    nextSnapshot.ownerPlayerId = snapshot?.ownerPlayerId ?? "";
     nextSnapshot.displayName = snapshot?.displayName ?? "";
     nextSnapshot.unitType = snapshot?.unitType ?? "vanguard";
     nextSnapshot.hp = Number(snapshot?.hp ?? 0);
@@ -121,7 +123,16 @@ function deriveBattleTimelineEndState(
     maxHp: number;
     alive: boolean;
   }>();
-  const survivorsByUnitId = new Map((survivorSnapshots ?? []).map((snapshot) => [snapshot.unitId, snapshot]));
+  const survivorsByUnitId = new Map<string, BattleResultSurvivorSnapshot>();
+  for (const snapshot of survivorSnapshots ?? []) {
+    const unitId = typeof snapshot?.battleUnitId === "string" && snapshot.battleUnitId.length > 0
+      ? snapshot.battleUnitId
+      : snapshot?.unitId;
+    if (typeof unitId !== "string" || unitId.length === 0) {
+      continue;
+    }
+    survivorsByUnitId.set(unitId, snapshot);
+  }
 
   for (const unit of battleStartEvent.units ?? []) {
     if (typeof unit?.battleUnitId !== "string" || unit.battleUnitId.length === 0) {

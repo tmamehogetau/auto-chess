@@ -143,14 +143,15 @@ describe("BattleResolutionService", () => {
       expect(result.leftBattleResult.won).toBe(true);
       expect(result.rightBattleResult.won).toBe(false);
       expect(result.leftBattleResult.survivorSnapshots).toEqual([
-        {
+        expect.objectContaining({
           unitId: "unit1",
+          battleUnitId: "unit1",
           displayName: "vanguard",
           unitType: "vanguard",
           hp: 100,
           maxHp: 100,
           sharedBoardCellIndex: 0,
-        },
+        }),
       ]);
       expect(result.leftBattleResult.timeline).toEqual(mockTimeline);
       expect(result.rightBattleResult.timeline).toEqual(mockTimeline);
@@ -188,6 +189,46 @@ describe("BattleResolutionService", () => {
       expect(result.outcome.loserId).toBe("player1");
       expect(result.leftBattleResult.won).toBe(false);
       expect(result.rightBattleResult.won).toBe(true);
+    });
+
+    it("preserves hero battle identity on survivor snapshots", () => {
+      const heroBattleUnit = service.createHeroBattleUnit("reimu", "player1", 8, "left");
+      expect(heroBattleUnit).not.toBeNull();
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: heroBattleUnit ? [heroBattleUnit] : [],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
+      });
+
+      const result = service.resolveMatchup({
+        battleId: "r1-p1-p2",
+        roundIndex: 1,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits: heroBattleUnit ? [heroBattleUnit] : [],
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      expect(result.leftBattleResult.survivorSnapshots).toEqual([
+        expect.objectContaining({
+          unitId: "reimu",
+          battleUnitId: "hero-player1",
+          ownerPlayerId: "player1",
+          unitType: heroBattleUnit?.type,
+          sharedBoardCellIndex: 8,
+        }),
+      ]);
     });
 
     it("should handle draw", () => {

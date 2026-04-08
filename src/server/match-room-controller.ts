@@ -312,6 +312,8 @@ interface BattleResult {
   timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
+    battleUnitId?: string;
+    ownerPlayerId?: string;
     displayName: string;
     unitType: string;
     hp: number;
@@ -331,6 +333,8 @@ export interface MatchRoomControllerTestBattleResult {
   timeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
+    battleUnitId?: string;
+    ownerPlayerId?: string;
     displayName: string;
     unitType: string;
     hp: number;
@@ -1470,6 +1474,31 @@ export class MatchRoomController {
       return battleResult.survivors <= 0;
     }
 
+    const hasOwnerAwareSnapshots = battleResult.survivorSnapshots.some(
+      (snapshot) => typeof snapshot?.ownerPlayerId === "string" && snapshot.ownerPlayerId.trim().length > 0,
+    );
+    if (hasOwnerAwareSnapshots) {
+      const survivingBattleUnitKeys = new Set(
+        battleResult.survivorSnapshots
+          .map((snapshot) => this.buildRaidPlayerBattleUnitKey(
+            snapshot?.ownerPlayerId,
+            typeof snapshot?.battleUnitId === "string" && snapshot.battleUnitId.length > 0
+              ? snapshot.battleUnitId
+              : snapshot?.unitId,
+          ))
+          .filter((battleUnitKey) => battleUnitKey !== null),
+      );
+
+      for (const unitId of trackedUnitIds) {
+        const trackedBattleUnitKey = this.buildRaidPlayerBattleUnitKey(playerId, unitId);
+        if (trackedBattleUnitKey && survivingBattleUnitKeys.has(trackedBattleUnitKey)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
     const survivingUnitIds = new Set(
       battleResult.survivorSnapshots
         .map((snapshot) => typeof snapshot.unitId === "string" ? snapshot.unitId.trim() : "")
@@ -1483,6 +1512,19 @@ export class MatchRoomController {
     }
 
     return true;
+  }
+
+  private buildRaidPlayerBattleUnitKey(
+    playerId: string | undefined,
+    battleUnitId: string | undefined,
+  ): string | null {
+    const normalizedPlayerId = typeof playerId === "string" ? playerId.trim() : "";
+    const normalizedBattleUnitId = typeof battleUnitId === "string" ? battleUnitId.trim() : "";
+    if (normalizedPlayerId.length === 0 || normalizedBattleUnitId.length === 0) {
+      return null;
+    }
+
+    return `${normalizedPlayerId}:${normalizedBattleUnitId}`;
   }
 
   private buildRaidPlayerBattleUnitIds(playerId: string): Set<string> {

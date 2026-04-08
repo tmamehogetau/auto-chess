@@ -226,6 +226,79 @@ describe("SharedBoardBridge batch sync", () => {
     );
   });
 
+  it("shared board sync は重複 host unitId より cell 一致の attached subUnit を優先する", async () => {
+    const { bridge, controller } = createBridge();
+
+    controller.getBoardPlacementsForPlayer.mockReturnValue([
+      {
+        cell: combatCellToRaidBoardIndex(4),
+        unitType: "ranger",
+        unitId: "nazrin",
+        starLevel: 1,
+        subUnit: {
+          unitType: "mage",
+          unitId: "koakuma-a",
+          starLevel: 1,
+          sellValue: 1,
+          unitCount: 1,
+        },
+      },
+      {
+        cell: combatCellToRaidBoardIndex(5),
+        unitType: "ranger",
+        unitId: "nazrin",
+        starLevel: 1,
+        subUnit: {
+          unitType: "mage",
+          unitId: "koakuma-b",
+          starLevel: 1,
+          sellValue: 1,
+          unitCount: 1,
+        },
+      },
+    ]);
+
+    enqueuePlacementChange(bridge, "player-a", [
+      {
+        index: combatCellToRaidBoardIndex(4),
+        unitId: "ranger-player-a-left",
+        ownerId: "player-a",
+        displayName: "ナズーリン",
+        portraitKey: "nazrin",
+      } as SharedBoardCellState,
+      {
+        index: combatCellToRaidBoardIndex(5),
+        unitId: "ranger-player-a-right",
+        ownerId: "player-a",
+        displayName: "ナズーリン",
+        portraitKey: "nazrin",
+      } as SharedBoardCellState,
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledTimes(1);
+    expect(controller.applyPrepPlacementForPlayer).toHaveBeenCalledWith(
+      "player-a",
+      expect.arrayContaining([
+        expect.objectContaining({
+          cell: combatCellToRaidBoardIndex(4),
+          unitId: "nazrin",
+          subUnit: expect.objectContaining({
+            unitId: "koakuma-a",
+          }),
+        }),
+        expect.objectContaining({
+          cell: combatCellToRaidBoardIndex(5),
+          unitId: "nazrin",
+          subUnit: expect.objectContaining({
+            unitId: "koakuma-b",
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("旧combat footprint外のshared board cellもそのままplacementへ反映する", async () => {
     const { bridge, controller } = createBridge();
     const sharedCellIndex = sharedBoardCoordinateToIndex({ x: 0, y: 4 });

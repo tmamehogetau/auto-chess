@@ -1325,7 +1325,16 @@ function resolveTimelineEndState(timelineEvents, survivorSnapshots) {
   const boardHeight = Number.isInteger(battleStartEvent?.boardConfig?.height)
     ? battleStartEvent.boardConfig.height
     : RESULT_IMPRINT_BOARD_HEIGHT;
-  const survivorsByUnitId = new Map(survivorSnapshots.map((snapshot) => [snapshot?.unitId, snapshot]));
+  const survivorsByUnitId = new Map(
+    survivorSnapshots
+      .map((snapshot) => [
+        typeof snapshot?.battleUnitId === "string" && snapshot.battleUnitId.length > 0
+          ? snapshot.battleUnitId
+          : snapshot?.unitId,
+        snapshot,
+      ])
+      .filter(([unitId]) => typeof unitId === "string" && unitId.length > 0),
+  );
   const unitsById = new Map();
 
   for (const unit of battleStartEvent.units ?? []) {

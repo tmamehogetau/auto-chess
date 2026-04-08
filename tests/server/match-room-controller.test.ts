@@ -3272,6 +3272,182 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("raid rounds keep a player alive when only that player's hero survives", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true, enableHeroSystem: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.selectHero("p1", "reimu");
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 33, unitType: "mage", unitId: "raid-b-unit" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 35, unitType: "assassin", unitId: "raid-c-unit" }]))
+            .toMatchObject({ success: true });
+
+          controller.advanceByTime(1);
+
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          const sharedRaidBattleResult = {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 1,
+            opponentSurvivors: 1,
+            survivorSnapshots: [
+              {
+                unitId: "reimu",
+                battleUnitId: "hero-p1",
+                ownerPlayerId: "p1",
+                displayName: "博麗霊夢",
+                unitType: "vanguard",
+                hp: 12,
+                maxHp: 40,
+                sharedBoardCellIndex: 31,
+              },
+            ],
+          };
+
+          battleResultsByPlayer.set("p1", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p3", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p4", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 1,
+          });
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.getPlayerStatus("p1").remainingLives).toBe(2);
+          expect(controller.getPlayerStatus("p1").eliminated).toBe(false);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid rounds do not count another raider's duplicate unitId as survival", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true, enableHeroSystem: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [{ cell: 31, unitType: "ranger", unitId: "nazrin" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 33, unitType: "ranger", unitId: "nazrin" }]))
+            .toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 35, unitType: "assassin", unitId: "raid-c-unit" }]))
+            .toMatchObject({ success: true });
+
+          controller.advanceByTime(1);
+
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          const sharedRaidBattleResult = {
+            opponentId: "p2",
+            won: false,
+            damageDealt: 0,
+            damageTaken: 10,
+            survivors: 2,
+            opponentSurvivors: 1,
+            survivorSnapshots: [
+              {
+                unitId: "nazrin",
+                battleUnitId: "nazrin",
+                ownerPlayerId: "p3",
+                displayName: "ナズーリン",
+                unitType: "ranger",
+                hp: 12,
+                maxHp: 40,
+                sharedBoardCellIndex: 18,
+              },
+              {
+                unitId: "raid-c-unit",
+                battleUnitId: "raid-c-unit",
+                ownerPlayerId: "p4",
+                displayName: "raid-c-unit",
+                unitType: "assassin",
+                hp: 9,
+                maxHp: 45,
+                sharedBoardCellIndex: 19,
+              },
+            ],
+          };
+
+          battleResultsByPlayer.set("p1", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p3", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p4", sharedRaidBattleResult);
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 2,
+          });
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.getPlayerStatus("p1").remainingLives).toBe(1);
+          expect(controller.getPlayerStatus("p3").remainingLives).toBe(2);
+          expect(controller.getPlayerStatus("p4").remainingLives).toBe(2);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("raid players gain +2 gold on phase success while the boss only keeps boss prep income", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },

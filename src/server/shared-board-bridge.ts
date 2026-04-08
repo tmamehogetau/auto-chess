@@ -582,8 +582,9 @@ export class SharedBoardBridge {
       return placements;
     }
 
-    const existingSubUnitByUnitId = new Map<string, NonNullable<BoardUnitPlacement["subUnit"]>>();
+    const existingSubUnitByUnitId = new Map<string, Array<NonNullable<BoardUnitPlacement["subUnit"]>>>();
     const existingSubUnitByCell = new Map<number, NonNullable<BoardUnitPlacement["subUnit"]>>();
+    const usedUnitIdFallbacks = new Set<string>();
 
     for (const placement of existingPlacements) {
       if (!placement?.subUnit) {
@@ -591,7 +592,9 @@ export class SharedBoardBridge {
       }
 
       if (typeof placement.unitId === "string" && placement.unitId.length > 0) {
-        existingSubUnitByUnitId.set(placement.unitId, placement.subUnit);
+        const subUnits = existingSubUnitByUnitId.get(placement.unitId) ?? [];
+        subUnits.push(placement.subUnit);
+        existingSubUnitByUnitId.set(placement.unitId, subUnits);
       }
 
       if (Number.isInteger(placement.cell)) {
@@ -604,15 +607,29 @@ export class SharedBoardBridge {
         return placement;
       }
 
-      const preservedSubUnit = (
-        (typeof placement.unitId === "string" && placement.unitId.length > 0
-          ? existingSubUnitByUnitId.get(placement.unitId)
-          : undefined)
-        ?? existingSubUnitByCell.get(placement.cell)
-      );
+      const preservedSubUnitByCell = existingSubUnitByCell.get(placement.cell);
+      const preservedSubUnitByUnitId = typeof placement.unitId === "string" && placement.unitId.length > 0
+        ? existingSubUnitByUnitId.get(placement.unitId)
+        : undefined;
+      const preservedSubUnit = preservedSubUnitByCell
+        ?? (
+          preservedSubUnitByUnitId?.length === 1
+          && typeof placement.unitId === "string"
+          && !usedUnitIdFallbacks.has(placement.unitId)
+            ? preservedSubUnitByUnitId[0]
+            : undefined
+        );
 
       if (!preservedSubUnit) {
         return placement;
+      }
+
+      if (
+        !preservedSubUnitByCell
+        && typeof placement.unitId === "string"
+        && placement.unitId.length > 0
+      ) {
+        usedUnitIdFallbacks.add(placement.unitId);
       }
 
       return {

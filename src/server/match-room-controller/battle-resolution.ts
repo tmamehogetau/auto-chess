@@ -399,6 +399,8 @@ export class BattleResolutionService {
       const presentation = resolveSharedBoardUnitPresentation(unitId, survivor.type);
       return {
         unitId,
+        battleUnitId: survivor.id,
+        ownerPlayerId: typeof survivor.ownerPlayerId === "string" ? survivor.ownerPlayerId : "",
         displayName: presentation?.displayName ?? survivor.type,
         unitType: survivor.type,
         hp: Math.max(0, Math.round(Number(survivor.hp) || 0)),

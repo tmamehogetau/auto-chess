@@ -250,17 +250,22 @@ describe("manual-check script contract", () => {
 
     expect(source.includes("let helperCmdSeq = 1;")).toBe(true);
     expect(source.includes("let lastAutomationStateKey = \"\";")).toBe(true);
+    expect(source.includes("let optimisticHelperPlayer = null;")).toBe(true);
+    expect(source.includes("let pendingPrepCommand = null;")).toBe(true);
     expect(source.includes("if (automationStateKey === lastAutomationStateKey) {")).toBe(true);
-    expect(source.includes("if (action.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {")).toBe(true);
+    expect(source.includes("const [nextAction] = actions;")).toBe(true);
+    expect(source.includes("if (nextAction.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {")).toBe(true);
     expect(source.includes("correlationId: createCorrelationId(`helper_${helperIndex}`, cmdSeq),")).toBe(true);
     expect(source.includes("helperCmdSeq += 1;")).toBe(true);
+    expect(source.includes("optimisticHelperPlayer = applyOptimisticPrepCommandToPlayer(")).toBe(true);
+    expect(source.includes("pendingPrepCommand = {")).toBe(true);
   });
 
   test("autofill helper rooms register known server messages to avoid Colyseus warning noise", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});")).toBe(true);
-    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, () => {")).toBe(true);
+    expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {")).toBe(true);
     expect(source.includes("applyAutomation(helperRoom.state);")).toBe(true);
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});")).toBe(true);
     expect(source.includes("helperRoom.onMessage(SERVER_MESSAGE_TYPES.ADMIN_RESPONSE, () => {});")).toBe(true);
@@ -271,6 +276,9 @@ describe("manual-check script contract", () => {
 
     expect(source.includes("playerPhase: resolveAutoFillHelperPlayerPhase(state),")).toBe(true);
     expect(source.includes("playerPhaseDeadlineAtMs:")).toBe(true);
+    expect(source.includes("offer?.unitId ?? null")).toBe(true);
+    expect(source.includes("offer?.factionId ?? null")).toBe(true);
+    expect(source.includes("offer?.cost ?? null")).toBe(true);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

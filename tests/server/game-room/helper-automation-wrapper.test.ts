@@ -100,6 +100,16 @@ class FakeHelperRoom {
           return;
         }
 
+        if (slot === "sub") {
+          const existingPlacementIndex = player.boardUnits.findIndex((placement) =>
+            placement.startsWith(`${safeCell}:`)
+          );
+          if (existingPlacementIndex < 0) {
+            this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_sub_host" });
+            return;
+          }
+        }
+
         const [benchUnit] = player.benchUnits.splice(safeBenchIndex, 1);
         player.boardSubUnits ??= [];
 
@@ -107,15 +117,10 @@ class FakeHelperRoom {
           const existingPlacementIndex = player.boardUnits.findIndex((placement) =>
             placement.startsWith(`${safeCell}:`)
           );
-          if (existingPlacementIndex >= 0) {
-            if (!player.boardUnits[existingPlacementIndex]?.endsWith(":sub")) {
-              player.boardUnits[existingPlacementIndex] = `${player.boardUnits[existingPlacementIndex]}:sub`;
-            }
-            player.boardSubUnits = [...player.boardSubUnits.filter((token) => !token.startsWith(`${safeCell}:`)), `${safeCell}:${benchUnit}`];
-          } else {
-            this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_sub_host" });
-            return;
+          if (!player.boardUnits[existingPlacementIndex]?.endsWith(":sub")) {
+            player.boardUnits[existingPlacementIndex] = `${player.boardUnits[existingPlacementIndex]}:sub`;
           }
+          player.boardSubUnits = [...player.boardSubUnits.filter((token) => !token.startsWith(`${safeCell}:`)), `${safeCell}:${benchUnit}`];
         } else {
           player.boardUnits = [...player.boardUnits, `${safeCell}:${benchUnit}`];
         }
@@ -130,7 +135,6 @@ class FakeHelperRoom {
       }
 
       if (typeof this.options.deferStateUpdateAfterDeployMs === "number") {
-        this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
         setTimeout(applyDeployStateUpdate, this.options.deferStateUpdateAfterDeployMs);
         return;
       }
@@ -318,6 +322,52 @@ describe("helper automation wrapper", () => {
       }),
     });
     expect(state.players.get("player-1")?.boardUnits).toEqual(["19:vanguard"]);
+  });
+
+  test("invalid deferred sub-slot deploy keeps the bench unit and emits one rejection", async () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 0,
+          benchUnits: ["mage"],
+          boardUnits: [],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(undefined, {
+      deferStateUpdateAfterDeployMs: 5,
+    });
+    room.state = state;
+    const results: Array<{ accepted?: boolean; code?: string }> = [];
+    room.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
+      results.push((message ?? null) as { accepted?: boolean; code?: string });
+    });
+
+    room.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+      cmdSeq: 1,
+      benchToBoardCell: {
+        benchIndex: 0,
+        cell: 19,
+        slot: "sub",
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(state.players.get("player-1")?.benchUnits).toEqual(["mage"]);
+    expect(results).toEqual([
+      { accepted: false, code: "invalid_sub_host" },
+    ]);
   });
 
   test("helper keeps retrying long enough to catch delayed post-buy state sync", async () => {

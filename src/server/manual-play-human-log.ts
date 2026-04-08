@@ -32,6 +32,7 @@ export interface ManualPlayPlayerConsequence {
 }
 
 export interface ManualPlayUnitBattleOutcome {
+  battleUnitId?: string;
   playerId: string;
   label: string;
   unitId: string;
@@ -470,6 +471,7 @@ export function buildManualPlayUnitBattleOutcomes(
         ?? (!deadUnitIds.has(unit.battleUnitId) && finalHp > 0);
 
       return {
+        battleUnitId: unit.battleUnitId,
         playerId,
         label: getPlayerLabel(playerLabels, playerId),
         unitId: sourceUnitId,
@@ -497,9 +499,10 @@ export function normalizeManualPlayRoundPhaseContributionDamage(
 ): ManualPlayRoundReport {
   const weightedEntries = round.battles.flatMap((battle) =>
     battle.unitOutcomes
-      .filter((unit) => unit.side === "raid" && (unit.totalDamage > 0 || unit.phaseContributionDamage > 0))
-      .map((unit) => ({
-        battleUnitId: `${unit.playerId}::${unit.unitId}::${unit.unitName}`,
+      .map((unit, index) => ({ unit, index }))
+      .filter(({ unit }) => unit.side === "raid" && (unit.totalDamage > 0 || unit.phaseContributionDamage > 0))
+      .map(({ unit, index }) => ({
+        battleUnitId: unit.battleUnitId ?? `${unit.playerId}::${unit.unitId}::${unit.unitName}::${index}`,
         weight: Math.max(unit.phaseContributionDamage, unit.totalDamage, 0),
       })));
 
@@ -512,7 +515,7 @@ export function normalizeManualPlayRoundPhaseContributionDamage(
     ...round,
     battles: round.battles.map((battle) => ({
       ...battle,
-      unitOutcomes: battle.unitOutcomes.map((unit) => {
+      unitOutcomes: battle.unitOutcomes.map((unit, index) => {
         if (unit.side !== "raid") {
           return {
             ...unit,
@@ -520,7 +523,7 @@ export function normalizeManualPlayRoundPhaseContributionDamage(
           };
         }
 
-        const key = `${unit.playerId}::${unit.unitId}::${unit.unitName}`;
+        const key = unit.battleUnitId ?? `${unit.playerId}::${unit.unitId}::${unit.unitName}::${index}`;
         return {
           ...unit,
           phaseContributionDamage: distributed.get(key) ?? 0,

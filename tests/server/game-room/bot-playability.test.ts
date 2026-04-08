@@ -1093,7 +1093,11 @@ const BOT_ONLY_BATTLE_DURATION_MS = 80;
 const convertToRealPlayBattleDurationMs = (
   battleDurationMs: number | undefined,
 ): number | undefined => {
-  if (!Number.isFinite(battleDurationMs)) {
+  if (
+    !Number.isFinite(battleDurationMs)
+    || Number(battleDurationMs) <= 0
+    || Number(battleDurationMs) > BOT_ONLY_BATTLE_DURATION_MS
+  ) {
     return undefined;
   }
 
@@ -3328,7 +3332,8 @@ test("buildBotOnlyHumanReadableRoundReport prefers player wipe status for raid o
     }],
   });
 
-  expect(text).toContain("Boss\nバトル時間(実プレイ換算) 617000ms");
+  expect(text).toContain("Boss");
+  expect(text).not.toContain("617000ms");
   expect(text).toContain("P2 撃破");
   expect(text).toContain("霊夢 Lv1 与ダメージ0 フェーズ貢献ダメージ0 最終HP120");
   expect(text).toContain("R1リザルト\nフェーズHP 350/600\nラウンドクリア\n脱落: P2");
@@ -3338,6 +3343,8 @@ test("convertToRealPlayBattleDurationMs converts bot battle duration to real-pla
   expect(convertToRealPlayBattleDurationMs(80)).toBe(40_000);
   expect(convertToRealPlayBattleDurationMs(57)).toBe(28_500);
   expect(convertToRealPlayBattleDurationMs(undefined)).toBeUndefined();
+  expect(convertToRealPlayBattleDurationMs(0)).toBeUndefined();
+  expect(convertToRealPlayBattleDurationMs(81)).toBeUndefined();
 });
 
 test("buildBotOnlyHumanReadableRoundReport describes domination losses without claiming a wipe", () => {

@@ -126,6 +126,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private manualPlayBattleDurationMsByRound: Map<number, number> = new Map();
 
+  private manualPlayPlayersAtBattleStartByRound: Map<number, ManualPlayPlayerAtBattleStart[]> = new Map();
+
   private manualPlayHumanLogSavedPath: string | null = null;
 
   public onCreate(options: GameRoomOptions = {}): void {
@@ -389,6 +391,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.manualPlayRemainingLivesByPlayer.clear();
     this.manualPlayBattlePhaseDeadlineAtMsByRound.clear();
     this.manualPlayBattleDurationMsByRound.clear();
+    this.manualPlayPlayersAtBattleStartByRound.clear();
     this.manualPlayHumanLogSavedPath = null;
 
     if (!this.controller) {
@@ -418,6 +421,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         this.state.roundIndex,
         this.state.phaseDeadlineAtMs,
       );
+      this.captureManualPlayPlayersAtBattleStart(this.state.roundIndex);
     }
 
     if (previousPhase === "Battle" && this.state.phase !== "Battle") {
@@ -448,6 +452,17 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.manualPlayBattleDurationMsByRound.set(roundIndex, elapsedMs);
   }
 
+  private captureManualPlayPlayersAtBattleStart(roundIndex: number): void {
+    if (this.manualPlayPlayersAtBattleStartByRound.has(roundIndex)) {
+      return;
+    }
+
+    this.manualPlayPlayersAtBattleStartByRound.set(
+      roundIndex,
+      this.buildManualPlayPlayersAtBattleStart(),
+    );
+  }
+
   private captureManualPlayRoundSnapshot(roundIndex: number): void {
     if (!this.controller) {
       return;
@@ -457,7 +472,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       return;
     }
 
-    const playersAtBattleStart = this.buildManualPlayPlayersAtBattleStart();
+    const playersAtBattleStart = this.manualPlayPlayersAtBattleStartByRound.get(roundIndex)
+      ?? this.buildManualPlayPlayersAtBattleStart();
     const timeline = this.resolveManualPlayTimelineForRound(roundIndex);
     const unitOutcomes = buildManualPlayUnitBattleOutcomes(
       timeline,
@@ -507,7 +523,10 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
         const battlePlacements = testAccess?.battleInputSnapshotByPlayer.get(playerId) ?? [];
         const trackedBattleUnitIds = battlePlacements
-          .map((placement) => placement.unitId?.trim() ?? "")
+          .flatMap((placement) => [
+            placement.unitId?.trim() ?? "",
+            placement.subUnit?.unitId?.trim() ?? "",
+          ])
           .filter((unitId) => unitId.length > 0);
 
         if (playerState.selectedHeroId.length > 0) {
@@ -632,9 +651,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       ".tmp",
       `manual-play-human-${this.roomId}-${Date.now()}.log`,
     );
-    const report = this.buildManualPlayHumanReport();
-    this.manualPlayHumanLogSavedPath = writeManualPlayHumanReport(report, outputPath);
-    console.log(`[manual_play_human_log_saved] ${this.manualPlayHumanLogSavedPath}`);
+    try {
+      const report = this.buildManualPlayHumanReport();
+      this.manualPlayHumanLogSavedPath = writeManualPlayHumanReport(report, outputPath);
+      console.log(`[manual_play_human_log_saved] ${this.manualPlayHumanLogSavedPath}`);
+    } catch (error) {
+      console.warn("[manual_play_human_log_failed]", error);
+    }
   }
 
   private resetSelectionToPreference(nowMs: number): void {

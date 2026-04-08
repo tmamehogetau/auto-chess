@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildManualPlayHumanReportText,
+  normalizeManualPlayRoundPhaseContributionDamage,
   resolveManualPlayRoundTimeline,
   type ManualPlayHumanReport,
   writeManualPlayHumanReport,
@@ -205,6 +206,55 @@ describe("manual-play-human-log", () => {
     expect(text).toContain("R1リザルト\nフェーズHP 600/600\n全滅によりラウンド失敗");
     expect(text).toContain("R12リザルト\n最終判定ラウンド");
     expect(text).not.toContain("R12リザルト\nフェーズHP");
+  });
+
+  it("keeps duplicate raid copies separate when redistributing phase contribution damage", () => {
+    const normalized = normalizeManualPlayRoundPhaseContributionDamage({
+      roundIndex: 3,
+      phaseHpTarget: 600,
+      phaseDamageDealt: 90,
+      phaseResult: "failed",
+      eliminations: [],
+      playerConsequences: [],
+      battles: [{
+        battleIndex: 0,
+        unitOutcomes: [
+          {
+            battleUnitId: "raid-a-copy-1",
+            playerId: "raid-a",
+            label: "P2",
+            unitId: "nazrin",
+            unitName: "ナズーリン",
+            side: "raid",
+            totalDamage: 60,
+            phaseContributionDamage: 0,
+            finalHp: 10,
+            alive: true,
+            starLevel: 1,
+            subUnitName: "",
+            isSpecialUnit: false,
+          },
+          {
+            battleUnitId: "raid-a-copy-2",
+            playerId: "raid-a",
+            label: "P2",
+            unitId: "nazrin",
+            unitName: "ナズーリン",
+            side: "raid",
+            totalDamage: 30,
+            phaseContributionDamage: 0,
+            finalHp: 0,
+            alive: false,
+            starLevel: 1,
+            subUnitName: "",
+            isSpecialUnit: false,
+          },
+        ],
+      }],
+    });
+
+    const unitOutcomes = normalized.battles[0]?.unitOutcomes ?? [];
+    expect(unitOutcomes.map((unit) => unit.phaseContributionDamage)).toEqual([60, 30]);
   });
 
   it("writes the human report to the requested file path", () => {

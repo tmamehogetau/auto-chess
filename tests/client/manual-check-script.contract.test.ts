@@ -255,6 +255,7 @@ describe("manual-check script contract", () => {
     expect(source.includes("if (automationStateKey === lastAutomationStateKey) {")).toBe(true);
     expect(source.includes("const [nextAction] = actions;")).toBe(true);
     expect(source.includes("if (nextAction.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {")).toBe(true);
+    expect(source.includes("if (pendingPrepCommand) {")).toBe(true);
     expect(source.includes("correlationId: createCorrelationId(`helper_${helperIndex}`, cmdSeq),")).toBe(true);
     expect(source.includes("helperCmdSeq += 1;")).toBe(true);
     expect(source.includes("optimisticHelperPlayer = applyOptimisticPrepCommandToPlayer(")).toBe(true);

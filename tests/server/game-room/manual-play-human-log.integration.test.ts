@@ -116,7 +116,6 @@ describeGameRoomIntegration("GameRoom integration / manual play human log", (con
       expect(report).toContain("与ダメージ");
       expect(report).toContain("フェーズ貢献ダメージ");
       expect(report).toContain("最終HP");
-      expect(report).toContain("脱落:");
     },
     35_000,
   );

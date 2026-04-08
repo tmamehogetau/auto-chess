@@ -213,13 +213,13 @@ describe("autofill helper automation", () => {
         gold: 3,
         benchUnits: [],
         boardUnits: [
-          { cell: 30, unitId: "hero:okina" },
+          { cell: 30, unitId: "okina" },
           { cell: 31, unitId: "front-a" },
           { cell: 32, unitId: "front-b" },
           { cell: 33, unitId: "front-c" },
         ],
         boardSubUnits: [],
-        selectedHeroId: "hero:okina",
+        selectedHeroId: "okina",
         shopOffers: [{ unitType: "mage", cost: 3 }],
       },
       state: {
@@ -445,6 +445,34 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase raid helper normalizes upgraded bench unit suffixes when balancing the roster", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["ranger:2"],
+        benchUnitIds: ["nazrin"],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", cost: 1 },
+          { unitId: "yoshika", unitType: "vanguard", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase boss helper prefers a frontline offer when its roster is backline-heavy", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -480,11 +508,13 @@ describe("autofill helper automation", () => {
         role: "raid",
         gold: 5,
         benchUnits: [],
+        boardSubUnits: ["30:sub", "31:sub", "33:sub"],
         boardUnits: [
           "30:reimu",
           { cell: 31, unitId: "yoshika", factionId: "shinreibyou" },
           { cell: 33, unitId: "tojiko", factionId: "shinreibyou" },
         ],
+        selectedHeroId: "reimu",
         shopOffers: [
           { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
           { unitId: "yoshika", unitType: "vanguard", factionId: "shinreibyou", cost: 1 },
@@ -1262,7 +1292,9 @@ describe("autofill helper automation", () => {
         role: "raid",
         gold: 9,
         benchUnits: [],
+        boardSubUnits: ["30:sub", "31:sub", "25:sub", "19:sub"],
         boardUnits: ["30:reimu", "31:ranger", "25:mage", "19:assassin"],
+        selectedHeroId: "reimu",
         shopOffers: [
           { unitType: "vanguard", cost: 2 },
         ],

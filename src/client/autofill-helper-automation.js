@@ -229,6 +229,14 @@ function normalizeUnitType(value) {
 }
 
 function parseBenchUnitType(value) {
+  const unitType = value && typeof value === "object"
+    ? value.unitType
+    : value;
+
+  if (typeof unitType === "string") {
+    return normalizeUnitType(unitType.replace(/:\d+$/, ""));
+  }
+
   if (value && typeof value === "object") {
     return normalizeUnitType(value.unitType);
   }
@@ -744,9 +752,9 @@ function getBossOfferDuplicateOwnedBonus(offer, boardUnits, benchUnitIds) {
   );
 }
 
-function getBossOfferPriorityScore(offer, boardUnits = [], benchUnitIds = []) {
+function getBossOfferPriorityScore(offer, boardUnits = [], benchUnitIds = [], benchUnits = []) {
   const unitId = normalizeOfferUnitId(offer);
-  const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, []);
+  const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, benchUnits);
   const duplicateOwnedBonus = getBossOfferDuplicateOwnedBonus(
     offer,
     boardUnits,
@@ -872,7 +880,7 @@ function getRaidOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy, be
 
 function getOfferPriorityScore(role, offer, boardUnits, benchUnitIds, strategy, benchUnits = []) {
   if (role === "boss") {
-    return getBossOfferPriorityScore(offer, boardUnits, benchUnitIds);
+    return getBossOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits);
   }
 
   if (role === "raid") {
@@ -945,7 +953,7 @@ function buildBossShopReserveBuyAction(player) {
       type: "prep_command",
       payload: { bossShopBuySlotIndex: affordableBossSlotIndex },
     },
-    score: getBossOfferPriorityScore(offer, player?.boardUnits, player?.benchUnitIds),
+    score: getBossOfferPriorityScore(offer, player?.boardUnits, player?.benchUnitIds, player?.benchUnits),
   };
 }
 
@@ -969,7 +977,7 @@ function buildBossNormalReserveBuyAction(player) {
       type: "prep_command",
       payload: { shopBuySlotIndex: affordableShopSlotIndex },
     },
-    score: getBossOfferPriorityScore(offer, player?.boardUnits, player?.benchUnitIds),
+    score: getBossOfferPriorityScore(offer, player?.boardUnits, player?.benchUnitIds, player?.benchUnits),
   };
 }
 
@@ -1306,10 +1314,8 @@ export function buildAutoFillHelperActions({
       return deployActions;
     }
 
-    if (nextDeployCell !== null) {
-      if (reserveBuyAction) {
-        return [reserveBuyAction];
-      }
+    if (reserveBuyAction) {
+      return [reserveBuyAction];
     }
 
     if (

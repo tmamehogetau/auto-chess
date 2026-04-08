@@ -2795,6 +2795,9 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     }
 
     if (nextAction.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {
+      if (pendingPrepCommand) {
+        return;
+      }
       const cmdSeq = helperCmdSeq;
       pendingPrepCommand = {
         cmdSeq,

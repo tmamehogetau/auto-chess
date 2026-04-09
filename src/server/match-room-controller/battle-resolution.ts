@@ -80,6 +80,7 @@ export interface IBattleSimulator {
     rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null,
     subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null,
     flags?: FeatureFlags,
+    round?: number,
   ): SimulatorBattleResult;
 }
 
@@ -220,11 +221,12 @@ export class BattleResolutionService {
       rightBattleUnits,
       leftPlacements,
       rightPlacements,
-      30000, // 30秒の最大戦闘時間
+      roundIndex >= 12 ? 600_000 : 30000, // R12+は10分(事実上無制限), それ以外は30秒
       leftHeroSynergyBonusType,
       rightHeroSynergyBonusType,
       this.deps.enableSubUnitSystem ? this.deps.subUnitAssistConfigByType : null,
       this.deps.featureFlags,
+      roundIndex,
     );
 
     // Process results based on winner

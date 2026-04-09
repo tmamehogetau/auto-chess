@@ -428,6 +428,91 @@ describe("BattleResolutionService", () => {
         "ranger",
         null,
         undefined,
+        1,
+      );
+    });
+
+    it("should keep the normal 30 second battle timeout through round 11", () => {
+      const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: [leftBattleUnits[0]],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
+      });
+
+      service.resolveMatchup({
+        battleId: "r11-p1-p2",
+        roundIndex: 11,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits,
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      expect(mockBattleSimulator.simulateBattle).toHaveBeenCalledWith(
+        leftBattleUnits,
+        rightBattleUnits,
+        mockLeftPlacements,
+        mockRightPlacements,
+        30000,
+        null,
+        null,
+        null,
+        undefined,
+        11,
+      );
+    });
+
+    it("should extend the battle timeout only for round 12 and later", () => {
+      const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: [leftBattleUnits[0]],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 50 },
+        timeline: mockTimeline,
+      });
+
+      service.resolveMatchup({
+        battleId: "r12-p1-p2",
+        roundIndex: 12,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits,
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      expect(mockBattleSimulator.simulateBattle).toHaveBeenCalledWith(
+        leftBattleUnits,
+        rightBattleUnits,
+        mockLeftPlacements,
+        mockRightPlacements,
+        600_000,
+        null,
+        null,
+        null,
+        undefined,
+        12,
       );
     });
 
@@ -479,6 +564,7 @@ describe("BattleResolutionService", () => {
         null,
         mockSubUnitConfig,
         undefined,
+        1,
       );
     });
   });

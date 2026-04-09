@@ -331,6 +331,158 @@ const mapOfferUnitTypes = (offers: unknown): unknown[] =>
     return offer;
   });
 
+const parseHelperBoardCell = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const [rawCell] = value.split(":");
+    const parsedCell = Number(rawCell);
+    return Number.isInteger(parsedCell) ? parsedCell : null;
+  }
+
+  if (value && typeof value === "object" && "cell" in value) {
+    const cell = (value as { cell?: unknown }).cell;
+    return typeof cell === "number" && Number.isInteger(cell) ? cell : null;
+  }
+
+  return null;
+};
+
+const cloneAutoFillHelperPlayer = (player: AutoFillHelperPlayer | null): AutoFillHelperPlayer | null => {
+  if (!player) {
+    return null;
+  }
+
+  return {
+    ...player,
+    benchUnits: Array.from(player.benchUnits ?? []),
+    benchUnitIds: Array.from(player.benchUnitIds ?? []),
+    boardUnits: Array.from(player.boardUnits ?? []),
+    boardSubUnits: Array.from((player as { boardSubUnits?: unknown[] } | null)?.boardSubUnits ?? []),
+    shopOffers: Array.from(player.shopOffers ?? []),
+    bossShopOffers: Array.from(player.bossShopOffers ?? []),
+  };
+};
+
+const buildOptimisticBoardPlacement = (cell: number, unitType: unknown, unitId: unknown) => ({
+  cell,
+  unitType: typeof unitType === "string" && unitType.length > 0 ? unitType : "vanguard",
+  ...(typeof unitId === "string" && unitId.length > 0 ? { unitId } : {}),
+});
+
+const applyOptimisticPrepCommandToPlayer = (
+  player: AutoFillHelperPlayer | null,
+  payload: Record<string, unknown>,
+  cmdSeq: number,
+): AutoFillHelperPlayer | null => {
+  const nextPlayer = cloneAutoFillHelperPlayer(player);
+  if (!nextPlayer) {
+    return null;
+  }
+
+  nextPlayer.lastCmdSeq = cmdSeq;
+
+  if (typeof payload.shopBuySlotIndex === "number") {
+    const shopOffers = toUnknownArray(nextPlayer.shopOffers) as Array<{ unitType?: unknown; unitId?: unknown; cost?: unknown }>;
+    const offer = shopOffers[payload.shopBuySlotIndex] as
+      | { unitType?: unknown; unitId?: unknown; cost?: unknown }
+      | undefined;
+    if (offer) {
+      shopOffers.splice(payload.shopBuySlotIndex, 1);
+      nextPlayer.shopOffers = shopOffers;
+      const benchUnits = toUnknownArray(nextPlayer.benchUnits) as string[];
+      benchUnits.push(
+        typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
+      );
+      nextPlayer.benchUnits = benchUnits;
+      nextPlayer.benchUnitIds = [...(nextPlayer.benchUnitIds ?? []), typeof offer.unitId === "string" ? offer.unitId : ""];
+      if (typeof offer.cost === "number" && Number.isFinite(offer.cost) && typeof nextPlayer.gold === "number") {
+        nextPlayer.gold = Math.max(0, nextPlayer.gold - offer.cost);
+      }
+    }
+    return nextPlayer;
+  }
+
+  if (typeof payload.bossShopBuySlotIndex === "number") {
+    const bossShopOffers = toUnknownArray(nextPlayer.bossShopOffers) as Array<{ unitType?: unknown; unitId?: unknown; cost?: unknown }>;
+    const offer = bossShopOffers[payload.bossShopBuySlotIndex] as
+      | { unitType?: unknown; unitId?: unknown; cost?: unknown }
+      | undefined;
+    if (offer) {
+      bossShopOffers.splice(payload.bossShopBuySlotIndex, 1);
+      nextPlayer.bossShopOffers = bossShopOffers;
+      const benchUnits = toUnknownArray(nextPlayer.benchUnits) as string[];
+      benchUnits.push(
+        typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
+      );
+      nextPlayer.benchUnits = benchUnits;
+      nextPlayer.benchUnitIds = [...(nextPlayer.benchUnitIds ?? []), typeof offer.unitId === "string" ? offer.unitId : ""];
+      if (typeof offer.cost === "number" && Number.isFinite(offer.cost) && typeof nextPlayer.gold === "number") {
+        nextPlayer.gold = Math.max(0, nextPlayer.gold - offer.cost);
+      }
+    }
+    return nextPlayer;
+  }
+
+  const benchToBoardCell = payload.benchToBoardCell as
+    | { benchIndex?: number; cell?: number; slot?: "main" | "sub" }
+    | undefined;
+  if (!benchToBoardCell || !Number.isInteger(benchToBoardCell.benchIndex) || !Number.isInteger(benchToBoardCell.cell)) {
+    return nextPlayer;
+  }
+
+  const benchIndex = Number(benchToBoardCell.benchIndex);
+  const targetCell = Number(benchToBoardCell.cell);
+  const benchUnits = toUnknownArray(nextPlayer.benchUnits) as string[];
+  if (benchIndex < 0 || benchIndex >= benchUnits.length) {
+    return nextPlayer;
+  }
+
+  const [benchUnitType] = benchUnits.splice(benchIndex, 1);
+  nextPlayer.benchUnits = benchUnits;
+  const benchUnitIds = Array.from(nextPlayer.benchUnitIds ?? []);
+  const [benchUnitId] = benchUnitIds.splice(benchIndex, 1);
+  nextPlayer.benchUnitIds = benchUnitIds;
+
+  if (benchToBoardCell.slot === "sub") {
+    const nextBoardUnits = Array.from(nextPlayer.boardUnits ?? []);
+    const hostIndex = nextBoardUnits.findIndex((placement) => parseHelperBoardCell(placement) === targetCell);
+    if (hostIndex >= 0) {
+      const hostPlacement = nextBoardUnits[hostIndex];
+      if (typeof hostPlacement === "string") {
+        if (!hostPlacement.endsWith(":sub")) {
+          nextBoardUnits[hostIndex] = `${hostPlacement}:sub`;
+        }
+      } else if (hostPlacement && typeof hostPlacement === "object") {
+        nextBoardUnits[hostIndex] = {
+          ...hostPlacement,
+          subUnit: buildOptimisticBoardPlacement(-1, benchUnitType, benchUnitId),
+        };
+      }
+
+      nextPlayer.boardUnits = nextBoardUnits;
+      const nextToken = `${targetCell}:${typeof benchUnitId === "string" && benchUnitId.length > 0 ? benchUnitId : benchUnitType}`;
+      nextPlayer.boardSubUnits = [
+        ...Array.from((nextPlayer as { boardSubUnits?: string[] }).boardSubUnits ?? []).filter(
+          (token) => !token.startsWith(`${targetCell}:`),
+        ),
+        nextToken,
+      ];
+    }
+
+    return nextPlayer;
+  }
+
+  nextPlayer.boardUnits = [
+    ...Array.from(nextPlayer.boardUnits ?? []),
+    buildOptimisticBoardPlacement(targetCell, benchUnitType, benchUnitId),
+  ];
+
+  return nextPlayer;
+};
+
 export const attachAutoFillHelperAutomationForTest = (
   helperRoom: {
     sessionId: string;
@@ -348,6 +500,8 @@ export const attachAutoFillHelperAutomationForTest = (
 } => {
   let helperCmdSeq = 1;
   let lastAutomationStateKey = "";
+  let optimisticHelperPlayer: AutoFillHelperPlayer | null = null;
+  let pendingPrepCommand: { cmdSeq: number; payload: Record<string, unknown> } | null = null;
   const results: unknown[] = [];
 
   const buildAutomationStateKey = (
@@ -360,6 +514,7 @@ export const attachAutoFillHelperAutomationForTest = (
       bossOffers: mapOfferUnitTypes(helperPlayer?.bossShopOffers),
       boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
       benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
+      boardSubUnits: Array.from((helperPlayer as { boardSubUnits?: unknown[] } | null)?.boardSubUnits ?? []),
       featureFlagsEnableTouhouRoster: state?.featureFlagsEnableTouhouRoster === true,
       gold: Number.isFinite(helperGold) ? helperGold : null,
       lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
@@ -378,7 +533,16 @@ export const attachAutoFillHelperAutomationForTest = (
 
   const applyAutomation = (state: unknown) => {
     const helperState = state as AutoFillHelperState | null;
-    const helperPlayer = mapGetStatePlayer(helperState?.players, helperRoom.sessionId);
+    const syncedHelperPlayer = mapGetStatePlayer(helperState?.players, helperRoom.sessionId);
+    if (
+      optimisticHelperPlayer
+      && typeof syncedHelperPlayer?.lastCmdSeq === "number"
+      && typeof optimisticHelperPlayer.lastCmdSeq === "number"
+      && syncedHelperPlayer.lastCmdSeq >= optimisticHelperPlayer.lastCmdSeq
+    ) {
+      optimisticHelperPlayer = null;
+    }
+    const helperPlayer = optimisticHelperPlayer ?? syncedHelperPlayer;
     const automationStateKey = buildAutomationStateKey(helperState, helperPlayer);
 
     if (automationStateKey === lastAutomationStateKey) {
@@ -401,20 +565,30 @@ export const attachAutoFillHelperAutomationForTest = (
       ...(options.strategy ? { strategy: options.strategy } : {}),
     });
 
-    for (const action of actions) {
-      if (action.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {
-        const cmdSeq = helperCmdSeq;
-        helperRoom.send(action.type, {
-          cmdSeq,
-          correlationId: buildHelperCorrelationId(helperIndex, cmdSeq),
-          ...action.payload,
-        });
-        helperCmdSeq += 1;
-        continue;
-      }
-
-      helperRoom.send(action.type, action.payload);
+    const [nextAction] = actions;
+    if (!nextAction) {
+      return;
     }
+
+    if (nextAction.type === CLIENT_MESSAGE_TYPES.PREP_COMMAND) {
+      if (pendingPrepCommand) {
+        return;
+      }
+      const cmdSeq = helperCmdSeq;
+      pendingPrepCommand = {
+        cmdSeq,
+        payload: nextAction.payload as Record<string, unknown>,
+      };
+      helperRoom.send(nextAction.type, {
+        cmdSeq,
+        correlationId: buildHelperCorrelationId(helperIndex, cmdSeq),
+        ...nextAction.payload,
+      });
+      helperCmdSeq += 1;
+      return;
+    }
+
+    helperRoom.send(nextAction.type, nextAction.payload);
   };
 
   const reapplyAutomationSoon = (remainingRetries = HELPER_AUTOMATION_RETRY_ATTEMPTS) => {
@@ -429,12 +603,33 @@ export const attachAutoFillHelperAutomationForTest = (
     }, HELPER_AUTOMATION_RETRY_DELAY_MS);
   };
 
+  const scheduleImmediateAutomationReapply = () => {
+    setTimeout(() => {
+      if (helperRoom.state) {
+        applyAutomation(helperRoom.state);
+      }
+    }, 0);
+  };
+
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.ROUND_STATE, () => {});
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
     results.push(message);
-    if (helperRoom.state) {
-      applyAutomation(helperRoom.state);
+    const commandResult = message as { accepted?: boolean } | null;
+    if (commandResult?.accepted === true && pendingPrepCommand) {
+      const basePlayer = optimisticHelperPlayer
+        ?? (helperRoom.state
+          ? mapGetStatePlayer((helperRoom.state as AutoFillHelperState)?.players, helperRoom.sessionId)
+          : null);
+      optimisticHelperPlayer = applyOptimisticPrepCommandToPlayer(
+        basePlayer,
+        pendingPrepCommand.payload,
+        pendingPrepCommand.cmdSeq,
+      );
+    } else if (commandResult?.accepted === false) {
+      optimisticHelperPlayer = null;
     }
+    pendingPrepCommand = null;
+    scheduleImmediateAutomationReapply();
     reapplyAutomationSoon();
   });
   helperRoom.onMessage(SERVER_MESSAGE_TYPES.SHADOW_DIFF, () => {});

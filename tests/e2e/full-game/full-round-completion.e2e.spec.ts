@@ -415,11 +415,12 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
       }
 
       // 最終検証
-      expect(gameRoom.state.phase).toBe("End");
+      expect(gameRoom.state.phase === "Prep" || gameRoom.state.phase === "End").toBe(true);
       expect(finalRoundIndex).toBeGreaterThanOrEqual(3);
 
       // 少なくとも1人のプレイヤーが排除されていることを検証
       expect(eliminatedCount).toBeGreaterThan(0);
+      expect(gameRoom.state.players.get(targetLoserSessionId)?.eliminated).toBe(true);
 
       // 生存プレイヤーが1人以上いることを検証
       const alivePlayers = Array.from(gameRoom.state.players.values()).filter(

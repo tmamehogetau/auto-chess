@@ -1,0 +1,410 @@
+{
+  "chunkIndex": 1,
+  "matchStartIndex": 5,
+  "requestedMatchCount": 5,
+  "workerIndex": 1,
+  "portOffset": 10500,
+  "aggregate": {
+    "requestedMatchCount": 5,
+    "completedMatches": 5,
+    "abortedMatches": 0,
+    "bossWins": 5,
+    "raidWins": 0,
+    "bossWinRate": 1,
+    "raidWinRate": 0,
+    "averageRounds": 12,
+    "minRounds": 12,
+    "maxRounds": 12,
+    "averageRemainingRaidPlayers": 3,
+    "roundHistogram": {
+      "12": 5
+    },
+    "playerMetrics": {
+      "P1": {
+        "averagePlacement": 1.6,
+        "firstPlaceRate": 0.4,
+        "averageRemainingHp": 100,
+        "averageRemainingLives": 1.8
+      },
+      "P2": {
+        "averagePlacement": 2.6,
+        "firstPlaceRate": 0,
+        "averageRemainingHp": 100,
+        "averageRemainingLives": 3
+      },
+      "P3": {
+        "averagePlacement": 3,
+        "firstPlaceRate": 0.2,
+        "averageRemainingHp": 100,
+        "averageRemainingLives": 2.4
+      },
+      "P4": {
+        "averagePlacement": 2.8,
+        "firstPlaceRate": 0.4,
+        "averageRemainingHp": 100,
+        "averageRemainingLives": 1.8
+      }
+    },
+    "battleUnitMetrics": [
+      {
+        "unitType": "marisa",
+        "unitName": "魔理沙",
+        "side": "raid",
+        "battleAppearances": 60,
+        "matchesPresent": 5,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 1928.3,
+        "averageDamagePerMatch": 23139.6,
+        "survivalRate": 1,
+        "ownerWinRate": 0.4,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "patchouli",
+        "unitName": "パチュリー・ノーレッジ",
+        "side": "boss",
+        "battleAppearances": 50,
+        "matchesPresent": 5,
+        "averageStarLevel": 1.56,
+        "averageDamagePerBattle": 199.92,
+        "averageDamagePerMatch": 1999.2,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "sakuya",
+        "unitName": "十六夜咲夜",
+        "side": "boss",
+        "battleAppearances": 19,
+        "matchesPresent": 5,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 385.2105263157895,
+        "averageDamagePerMatch": 1463.8,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "junko",
+        "unitName": "純狐",
+        "side": "mixed",
+        "battleAppearances": 39,
+        "matchesPresent": 5,
+        "averageStarLevel": 1.1282051282051282,
+        "averageDamagePerBattle": 184.4102564102564,
+        "averageDamagePerMatch": 1438.4,
+        "survivalRate": 1,
+        "ownerWinRate": 0.07692307692307693,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "rin",
+        "unitName": "火焔猫燐",
+        "side": "mixed",
+        "battleAppearances": 169,
+        "matchesPresent": 5,
+        "averageStarLevel": 2.3491124260355027,
+        "averageDamagePerBattle": 40.01183431952663,
+        "averageDamagePerMatch": 1352.4,
+        "survivalRate": 0.9408284023668639,
+        "ownerWinRate": 0.23668639053254437,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "yoshika",
+        "unitName": "宮古芳香",
+        "side": "mixed",
+        "battleAppearances": 145,
+        "matchesPresent": 5,
+        "averageStarLevel": 1.5379310344827586,
+        "averageDamagePerBattle": 34.44137931034483,
+        "averageDamagePerMatch": 998.8,
+        "survivalRate": 0.8344827586206897,
+        "ownerWinRate": 0.18620689655172415,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "nazrin",
+        "unitName": "ナズーリン",
+        "side": "mixed",
+        "battleAppearances": 55,
+        "matchesPresent": 5,
+        "averageStarLevel": 2.309090909090909,
+        "averageDamagePerBattle": 71.18181818181819,
+        "averageDamagePerMatch": 783,
+        "survivalRate": 0.6,
+        "ownerWinRate": 0,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "momoyo",
+        "unitName": "姫虫百々世",
+        "side": "mixed",
+        "battleAppearances": 77,
+        "matchesPresent": 5,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 26.753246753246753,
+        "averageDamagePerMatch": 412,
+        "survivalRate": 0.974025974025974,
+        "ownerWinRate": 0.2987012987012987,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "kagerou",
+        "unitName": "今泉影狼",
+        "side": "raid",
+        "battleAppearances": 50,
+        "matchesPresent": 5,
+        "averageStarLevel": 1.2,
+        "averageDamagePerBattle": 40.58,
+        "averageDamagePerMatch": 405.8,
+        "survivalRate": 1,
+        "ownerWinRate": 0.44,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "remilia",
+        "unitName": "レミリア",
+        "side": "boss",
+        "battleAppearances": 60,
+        "matchesPresent": 5,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 33.68333333333333,
+        "averageDamagePerMatch": 404.2,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "wakasagihime",
+        "unitName": "わかさぎ姫",
+        "side": "mixed",
+        "battleAppearances": 14,
+        "matchesPresent": 5,
+        "averageStarLevel": 1.1428571428571428,
+        "averageDamagePerBattle": 130.07142857142858,
+        "averageDamagePerMatch": 364.2,
+        "survivalRate": 0.7857142857142857,
+        "ownerWinRate": 0.14285714285714285,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "okina",
+        "unitName": "隠岐奈",
+        "side": "raid",
+        "battleAppearances": 48,
+        "matchesPresent": 4,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 51.1875,
+        "averageDamagePerMatch": 491.4,
+        "survivalRate": 0.8958333333333334,
+        "ownerWinRate": 0,
+        "adoptionRate": 0.8
+      },
+      {
+        "unitType": "meiling",
+        "unitName": "紅美鈴",
+        "side": "boss",
+        "battleAppearances": 38,
+        "matchesPresent": 4,
+        "averageStarLevel": 1.236842105263158,
+        "averageDamagePerBattle": 51.1578947368421,
+        "averageDamagePerMatch": 388.8,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 0.8
+      },
+      {
+        "unitType": "megumu",
+        "unitName": "飯綱丸龍",
+        "side": "boss",
+        "battleAppearances": 15,
+        "matchesPresent": 3,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 232,
+        "averageDamagePerMatch": 696,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 0.6
+      },
+      {
+        "unitType": "clownpiece",
+        "unitName": "クラウンピース",
+        "side": "mixed",
+        "battleAppearances": 11,
+        "matchesPresent": 3,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 203.8181818181818,
+        "averageDamagePerMatch": 448.4,
+        "survivalRate": 1,
+        "ownerWinRate": 0.18181818181818182,
+        "adoptionRate": 0.6
+      },
+      {
+        "unitType": "keiki",
+        "unitName": "袿姫",
+        "side": "raid",
+        "battleAppearances": 36,
+        "matchesPresent": 3,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 12.5,
+        "averageDamagePerMatch": 90,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 0.6
+      },
+      {
+        "unitType": "reimu",
+        "unitName": "霊夢",
+        "side": "raid",
+        "battleAppearances": 36,
+        "matchesPresent": 3,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 0,
+        "averageDamagePerMatch": 0,
+        "survivalRate": 1,
+        "ownerWinRate": 1,
+        "adoptionRate": 0.6
+      },
+      {
+        "unitType": "zanmu",
+        "unitName": "日白残無",
+        "side": "boss",
+        "battleAppearances": 1,
+        "matchesPresent": 1,
+        "averageStarLevel": 1,
+        "averageDamagePerBattle": 0,
+        "averageDamagePerMatch": 0,
+        "survivalRate": 1,
+        "ownerWinRate": 0,
+        "adoptionRate": 0.2
+      }
+    ],
+    "finalBoardUnitMetrics": [
+      {
+        "unitType": "vanguard",
+        "unitName": "純狐",
+        "totalCopies": 48,
+        "matchesPresent": 5,
+        "averageCopiesPerMatch": 9.6,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "ranger",
+        "unitName": "飯綱丸龍",
+        "totalCopies": 7,
+        "matchesPresent": 5,
+        "averageCopiesPerMatch": 1.4,
+        "adoptionRate": 1
+      },
+      {
+        "unitType": "mage",
+        "unitName": "パチュリー・ノーレッジ",
+        "totalCopies": 5,
+        "matchesPresent": 4,
+        "averageCopiesPerMatch": 1,
+        "adoptionRate": 0.8
+      }
+    ],
+    "topDamageUnits": [
+      {
+        "unitId": "marisa",
+        "unitName": "魔理沙",
+        "side": "raid",
+        "totalDamage": 115698,
+        "appearances": 5,
+        "averageDamagePerMatch": 23139.6
+      },
+      {
+        "unitId": "patchouli",
+        "unitName": "patchouli",
+        "side": "boss",
+        "totalDamage": 9996,
+        "appearances": 5,
+        "averageDamagePerMatch": 1999.2
+      },
+      {
+        "unitId": "sakuya",
+        "unitName": "sakuya",
+        "side": "boss",
+        "totalDamage": 7319,
+        "appearances": 5,
+        "averageDamagePerMatch": 1463.8
+      },
+      {
+        "unitId": "rin",
+        "unitName": "火焔猫燐",
+        "side": "raid",
+        "totalDamage": 5426,
+        "appearances": 5,
+        "averageDamagePerMatch": 1085.2
+      },
+      {
+        "unitId": "junko",
+        "unitName": "junko",
+        "side": "boss",
+        "totalDamage": 4110,
+        "appearances": 3,
+        "averageDamagePerMatch": 822
+      },
+      {
+        "unitId": "megumu",
+        "unitName": "megumu",
+        "side": "boss",
+        "totalDamage": 3480,
+        "appearances": 3,
+        "averageDamagePerMatch": 696
+      },
+      {
+        "unitId": "nazrin",
+        "unitName": "nazrin",
+        "side": "boss",
+        "totalDamage": 3238,
+        "appearances": 5,
+        "averageDamagePerMatch": 647.6
+      },
+      {
+        "unitId": "junko",
+        "unitName": "純狐",
+        "side": "raid",
+        "totalDamage": 3082,
+        "appearances": 4,
+        "averageDamagePerMatch": 616.4
+      },
+      {
+        "unitId": "yoshika",
+        "unitName": "宮古芳香",
+        "side": "raid",
+        "totalDamage": 3041,
+        "appearances": 5,
+        "averageDamagePerMatch": 608.2
+      },
+      {
+        "unitId": "okina",
+        "unitName": "隠岐奈",
+        "side": "raid",
+        "totalDamage": 2457,
+        "appearances": 4,
+        "averageDamagePerMatch": 491.4
+      }
+    ],
+    "metadata": {
+      "mode": "fast-parity",
+      "timeScale": 0.02,
+      "timings": {
+        "readyAutoStartMs": 1200,
+        "prepDurationMs": 900,
+        "battleDurationMs": 800,
+        "settleDurationMs": 100,
+        "eliminationDurationMs": 40,
+        "selectionTimeoutMs": 600
+      }
+    }
+  },
+  "failures": [],
+  "startedAt": "2026-04-09T16:05:27.251Z",
+  "finishedAt": "2026-04-09T16:06:35.458Z",
+  "durationMs": 68207,
+  "logPath": "C:\\Users\\kou-1\\Dev_Workspace\\00_Source_Codes\\auto-chess-mvp\\.tmp\\bot-balance-baseline-parallel-10c\\chunk-002.log"
+}

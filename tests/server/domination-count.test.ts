@@ -81,12 +81,12 @@ describe("Domination Count", () => {
     expect(state.dominationCount).toBe(0);
   });
 
-  test("ボス優勢時にインクリメントされる", () => {
+  test("既定ではボス優勢でもインクリメントされない", () => {
     const controller = createStartedController();
 
     advanceOneRound(controller, 2_000, {});
 
-    expect(controller.getDominationCount()).toBe(1);
+    expect(controller.getDominationCount()).toBe(0);
     expect(controller.phase).toBe("Prep");
     expect(controller.roundIndex).toBe(2);
   });
@@ -101,8 +101,30 @@ describe("Domination Count", () => {
     expect(controller.roundIndex).toBe(2);
   });
 
-  test("5到達でボス勝利になる", () => {
+  test("既定では5回失敗しても domination 終局しない", () => {
     const controller = createStartedController();
+    let nowMs = 2_000;
+
+    for (let index = 0; index < 5; index += 1) {
+      nowMs = advanceOneRound(controller, nowMs, {});
+      expect(controller.phase).toBe("Prep");
+      expect(controller.getDominationCount()).toBe(0);
+    }
+
+    expect(controller.phase).toBe("Prep");
+    expect(controller.roundIndex).toBe(6);
+  });
+
+  test("domination flag が有効なら 5 到達でボス勝利になる", () => {
+    const controller = createStartedMatchRoomController({
+      options: {
+        ...controllerOptions,
+        featureFlags: {
+          ...controllerOptions.featureFlags,
+          enableDominationSystem: true,
+        },
+      },
+    });
     let nowMs = 2_000;
 
     for (let index = 0; index < 4; index += 1) {
@@ -117,8 +139,16 @@ describe("Domination Count", () => {
     expect(controller.phase).toBe("End");
   });
 
-  test("R12ではカウントが進まない", () => {
-    const controller = createStartedController();
+  test("domination flag 有効時でも R12ではカウントが進まない", () => {
+    const controller = createStartedMatchRoomController({
+      options: {
+        ...controllerOptions,
+        featureFlags: {
+          ...controllerOptions.featureFlags,
+          enableDominationSystem: true,
+        },
+      },
+    });
     let nowMs = 2_000;
 
     for (let index = 0; index < 4; index += 1) {

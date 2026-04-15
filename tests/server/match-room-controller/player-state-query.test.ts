@@ -106,6 +106,7 @@ function createDeps(): PlayerStateQueryServiceDeps {
             battleId: "battle-1",
             atMs: 500,
             winner: "raid",
+            endReason: "annihilation",
           }),
         ],
       }],

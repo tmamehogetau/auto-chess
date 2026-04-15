@@ -28,6 +28,7 @@ import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
 import { MatchLogger } from "../match-logger";
 import { validateRosterAvailability } from "../roster/roster-provider";
+import { DEFAULT_GAME_ROOM_OPTIONS } from "./game-room-config";
 import {
   MatchRoomState,
   PlayerPresenceState,
@@ -70,6 +71,7 @@ interface GameRoomOptions {
   settleDurationMs?: number;
   eliminationDurationMs?: number;
   selectionTimeoutMs?: number;
+  battleTimelineTimeScale?: number;
   setId?: UnitEffectSetId;
   sharedBoardRoomId?: string;
   forcedFeatureFlags?: FeatureFlags;
@@ -83,21 +85,21 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
   private static readonly RECONNECT_WINDOW_SECONDS = 90;
 
-  private static readonly DEFAULT_SELECTION_TIMEOUT_MS = 30_000;
+  private readyAutoStartMs = DEFAULT_GAME_ROOM_OPTIONS.readyAutoStartMs;
 
-  private readyAutoStartMs = 60_000;
+  private prepDurationMs = DEFAULT_GAME_ROOM_OPTIONS.prepDurationMs;
 
-  private prepDurationMs = 45_000;
+  private battleDurationMs = DEFAULT_GAME_ROOM_OPTIONS.battleDurationMs;
 
-  private battleDurationMs = 40_000;
+  private settleDurationMs = DEFAULT_GAME_ROOM_OPTIONS.settleDurationMs;
 
-  private settleDurationMs = 5_000;
-
-  private eliminationDurationMs = 2_000;
+  private eliminationDurationMs = DEFAULT_GAME_ROOM_OPTIONS.eliminationDurationMs;
 
   private setId: UnitEffectSetId = DEFAULT_UNIT_EFFECT_SET_ID;
 
-  private selectionTimeoutMs = GameRoom.DEFAULT_SELECTION_TIMEOUT_MS;
+  private selectionTimeoutMs = DEFAULT_GAME_ROOM_OPTIONS.selectionTimeoutMs;
+
+  private battleTimelineTimeScale = DEFAULT_GAME_ROOM_OPTIONS.battleTimelineTimeScale;
 
   private featureFlags: FeatureFlags = { ...DEFAULT_FLAGS };
 
@@ -147,6 +149,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.eliminationDurationMs =
       options.eliminationDurationMs ?? this.eliminationDurationMs;
     this.selectionTimeoutMs = options.selectionTimeoutMs ?? this.selectionTimeoutMs;
+    this.battleTimelineTimeScale =
+      options.battleTimelineTimeScale ?? this.battleTimelineTimeScale;
     this.setId = rawSetId ?? this.setId;
     this.sharedBoardRoomId = options.sharedBoardRoomId;
     this.state.setId = this.setId;
@@ -164,6 +168,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.state.featureFlagsEnableSharedPool =
       flags.enableSharedPool || flags.enablePerUnitSharedPool;
     this.state.featureFlagsEnablePhaseExpansion = flags.enablePhaseExpansion;
+    this.state.featureFlagsEnableDominationSystem = flags.enableDominationSystem;
     this.state.featureFlagsEnableSubUnitSystem = flags.enableSubUnitSystem;
     this.state.featureFlagsEnableSpellCard = flags.enableSpellCard;
     this.state.featureFlagsEnableRumorInfluence = flags.enableRumorInfluence;
@@ -284,6 +289,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         battleDurationMs: this.battleDurationMs,
         settleDurationMs: this.settleDurationMs,
         eliminationDurationMs: this.eliminationDurationMs,
+        battleTimelineTimeScale: this.battleTimelineTimeScale,
         setId: this.setId,
         featureFlags: this.featureFlags,
       },
@@ -1073,6 +1079,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       this.featureFlags.enableSharedPool || this.featureFlags.enablePerUnitSharedPool;
     this.state.featureFlagsEnablePhaseExpansion =
       this.featureFlags.enablePhaseExpansion;
+    this.state.featureFlagsEnableDominationSystem =
+      this.featureFlags.enableDominationSystem;
     this.state.featureFlagsEnableSubUnitSystem =
       this.featureFlags.enableSubUnitSystem;
     this.state.featureFlagsEnableSpellCard = this.featureFlags.enableSpellCard;
@@ -1221,7 +1229,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       raidPlayerIds: Array.from(this.state.raidPlayerIds),
       sharedBoardAuthorityEnabled: this.state.sharedBoardAuthorityEnabled,
       sharedBoardMode: this.state.sharedBoardMode,
-      dominationCount: this.state.dominationCount,
+      dominationCount: this.state.featureFlagsEnableDominationSystem
+        ? this.state.dominationCount
+        : undefined,
       phaseHpTarget: phaseProgress?.targetHp ?? 0,
       phaseDamageDealt: phaseProgress?.damageDealt ?? 0,
       phaseResult: phaseProgress?.result ?? "pending",

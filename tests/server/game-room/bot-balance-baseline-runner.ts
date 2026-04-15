@@ -1,0 +1,179 @@
+import { join } from "node:path";
+
+import { availableParallelism as getAvailableParallelism, cpus } from "node:os";
+import {
+  createFastParityGameRoomOptions,
+  type GameRoomTimingOptions,
+} from "../../../src/server/rooms/game-room-config";
+
+const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MIN = 4;
+const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MAX = 8;
+export const DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM = 8;
+export const BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE = 500;
+export const DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE = 10_000;
+export const DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY = "strength";
+const BOT_BALANCE_BASELINE_READY_AUTO_START_MS = 200;
+const BOT_BALANCE_BASELINE_SETTLE_DURATION_MS = 20;
+const BOT_BALANCE_BASELINE_ELIMINATION_DURATION_MS = 10;
+const BOT_BALANCE_BASELINE_SELECTION_TIMEOUT_MS = 200;
+const BOT_BALANCE_BASELINE_BATTLE_TIMELINE_TIME_SCALE = 0.01;
+
+export type BotBalanceBaselineHelperPolicy = "strength" | "growth";
+export type BotBalanceBaselineHelperConfig = {
+  wantsBoss: boolean;
+  policy: BotBalanceBaselineHelperPolicy;
+};
+
+export type BaselineChunkDefinition = {
+  chunkIndex: number;
+  matchStartIndex: number;
+  requestedMatchCount: number;
+  chunkJsonPath: string;
+  logPath: string;
+};
+
+export function resolveBotBalanceBaselineHelperPolicy(
+  rawValue: string | undefined | null,
+): BotBalanceBaselineHelperPolicy {
+  return rawValue === "growth" || rawValue === "strength"
+    ? rawValue
+    : DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY;
+}
+
+export function resolveBotBalanceBaselineRaidPolicies(
+  rawValue: string | undefined | null,
+): BotBalanceBaselineHelperPolicy[] {
+  const parsedPolicies = String(rawValue ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 3)
+    .map((value) => resolveBotBalanceBaselineHelperPolicy(value));
+
+  return Array.from({ length: 3 }, (_, index) =>
+    parsedPolicies[index] ?? DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY);
+}
+
+export function createBotBalanceBaselineHelperConfigs(options: {
+  bossPolicy?: BotBalanceBaselineHelperPolicy;
+  raidPolicies?: BotBalanceBaselineHelperPolicy[];
+} = {}): BotBalanceBaselineHelperConfig[] {
+  const bossPolicy = resolveBotBalanceBaselineHelperPolicy(options.bossPolicy);
+  const raidPolicies = Array.from({ length: 3 }, (_, index) =>
+    resolveBotBalanceBaselineHelperPolicy(
+      options.raidPolicies?.[index] ?? DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY,
+    ));
+
+  return [
+    { wantsBoss: true, policy: bossPolicy },
+    ...raidPolicies.map((policy) => ({ wantsBoss: false, policy })),
+  ];
+}
+
+function resolveRuntimeAvailableParallelism(): number {
+  try {
+    return getAvailableParallelism();
+  } catch {
+    return cpus().length;
+  }
+}
+
+export function createBaselineChunkDefinitions(
+  matchCount: number,
+  chunkSize: number,
+  outputDir: string,
+): BaselineChunkDefinition[] {
+  const normalizedMatchCount = Math.max(1, Math.trunc(matchCount));
+  const normalizedChunkSize = Math.max(1, Math.trunc(chunkSize));
+  const definitions: BaselineChunkDefinition[] = [];
+
+  for (
+    let chunkIndex = 0, matchStartIndex = 0;
+    matchStartIndex < normalizedMatchCount;
+    chunkIndex += 1, matchStartIndex += normalizedChunkSize
+  ) {
+    definitions.push({
+      chunkIndex,
+      matchStartIndex,
+      requestedMatchCount: Math.min(
+        normalizedChunkSize,
+        normalizedMatchCount - matchStartIndex,
+      ),
+      chunkJsonPath: join(outputDir, `chunk-${String(chunkIndex + 1).padStart(3, "0")}.json`),
+      logPath: join(outputDir, `chunk-${String(chunkIndex + 1).padStart(3, "0")}.log`),
+    });
+  }
+
+  return definitions;
+}
+
+export function resolveBotBalanceBaselineAutoParallelism(
+  availableParallelism: number | undefined,
+): number {
+  const normalizedAvailableParallelism = Number.isFinite(availableParallelism)
+    ? Math.max(1, Math.trunc(availableParallelism ?? 1))
+    : resolveRuntimeAvailableParallelism();
+  const recommendedParallelism = Math.floor(normalizedAvailableParallelism / 2);
+
+  return Math.min(
+    BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MAX,
+    Math.max(BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MIN, recommendedParallelism),
+  );
+}
+
+export function resolveBotBalanceBaselineParallelism(
+  rawValue: number | undefined,
+  availableParallelism?: number,
+): number {
+  if (!Number.isFinite(rawValue) || rawValue == null) {
+    return resolveBotBalanceBaselineAutoParallelism(availableParallelism);
+  }
+
+  return Math.max(1, Math.trunc(rawValue));
+}
+
+export function resolveBotBalanceBaselinePortOffsetBase(rawValue: number | undefined): number {
+  if (!Number.isFinite(rawValue) || rawValue == null) {
+    return DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE;
+  }
+
+  return Math.max(0, Math.trunc(rawValue));
+}
+
+export function resolveBotBalanceBaselineWorkerPortOffset(
+  workerIndex: number,
+  portOffsetBase = DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE,
+): number {
+  return resolveBotBalanceBaselinePortOffsetBase(portOffsetBase)
+    + Math.max(0, Math.trunc(workerIndex)) * BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE;
+}
+
+export function createBotBalanceBaselineRoomTimings(
+  timeScale: number,
+): GameRoomTimingOptions {
+  const fastParityTimings = createFastParityGameRoomOptions({ timeScale });
+
+  return {
+    ...fastParityTimings,
+    battleTimelineTimeScale: Math.min(
+      fastParityTimings.battleTimelineTimeScale,
+      BOT_BALANCE_BASELINE_BATTLE_TIMELINE_TIME_SCALE,
+    ),
+    readyAutoStartMs: Math.min(
+      fastParityTimings.readyAutoStartMs,
+      BOT_BALANCE_BASELINE_READY_AUTO_START_MS,
+    ),
+    settleDurationMs: Math.min(
+      fastParityTimings.settleDurationMs,
+      BOT_BALANCE_BASELINE_SETTLE_DURATION_MS,
+    ),
+    eliminationDurationMs: Math.min(
+      fastParityTimings.eliminationDurationMs,
+      BOT_BALANCE_BASELINE_ELIMINATION_DURATION_MS,
+    ),
+    selectionTimeoutMs: Math.min(
+      fastParityTimings.selectionTimeoutMs,
+      BOT_BALANCE_BASELINE_SELECTION_TIMEOUT_MS,
+    ),
+  };
+}

@@ -4,10 +4,13 @@ export type BoardUnitType = "vanguard" | "ranger" | "mage" | "assassin";
 
 export type UnitId = string;
 
+export const DEFAULT_MOVEMENT_SPEED = 1;
+
 export interface CombatStats {
   hp: number;
   attack: number;
   attackSpeed: number;
+  movementSpeed: number;
   range: number;
   defense: number;
   critRate: number;
@@ -54,6 +57,7 @@ export interface MvpPhase1Unit {
   hp: number;
   attack: number;
   attackSpeed: number;
+  movementSpeed: number;
   range: number;
   defense: number;
   critRate: number;
@@ -72,6 +76,7 @@ export interface MvpPhase1Boss {
   hp: number;
   attack: number;
   attackSpeed: number;
+  movementSpeed: number;
   range: number;
   defense: number;
   critRate: number;
@@ -83,11 +88,11 @@ export interface MvpPhase1Boss {
 
 type MvpPhase1Data = {
   units: Array<
-    Omit<MvpPhase1Unit, "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
-    & Partial<Pick<MvpPhase1Unit, "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
+    Omit<MvpPhase1Unit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
+    & Partial<Pick<MvpPhase1Unit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
   >;
-  boss: Omit<MvpPhase1Boss, "defense" | "critRate" | "critDamageMultiplier">
-    & Partial<Pick<MvpPhase1Boss, "defense" | "critRate" | "critDamageMultiplier">>;
+  boss: Omit<MvpPhase1Boss, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier">
+    & Partial<Pick<MvpPhase1Boss, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier">>;
 };
 
 const MVP_PHASE1_DATA = mvpPhase1UnitsData as MvpPhase1Data;
@@ -99,6 +104,7 @@ function getDefaultDefense(unitType: BoardUnitType): number {
 function normalizeMvpPhase1Unit(unit: MvpPhase1Data["units"][number]): MvpPhase1Unit {
   return {
     ...unit,
+    movementSpeed: unit.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
     defense: unit.defense ?? getDefaultDefense(unit.type),
     critRate: unit.critRate ?? 0,
     critDamageMultiplier: unit.critDamageMultiplier ?? 1.5,
@@ -110,6 +116,7 @@ function normalizeMvpPhase1Unit(unit: MvpPhase1Data["units"][number]): MvpPhase1
 function normalizeMvpPhase1Boss(boss: MvpPhase1Data["boss"]): MvpPhase1Boss {
   return {
     ...boss,
+    movementSpeed: boss.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
     defense: boss.defense ?? 0,
     critRate: boss.critRate ?? 0,
     critDamageMultiplier: boss.critDamageMultiplier ?? 1.5,

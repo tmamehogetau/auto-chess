@@ -1,8 +1,13 @@
 export const AUTO_FILL_BOSS_ID: string;
 export const AUTO_FILL_HERO_IDS: string[];
+export function normalizeAutoFillHelperPolicy(value: unknown): "strength" | "growth";
+export function resolveAutoFillHelperPolicyStrategy(
+  policy: unknown,
+): "upgrade" | "highCost";
 export function resolveAutoFillHelperStrategy(input: {
   helperIndex?: number;
   sessionId?: string | null;
+  policy?: "strength" | "growth";
   strategy?: "upgrade" | "highCost";
   player?: {
     role?: string | null;
@@ -24,6 +29,10 @@ export function resolveAutoFillHelperPlayerPhase(
 
 export type AutoFillHelperAction =
   | {
+      type: "boss_preference";
+      payload: { wantsBoss: boolean };
+    }
+  | {
       type: "boss_select";
       payload: { bossId: string };
     }
@@ -40,6 +49,9 @@ export type AutoFillHelperAction =
       payload:
         | { bossShopBuySlotIndex: number }
         | { shopBuySlotIndex: number }
+        | { shopRefreshCount: number }
+        | { benchSellIndex: number }
+        | { boardSellIndex: number }
         | {
             benchToBoardCell: {
               benchIndex: number;
@@ -51,11 +63,15 @@ export type AutoFillHelperAction =
 
 export function buildAutoFillHelperActions(input: {
   helperIndex?: number;
+  heroId?: string | null;
   sessionId?: string | null;
+  policy?: "strength" | "growth";
   strategy?: "upgrade" | "highCost";
+  wantsBoss?: boolean | null;
   player?: {
     isSpectator?: boolean;
     ready?: boolean;
+    wantsBoss?: boolean;
     role?: string | null;
     gold?: number | null;
     lastCmdSeq?: number | null;
@@ -64,6 +80,13 @@ export function buildAutoFillHelperActions(input: {
     benchUnits?: unknown[] | Iterable<unknown> | null;
     benchUnitIds?: unknown[] | Iterable<unknown> | null;
     boardSubUnits?: unknown[] | Iterable<unknown> | null;
+    level?: number | null;
+    xp?: number | null;
+    ownedUnits?: Record<string, number> | null;
+    activeSynergies?:
+      | Array<{ unitType?: string | null; count?: number | null; tier?: number | null } | unknown>
+      | Iterable<{ unitType?: string | null; count?: number | null; tier?: number | null } | unknown>
+      | null;
     boardUnits?:
       | Array<{
           cell?: number | null;
@@ -92,6 +115,7 @@ export function buildAutoFillHelperActions(input: {
     lobbyStage?: string | null;
     phase?: string | null;
     playerPhase?: string | null;
+    roundIndex?: number | null;
     playerPhaseDeadlineAtMs?: number | null;
     players?:
       | Map<string, { role?: string | null }>

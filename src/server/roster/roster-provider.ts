@@ -1,6 +1,6 @@
 import type { TouhouFactionId } from "../../data/touhou-units";
 import type { FeatureFlags } from "../../shared/feature-flags";
-import type { BoardUnitType, CombatStats, UnitSkill } from "../../shared/types";
+import { DEFAULT_MOVEMENT_SPEED, type BoardUnitType, type CombatStats, type UnitSkill } from "../../shared/types";
 import mvpPhase1UnitsData from "../../data/mvp_phase1_units.json";
 import { TOUHOU_UNITS } from "../../data/touhou-units";
 
@@ -70,10 +70,11 @@ function selectRosterSource(flags: FeatureFlags): RosterSource {
  */
 function loadMvpRosterUnits(): RosterUnit[] {
   return (mvpPhase1UnitsData.units as Array<
-    Omit<RosterUnit, "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
-    & Partial<Pick<RosterUnit, "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
+    Omit<RosterUnit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
+    & Partial<Pick<RosterUnit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
   >).map((unit) => ({
     ...unit,
+    movementSpeed: unit.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
     defense: unit.defense ?? (unit.type === "vanguard" ? 3 : 0),
     critRate: unit.critRate ?? 0,
     critDamageMultiplier: unit.critDamageMultiplier ?? 1.5,
@@ -93,6 +94,7 @@ export function getTouhouDraftRosterUnits(): RosterUnit[] {
     hp: unit.hp,
     attack: unit.attack,
     attackSpeed: unit.attackSpeed,
+    movementSpeed: unit.movementSpeed,
     range: unit.range,
     defense: unit.defense,
     critRate: unit.critRate,

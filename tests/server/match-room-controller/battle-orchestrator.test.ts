@@ -63,6 +63,7 @@ function createHarness(playerIds: string[], options?: {
   const deps: BattleOrchestratorDeps<BattleResultStub> = {
     ensureStarted: () => harness.state,
     isRaidMode: () => harness.state.bossPlayerId !== null,
+    enableDominationSystem: true,
     getPhaseResult: () => harness.phaseResult,
     pendingRoundDamageByPlayer: harness.pendingRoundDamageByPlayer,
     battleResultsByPlayer: harness.battleResultsByPlayer,

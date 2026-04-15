@@ -2,6 +2,7 @@ export interface FeatureFlags {
   enableHeroSystem: boolean;
   enableSharedPool: boolean;
   enablePhaseExpansion: boolean;
+  enableDominationSystem: boolean;
   enableSubUnitSystem: boolean;
   enableEmblemCells: boolean;
   enableSpellCard: boolean;
@@ -18,6 +19,7 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   enableHeroSystem: true,
   enableSharedPool: false,
   enablePhaseExpansion: true,
+  enableDominationSystem: false,
   enableSubUnitSystem: true,
   enableEmblemCells: false,
   enableSpellCard: true,

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { HEROES } from "../../src/data/heroes";
+import { DEFAULT_MOVEMENT_SPEED } from "../../src/shared/types";
 import { loadMvpPhase1Units } from "../../src/shared/types";
 import { SCARLET_MANSION_UNITS } from "../../src/data/scarlet-mansion-units";
 import { RUMOR_UNITS_BY_ROUND } from "../../src/data/rumor-units";
@@ -76,6 +78,7 @@ describe("unit id data integrity", () => {
       expect(unit.hp).toBeGreaterThan(0);
       expect(unit.attack).toBeGreaterThan(0);
       expect(unit.attackSpeed).toBeGreaterThan(0);
+      expect(unit.movementSpeed).toBeGreaterThan(0);
       expect(unit.range).toBeGreaterThanOrEqual(1);
     }
   });
@@ -98,5 +101,14 @@ describe("unit id data integrity", () => {
       kanjuden: 3,
       none: 1,
     });
+  });
+
+  test("jyoon hero is treated as a vanguard for formation and synergy logic", () => {
+    const jyoon = HEROES.find((hero) => hero.id === "jyoon");
+
+    expect(jyoon).toBeDefined();
+    expect(jyoon?.unitType).toBe("vanguard");
+    expect(jyoon?.synergyBonusType).toBe("vanguard");
+    expect(jyoon?.movementSpeed).toBe(DEFAULT_MOVEMENT_SPEED * 2);
   });
 });

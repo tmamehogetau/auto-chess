@@ -30,6 +30,7 @@ type BattleState = Pick<
 export interface BattleOrchestratorDeps<TBattleResult extends BattleResultLike> {
   ensureStarted(): BattleState;
   isRaidMode(): boolean;
+  enableDominationSystem: boolean;
   getPhaseResult(): PhaseResult;
   pendingRoundDamageByPlayer: Map<string, number>;
   battleResultsByPlayer: ReadonlyMap<string, TBattleResult>;
@@ -256,13 +257,15 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
 
   public shouldEndAfterElimination(maxRounds: number): boolean {
     const state = this.deps.ensureStarted();
+    const dominationTriggered =
+      this.deps.enableDominationSystem && state.dominationCount >= 5;
 
     if (!this.deps.isRaidMode()) {
-      return state.alivePlayerIds.length <= 1 || state.roundIndex === maxRounds || state.dominationCount >= 5;
+      return state.alivePlayerIds.length <= 1 || state.roundIndex === maxRounds || dominationTriggered;
     }
 
     const survivingRaidPlayerIds = state.raidPlayerIds.filter((playerId) => !state.isPlayerEliminated(playerId));
-    if (survivingRaidPlayerIds.length === 0 || state.dominationCount >= 5) {
+    if (survivingRaidPlayerIds.length === 0 || dominationTriggered) {
       this.deps.setFinalRankingOverride(this.buildRaidFinalRanking("boss"));
       return true;
     }

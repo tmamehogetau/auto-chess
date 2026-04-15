@@ -6,7 +6,7 @@
  */
 
 import type { BoardUnitType } from "../shared/room-messages";
-import type { CombatStats, UnitId } from "../shared/types";
+import { DEFAULT_MOVEMENT_SPEED, type CombatStats, type UnitId } from "../shared/types";
 
 export interface ScarletMansionUnit extends CombatStats {
   /** ユニットID */
@@ -41,6 +41,7 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     hp: 850,
     attack: 65,
     attackSpeed: 0.85,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 1,
     defense: 17.5,
     critRate: 0,
@@ -60,6 +61,7 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     hp: 720,
     attack: 95,
     attackSpeed: 1.15,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 2,
     defense: 10,
     critRate: 0,
@@ -79,6 +81,7 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     hp: 600,
     attack: 140,
     attackSpeed: 0.75,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 4,
     defense: 15,
     critRate: 0,

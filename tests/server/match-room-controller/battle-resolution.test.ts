@@ -716,6 +716,8 @@ describe("BattleResolutionService", () => {
       expect(keiki?.maxHp ?? 0).toBeGreaterThan(reimu?.maxHp ?? 0);
       expect(reimu?.maxHp ?? 0).toBeGreaterThan(marisa?.maxHp ?? 0);
       expect(marisa?.attackPower ?? 0).toBeGreaterThan(reimu?.attackPower ?? 0);
+      expect(reimu?.attackRange).toBe(3);
+      expect(keiki?.attackRange).toBe(2);
       expect(marisa?.attackRange ?? 0).toBeGreaterThan(reimu?.attackRange ?? 0);
       expect(jyoon?.attackSpeed ?? 0).toBeGreaterThan(reimu?.attackSpeed ?? 0);
       expect(okina?.attackRange ?? 0).toBeGreaterThan(jyoon?.attackRange ?? 0);

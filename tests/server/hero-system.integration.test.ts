@@ -350,7 +350,7 @@ describe("Hero System Integration Tests", () => {
       });
     });
 
-    it("shared battle replay keeps normal raid units on their 6x6 shared-board placements", async () => {
+    it("shared battle replay remaps normal raid units into the front-priority raid rows", async () => {
       await withFlags({
         ...FLAG_CONFIGURATIONS.ALL_DISABLED,
         enableBossExclusiveShop: true,
@@ -404,8 +404,8 @@ describe("Hero System Integration Tests", () => {
         expect(battleStart?.units).toEqual(expect.arrayContaining([
           expect.objectContaining({
             battleUnitId: "right-ranger-0",
-            x: 1,
-            y: 5,
+            x: 0,
+            y: 4,
           }),
           expect.objectContaining({
             battleUnitId: "left-vanguard-0",

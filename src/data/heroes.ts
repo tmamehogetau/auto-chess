@@ -3,7 +3,9 @@ import {
   sharedBoardIndexToCoordinate,
   sharedBoardManhattanDistance,
 } from "../shared/board-geometry";
-import type { BoardUnitType, CombatStats } from "../shared/types";
+import { DEFAULT_MOVEMENT_SPEED, type BoardUnitType, type CombatStats } from "../shared/types";
+
+const DEFAULT_MELEE_MOVEMENT_SPEED = DEFAULT_MOVEMENT_SPEED * 2;
 
 export interface Hero extends CombatStats {
   id: string;
@@ -31,7 +33,8 @@ export const HEROES: Hero[] = [
     hp: 620,
     attack: 52,
     attackSpeed: 0.75,
-    range: 1,
+    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
+    range: 3,
     defense: 10,
     critRate: 0,
     critDamageMultiplier: 1.5,
@@ -60,6 +63,7 @@ export const HEROES: Hero[] = [
     hp: 430,
     attack: 82,
     attackSpeed: 1.0,
+    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
     range: 4,
     defense: 0,
     critRate: 0,
@@ -90,6 +94,7 @@ export const HEROES: Hero[] = [
     hp: 540,
     attack: 40,
     attackSpeed: 0.7,
+    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
     range: 4,
     defense: 4,
     critRate: 0,
@@ -119,7 +124,8 @@ export const HEROES: Hero[] = [
     hp: 880,
     attack: 42,
     attackSpeed: 0.55,
-    range: 1,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
+    range: 2,
     defense: 18,
     critRate: 0,
     critDamageMultiplier: 1.5,
@@ -153,11 +159,12 @@ export const HEROES: Hero[] = [
     id: 'jyoon',
     name: '女苑',
     role: 'economy',
-    unitType: 'assassin',
-    synergyBonusType: 'assassin',
+    unitType: 'vanguard',
+    synergyBonusType: 'vanguard',
     hp: 560,
     attack: 46,
     attackSpeed: 1.2,
+    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
     range: 1,
     defense: 8,
     critRate: 0,

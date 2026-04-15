@@ -10,6 +10,7 @@ import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
 import type { BattleResultSurvivorSnapshot } from "../types/player-state-types";
+import { scaleBattleTimeline } from "../combat/battle-timeline-scale";
 
 /**
  * Spell combat modifiers
@@ -49,6 +50,7 @@ export interface PlayerBattleResult {
   phaseDamageToBoss?: number;
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
   timeline?: BattleTimelineEvent[];
+  rawTimeline?: BattleTimelineEvent[];
 }
 
 /**
@@ -93,6 +95,7 @@ export interface BattleResolutionDependencies {
   enableSubUnitSystem: boolean;
   subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null;
   featureFlags?: FeatureFlags;
+  battleTimelineTimeScale?: number;
 }
 
 /**
@@ -228,6 +231,14 @@ export class BattleResolutionService {
       this.deps.featureFlags,
       roundIndex,
     );
+    const scaledTimeline = scaleBattleTimeline(
+      battleResult.timeline,
+      this.deps.battleTimelineTimeScale ?? 1,
+    );
+    const timelineField = scaledTimeline ? { timeline: scaledTimeline } : {};
+    const rawTimelineField = battleResult.timeline.length > 0
+      ? { rawTimeline: battleResult.timeline.map((event) => ({ ...event })) }
+      : {};
 
     // Process results based on winner
     let outcome: MatchupOutcome;
@@ -248,7 +259,8 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       rightBattleResult = {
@@ -259,7 +271,8 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       outcome = {
@@ -296,7 +309,8 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       rightBattleResult = {
@@ -307,7 +321,8 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       outcome = {
@@ -340,7 +355,8 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       rightBattleResult = {
@@ -351,7 +367,8 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       outcome = {

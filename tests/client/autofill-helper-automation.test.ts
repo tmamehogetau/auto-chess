@@ -85,6 +85,28 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("selection phase uses explicit hero override when provided", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      heroId: "jyoon",
+      player: {
+        ready: true,
+        role: "raid",
+        selectedHeroId: null,
+      },
+      state: {
+        featureFlagsEnableTouhouRoster: true,
+        lobbyStage: "selection",
+        phase: "Waiting",
+      },
+    })).toEqual([
+      {
+        payload: { heroId: "jyoon" },
+        type: "HERO_SELECT",
+      },
+    ]);
+  });
+
   test("selection phase stays neutral when Touhou roster is disabled", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 1,
@@ -1189,6 +1211,151 @@ describe("autofill helper automation", () => {
     })).toEqual([
       {
         payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("purchase phase refreshes a raid shop when nothing is affordable and reroll reserve remains", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 6,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "assassin", unitId: "miko", cost: 7 },
+          { unitType: "mage", unitId: "hecatia", cost: 8 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full raid helper keeps a high-cost reserve and sells a lower-priority unit first", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        level: 5,
+        gold: 5,
+        benchUnits: ["vanguard", "vanguard", "ranger", "ranger", "mage", "vanguard", "ranger", "assassin"],
+        benchUnitIds: ["yoshika", "rin", "wakasagihime", "momoyo", "tojiko", "kagerou", "megumu", "miko"],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "mage", unitId: "hecatia", factionId: "kanjuden", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 6 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame strength raid helper pivots into a 4-cost offer over a cheap duplicate", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 6,
+        level: 5,
+        benchUnits: ["vanguard", "ranger"],
+        benchUnitIds: ["rin", "nazrin"],
+        boardUnits: ["30:reimu", "31:yoshika"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "ranger", unitId: "nazrin", factionId: "myourenji", cost: 1 },
+          { unitType: "vanguard", unitId: "junko", factionId: "kanjuden", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame strength raid helper rerolls instead of buying an unstacked 1-cost offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 8,
+        level: 5,
+        benchUnits: ["vanguard", "ranger"],
+        benchUnitIds: ["rin", "nazrin"],
+        boardUnits: ["30:reimu", "31:yoshika"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "vanguard", unitId: "kagerou", factionId: "grassroot_network", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame strength raid helper rerolls instead of buying an unstacked 2-cost offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 8,
+        level: 5,
+        benchUnits: ["vanguard", "ranger", "mage"],
+        benchUnitIds: ["rin", "nazrin", "megumu"],
+        boardUnits: ["30:reimu", "31:yoshika", "25:tojiko"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "assassin", unitId: "sekibanki", factionId: "grassroot_network", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
         type: "prep_command",
       },
     ]);

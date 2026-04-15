@@ -6,6 +6,7 @@ import {
   createBattleUnit,
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
+import { createSeededBattleRng } from "../../../src/server/combat/battle-rng";
 import { sharedBoardCoordinateToIndex } from "../../../src/shared/board-geometry";
 
 /**
@@ -91,12 +92,16 @@ describe("Boss Raid Simulation", () => {
    */
   function simulateBossRaid(
     raidComposition: Array<{ type: "vanguard" | "ranger" | "mage" | "assassin"; starLevel: number }>,
-    debug: boolean = false,
+    options: { debug?: boolean; seed?: number } = {},
   ): { result: "boss" | "raid" | "draw"; durationMs: number } {
+    const { debug = false, seed } = options;
     const boss = createBossUnit();
     const raidUnits = raidComposition.map((unit, index) =>
       createRaidUnit(unit.type, unit.starLevel, index),
     );
+    const simulatorForRun = seed === undefined
+      ? simulator
+      : new BattleSimulator({ rng: createSeededBattleRng(seed) });
 
     if (debug) {
       console.log("=== Boss Raid Debug ===");
@@ -104,7 +109,7 @@ describe("Boss Raid Simulation", () => {
       console.log("Raid units:", raidUnits.map(u => ({ hp: u.hp, attack: u.attackPower, range: u.attackRange, cell: u.cell, id: u.id })));
     }
 
-    const battleResult = simulator.simulateBattle(
+    const battleResult = simulatorForRun.simulateBattle(
       raidUnits,
       [boss],
       [], // leftPlacements (not needed for this test)
@@ -140,7 +145,7 @@ describe("Boss Raid Simulation", () => {
         { type: "vanguard" as const, starLevel: 3 },
       ];
 
-      const { result, durationMs } = simulateBossRaid(composition, true); // Debug mode
+      const { result, durationMs } = simulateBossRaid(composition, { debug: true }); // Debug mode
 
       expect(["boss", "raid", "draw"]).toContain(result);
       expect(durationMs).toBeGreaterThan(0);
@@ -172,14 +177,23 @@ describe("Boss Raid Simulation", () => {
       expect(durationMs).toBeGreaterThan(0);
     });
 
-    test("melee and assassin units use simple approach movement", () => {
-      const leftUnits = [
-        createRaidUnit("vanguard", 1, 0),
-        createRaidUnit("assassin", 1, 1),
+    test("same seed reproduces the same boss raid result", () => {
+      const composition = [
+        { type: "vanguard" as const, starLevel: 3 },
+        { type: "ranger" as const, starLevel: 3 },
+        { type: "mage" as const, starLevel: 3 },
       ];
-      const rightUnits = [
-        createBattleUnit(
-        {
+
+      const first = simulateBossRaid(composition, { seed: 77 });
+      const second = simulateBossRaid(composition, { seed: 77 });
+
+      expect(second).toEqual(first);
+    });
+
+    test("melee and assassin units use simple approach movement", () => {
+      const createStationaryBoss = () => {
+        const boss = createBattleUnit(
+          {
             cell: legacySlotToSharedIndex(7, "right"),
             unitType: "vanguard",
             starLevel: 1,
@@ -189,16 +203,28 @@ describe("Boss Raid Simulation", () => {
           0,
           true,
           DEFAULT_FLAGS,
-        ),
-      ];
+        );
+        boss.attackSpeed = 0;
+        boss.movementSpeed = 0;
+        return boss;
+      };
 
-      const battleResult = simulator.simulateBattle(
-        leftUnits,
-        rightUnits,
-        [
-          { cell: 0, unitType: "vanguard", starLevel: 1 },
-          { cell: 1, unitType: "assassin", starLevel: 1 },
-        ],
+      const vanguardResult = simulator.simulateBattle(
+        [createRaidUnit("vanguard", 1, 0)],
+        [createStationaryBoss()],
+        [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+        [{ cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
+        5_000,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const assassinResult = simulator.simulateBattle(
+        [createRaidUnit("assassin", 1, 0)],
+        [createStationaryBoss()],
+        [{ cell: 0, unitType: "assassin", starLevel: 1 }],
         [{ cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
         5_000,
         null,
@@ -208,10 +234,10 @@ describe("Boss Raid Simulation", () => {
       );
 
       expect(
-        battleResult.combatLog.some((entry) => entry.includes("Left Vanguard") && entry.includes("moves")),
+        vanguardResult.combatLog.some((entry) => entry.includes("Left Vanguard") && entry.includes("moves")),
       ).toBe(true);
       expect(
-        battleResult.combatLog.some((entry) => entry.includes("Left Assassin") && entry.includes("moves")),
+        assassinResult.combatLog.some((entry) => entry.includes("Left Assassin") && entry.includes("moves")),
       ).toBe(true);
     });
 
@@ -268,7 +294,7 @@ describe("Boss Raid Simulation", () => {
       const durations: number[] = [];
 
       for (let i = 0; i < iterations; i++) {
-        const { result, durationMs } = simulateBossRaid(composition);
+        const { result, durationMs } = simulateBossRaid(composition, { seed: i + 1 });
 
         if (result === "boss") bossWins++;
         else if (result === "raid") raidWins++;
@@ -306,7 +332,7 @@ describe("Boss Raid Simulation", () => {
       let draws = 0;
 
       for (let i = 0; i < iterations; i++) {
-        const { result } = simulateBossRaid(composition);
+        const { result } = simulateBossRaid(composition, { seed: i + 1 });
 
         if (result === "boss") bossWins++;
         else if (result === "raid") raidWins++;

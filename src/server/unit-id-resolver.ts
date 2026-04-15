@@ -13,6 +13,7 @@ type ResolvedUnitMetadata = {
   hp?: number;
   attack?: number;
   attackSpeed?: number;
+  movementSpeed?: number;
   range?: number;
   defense?: number;
   critRate?: number;
@@ -29,6 +30,7 @@ const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
     hp: unit.hp,
     attack: unit.attack,
     attackSpeed: unit.attackSpeed,
+    movementSpeed: unit.movementSpeed,
     range: unit.range,
     defense: unit.defense,
     critRate: unit.critRate,
@@ -76,6 +78,7 @@ function getResolvedUnitMetadata(
       resolvedMetadata.hp = rosterUnit.hp;
       resolvedMetadata.attack = rosterUnit.attack;
       resolvedMetadata.attackSpeed = rosterUnit.attackSpeed;
+      resolvedMetadata.movementSpeed = rosterUnit.movementSpeed;
       resolvedMetadata.range = rosterUnit.range;
       resolvedMetadata.defense = rosterUnit.defense;
       resolvedMetadata.critRate = rosterUnit.critRate;
@@ -140,6 +143,10 @@ export function resolveBattlePlacement(
       resolvedPlacement.attackSpeed = resolvedMetadata.attackSpeed;
     }
 
+    if (resolvedMetadata.movementSpeed !== undefined) {
+      resolvedPlacement.movementSpeed = resolvedMetadata.movementSpeed;
+    }
+
     if (resolvedMetadata.range !== undefined) {
       resolvedPlacement.range = resolvedMetadata.range;
     }
@@ -186,6 +193,10 @@ export function resolveBattlePlacement(
 
   if (resolvedMetadata.attackSpeed !== undefined) {
     resolvedPlacement.attackSpeed = resolvedMetadata.attackSpeed;
+  }
+
+  if (resolvedMetadata.movementSpeed !== undefined) {
+    resolvedPlacement.movementSpeed = resolvedMetadata.movementSpeed;
   }
 
   if (resolvedMetadata.range !== undefined) {

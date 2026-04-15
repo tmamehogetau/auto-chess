@@ -68,6 +68,7 @@ describe("Feature Flag Integration", () => {
       expect(flags.enableSubUnitSystem).toBe(true);
       expect(flags.enableBossExclusiveShop).toBe(true);
       expect(flags.enableSpellCard).toBe(true);
+      expect(flags.enableDominationSystem).toBe(false);
       expect(flags.enableTouhouRoster).toBe(true);
       expect(flags.enableTouhouFactions).toBe(true);
     });
@@ -77,6 +78,7 @@ describe("Feature Flag Integration", () => {
       process.env.FEATURE_ENABLE_SHARED_POOL = "1";
       process.env.FEATURE_ENABLE_PHASE_EXPANSION = "false";
       process.env.FEATURE_ENABLE_SUB_UNIT_SYSTEM = "1";
+      process.env.FEATURE_ENABLE_DOMINATION_SYSTEM = "true";
 
       // Reset singleton instance to pick up new env vars
       FeatureFlagService.resetForTests();
@@ -88,6 +90,7 @@ describe("Feature Flag Integration", () => {
       expect(flags.enableSharedPool).toBe(true);
       expect(flags.enablePhaseExpansion).toBe(false);
       expect(flags.enableSubUnitSystem).toBe(true);
+      expect(flags.enableDominationSystem).toBe(true);
     });
 
     it("should handle invalid env var values", () => {

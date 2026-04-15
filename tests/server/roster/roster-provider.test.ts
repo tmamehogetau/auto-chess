@@ -23,6 +23,7 @@ function createFeatureFlags(
     enableHeroSystem: false,
     enableSharedPool: false,
     enablePhaseExpansion: false,
+    enableDominationSystem: false,
     enableSubUnitSystem: false,
     enableEmblemCells: false,
     enableSpellCard: false,
@@ -134,6 +135,7 @@ describe("roster-provider", () => {
       expect(firstUnit).toHaveProperty("hp");
       expect(firstUnit).toHaveProperty("attack");
       expect(firstUnit).toHaveProperty("attackSpeed");
+      expect(firstUnit).toHaveProperty("movementSpeed");
       expect(firstUnit).toHaveProperty("range");
       expect(firstUnit).toHaveProperty("synergy");
 
@@ -161,6 +163,7 @@ describe("roster-provider", () => {
         expect(typeof unit.hp).toBe("number");
         expect(typeof unit.attack).toBe("number");
         expect(typeof unit.attackSpeed).toBe("number");
+        expect(typeof unit.movementSpeed).toBe("number");
         expect(typeof unit.range).toBe("number");
         expect(Array.isArray(unit.synergy)).toBe(true);
       });

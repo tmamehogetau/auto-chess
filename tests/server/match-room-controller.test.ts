@@ -11,6 +11,9 @@ import {
   combatCellToRaidBoardIndex,
 } from "../../src/shared/board-geometry";
 import {
+  sharedBoardIndexToCoordinate,
+} from "../../src/shared/shared-board-config";
+import {
   captureManagedFlagEnv,
   FLAG_CONFIGURATIONS,
   FLAG_ENV_VARS,
@@ -239,6 +242,7 @@ describe("MatchRoomController", () => {
           battleId: "battle-shared-1",
           atMs: 700,
           winner: "raid",
+          endReason: "annihilation",
         }),
       ],
     });
@@ -397,6 +401,7 @@ describe("MatchRoomController", () => {
           battleId: "battle-early-resolve",
           atMs: 700,
           winner: "raid",
+          endReason: "annihilation",
         }),
       ],
     });
@@ -455,13 +460,31 @@ describe("MatchRoomController", () => {
               expect.objectContaining({ cell: 0, unitType: "vanguard" }),
             ]),
           );
-          expect(aggregateRaidPlacements).toEqual(
+          const normalizedRaidPlacements = aggregateRaidPlacements?.map((placement) => ({
+            ownerPlayerId: placement.ownerPlayerId,
+            unitType: placement.unitType,
+            coordinate: sharedBoardIndexToCoordinate(placement.cell),
+          }));
+          expect(normalizedRaidPlacements).toEqual(
             expect.arrayContaining([
-              expect.objectContaining({ cell: 31, unitType: "ranger", ownerPlayerId: "p1" }),
-              expect.objectContaining({ cell: 33, unitType: "mage", ownerPlayerId: "p3" }),
-              expect.objectContaining({ cell: 35, unitType: "assassin", ownerPlayerId: "p4" }),
+              expect.objectContaining({
+                ownerPlayerId: "p1",
+                unitType: "ranger",
+                coordinate: expect.objectContaining({ y: 4 }),
+              }),
+              expect.objectContaining({
+                ownerPlayerId: "p3",
+                unitType: "mage",
+                coordinate: expect.objectContaining({ y: 4 }),
+              }),
+              expect.objectContaining({
+                ownerPlayerId: "p4",
+                unitType: "assassin",
+                coordinate: expect.objectContaining({ y: 3 }),
+              }),
             ]),
           );
+          expect(new Set(aggregateRaidPlacements?.map((placement) => placement.cell)).size).toBe(3);
         } finally {
           randomSpy.mockRestore();
         }
@@ -507,12 +530,28 @@ describe("MatchRoomController", () => {
             firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
 
           expect(aggregateRaidPlacements).toBeDefined();
-          expect(aggregateRaidPlacements?.map((placement) => placement.cell)).toEqual([31, 33, 35]);
           expect(new Set(aggregateRaidPlacements?.map((placement) => placement.cell)).size).toBe(3);
-          expect(aggregateRaidPlacements).toEqual(expect.arrayContaining([
-            expect.objectContaining({ ownerPlayerId: "p1", unitId: "raid-a", cell: 31 }),
-            expect.objectContaining({ ownerPlayerId: "p3", unitId: "raid-b", cell: 33 }),
-            expect.objectContaining({ ownerPlayerId: "p4", unitId: "raid-c", cell: 35 }),
+          const normalizedRaidPlacements = aggregateRaidPlacements?.map((placement) => ({
+            ownerPlayerId: placement.ownerPlayerId,
+            unitId: placement.unitId,
+            coordinate: sharedBoardIndexToCoordinate(placement.cell),
+          }));
+          expect(normalizedRaidPlacements).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+              ownerPlayerId: "p1",
+              unitId: "raid-a",
+              coordinate: expect.objectContaining({ y: 4 }),
+            }),
+            expect.objectContaining({
+              ownerPlayerId: "p3",
+              unitId: "raid-b",
+              coordinate: expect.objectContaining({ y: 4 }),
+            }),
+            expect.objectContaining({
+              ownerPlayerId: "p4",
+              unitId: "raid-c",
+              coordinate: expect.objectContaining({ y: 3 }),
+            }),
           ]));
         } finally {
           randomSpy.mockRestore();
@@ -520,6 +559,307 @@ describe("MatchRoomController", () => {
       },
     );
   });
+
+  test("raid aggregate battle input keeps front-most raid units in the front row", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [
+            { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard", unitId: "frontliner" },
+            { cell: combatCellToRaidBoardIndex(4), unitType: "ranger", unitId: "backliner-a" },
+            { cell: combatCellToRaidBoardIndex(5), unitType: "mage", unitId: "backliner-b" },
+          ])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+
+          const normalizedPlacements = aggregateRaidPlacements?.map((placement) => ({
+            ownerPlayerId: placement.ownerPlayerId,
+            unitId: placement.unitId,
+            coordinate: sharedBoardIndexToCoordinate(placement.cell),
+          }));
+
+          expect(normalizedPlacements).toMatchObject([
+            { ownerPlayerId: "p1", unitId: "frontliner", coordinate: { y: 3 } },
+            { ownerPlayerId: "p1", unitId: "backliner-a", coordinate: { y: 4 } },
+            { ownerPlayerId: "p1", unitId: "backliner-b", coordinate: { y: 4 } },
+          ]);
+          expect(new Set(normalizedPlacements?.map((placement) => placement.coordinate.x))).toHaveLength(2);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid aggregate battle input prioritizes melee raid units ahead of front-positioned ranged units", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [
+            { cell: combatCellToRaidBoardIndex(0), unitType: "ranger", unitId: "front-ranger" },
+            { cell: combatCellToRaidBoardIndex(4), unitType: "vanguard", unitId: "delayed-frontliner" },
+            { cell: combatCellToRaidBoardIndex(5), unitType: "mage", unitId: "back-mage" },
+          ])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+
+          const normalizedPlacements = aggregateRaidPlacements?.map((placement) => ({
+            ownerPlayerId: placement.ownerPlayerId,
+            unitId: placement.unitId,
+            coordinate: sharedBoardIndexToCoordinate(placement.cell),
+          }));
+
+          expect(normalizedPlacements).toMatchObject([
+            { ownerPlayerId: "p1", unitId: "delayed-frontliner", coordinate: { y: 3 } },
+            { ownerPlayerId: "p1", unitId: "front-ranger", coordinate: { y: 4 } },
+            { ownerPlayerId: "p1", unitId: "back-mage", coordinate: { y: 4 } },
+          ]);
+          expect(new Set(normalizedPlacements?.map((placement) => placement.coordinate.x))).toHaveLength(2);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid aggregate battle input offsets a backliner into the adjacent lane instead of stacking behind its frontliner", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [
+            { cell: 0, unitType: "vanguard", unitId: "boss-unit" },
+          ])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [
+            { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard", unitId: "frontliner" },
+            { cell: combatCellToRaidBoardIndex(4), unitType: "ranger", unitId: "backliner" },
+          ])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+          const placementsByUnitId = new Map(
+            (aggregateRaidPlacements ?? []).map((placement) => [
+              placement.unitId,
+              sharedBoardIndexToCoordinate(placement.cell),
+            ]),
+          );
+
+          expect(placementsByUnitId.get("frontliner")?.x).not.toBeUndefined();
+          expect(placementsByUnitId.get("backliner")?.x).not.toBeUndefined();
+          expect(placementsByUnitId.get("frontliner")?.x).not.toBe(
+            placementsByUnitId.get("backliner")?.x,
+          );
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid aggregate battle input spreads three melee raid units across the front row", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard", unitId: "boss-unit" }])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [
+            { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard", unitId: "frontliner-a" },
+            { cell: combatCellToRaidBoardIndex(4), unitType: "vanguard", unitId: "frontliner-b" },
+            { cell: combatCellToRaidBoardIndex(5), unitType: "vanguard", unitId: "frontliner-c" },
+          ])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+          const frontliners = aggregateRaidPlacements?.map((placement) => ({
+            unitId: placement.unitId,
+            coordinate: sharedBoardIndexToCoordinate(placement.cell),
+          }));
+
+          expect(frontliners).toHaveLength(3);
+          expect(frontliners?.every((placement) => placement.coordinate.y === 3)).toBe(true);
+          expect(new Set(frontliners?.map((placement) => placement.coordinate.x))).toHaveLength(3);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("raid aggregate battle input keeps each raid player's units inside a local adjacent lane pair", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            controllerOptions,
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          expect(controller.getBossPlayerId()).toBe("p2");
+
+          expect(controller.applyPrepPlacementForPlayer("p2", [
+            { cell: 0, unitType: "vanguard", unitId: "boss-unit" },
+          ])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p1", [
+            { cell: combatCellToRaidBoardIndex(0), unitType: "vanguard", unitId: "p1-front" },
+            { cell: combatCellToRaidBoardIndex(4), unitType: "ranger", unitId: "p1-back" },
+          ])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p3", [
+            { cell: combatCellToRaidBoardIndex(1), unitType: "vanguard", unitId: "p3-front" },
+            { cell: combatCellToRaidBoardIndex(5), unitType: "mage", unitId: "p3-back" },
+          ])).toMatchObject({ success: true });
+          expect(controller.applyPrepPlacementForPlayer("p4", [
+            { cell: combatCellToRaidBoardIndex(2), unitType: "assassin", unitId: "p4-front" },
+            { cell: combatCellToRaidBoardIndex(3), unitType: "ranger", unitId: "p4-back" },
+          ])).toMatchObject({ success: true });
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          expect(resolveMatchupSpy).toHaveBeenCalledTimes(1);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          const aggregateRaidPlacements =
+            firstCall?.leftPlayerId === "p2" ? firstCall.rightPlacements : firstCall?.leftPlacements;
+
+          const columnsByPlayer = new Map<string, number[]>();
+          for (const placement of aggregateRaidPlacements ?? []) {
+            const coordinate = sharedBoardIndexToCoordinate(placement.cell);
+            const ownerPlayerId = placement.ownerPlayerId ?? "unknown";
+            const columns = columnsByPlayer.get(ownerPlayerId) ?? [];
+            columns.push(coordinate.x);
+            columnsByPlayer.set(ownerPlayerId, columns);
+          }
+
+          const expectColumnsWithin = (playerId: string, allowedColumns: number[]): void => {
+            const assignedColumns = new Set(columnsByPlayer.get(playerId) ?? []);
+            expect([...assignedColumns].every((column) => allowedColumns.includes(column))).toBe(true);
+            expect(assignedColumns.size).toBeGreaterThan(0);
+          };
+
+          expectColumnsWithin("p1", [0, 1]);
+          expectColumnsWithin("p3", [2, 3]);
+          expectColumnsWithin("p4", [4, 5]);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
 
   test("raid phase HP uses aggregate raid combat damage instead of loser damage only", async () => {
     await withFlags(
@@ -1024,6 +1364,20 @@ describe("MatchRoomController", () => {
     controller.setReady("p3", true);
     controller.setReady("p4", true);
     controller.startIfReady(2_000);
+
+    ((controller as unknown) as {
+      shopOffersByPlayer: Map<string, Array<{
+        unitType: "vanguard" | "ranger" | "mage" | "assassin";
+        rarity: 1 | 2 | 3;
+        cost: number;
+      }>>;
+    }).shopOffersByPlayer.set("p1", [
+      { unitType: "vanguard", rarity: 3, cost: 91 },
+      { unitType: "ranger", rarity: 3, cost: 92 },
+      { unitType: "mage", rarity: 3, cost: 93 },
+      { unitType: "assassin", rarity: 3, cost: 94 },
+      { unitType: "vanguard", rarity: 3, cost: 95 },
+    ]);
 
     const beforeOffers = controller
       .getPlayerStatus("p1")
@@ -4392,7 +4746,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(93);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {

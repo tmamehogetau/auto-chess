@@ -115,6 +115,7 @@ export interface BoardUnitPlacement {
   hp?: number;
   attack?: number;
   attackSpeed?: number;
+  movementSpeed?: number;
   range?: number;
   defense?: number;
   critRate?: number;
@@ -166,7 +167,7 @@ export interface RoundStateMessage {
   raidPlayerIds?: string[];
   sharedBoardAuthorityEnabled?: boolean;
   sharedBoardMode?: string;
-  dominationCount?: number;
+  dominationCount?: number | undefined;
 
   phaseHpTarget?: number;
   phaseDamageDealt?: number;
@@ -297,6 +298,18 @@ export interface BattleStartEvent {
   units: BattleStartUnitSnapshot[];
 }
 
+export type PlannedApproachPathBlockerType =
+  | "ally_adjacent"
+  | "enemy_adjacent"
+  | "mixed_adjacent"
+  | "route_choke";
+
+export type PlannedApproachRouteChokeType =
+  | "ally_frontier"
+  | "enemy_frontier"
+  | "mixed_frontier"
+  | "unclassified";
+
 export interface MoveEvent {
   type: "move";
   battleId: string;
@@ -304,6 +317,21 @@ export interface MoveEvent {
   battleUnitId: string;
   from: { x: number; y: number };
   to: { x: number; y: number };
+  pursuedTargetBattleUnitId?: string;
+  bestApproachTargetBattleUnitId?: string;
+  plannedApproachGroupTargetBattleUnitId?: string;
+  plannedApproachGroupCompetitorCountBeforeMove?: number;
+  plannedApproachGroupAssignedCountBeforeMove?: number;
+  plannedApproachTargetBattleUnitId?: string;
+  plannedApproachDestinationStillOpenBeforeMove?: boolean;
+  usedPlannedApproachDestination?: boolean;
+  plannedApproachDestinationPathBlockedBeforeMove?: boolean;
+  plannedApproachDestinationPathBlockerTypeBeforeMove?: PlannedApproachPathBlockerType;
+  plannedApproachDestinationRouteChokeTypeBeforeMove?: PlannedApproachRouteChokeType;
+  pursuedTargetDistanceBeforeMove?: number | null;
+  bestApproachTargetDistanceBeforeMove?: number | null;
+  pursuedTargetRequiredStepsBeforeMove?: number | null;
+  bestApproachTargetRequiredStepsBeforeMove?: number | null;
 }
 
 export interface AttackStartEvent {
@@ -338,11 +366,20 @@ export interface KeyframeEvent {
   units: BattleKeyframeUnitState[];
 }
 
+export type BattleTimelineEndReason =
+  | "annihilation"
+  | "mutual_annihilation"
+  | "timeout_hp_lead"
+  | "timeout_hp_tie"
+  | "forced"
+  | "unexpected";
+
 export interface BattleEndEvent {
   type: "battleEnd";
   battleId: string;
   atMs: number;
   winner: BattleTimelineWinner;
+  endReason: BattleTimelineEndReason;
 }
 
 export type BattleTimelineEvent =

@@ -223,6 +223,7 @@ describe("SharedBoardRoom integration", () => {
           battleId: "battle-raid-1",
           atMs: 900,
           winner: "raid",
+          endReason: "annihilation",
         }),
       ],
     });

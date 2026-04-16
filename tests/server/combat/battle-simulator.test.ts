@@ -171,8 +171,7 @@ describe("battle-simulator", () => {
       expect(boss.attackPower).toBe(bossBaseline.attack);
       expect(boss.attackSpeed).toBe(bossBaseline.attackSpeed);
       expect(boss.attackRange).toBe(bossBaseline.range);
-      expect(boss.physicalReduction).toBe(bossBaseline.physicalReduction);
-      expect(boss.magicReduction).toBe(bossBaseline.magicReduction);
+      expect(boss.damageReduction).toBe(bossBaseline.damageReduction);
     });
 
     test("HP70%以上のレミリアは紅き夜の王でHP70%未満時より高いダメージを出す", () => {
@@ -487,7 +486,7 @@ describe("battle-simulator", () => {
         attackSpeed: 0.5,
         movementSpeed: 1,
         attackRange: 1,
-        defense: 3,
+        damageReduction: 0,
       });
       expect(createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
         id: "left-ranger-1",
@@ -499,7 +498,7 @@ describe("battle-simulator", () => {
         attackSpeed: 0.8,
         movementSpeed: 1,
         attackRange: 3,
-        defense: 0,
+        damageReduction: 0,
       });
       expect(createTestBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
         id: "right-mage-0",
@@ -511,7 +510,7 @@ describe("battle-simulator", () => {
         attackSpeed: 0.6,
         movementSpeed: 1,
         attackRange: 2,
-        defense: 0,
+        damageReduction: 0,
       });
       expect(createTestBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
         id: "right-assassin-1",
@@ -523,7 +522,7 @@ describe("battle-simulator", () => {
         attackSpeed: 1,
         movementSpeed: 1,
         attackRange: 1,
-        defense: 0,
+        damageReduction: 0,
       });
     });
 
@@ -577,11 +576,9 @@ describe("battle-simulator", () => {
         attackSpeed: 0.85,
         movementSpeed: 2,
         attackRange: 1,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 0,
-        magicReduction: 0,
+        damageReduction: 0,
       });
     });
 
@@ -602,18 +599,14 @@ describe("battle-simulator", () => {
       );
 
       expect(scarletUnit).toMatchObject({
-        defense: 15,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 5,
-        magicReduction: 25,
+        damageReduction: 0,
       });
       expect(bossUnit).toMatchObject({
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 0,
-        magicReduction: 0,
+        damageReduction: 0,
       });
     });
   });
@@ -721,12 +714,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -749,12 +740,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -777,12 +766,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -801,11 +788,9 @@ describe("battle-simulator", () => {
           cell: 5,
           isDead: true,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -829,12 +814,10 @@ describe("battle-simulator", () => {
         cell: combatCellToRaidBoardIndex(2),
         isDead: false,
         attackCount: 0,
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -853,11 +836,9 @@ describe("battle-simulator", () => {
           cell: combatCellToBossBoardIndex(7),
           isDead: false,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -876,11 +857,9 @@ describe("battle-simulator", () => {
           cell: combatCellToBossBoardIndex(6),
           isDead: false,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -899,11 +878,9 @@ describe("battle-simulator", () => {
           cell: combatCellToBossBoardIndex(4),
           isDead: false,
           attackCount: 0,
-          defense: 3,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -929,11 +906,9 @@ describe("battle-simulator", () => {
         cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
         isDead: false,
         attackCount: 0,
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: undefined,
-        magicReduction: undefined,
+        damageReduction: 0,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -968,11 +943,9 @@ describe("battle-simulator", () => {
         cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
         isDead: false,
         attackCount: 0,
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: undefined,
-        magicReduction: undefined,
+        damageReduction: 0,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -1007,12 +980,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -1031,11 +1002,9 @@ describe("battle-simulator", () => {
           cell: 7,
           isDead: false,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -1954,22 +1923,22 @@ describe("BattleSimulator", () => {
         winner: "draw",
         durationMs: 10_000,
         damageDealt: {
-          left: 57,
-          right: 57,
+          left: 85,
+          right: 85,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 68, cell: 14 },
+          { id: "left-vanguard-0", hp: 40, cell: 14 },
           { id: "left-ranger-1", hp: 5, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 68, cell: 21 },
+          { id: "right-vanguard-0", hp: 40, cell: 21 },
           { id: "right-ranger-1", hp: 5, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
         combatLogEnd: [
-          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 1 damage (68/80)",
-          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 1 damage (68/80)",
-          "Battle ended: Draw (HP: 73 vs 73)",
+          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 5 damage (40/80)",
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 5 damage (40/80)",
+          "Battle ended: Draw (HP: 45 vs 45)",
         ],
       });
     });
@@ -2645,13 +2614,13 @@ describe("BattleSimulator", () => {
       );
 
       expect(result1.winner).toBe("draw");
-      expect(result1.damageDealt).toEqual({ left: 57, right: 57 });
+      expect(result1.damageDealt).toEqual({ left: 85, right: 85 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 68, cell: 14 },
+        { id: "left-vanguard-0", hp: 40, cell: 14 },
         { id: "left-ranger-1", hp: 5, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 68, cell: 21 },
+        { id: "right-vanguard-0", hp: 40, cell: 21 },
         { id: "right-ranger-1", hp: 5, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);

@@ -12,11 +12,9 @@ export interface CombatStats {
   attackSpeed: number;
   movementSpeed: number;
   range: number;
-  defense: number;
   critRate: number;
   critDamageMultiplier: number;
-  physicalReduction: number;
-  magicReduction: number;
+  damageReduction: number;
 }
 
 // MVP Phase 1 Unit Skill Types
@@ -59,17 +57,14 @@ export interface MvpPhase1Unit {
   attackSpeed: number;
   movementSpeed: number;
   range: number;
-  defense: number;
   critRate: number;
   critDamageMultiplier: number;
-  physicalReduction: number;
-  magicReduction: number;
+  damageReduction: number;
   synergy: string[];
   subUnit?: SubUnitConfig;
   skill?: UnitSkill;
 }
 
-// MVP Phase 1 Boss Definition
 export interface MvpPhase1Boss {
   id: string;
   name: string;
@@ -78,38 +73,30 @@ export interface MvpPhase1Boss {
   attackSpeed: number;
   movementSpeed: number;
   range: number;
-  defense: number;
   critRate: number;
   critDamageMultiplier: number;
   healOnPhaseFail: number;
-  physicalReduction: number;
-  magicReduction: number;
+  damageReduction: number;
 }
 
 type MvpPhase1Data = {
   units: Array<
-    Omit<MvpPhase1Unit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
-    & Partial<Pick<MvpPhase1Unit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
+    Omit<MvpPhase1Unit, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">
+    & Partial<Pick<MvpPhase1Unit, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">>
   >;
-  boss: Omit<MvpPhase1Boss, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier">
-    & Partial<Pick<MvpPhase1Boss, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier">>;
+  boss: Omit<MvpPhase1Boss, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">
+    & Partial<Pick<MvpPhase1Boss, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">>;
 };
 
 const MVP_PHASE1_DATA = mvpPhase1UnitsData as MvpPhase1Data;
-
-function getDefaultDefense(unitType: BoardUnitType): number {
-  return unitType === "vanguard" ? 3 : 0;
-}
 
 function normalizeMvpPhase1Unit(unit: MvpPhase1Data["units"][number]): MvpPhase1Unit {
   return {
     ...unit,
     movementSpeed: unit.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
-    defense: unit.defense ?? getDefaultDefense(unit.type),
     critRate: unit.critRate ?? 0,
     critDamageMultiplier: unit.critDamageMultiplier ?? 1.5,
-    physicalReduction: unit.physicalReduction ?? 0,
-    magicReduction: unit.magicReduction ?? 0,
+    damageReduction: unit.damageReduction ?? 0,
   };
 }
 
@@ -117,9 +104,9 @@ function normalizeMvpPhase1Boss(boss: MvpPhase1Data["boss"]): MvpPhase1Boss {
   return {
     ...boss,
     movementSpeed: boss.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
-    defense: boss.defense ?? 0,
     critRate: boss.critRate ?? 0,
     critDamageMultiplier: boss.critDamageMultiplier ?? 1.5,
+    damageReduction: boss.damageReduction ?? 0,
   };
 }
 

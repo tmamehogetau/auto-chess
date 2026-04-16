@@ -83,17 +83,15 @@ export interface BattleUnit {
   attackRange: number; // 1 = 近接, 2+ = 遠距離
   cell: number; // shared-board index on the 6x6 battle field
   isDead: boolean;
-  isBoss?: boolean; // ボスフラグ（ボス戦時のみ）
-  attackCount: number; // スキルトリガー用の攻撃回数トラッキング
-  defense: number; // ベース防御力（被ダメージを軽減）
-  critRate: number; // 0.0-1.0, クリティカルヒット率
-  critDamageMultiplier: number; // 1.5 = 150% クリティカルダメージ
-  physicalReduction: number | undefined; // 物理ダメージ軽減率（0-100）
-  magicReduction: number | undefined; // 魔法ダメージ軽減率（0-100）
+  isBoss?: boolean;
+  attackCount: number;
+  critRate: number;
+  critDamageMultiplier: number;
+  damageReduction: number;
   buffModifiers: {
-    attackMultiplier: number; // デフォルト 1.0
-    defenseMultiplier: number; // デフォルト 1.0
-    attackSpeedMultiplier: number; // デフォルト 1.0
+    attackMultiplier: number;
+    defenseMultiplier: number;
+    attackSpeedMultiplier: number;
   };
   reflectRatio?: number;
   ultimateDamageMultiplier?: number;
@@ -519,41 +517,32 @@ export function createBattleUnit(
     attackSpeed: resolvedAttackSpeed,
     movementSpeed: resolvedMovementSpeed,
     range: resolvedRange,
-    defense: resolvedDefense,
     critRate: resolvedCritRate,
     critDamageMultiplier: resolvedCritDamageMultiplier,
-    physicalReduction: resolvedPhysicalReduction,
-    magicReduction: resolvedMagicReduction,
+    damageReduction: resolvedDamageReduction,
   } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
   const bossStats = isBoss && archetype === "remilia" ? getMvpPhase1Boss() : null;
 
-  // Scarlet Mansionユニットの特殊ステータスをチェック
   let finalHp: number;
   let finalAttack: number;
   let finalAttackSpeed: number;
   let finalMovementSpeed: number;
   let finalRange: number;
-  let finalDefense: number;
   let finalCritRate: number;
   let finalCritDamageMultiplier: number;
-  let finalPhysicalReduction: number | undefined = undefined;
-  let finalMagicReduction: number | undefined = undefined;
+  let finalDamageReduction: number = 0;
 
   if (bossStats) {
-    // ボス（remilia）の場合、ボスステータスを適用
     finalHp = bossStats.hp;
     finalAttack = bossStats.attack;
     finalAttackSpeed = bossStats.attackSpeed;
     finalMovementSpeed = bossStats.movementSpeed;
     finalRange = bossStats.range;
-    finalDefense = bossStats.defense;
     finalCritRate = bossStats.critRate;
     finalCritDamageMultiplier = bossStats.critDamageMultiplier;
-    finalPhysicalReduction = bossStats.physicalReduction;
-    finalMagicReduction = bossStats.magicReduction;
+    finalDamageReduction = bossStats.damageReduction;
   } else if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
-    // Scarlet Mansionユニットの場合、特殊ステータスを適用
     const scarletUnit = getScarletMansionUnitById(archetype);
     if (scarletUnit) {
       finalHp = scarletUnit.hp;
@@ -561,38 +550,29 @@ export function createBattleUnit(
       finalAttackSpeed = scarletUnit.attackSpeed;
       finalMovementSpeed = scarletUnit.movementSpeed;
       finalRange = scarletUnit.range;
-      finalDefense = scarletUnit.defense;
       finalCritRate = scarletUnit.critRate;
       finalCritDamageMultiplier = scarletUnit.critDamageMultiplier;
-      finalPhysicalReduction = scarletUnit.physicalReduction;
-      finalMagicReduction = scarletUnit.magicReduction;
+      finalDamageReduction = scarletUnit.damageReduction;
     } else {
-      // フォールバック: 通常ステータスを使用
       const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
       finalHp = baseStats.hp * starMultiplier;
       finalAttack = baseStats.attack * starMultiplier;
       finalAttackSpeed = baseStats.attackSpeed;
       finalMovementSpeed = baseStats.movementSpeed;
       finalRange = baseStats.range;
-      finalDefense = unitType === "vanguard" ? 3 : 0;
       finalCritRate = 0;
       finalCritDamageMultiplier = 1.5;
-      finalPhysicalReduction = 0;
-      finalMagicReduction = 0;
     }
   } else {
-    // 通常ユニット: 星レベル倍率を適用
     const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
     finalHp = (resolvedHp ?? baseStats.hp) * starMultiplier;
     finalAttack = (resolvedAttack ?? baseStats.attack) * starMultiplier;
     finalAttackSpeed = resolvedAttackSpeed ?? baseStats.attackSpeed;
     finalMovementSpeed = resolvedMovementSpeed ?? baseStats.movementSpeed;
     finalRange = resolvedRange ?? baseStats.range;
-    finalDefense = resolvedDefense ?? (unitType === "vanguard" ? 3 : 0);
     finalCritRate = resolvedCritRate ?? 0;
     finalCritDamageMultiplier = resolvedCritDamageMultiplier ?? 1.5;
-    finalPhysicalReduction = resolvedPhysicalReduction ?? 0;
-    finalMagicReduction = resolvedMagicReduction ?? 0;
+    finalDamageReduction = resolvedDamageReduction ?? 0;
   }
 
   return {
@@ -614,11 +594,9 @@ export function createBattleUnit(
     isDead: false,
     isBoss,
     attackCount: 0,
-    defense: finalDefense,
     critRate: finalCritRate,
     critDamageMultiplier: finalCritDamageMultiplier,
-    physicalReduction: finalPhysicalReduction,
-    magicReduction: finalMagicReduction,
+    damageReduction: finalDamageReduction,
     buffModifiers: {
       attackMultiplier: 1.0,
       defenseMultiplier: 1.0,
@@ -1830,7 +1808,7 @@ function applySynergyEffects(unit: BattleUnit, effects: SynergyEffects, tier: nu
   if (effects.defense) {
     const defenseValue = effects.defense[idx];
     if (defenseValue !== undefined) {
-      unit.defense += defenseValue;
+      unit.damageReduction += defenseValue;
     }
   }
 

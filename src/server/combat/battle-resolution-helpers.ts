@@ -27,14 +27,8 @@ export function calculateAttackDamage(
     * attacker.buffModifiers.attackMultiplier
     * critMultiplier
     * bossAtkMultiplier;
-  const defense = target.defense * target.buffModifiers.defenseMultiplier;
-  let actualDamage = Math.max(1, Math.floor(baseDamage - defense));
-
-  if (attacker.type === "mage" && target.magicReduction !== undefined) {
-    actualDamage = Math.max(1, Math.floor(actualDamage * (1 - target.magicReduction / 100)));
-  } else if (target.physicalReduction !== undefined) {
-    actualDamage = Math.max(1, Math.floor(actualDamage * (1 - target.physicalReduction / 100)));
-  }
+  const damageReduction = target.damageReduction ?? 0;
+  const actualDamage = Math.max(1, Math.floor(baseDamage * (1 - damageReduction / 100)));
 
   return actualDamage;
 }

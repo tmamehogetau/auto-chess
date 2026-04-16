@@ -70,16 +70,14 @@ function selectRosterSource(flags: FeatureFlags): RosterSource {
  */
 function loadMvpRosterUnits(): RosterUnit[] {
   return (mvpPhase1UnitsData.units as Array<
-    Omit<RosterUnit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">
-    & Partial<Pick<RosterUnit, "movementSpeed" | "defense" | "critRate" | "critDamageMultiplier" | "physicalReduction" | "magicReduction">>
+    Omit<RosterUnit, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">
+    & Partial<Pick<RosterUnit, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">>
   >).map((unit) => ({
     ...unit,
     movementSpeed: unit.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
-    defense: unit.defense ?? (unit.type === "vanguard" ? 3 : 0),
     critRate: unit.critRate ?? 0,
     critDamageMultiplier: unit.critDamageMultiplier ?? 1.5,
-    physicalReduction: unit.physicalReduction ?? 0,
-    magicReduction: unit.magicReduction ?? 0,
+    damageReduction: unit.damageReduction ?? 0,
   }));
 }
 
@@ -96,11 +94,9 @@ export function getTouhouDraftRosterUnits(): RosterUnit[] {
     attackSpeed: unit.attackSpeed,
     movementSpeed: unit.movementSpeed,
     range: unit.range,
-    defense: unit.defense,
     critRate: unit.critRate,
     critDamageMultiplier: unit.critDamageMultiplier,
-    physicalReduction: unit.physicalReduction,
-    magicReduction: unit.magicReduction,
+    damageReduction: unit.damageReduction,
     synergy: unit.factionId ? [unit.factionId] : [],
   }));
 }

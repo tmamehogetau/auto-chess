@@ -503,8 +503,7 @@ describe("Boss Raid Simulation", () => {
       expect(boss.attackSpeed).toBe(0.57);
       expect(boss.attackRange).toBe(3);
       expect(boss.isBoss).toBe(true);
-      expect(boss.physicalReduction).toBe(0);
-      expect(boss.magicReduction).toBe(0);
+      expect(boss.damageReduction).toBe(0);
     });
 
     test("レイドチームの総ステータス検証", () => {

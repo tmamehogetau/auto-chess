@@ -134,8 +134,9 @@ const HERO_OPTIONS = [
   { id: "reimu", name: "霊夢", role: "balance" },
   { id: "marisa", name: "魔理沙", role: "dps" },
   { id: "okina", name: "隠岐奈", role: "support" },
-  { id: "keiki", name: "袿姫", role: "tank" },
-  { id: "jyoon", name: "女苑", role: "economy" },
+  { id: "keiki", name: "袿姫", role: "support" },
+  { id: "jyoon", name: "女苑", role: "dps" },
+  { id: "yuiman", name: "ユイマン・浅間", role: "support" },
 ];
 
 const BOSS_OPTIONS = [

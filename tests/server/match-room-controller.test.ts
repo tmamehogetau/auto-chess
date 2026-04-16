@@ -4746,7 +4746,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(89);
+    expect(controller.getPlayerHp("p4")).toBe(91);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {

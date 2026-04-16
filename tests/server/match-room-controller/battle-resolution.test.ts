@@ -41,11 +41,9 @@ const expectHeroBattleUnitToMatchDefinition = (
     attackPower: hero?.attack,
     attackSpeed: hero?.attackSpeed,
     attackRange: hero?.range,
-    defense: hero?.defense,
     critRate: hero?.critRate,
     critDamageMultiplier: hero?.critDamageMultiplier,
-    physicalReduction: hero?.physicalReduction,
-    magicReduction: hero?.magicReduction,
+    damageReduction: hero?.damageReduction,
     cell,
   });
 };
@@ -84,11 +82,9 @@ describe("BattleResolutionService", () => {
     cell: side === "left" ? 0 : 4,
     isDead: false,
     attackCount: 0,
-    defense: 0,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: undefined,
-    magicReduction: undefined,
+    damageReduction: 0,
     buffModifiers: {
       attackMultiplier: 1,
       defenseMultiplier: 1,

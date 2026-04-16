@@ -28,18 +28,16 @@ export const HEROES: Hero[] = [
     id: 'reimu',
     name: '霊夢',
     role: 'balance',
-    unitType: 'vanguard',
-    synergyBonusType: 'vanguard',
-    hp: 620,
-    attack: 52,
-    attackSpeed: 0.75,
-    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
+    unitType: 'ranger',
+    synergyBonusType: 'ranger',
+    hp: 680,
+    attack: 45,
+    attackSpeed: 0.80,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 3,
-    defense: 10,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 0,
-    magicReduction: 0,
+    damageReduction: 0,
     skill: {
       name: '夢符「二重結界」',
       description: '味方全体に防御バフ（被ダメージ-20%）',
@@ -58,29 +56,27 @@ export const HEROES: Hero[] = [
     id: 'marisa',
     name: '魔理沙',
     role: 'dps',
-    unitType: 'ranger',
-    synergyBonusType: 'ranger',
-    hp: 430,
-    attack: 82,
-    attackSpeed: 1.0,
-    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
+    unitType: 'mage',
+    synergyBonusType: 'mage',
+    hp: 400,
+    attack: 60,
+    attackSpeed: 0.85,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 4,
-    defense: 0,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 0,
-    magicReduction: 0,
+    damageReduction: 0,
     skill: {
-      name: '恋符「マスタースパーク」',
-      description: '全敵に強力な魔法ダメージ（ATK × 3.0）',
+      name: '星符「ドラゴンメテオ」',
+      description: '直線ビームで全敵に魔法ダメージ（ATK × 2.0）',
       effect: (caster, _allies, enemies, log) => {
-        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 3.0);
+        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
         for (const enemy of enemies) {
           if (!enemy.isDead) {
             enemy.hp -= damage;
           }
         }
-        log.push(`${caster.type} activates 恋符「マスタースパーク」! Deals ${damage} damage to all enemies`);
+        log.push(`${caster.type} activates 星符「ドラゴンメテオ」! Deals ${damage} damage to all enemies`);
       },
     },
   },
@@ -96,11 +92,9 @@ export const HEROES: Hero[] = [
     attackSpeed: 0.7,
     movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
     range: 4,
-    defense: 4,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 0,
-    magicReduction: 0,
+    damageReduction: 0,
     skill: {
       name: '秘神「裏表の逆転」',
       description: '味方全体に攻撃力バフ（与ダメージ+25%）',
@@ -114,23 +108,21 @@ export const HEROES: Hero[] = [
       },
     },
   },
-  // タンク - ダメージ軽減
+  // サポート - ダメージ軽減
   {
     id: 'keiki',
     name: '袿姫',
-    role: 'tank',
-    unitType: 'vanguard',
-    synergyBonusType: 'vanguard',
+    role: 'support',
+    unitType: 'mage',
+    synergyBonusType: 'mage',
     hp: 880,
-    attack: 42,
-    attackSpeed: 0.55,
+    attack: 30,
+    attackSpeed: 0.65,
     movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 2,
-    defense: 18,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 0,
-    magicReduction: 0,
+    damageReduction: 0,
     skill: {
       name: '埴安神「偶像の加護」',
       description: '自身の被ダメージ-40%、周囲の味方に被ダメージ-15%',
@@ -154,34 +146,58 @@ export const HEROES: Hero[] = [
       },
     },
   },
-  // 経済型 - ゴールドボーナス（戦闘効果のみ、ゴールド加算は別途実装予定）
+  // 火力型 - 累積ATKバフ
   {
     id: 'jyoon',
     name: '女苑',
-    role: 'economy',
+    role: 'dps',
     unitType: 'vanguard',
     synergyBonusType: 'vanguard',
-    hp: 560,
-    attack: 46,
-    attackSpeed: 1.2,
+    hp: 500,
+    attack: 35,
+    attackSpeed: 1.4,
     movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
     range: 1,
-    defense: 8,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 0,
-    magicReduction: 0,
+    damageReduction: 0,
     skill: {
-      name: '吉凶「星の導き」',
-      description: '味方全体に攻撃バフ（与ダメージ+15%）。※ゴールドボーナス効果は後で実装予定',
-      effect: (caster, allies, _enemies, log) => {
-        // 味方全体に攻撃バフ
-        for (const ally of allies) {
-          if (!ally.isDead) {
-            ally.buffModifiers.attackMultiplier *= 1.15;
-          }
+      name: '財符「黄金のトルネード」',
+      description: '攻撃毎に自己ATK+10%累積（最大+50%）',
+      effect: (caster, _allies, _enemies, log) => {
+        const currentBonus = caster.buffModifiers.attackMultiplier;
+        const maxBonus = 1.5;
+        if (currentBonus < maxBonus) {
+          caster.buffModifiers.attackMultiplier = Math.min(currentBonus + 0.1, maxBonus);
         }
-        log.push(`${caster.type} activates 吉凶「星の導き」! All allies gain +15% attack`);
+        log.push(`${caster.type} activates 財符「黄金のトルネード」! ATK now x${caster.buffModifiers.attackMultiplier.toFixed(1)}`);
+      },
+    },
+  },
+  // サポート - 単体無効化（プレースホルダー）
+  {
+    id: 'yuiman',
+    name: 'ユイマン・浅間',
+    role: 'support',
+    unitType: 'mage',
+    synergyBonusType: 'mage',
+    hp: 520,
+    attack: 38,
+    attackSpeed: 0.70,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
+    range: 4,
+    critRate: 0,
+    critDamageMultiplier: 1.5,
+    damageReduction: 0,
+    skill: {
+      name: '虚構「ディスコミュニケーション」',
+      description: '最もHPの低い敵の攻撃を一時無効化（プレースホルダー）',
+      effect: (caster, _allies, enemies, log) => {
+        const target = enemies.find((e) => !e.isDead);
+        if (target) {
+          target.buffModifiers.attackSpeedMultiplier *= 0.5;
+          log.push(`${caster.type} activates 虚構「ディスコミュニケーション」! Silenced ${target.type}`);
+        }
       },
     },
   },

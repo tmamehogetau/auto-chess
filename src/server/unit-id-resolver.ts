@@ -15,11 +15,9 @@ type ResolvedUnitMetadata = {
   attackSpeed?: number;
   movementSpeed?: number;
   range?: number;
-  defense?: number;
   critRate?: number;
   critDamageMultiplier?: number;
-  physicalReduction?: number;
-  magicReduction?: number;
+  damageReduction?: number;
 };
 
 const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
@@ -32,11 +30,9 @@ const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
     attackSpeed: unit.attackSpeed,
     movementSpeed: unit.movementSpeed,
     range: unit.range,
-    defense: unit.defense,
     critRate: unit.critRate,
     critDamageMultiplier: unit.critDamageMultiplier,
-    physicalReduction: unit.physicalReduction,
-    magicReduction: unit.magicReduction,
+    damageReduction: unit.damageReduction,
   }]),
 );
 
@@ -80,11 +76,9 @@ function getResolvedUnitMetadata(
       resolvedMetadata.attackSpeed = rosterUnit.attackSpeed;
       resolvedMetadata.movementSpeed = rosterUnit.movementSpeed;
       resolvedMetadata.range = rosterUnit.range;
-      resolvedMetadata.defense = rosterUnit.defense;
       resolvedMetadata.critRate = rosterUnit.critRate;
       resolvedMetadata.critDamageMultiplier = rosterUnit.critDamageMultiplier;
-      resolvedMetadata.physicalReduction = rosterUnit.physicalReduction;
-      resolvedMetadata.magicReduction = rosterUnit.magicReduction;
+      resolvedMetadata.damageReduction = rosterUnit.damageReduction;
     }
 
     if (rosterUnit.factionId !== undefined) {
@@ -120,63 +114,10 @@ export function resolveBattlePlacement(
     return { ...placement };
   }
 
-  if (resolvedMetadata.archetype !== undefined) {
-    const resolvedPlacement: BoardUnitPlacement = {
-      ...placement,
-      unitType: resolvedMetadata.unitType,
-      archetype: resolvedMetadata.archetype,
-    };
-
-    if (resolvedMetadata.factionId !== undefined) {
-      resolvedPlacement.factionId = resolvedMetadata.factionId;
-    }
-
-    if (resolvedMetadata.hp !== undefined) {
-      resolvedPlacement.hp = resolvedMetadata.hp;
-    }
-
-    if (resolvedMetadata.attack !== undefined) {
-      resolvedPlacement.attack = resolvedMetadata.attack;
-    }
-
-    if (resolvedMetadata.attackSpeed !== undefined) {
-      resolvedPlacement.attackSpeed = resolvedMetadata.attackSpeed;
-    }
-
-    if (resolvedMetadata.movementSpeed !== undefined) {
-      resolvedPlacement.movementSpeed = resolvedMetadata.movementSpeed;
-    }
-
-    if (resolvedMetadata.range !== undefined) {
-      resolvedPlacement.range = resolvedMetadata.range;
-    }
-
-    if (resolvedMetadata.defense !== undefined) {
-      resolvedPlacement.defense = resolvedMetadata.defense;
-    }
-
-    if (resolvedMetadata.critRate !== undefined) {
-      resolvedPlacement.critRate = resolvedMetadata.critRate;
-    }
-
-    if (resolvedMetadata.critDamageMultiplier !== undefined) {
-      resolvedPlacement.critDamageMultiplier = resolvedMetadata.critDamageMultiplier;
-    }
-
-    if (resolvedMetadata.physicalReduction !== undefined) {
-      resolvedPlacement.physicalReduction = resolvedMetadata.physicalReduction;
-    }
-
-    if (resolvedMetadata.magicReduction !== undefined) {
-      resolvedPlacement.magicReduction = resolvedMetadata.magicReduction;
-    }
-
-    return resolvedPlacement;
-  }
-
   const resolvedPlacement: BoardUnitPlacement = {
     ...placement,
     unitType: resolvedMetadata.unitType,
+    ...(resolvedMetadata.archetype !== undefined ? { archetype: resolvedMetadata.archetype } : {}),
   };
 
   if (resolvedMetadata.factionId !== undefined) {
@@ -203,10 +144,6 @@ export function resolveBattlePlacement(
     resolvedPlacement.range = resolvedMetadata.range;
   }
 
-  if (resolvedMetadata.defense !== undefined) {
-    resolvedPlacement.defense = resolvedMetadata.defense;
-  }
-
   if (resolvedMetadata.critRate !== undefined) {
     resolvedPlacement.critRate = resolvedMetadata.critRate;
   }
@@ -215,25 +152,13 @@ export function resolveBattlePlacement(
     resolvedPlacement.critDamageMultiplier = resolvedMetadata.critDamageMultiplier;
   }
 
-  if (resolvedMetadata.physicalReduction !== undefined) {
-    resolvedPlacement.physicalReduction = resolvedMetadata.physicalReduction;
-  }
-
-  if (resolvedMetadata.magicReduction !== undefined) {
-    resolvedPlacement.magicReduction = resolvedMetadata.magicReduction;
+  if (resolvedMetadata.damageReduction !== undefined) {
+    resolvedPlacement.damageReduction = resolvedMetadata.damageReduction;
   }
 
   return resolvedPlacement;
 }
 
-/**
- * Resolve multiple battle placements.
- *
- * @param placements - Array of board unit placements
- * @param flags - Feature flags for roster selection (required)
- * @returns Array of resolved placements
- * @throws TouhouRosterNotConfiguredError - When Touhou roster is active but not configured
- */
 export function resolveBattlePlacements(
   placements: BoardUnitPlacement[],
   flags: FeatureFlags

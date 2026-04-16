@@ -64,16 +64,14 @@ function createTestBattleUnit(
 }
 
 describe("battle contracts", () => {
-  test("damage helper applies defense before reduction and keeps a minimum of 1", () => {
+  test("damage helper applies damageReduction as percentage and keeps a minimum of 1", () => {
     const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", starLevel: 1, attack: 20 }, "left", 0);
     const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
-    target.defense = 3;
-    target.physicalReduction = 50;
+    target.damageReduction = 50;
 
-    expect(calculateAttackDamage(attacker, target, false, false)).toBe(8);
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(10);
 
-    target.defense = 999;
-    target.physicalReduction = 99;
+    target.damageReduction = 99;
     expect(calculateAttackDamage(attacker, target, false, false)).toBe(1);
   });
 

@@ -94,11 +94,10 @@ describe("Hero System Integration Tests", () => {
       expect(placementResult).toEqual({ accepted: true });
 
       const status = controller.getPlayerStatus("player1");
-      const vanguardSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "vanguard");
+      const rangerSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "ranger");
 
-      expect(vanguardSynergy).toBeDefined();
-      expect(vanguardSynergy?.count).toBe(3);
-      expect(vanguardSynergy?.tier).toBe(1);
+      expect(rangerSynergy).toBeDefined();
+      expect(rangerSynergy?.count).toBe(1);
     });
 
     it("should include scarlet mansion synergy in player status", () => {

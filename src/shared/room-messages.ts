@@ -117,11 +117,9 @@ export interface BoardUnitPlacement {
   attackSpeed?: number;
   movementSpeed?: number;
   range?: number;
-  defense?: number;
+  damageReduction?: number;
   critRate?: number;
   critDamageMultiplier?: number;
-  physicalReduction?: number;
-  magicReduction?: number;
   starLevel?: number;
   sellValue?: number;
   unitCount?: number;

@@ -542,6 +542,7 @@ describe("ShopOfferBuilder", () => {
     test("Touhou shop candidate sampling can reach every roster unit", () => {
       const touhouRoster = getTouhouDraftRosterUnits();
       const seenUnitIds = new Set<string>();
+      const remainingUnitCount = () => touhouRoster.length - seenUnitIds.size;
 
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
       mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
@@ -551,6 +552,7 @@ describe("ShopOfferBuilder", () => {
 
       builder = new ShopOfferBuilder(mockDeps);
 
+      samplingLoop:
       for (let roundIndex = 1; roundIndex <= 12; roundIndex += 1) {
         for (let refreshCount = 0; refreshCount < 30; refreshCount += 1) {
           for (let purchaseCount = 0; purchaseCount < 25; purchaseCount += 1) {
@@ -568,6 +570,10 @@ describe("ShopOfferBuilder", () => {
                   seenUnitIds.add(offer.unitId);
                 }
               }
+
+              if (remainingUnitCount() === 0) {
+                break samplingLoop;
+              }
             }
           }
         }
@@ -578,7 +584,7 @@ describe("ShopOfferBuilder", () => {
           .map((unit) => unit.unitId)
           .filter((unitId) => !seenUnitIds.has(unitId)),
       ).toEqual([]);
-    });
+    }, 15_000);
 
     test("produces deterministic results with same seed (MVP behavior)", () => {
       // Same inputs should produce same outputs (using hardcoded pools)

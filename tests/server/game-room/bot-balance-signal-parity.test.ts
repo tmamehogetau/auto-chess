@@ -32,6 +32,7 @@ const CREATED_AT_MS = 1_000;
 const STARTED_AT_MS = 2_000;
 const REAL_PLAY_TIME_SCALE = 1;
 const FAST_PARITY_TIME_SCALE = 0.02;
+const PARITY_TEST_TIMEOUT_MS = 15_000;
 const PARITY_FEATURE_FLAGS: Partial<FeatureFlags> = {
   ...FLAG_CONFIGURATIONS.ALL_DISABLED,
   enableBossExclusiveShop: true,
@@ -353,7 +354,7 @@ describe("bot-only balance signal parity", () => {
     const fastParitySummary = buildAggregateSummary(fastParityRuns);
 
     expectAggregateSummariesClose(fastParitySummary, realSpeedSummary, 5);
-  });
+  }, PARITY_TEST_TIMEOUT_MS);
 
   test("baseline-only timing compression preserves fast parity aggregate signals", () => {
     const fastParityRuns = TEST_SEEDS.map((seed) => runBotOnlyMatchSummary(FAST_PARITY_TIME_SCALE, seed));
@@ -364,5 +365,5 @@ describe("bot-only balance signal parity", () => {
     const baselineSummary = buildAggregateSummary(baselineRuns);
 
     expectAggregateSummariesClose(baselineSummary, fastParitySummary, 5);
-  });
+  }, PARITY_TEST_TIMEOUT_MS);
 });

@@ -40,12 +40,11 @@ const expectHeroBattleUnitToMatchDefinition = (
     maxHp: hero?.hp,
     attackPower: hero?.attack,
     attackSpeed: hero?.attackSpeed,
+    movementSpeed: hero?.movementSpeed,
     attackRange: hero?.range,
-    defense: hero?.defense,
     critRate: hero?.critRate,
     critDamageMultiplier: hero?.critDamageMultiplier,
-    physicalReduction: hero?.physicalReduction,
-    magicReduction: hero?.magicReduction,
+    damageReduction: hero?.damageReduction,
     cell,
   });
 };
@@ -84,11 +83,9 @@ describe("BattleResolutionService", () => {
     cell: side === "left" ? 0 : 4,
     isDead: false,
     attackCount: 0,
-    defense: 0,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: undefined,
-    magicReduction: undefined,
+    damageReduction: 0,
     buffModifiers: {
       attackMultiplier: 1,
       defenseMultiplier: 1,
@@ -189,6 +186,40 @@ describe("BattleResolutionService", () => {
       expect(result.outcome.loserId).toBe("player1");
       expect(result.leftBattleResult.won).toBe(false);
       expect(result.rightBattleResult.won).toBe(true);
+    });
+
+    it("omits timeline fields when the battle replay has no events", () => {
+      const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: [leftBattleUnits[0]],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 0 },
+        timeline: [],
+      });
+
+      const result = service.resolveMatchup({
+        battleId: "r1-p1-p2",
+        roundIndex: 1,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits,
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      expect("timeline" in result.leftBattleResult).toBe(false);
+      expect("rawTimeline" in result.leftBattleResult).toBe(false);
+      expect("timeline" in result.rightBattleResult).toBe(false);
+      expect("rawTimeline" in result.rightBattleResult).toBe(false);
     });
 
     it("preserves hero battle identity on survivor snapshots", () => {
@@ -716,6 +747,8 @@ describe("BattleResolutionService", () => {
       expect(keiki?.maxHp ?? 0).toBeGreaterThan(reimu?.maxHp ?? 0);
       expect(reimu?.maxHp ?? 0).toBeGreaterThan(marisa?.maxHp ?? 0);
       expect(marisa?.attackPower ?? 0).toBeGreaterThan(reimu?.attackPower ?? 0);
+      expect(reimu?.attackRange).toBe(3);
+      expect(keiki?.attackRange).toBe(2);
       expect(marisa?.attackRange ?? 0).toBeGreaterThan(reimu?.attackRange ?? 0);
       expect(jyoon?.attackSpeed ?? 0).toBeGreaterThan(reimu?.attackSpeed ?? 0);
       expect(okina?.attackRange ?? 0).toBeGreaterThan(jyoon?.attackRange ?? 0);

@@ -1123,6 +1123,7 @@ describe("player surface renderers", () => {
               battleId: "battle-raid-3",
               atMs: 250,
               winner: "raid",
+              endReason: "annihilation",
             }),
           ],
         },

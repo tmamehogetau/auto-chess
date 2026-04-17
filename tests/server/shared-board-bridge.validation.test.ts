@@ -185,6 +185,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
             battleId: "battle-raid-1",
             atMs: 600,
             winner: "raid",
+            endReason: "annihilation",
           }),
         ],
       });
@@ -249,6 +250,7 @@ describe("SharedBoardBridge validation (T1-2)", () => {
             battleId: "battle-raid-1",
             atMs: 600,
             winner: "raid",
+            endReason: "annihilation",
           }),
         ],
       };

@@ -100,7 +100,10 @@ import {
   COMBAT_CELL_MAX_INDEX,
   COMBAT_CELL_MIN_INDEX,
 } from "../shared/board-geometry";
-import { DEFAULT_SHARED_BOARD_CONFIG, sharedBoardCoordinateToIndex } from "../shared/shared-board-config";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+  sharedBoardCoordinateToIndex,
+} from "../shared/shared-board-config";
 import {
   getMaxBoardUnitsForPlayerRole,
   MAX_BENCH_SIZE,
@@ -117,6 +120,8 @@ interface MatchRoomControllerOptions {
   battleDurationMs: number;
   settleDurationMs: number;
   eliminationDurationMs: number;
+  battleTimelineTimeScale?: number;
+  battleSimulator?: BattleResolutionDependencies["battleSimulator"];
   setId?: UnitEffectSetId;
   featureFlags?: Partial<FeatureFlags>;
 }
@@ -202,8 +207,19 @@ const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
   5: 20,
 };
 
-const RAID_AGGREGATE_BATTLE_COLUMNS = [1, 3, 5, 0, 2, 4] as const;
-const RAID_AGGREGATE_BATTLE_ROWS = [5, 4, 3] as const;
+const RAID_AGGREGATE_CORE_BATTLE_COLUMNS = [1, 3, 5, 0, 2, 4] as const;
+const RAID_AGGREGATE_BATTLE_COLUMNS = [1, 0, 3, 2, 5, 4] as const;
+const RAID_AGGREGATE_MELEE_ROWS = [3, 4, 5] as const;
+const RAID_AGGREGATE_MID_RANGE_ROWS = [4, 3, 5] as const;
+const RAID_AGGREGATE_BACK_RANGE_ROWS = [5, 4, 3] as const;
+const RAID_AGGREGATE_PLAYER_LANE_COLUMNS = [
+  [1, 0],
+  [3, 2],
+  [5, 4],
+  [0, 1],
+  [2, 3],
+  [4, 5],
+] as const;
 
 type UnitRarity = 1 | 2 | 3 | 4 | 5;
 interface ShopOffer {
@@ -310,6 +326,7 @@ interface BattleResult {
   opponentSurvivors: number;
   phaseDamageToBoss?: number;
   timeline?: BattleTimelineEvent[];
+  rawTimeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
     battleUnitId?: string;
@@ -331,6 +348,7 @@ export interface MatchRoomControllerTestBattleResult {
   opponentSurvivors: number;
   phaseDamageToBoss?: number;
   timeline?: BattleTimelineEvent[];
+  rawTimeline?: BattleTimelineEvent[];
   survivorSnapshots?: Array<{
     unitId: string;
     battleUnitId?: string;
@@ -407,6 +425,8 @@ export class MatchRoomController {
 
   private readonly battleDurationMs: number;
 
+  private readonly battleTimelineTimeScale: number;
+
   private readonly settleDurationMs: number;
 
   private readonly eliminationDurationMs: number;
@@ -453,6 +473,7 @@ export class MatchRoomController {
 
   private readonly featureFlags: {
     enablePhaseExpansion: boolean;
+    enableDominationSystem: boolean;
   };
 
   private readonly rosterFlags: FeatureFlags;
@@ -517,6 +538,7 @@ export class MatchRoomController {
     this.readyDeadlineAtMs = createdAtMs + options.readyAutoStartMs;
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
+    this.battleTimelineTimeScale = options.battleTimelineTimeScale ?? 1;
     this.settleDurationMs = options.settleDurationMs;
     this.eliminationDurationMs = options.eliminationDurationMs;
     this.gameLoopState = null;
@@ -537,6 +559,7 @@ export class MatchRoomController {
     };
     this.featureFlags = {
       enablePhaseExpansion: resolvedFeatureFlags.enablePhaseExpansion,
+      enableDominationSystem: resolvedFeatureFlags.enableDominationSystem,
     };
 
     // Store a room-local snapshot for the full match lifetime.
@@ -613,13 +636,14 @@ export class MatchRoomController {
     // Initialize battle resolution service with dependencies
     // (must be after subUnit system initialization)
     const battleResolutionDeps: BattleResolutionDependencies = {
-      battleSimulator: new BattleSimulator(),
+      battleSimulator: options.battleSimulator ?? new BattleSimulator(),
       matchLogger,
       enableSubUnitSystem: this.enableSubUnitSystem,
       subUnitAssistConfigByType: this.enableSubUnitSystem
         ? this.subUnitAssistConfigByType
         : null,
       featureFlags: this.rosterFlags,
+      battleTimelineTimeScale: this.battleTimelineTimeScale,
     };
     this.battleResolutionService = new BattleResolutionService(battleResolutionDeps);
 
@@ -688,6 +712,7 @@ export class MatchRoomController {
     this.battleOrchestrator = new BattleOrchestrator<BattleResult>({
       ensureStarted: () => this.ensureStarted(),
       isRaidMode: () => this.isRaidMode(),
+      enableDominationSystem: this.featureFlags.enableDominationSystem,
       getPhaseResult: () => this.phaseOrchestrator.getPhaseProgress().result,
       pendingRoundDamageByPlayer: this.pendingRoundDamageByPlayer,
       battleResultsByPlayer: this.battleResultsByPlayer,
@@ -2495,44 +2520,144 @@ export class MatchRoomController {
   }
 
   private buildRemappedRaidBattlePlacements(raidPlayerIds: string[]): BoardUnitPlacement[] {
-    return raidPlayerIds.flatMap((playerId, raidPlayerIndex) =>
-      this.remapRaidPlayerBattlePlacements(playerId, raidPlayerIndex),
-    );
+    const occupiedCells = new Set<number>();
+    const remappedPlacements: BoardUnitPlacement[] = [];
+ 
+    for (const [raidPlayerIndex, playerId] of raidPlayerIds.entries()) {
+      const sortedPlacements = [...(this.battleInputSnapshotByPlayer.get(playerId) ?? [])]
+        .sort((left, right) =>
+          this.resolveRaidAggregateRangePriority(left) - this.resolveRaidAggregateRangePriority(right)
+          || left.cell - right.cell
+          || (left.unitId ?? "").localeCompare(right.unitId ?? "")
+          || left.unitType.localeCompare(right.unitType));
+
+      for (const placement of sortedPlacements) {
+        const rangePriority = this.resolveRaidAggregateRangePriority(placement);
+        const preferredColumns = this.buildRaidAggregatePlayerColumnPriority(
+          raidPlayerIndex,
+          rangePriority,
+        );
+        const targetCell = this.selectRaidAggregateTargetCell(
+          rangePriority,
+          occupiedCells,
+          preferredColumns,
+        );
+        occupiedCells.add(targetCell);
+
+        remappedPlacements.push({
+          ...placement,
+          cell: targetCell,
+          ownerPlayerId: playerId,
+        });
+      }
+    }
+
+    return remappedPlacements;
   }
 
-  private remapRaidPlayerBattlePlacements(
-    playerId: string,
+  private selectRaidAggregateTargetCell(
+    rangePriority: number,
+    occupiedCells: Set<number>,
+    preferredColumns: readonly number[] = RAID_AGGREGATE_BATTLE_COLUMNS,
+  ): number {
+    const preferredRows = this.resolveRaidAggregatePreferredRows(rangePriority);
+
+    for (const row of preferredRows) {
+      for (const column of preferredColumns) {
+        const cell = sharedBoardCoordinateToIndex({ x: column, y: row });
+        if (!occupiedCells.has(cell)) {
+          return cell;
+        }
+      }
+    }
+
+    return sharedBoardCoordinateToIndex({
+      x: RAID_AGGREGATE_BATTLE_COLUMNS[RAID_AGGREGATE_BATTLE_COLUMNS.length - 1] ?? 5,
+      y: preferredRows[preferredRows.length - 1] ?? 5,
+    });
+  }
+
+  private buildRaidAggregatePlayerColumnPriority(
     raidPlayerIndex: number,
-  ): BoardUnitPlacement[] {
-    const sourcePlacements = [...(this.battleInputSnapshotByPlayer.get(playerId) ?? [])];
-    const targetColumn =
-      RAID_AGGREGATE_BATTLE_COLUMNS[
-        raidPlayerIndex % RAID_AGGREGATE_BATTLE_COLUMNS.length
-      ]
-      ?? RAID_AGGREGATE_BATTLE_COLUMNS[0];
+    rangePriority: number,
+  ): readonly number[] {
+    const prioritizedColumns: number[] = [];
+    const addColumn = (column: number): void => {
+      if (column < 0 || column > 5 || prioritizedColumns.includes(column)) {
+        return;
+      }
+      prioritizedColumns.push(column);
+    };
 
-    return sourcePlacements
-      .sort((left, right) =>
-        right.cell - left.cell
-        || (left.unitId ?? "").localeCompare(right.unitId ?? "")
-        || left.unitType.localeCompare(right.unitType))
-      .map((placement, placementIndex) => {
-        const targetRow =
-          RAID_AGGREGATE_BATTLE_ROWS[
-            Math.min(placementIndex, RAID_AGGREGATE_BATTLE_ROWS.length - 1)
-          ]
-          ?? RAID_AGGREGATE_BATTLE_ROWS[RAID_AGGREGATE_BATTLE_ROWS.length - 1]
-          ?? 5;
+    for (const column of this.resolveRaidAggregatePlayerLaneColumns(raidPlayerIndex, rangePriority)) {
+      addColumn(column);
+    }
 
-        return {
-          ...placement,
-          cell: sharedBoardCoordinateToIndex({
-            x: targetColumn,
-            y: targetRow,
-          }),
-          ownerPlayerId: playerId,
-        };
-      });
+    for (const column of RAID_AGGREGATE_CORE_BATTLE_COLUMNS) {
+      addColumn(column);
+    }
+
+    for (const column of RAID_AGGREGATE_BATTLE_COLUMNS) {
+      addColumn(column);
+    }
+
+    return prioritizedColumns;
+  }
+
+  private resolveRaidAggregatePlayerLaneColumns(
+    playerIndex: number,
+    rangePriority: number,
+  ): readonly number[] {
+    if (playerIndex < 0) {
+      return RAID_AGGREGATE_BATTLE_COLUMNS;
+    }
+
+    const laneColumns = RAID_AGGREGATE_PLAYER_LANE_COLUMNS[
+      playerIndex % RAID_AGGREGATE_PLAYER_LANE_COLUMNS.length
+    ] ?? RAID_AGGREGATE_BATTLE_COLUMNS;
+
+    if (laneColumns.length < 2 || rangePriority <= 0) {
+      return laneColumns;
+    }
+
+    const [primaryColumn, secondaryColumn] = laneColumns;
+    return [
+      secondaryColumn,
+      primaryColumn,
+      ...laneColumns.slice(2),
+    ];
+  }
+
+  private resolveRaidAggregatePreferredRows(rangePriority: number): readonly number[] {
+    if (rangePriority <= 0) {
+      return RAID_AGGREGATE_MELEE_ROWS;
+    }
+
+    if (rangePriority === 1) {
+      return RAID_AGGREGATE_MID_RANGE_ROWS;
+    }
+
+    return RAID_AGGREGATE_BACK_RANGE_ROWS;
+  }
+
+  private resolveRaidAggregateRangePriority(placement: BoardUnitPlacement): number {
+    const attackRange = createBattleUnit(
+      placement,
+      "left",
+      0,
+      false,
+      this.rosterFlags,
+    ).attackRange;
+
+    if (attackRange <= 1) {
+      return 0;
+    }
+
+    if (attackRange <= 3) {
+      return 1;
+    }
+
+    return 2;
   }
 
   private buildSideSpellModifiers(playerIds: string[]): SpellCombatModifiers | null {
@@ -2638,7 +2763,11 @@ export class MatchRoomController {
     this.applyRaidPhaseSuccessBonus(phaseProgress.result);
 
     // 支配カウント: ボス優勢（フェーズ失敗）時にカウントアップ（R12以外）
-    if (phaseProgress.result === "failed" && state.roundIndex < 12) {
+    if (
+      this.featureFlags.enableDominationSystem
+      && phaseProgress.result === "failed"
+      && state.roundIndex < 12
+    ) {
       state.dominationCount += 1;
     }
 

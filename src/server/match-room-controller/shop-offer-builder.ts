@@ -55,18 +55,18 @@ const TOUHOU_SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, numbe
 };
 
 const TOUHOU_SHOP_ODDS_BY_ROUND: Readonly<Record<number, readonly [number, number, number, number, number]>> = {
-  1: [0.85, 0.15, 0, 0, 0],
-  2: [0.7, 0.25, 0.05, 0, 0],
-  3: [0.7, 0.25, 0.05, 0, 0],
-  4: [0.5, 0.3, 0.15, 0.05, 0],
-  5: [0.5, 0.3, 0.15, 0.05, 0],
-  6: [0.35, 0.3, 0.2, 0.1, 0.05],
-  7: [0.35, 0.3, 0.2, 0.1, 0.05],
-  8: [0.25, 0.3, 0.25, 0.15, 0.05],
-  9: [0.25, 0.3, 0.25, 0.15, 0.05],
-  10: [0.15, 0.25, 0.25, 0.2, 0.15],
-  11: [0.15, 0.25, 0.25, 0.2, 0.15],
-  12: [0.15, 0.25, 0.25, 0.2, 0.15],
+  1: [0.8, 0.2, 0, 0, 0],
+  2: [0.55, 0.3, 0.15, 0, 0],
+  3: [0.55, 0.3, 0.15, 0, 0],
+  4: [0.3, 0.3, 0.25, 0.15, 0],
+  5: [0.3, 0.3, 0.25, 0.15, 0],
+  6: [0.2, 0.25, 0.3, 0.2, 0.05],
+  7: [0.2, 0.25, 0.3, 0.2, 0.05],
+  8: [0.1, 0.2, 0.3, 0.25, 0.15],
+  9: [0.1, 0.2, 0.3, 0.25, 0.15],
+  10: [0.05, 0.15, 0.3, 0.3, 0.2],
+  11: [0.05, 0.15, 0.3, 0.3, 0.2],
+  12: [0.05, 0.15, 0.3, 0.3, 0.2],
 };
 
 /**
@@ -282,11 +282,14 @@ export class ShopOfferBuilder {
     nonce: number,
   ): ShopOffer {
     const odds = this.resolveTouhouOddsForRound(roundIndex);
-    const seedBase = this.deps.hashToUint32(
-      `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.deps.setId}:touhou`,
+    const costSeed = this.deps.hashToUint32(
+      `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.deps.setId}:touhou:cost`,
     );
-    const costRoll = this.deps.seedToUnitFloat(seedBase + 1);
-    const unitRoll = this.deps.seedToUnitFloat(seedBase + 2);
+    const unitSeed = this.deps.hashToUint32(
+      `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.deps.setId}:touhou:unit`,
+    );
+    const costRoll = this.deps.seedToUnitFloat(costSeed);
+    const unitRoll = this.deps.seedToUnitFloat(unitSeed);
     const rosterUnits = this.deps.getTouhouDraftRosterUnits();
     const isSharedPoolEnabled = this.deps.isSharedPoolEnabled();
     const isPerUnitPoolEnabled = this.deps.isPerUnitPoolEnabled();

@@ -6,13 +6,14 @@ import { attachAutoFillHelperAutomationForTest } from "./helpers";
 type FakeHelperPlayer = {
   role: string;
   ready: boolean;
+  wantsBoss?: boolean;
   gold: number;
   benchUnits: string[];
   benchUnitIds?: string[];
   boardUnits: string[];
   boardSubUnits?: string[];
   shopOffers: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
-  bossShopOffers: Array<{ unitType: string; cost: number }>;
+  bossShopOffers: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
   selectedHeroId: string;
   selectedBossId: string;
   lastCmdSeq: number;
@@ -41,6 +42,7 @@ class FakeHelperRoom {
       deferStateUpdateAfterBuy?: boolean;
       deferStateUpdateAfterBuyMs?: number;
       deferStateUpdateAfterDeployMs?: number;
+      refreshedShopOffers?: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
     } = {},
   ) {
     this.state = state;
@@ -56,6 +58,9 @@ class FakeHelperRoom {
     const payload = message as {
       cmdSeq?: number;
       shopBuySlotIndex?: number;
+      bossShopBuySlotIndex?: number;
+      shopRefreshCount?: number;
+      benchSellIndex?: number;
       benchToBoardCell?: { benchIndex: number; cell: number; slot?: "main" | "sub" };
     };
     const player = this.state?.players.get(this.sessionId);
@@ -64,10 +69,19 @@ class FakeHelperRoom {
     }
 
     if (typeof payload.shopBuySlotIndex === "number") {
+      const shopBuySlotIndex = payload.shopBuySlotIndex;
       const applyPurchaseStateUpdate = () => {
-        player.shopOffers = [];
-        player.benchUnits = ["vanguard"];
-        player.gold = 14;
+        const offer = player.shopOffers[shopBuySlotIndex];
+        player.shopOffers = player.shopOffers.filter((_, index) => index !== shopBuySlotIndex);
+        player.benchUnits = [
+          ...player.benchUnits,
+          offer?.unitType ?? "vanguard",
+        ];
+        player.benchUnitIds = [
+          ...(player.benchUnitIds ?? []),
+          offer?.unitId ?? "",
+        ];
+        player.gold = Math.max(0, player.gold - (offer?.cost ?? 0));
         player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
         if (this.state && this.options.advanceToDeployAfterBuy !== false) {
           this.state.playerPhase = "deploy";
@@ -82,6 +96,49 @@ class FakeHelperRoom {
         applyPurchaseStateUpdate();
       }
 
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (typeof payload.bossShopBuySlotIndex === "number") {
+      const bossShopBuySlotIndex = payload.bossShopBuySlotIndex;
+      const offer = player.bossShopOffers[bossShopBuySlotIndex];
+      player.bossShopOffers = player.bossShopOffers.filter((_, index) => index !== bossShopBuySlotIndex);
+      player.benchUnits = [
+        ...player.benchUnits,
+        offer?.unitType ?? "vanguard",
+      ];
+      player.benchUnitIds = [
+        ...(player.benchUnitIds ?? []),
+        offer?.unitId ?? "",
+      ];
+      player.gold = Math.max(0, player.gold - (offer?.cost ?? 0));
+      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (typeof payload.shopRefreshCount === "number") {
+      player.shopOffers = this.options.refreshedShopOffers
+        ? [...this.options.refreshedShopOffers]
+        : [];
+      player.gold = Math.max(0, player.gold - payload.shopRefreshCount * 2);
+      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (typeof payload.benchSellIndex === "number") {
+      const sellIndex = Number(payload.benchSellIndex);
+      if (!Number.isInteger(sellIndex) || sellIndex < 0 || sellIndex >= player.benchUnits.length) {
+        this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_bench_index" });
+        return;
+      }
+
+      player.benchUnits.splice(sellIndex, 1);
+      player.benchUnitIds?.splice(sellIndex, 1);
+      player.gold += 1;
+      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
       this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
       return;
     }
@@ -167,6 +224,53 @@ class FakeHelperRoom {
 }
 
 describe("helper automation wrapper", () => {
+  test("wrapper sends a fixed boss preference before readying", async () => {
+    const state: FakeHelperState = {
+      phase: "Waiting",
+      lobbyStage: "preference",
+      players: new Map([
+        ["player-1", {
+          role: "",
+          ready: false,
+          wantsBoss: false,
+          gold: 0,
+          benchUnits: [],
+          boardUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0, { wantsBoss: true });
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages).toEqual([
+      {
+        type: CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE,
+        message: { wantsBoss: true },
+      },
+    ]);
+
+    const player = state.players.get("player-1");
+    if (!player) {
+      throw new Error("Expected fake helper player");
+    }
+    player.wantsBoss = true;
+    room.emitState();
+
+    expect(room.sentMessages[1]).toEqual({
+      type: CLIENT_MESSAGE_TYPES.READY,
+      message: { ready: true },
+    });
+  });
+
   test("command result triggers a follow-up deploy after a buy updates bench state", async () => {
     const state: FakeHelperState = {
       phase: "Prep",
@@ -501,6 +605,44 @@ describe("helper automation wrapper", () => {
     });
   });
 
+  test("wrapper can drive a growth-policy boss helper that buys the expensive boss offer first", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 5,
+          benchUnits: [],
+          boardUnits: [],
+          shopOffers: [],
+          bossShopOffers: [
+            { unitType: "mage", unitId: "patchouli", cost: 2 },
+            { unitType: "assassin", unitId: "miko", cost: 5 },
+          ],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        } as FakeHelperPlayer],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0, { policy: "growth" });
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        bossShopBuySlotIndex: 1,
+      }),
+    });
+  });
+
   test("delayed deploy sync still lets the wrapper attach a raid sub unit after the first host lands", async () => {
     const state: FakeHelperState = {
       phase: "Prep",
@@ -558,4 +700,63 @@ describe("helper automation wrapper", () => {
     expect(state.players.get("player-1")?.boardUnits).toEqual(["30:reimu", "31:ranger:sub"]);
     expect(state.players.get("player-1")?.boardSubUnits).toEqual(["31:assassin"]);
   });
+
+  test("wrapper sells a weak bench unit before buying a stronger offer when the bench is full", async () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 3,
+          benchUnits: ["vanguard", "vanguard", "ranger", "ranger", "mage", "vanguard", "ranger", "assassin"],
+          benchUnitIds: ["yoshika", "rin", "wakasagihime", "momoyo", "tojiko", "kagerou", "megumu", "miko"],
+          boardUnits: ["30:reimu"],
+          shopOffers: [
+            { unitType: "ranger", unitId: "nazrin", factionId: "myouren", cost: 3 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.state = state;
+    room.emitState();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(room.sentMessages.length).toBeGreaterThanOrEqual(2);
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        benchSellIndex: 7,
+      }),
+    });
+    expect(room.sentMessages[1]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 2,
+        shopBuySlotIndex: 0,
+      }),
+    });
+    expect(state.players.get("player-1")?.benchUnitIds).toEqual([
+      "yoshika",
+      "rin",
+      "wakasagihime",
+      "momoyo",
+      "tojiko",
+      "kagerou",
+      "megumu",
+      "nazrin",
+    ]);
+  });
+
 });

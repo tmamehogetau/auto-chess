@@ -25,6 +25,7 @@ class FeatureFlagService {
       enableHeroSystem: this.parseEnvBoolean("FEATURE_ENABLE_HERO_SYSTEM", DEFAULT_FLAGS.enableHeroSystem),
       enableSharedPool: this.parseEnvBoolean("FEATURE_ENABLE_SHARED_POOL", DEFAULT_FLAGS.enableSharedPool),
       enablePhaseExpansion: this.parseEnvBoolean("FEATURE_ENABLE_PHASE_EXPANSION", DEFAULT_FLAGS.enablePhaseExpansion),
+      enableDominationSystem: this.parseEnvBoolean("FEATURE_ENABLE_DOMINATION_SYSTEM", DEFAULT_FLAGS.enableDominationSystem),
       enableSubUnitSystem: this.parseEnvBoolean("FEATURE_ENABLE_SUB_UNIT_SYSTEM", DEFAULT_FLAGS.enableSubUnitSystem),
       enableEmblemCells: this.parseEnvBoolean("FEATURE_ENABLE_EMBLEM_CELLS", DEFAULT_FLAGS.enableEmblemCells),
       enableSpellCard: this.parseEnvBoolean("FEATURE_ENABLE_SPELL_CARD", DEFAULT_FLAGS.enableSpellCard),

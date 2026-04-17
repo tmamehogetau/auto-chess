@@ -10,6 +10,7 @@ import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
 import type { BattleResultSurvivorSnapshot } from "../types/player-state-types";
+import { scaleBattleTimeline } from "../combat/battle-timeline-scale";
 
 /**
  * Spell combat modifiers
@@ -49,6 +50,7 @@ export interface PlayerBattleResult {
   phaseDamageToBoss?: number;
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
   timeline?: BattleTimelineEvent[];
+  rawTimeline?: BattleTimelineEvent[];
 }
 
 /**
@@ -93,6 +95,7 @@ export interface BattleResolutionDependencies {
   enableSubUnitSystem: boolean;
   subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> | null;
   featureFlags?: FeatureFlags;
+  battleTimelineTimeScale?: number;
 }
 
 /**
@@ -228,6 +231,18 @@ export class BattleResolutionService {
       this.deps.featureFlags,
       roundIndex,
     );
+    const scaledTimeline = battleResult.timeline.length > 0
+      ? (scaleBattleTimeline(
+        battleResult.timeline,
+        this.deps.battleTimelineTimeScale ?? 1,
+      ) ?? [])
+      : [];
+    const timelineField: Partial<Pick<PlayerBattleResult, "timeline">> = scaledTimeline.length > 0
+      ? { timeline: scaledTimeline }
+      : {};
+    const rawTimelineField: Partial<Pick<PlayerBattleResult, "rawTimeline">> = battleResult.timeline.length > 0
+      ? { rawTimeline: battleResult.timeline.map((event) => ({ ...event })) }
+      : {};
 
     // Process results based on winner
     let outcome: MatchupOutcome;
@@ -248,7 +263,8 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       rightBattleResult = {
@@ -259,7 +275,8 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       outcome = {
@@ -296,7 +313,8 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       rightBattleResult = {
@@ -307,7 +325,8 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       outcome = {
@@ -340,7 +359,8 @@ export class BattleResolutionService {
         survivors: battleResult.leftSurvivors.length,
         opponentSurvivors: battleResult.rightSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       rightBattleResult = {
@@ -351,7 +371,8 @@ export class BattleResolutionService {
         survivors: battleResult.rightSurvivors.length,
         opponentSurvivors: battleResult.leftSurvivors.length,
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
-        timeline: battleResult.timeline,
+        ...timelineField,
+        ...rawTimelineField,
       };
 
       outcome = {
@@ -502,15 +523,14 @@ export class BattleResolutionService {
       maxHp: hero.hp,
       attackPower: hero.attack,
       attackSpeed: hero.attackSpeed,
+      movementSpeed: hero.movementSpeed,
       attackRange: hero.range,
       cell: resolvedBoardCellIndex,
       isDead: false,
       attackCount: 0,
-      defense: hero.defense,
       critRate: hero.critRate,
       critDamageMultiplier: hero.critDamageMultiplier,
-      physicalReduction: hero.physicalReduction,
-      magicReduction: hero.magicReduction,
+      damageReduction: hero.damageReduction,
       buffModifiers: {
         attackMultiplier: 1,
         defenseMultiplier: 1,
@@ -552,11 +572,9 @@ export class BattleResolutionService {
       isDead: false,
       isBoss: true,
       attackCount: 0,
-      defense: 0,
       critRate: 0,
       critDamageMultiplier: 1.5,
-      physicalReduction: bossStats.physicalReduction,
-      magicReduction: bossStats.magicReduction,
+      damageReduction: bossStats.damageReduction,
       buffModifiers: {
         attackMultiplier: 1,
         defenseMultiplier: 1,

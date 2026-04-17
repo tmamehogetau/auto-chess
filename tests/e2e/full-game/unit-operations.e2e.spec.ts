@@ -101,6 +101,11 @@ describe("E2E: Unit Operations Flow", () => {
     gameRoom: GameRoom,
     sessionId: string,
     unitType: "vanguard" | "ranger" | "mage" | "assassin",
+    overrideOffers?: Array<{
+      unitType: "vanguard" | "ranger" | "mage" | "assassin";
+      rarity: 1 | 2 | 3;
+      cost: number;
+    }>,
   ): void {
     const internalController = (gameRoom as unknown as {
       controller?: {
@@ -119,13 +124,15 @@ describe("E2E: Unit Operations Flow", () => {
       throw new Error("Expected internal controller");
     }
 
-    internalController.shopOffersByPlayer.set(sessionId, [
+    internalController.shopOffersByPlayer.set(sessionId, overrideOffers ?? [
       { unitType, rarity: 1, cost: 1 },
       { unitType, rarity: 1, cost: 1 },
       { unitType: "ranger", rarity: 1, cost: 1 },
       { unitType: "mage", rarity: 2, cost: 2 },
       { unitType: "assassin", rarity: 2, cost: 2 },
     ]);
+
+    gameRoom.syncPlayersFromController([sessionId]);
   }
 
   it(
@@ -294,6 +301,13 @@ describe("E2E: Unit Operations Flow", () => {
       const clients = await setupGameWith4Players(gameRoom);
 
       const targetClient = clients[0];
+      forceShopOffers(gameRoom, targetClient.sessionId, "vanguard", [
+        { unitType: "vanguard", rarity: 3, cost: 91 },
+        { unitType: "ranger", rarity: 3, cost: 92 },
+        { unitType: "mage", rarity: 3, cost: 93 },
+        { unitType: "assassin", rarity: 3, cost: 94 },
+        { unitType: "vanguard", rarity: 3, cost: 95 },
+      ]);
       const playerBefore = gameRoom.state.players.get(targetClient.sessionId);
       const initialGold = Number(playerBefore?.gold ?? 0);
       const initialOffers = playerBefore?.shopOffers
@@ -320,7 +334,7 @@ describe("E2E: Unit Operations Flow", () => {
         .map((offer) => `${offer.unitType}:${offer.rarity}:${offer.cost}`)
         .join(",") ?? "";
       expect(playerAfter?.shopOffers.length).toBe(5);
-      // オファーが実際に変更されたことを検証（まれに同じになる可能性はあるがテストは厳格に）
+      // ダミーの不正ショップ内容から、通常の再生成結果へ差し替わったことを検証する。
       expect(afterOffers).not.toBe(initialOffers);
 
       // Cleanup

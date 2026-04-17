@@ -40,6 +40,7 @@ import {
   waitForSharedBoardPropagation,
   waitForText,
 } from "../../helpers/wait-helpers";
+import { resolveTestServerPort } from "./test-server-port";
 
 export { describe, expect, test, vi };
 export {
@@ -79,16 +80,6 @@ const HELPER_AUTOMATION_RETRY_ATTEMPTS = 16;
 
 export type GameRoomIntegrationContext = {
   readonly testServer: ColyseusTestServer;
-};
-
-const resolveTestServerPort = (name: string): number => {
-  let hash = 0;
-
-  for (const char of name) {
-    hash = (hash + char.charCodeAt(0)) % 200;
-  }
-
-  return 2_570 + hash;
 };
 
 export const describeGameRoomIntegration = (
@@ -426,6 +417,20 @@ const applyOptimisticPrepCommandToPlayer = (
     return nextPlayer;
   }
 
+  if (typeof payload.shopRefreshCount === "number") {
+    return null;
+  }
+
+  if (typeof payload.benchSellIndex === "number") {
+    const benchIndex = Number(payload.benchSellIndex);
+    const benchUnits = toUnknownArray(nextPlayer.benchUnits) as string[];
+    if (benchIndex < 0 || benchIndex >= benchUnits.length) {
+      return nextPlayer;
+    }
+
+    return null;
+  }
+
   const benchToBoardCell = payload.benchToBoardCell as
     | { benchIndex?: number; cell?: number; slot?: "main" | "sub" }
     | undefined;
@@ -493,7 +498,10 @@ export const attachAutoFillHelperAutomationForTest = (
   },
   helperIndex: number,
   options: {
+    policy?: "strength" | "growth";
     strategy?: "upgrade" | "highCost";
+    wantsBoss?: boolean;
+    heroId?: string;
   } = {},
 ): {
   getResults: () => unknown[];
@@ -525,6 +533,7 @@ export const attachAutoFillHelperAutomationForTest = (
         typeof state?.playerPhaseDeadlineAtMs === "number" ? state.playerPhaseDeadlineAtMs : null,
       ready: helperPlayer?.ready === true,
       role: helperPlayer?.role ?? "",
+      wantsBoss: helperPlayer?.wantsBoss === true,
       selectedBossId: helperPlayer?.selectedBossId ?? null,
       selectedHeroId: helperPlayer?.selectedHeroId ?? null,
       shopOffers: mapOfferUnitTypes(helperPlayer?.shopOffers),
@@ -562,7 +571,10 @@ export const attachAutoFillHelperAutomationForTest = (
       player: helperPlayer,
       sessionId: helperRoom.sessionId,
       state: helperState,
+      ...(options.heroId ? { heroId: options.heroId } : {}),
+      ...(options.policy ? { policy: options.policy } : {}),
       ...(options.strategy ? { strategy: options.strategy } : {}),
+      ...(typeof options.wantsBoss === "boolean" ? { wantsBoss: options.wantsBoss } : {}),
     });
 
     const [nextAction] = actions;

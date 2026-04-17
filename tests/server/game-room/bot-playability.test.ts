@@ -11,19 +11,49 @@ import {
   test,
   waitForCondition,
 } from "./helpers";
+import { AUTO_FILL_HERO_IDS } from "../../../src/client/autofill-helper-automation.js";
+import { HEROES } from "../../../src/data/heroes";
+import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
+import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 import type { MatchLogger } from "../../../src/server/match-logger";
 import type {
+  AttackStartEvent,
+  BattleEndEvent,
   BattleStartEvent,
   BattleTimelineEvent,
   BoardUnitPlacement,
   DamageAppliedEvent,
+  MoveEvent,
   RoundStateMessage,
+  UnitDeathEvent,
 } from "../../../src/shared/room-messages";
 import {
   resolveSharedBoardBossPresentation,
   resolveSharedBoardHeroPresentation,
   resolveSharedBoardUnitPresentation,
 } from "../../../src/server/shared-board-unit-presentation";
+import {
+  createFastParityGameRoomOptions,
+  DEFAULT_GAME_ROOM_OPTIONS,
+} from "../../../src/server/rooms/game-room-config";
+import { getMvpPhase1Boss } from "../../../src/shared/types";
+import {
+  buildBotOnlyBaselineAggregateReport as buildBotOnlyBaselineAggregateReportFromSummaries,
+  type BotOnlyBaselineAggregateReport,
+  type BotOnlyBaselineBattleEndReason,
+  type BotOnlyBaselineBattleSummary,
+  type BotOnlyBaselineFinalPlayer,
+  type BotOnlyBaselineMatchSummary,
+  type BotOnlyBaselineObservedShopOffer,
+  type BotOnlyBaselinePurchase,
+  type BotOnlyReportMetadata,
+} from "./bot-balance-baseline-aggregate";
+import {
+  createBotBalanceBaselineHelperConfigs,
+  createBotBalanceBaselineRoomTimings,
+  resolveBotBalanceBaselineHelperPolicy,
+  resolveBotBalanceBaselineRaidPolicies,
+} from "./bot-balance-baseline-runner";
 
 type BotOnlyServerRoom = Awaited<ReturnType<typeof createRoomWithForcedFlags>>;
 type BotOnlyTestClient = {
@@ -35,6 +65,18 @@ type BotOnlyTestClient = {
 };
 
 type BotOnlyMatchRoundReport = {
+  metadata?: {
+    mode: "real-play" | "fast-parity" | "custom";
+    timeScale: number;
+    timings: {
+      readyAutoStartMs: number;
+      prepDurationMs: number;
+      battleDurationMs: number;
+      settleDurationMs: number;
+      eliminationDurationMs: number;
+      selectionTimeoutMs: number;
+    };
+  };
   totalRounds: number;
   bossPlayerId: string;
   raidPlayerIds: string[];
@@ -45,11 +87,17 @@ type BotOnlyMatchRoundReport = {
     label: string;
     role: string;
     hp: number;
+    gold?: number;
     remainingLives: number;
     eliminated: boolean;
     rank: number;
     selectedHeroId: string;
     selectedBossId: string;
+    totalGoldEarned?: number;
+    totalGoldSpent?: number;
+    purchaseCount?: number;
+    refreshCount?: number;
+    sellCount?: number;
     boardUnits: ReportBoardUnit[];
   }>;
   rounds: Array<{
@@ -127,29 +175,6 @@ type BotOnlyMatchRoundReport = {
   }>;
 };
 
-type BotOnlyBaselineAggregateReport = {
-  requestedMatchCount: number;
-  completedMatches: number;
-  abortedMatches: number;
-  bossWins: number;
-  raidWins: number;
-  bossWinRate: number;
-  raidWinRate: number;
-  averageRounds: number;
-  minRounds: number;
-  maxRounds: number;
-  averageRemainingRaidPlayers: number;
-  roundHistogram: Record<string, number>;
-  topDamageUnits: Array<{
-    unitId: string;
-    unitName: string;
-    side: "boss" | "raid";
-    totalDamage: number;
-    appearances: number;
-    averageDamagePerMatch: number;
-  }>;
-};
-
 type BotOnlyRoundBattleReport = {
   battleIndex: number;
   leftPlayerId: string;
@@ -157,6 +182,9 @@ type BotOnlyRoundBattleReport = {
   rightPlayerId: string;
   rightLabel: string;
   battleDurationMs?: number;
+  battleEndReason?: BotOnlyBaselineBattleEndReason;
+  bossSurvivors?: number;
+  raidSurvivors?: number;
   leftSpecialUnits: string[];
   rightSpecialUnits: string[];
   winner: "left" | "right" | "draw";
@@ -182,6 +210,7 @@ type ReportUnitBattleOutcome = {
   label: string;
   unitId: string;
   unitName: string;
+  unitType?: string;
   side: "boss" | "raid";
   totalDamage: number;
   phaseContributionDamage: number;
@@ -190,6 +219,59 @@ type ReportUnitBattleOutcome = {
   starLevel: number;
   subUnitName: string;
   isSpecialUnit: boolean;
+  attackCount?: number;
+  hitCount?: number;
+  damageTaken?: number;
+  moveCount?: number;
+  firstMoveAtMs?: number | null;
+  firstAttackAtMs?: number | null;
+  repositionMoveCount?: number;
+  lifetimeMs?: number;
+  battleDurationMs?: number;
+  initialNearestEnemyDistance?: number | null;
+  bestNearestEnemyDistance?: number | null;
+  moveTargetDiagnosticSampleCount?: number;
+  suboptimalMoveTargetCount?: number;
+  totalExcessApproachSteps?: number;
+  outsideAttackRangeBeforeFirstAttackMs?: number;
+  inAttackRangeBeforeFirstAttackMs?: number;
+  afterFirstAttackMs?: number;
+  firstReachedAttackRangeAtMs?: number | null;
+  initialRow?: number | null;
+  initialColumn?: number | null;
+  sameColumnFrontAllyCount?: number;
+  lateralLeftMoveCount?: number;
+  lateralRightMoveCount?: number;
+  firstLateralMoveDirection?: "left" | "right" | null;
+  sharedPursuitMoveSampleCount?: number;
+  contestedPursuitMoveSampleCount?: number;
+  plannedApproachGroupMoveSampleCount?: number;
+  totalPlannedApproachGroupCompetitorCount?: number;
+  totalPlannedApproachGroupAssignedCount?: number;
+  oversubscribedPlannedApproachGroupMoveCount?: number;
+  plannedApproachMoveSampleCount?: number;
+  plannedApproachStillOpenMoveCount?: number;
+  usedPlannedApproachMoveCount?: number;
+  plannedApproachPathBlockedMoveCount?: number;
+  plannedApproachWithFirstAttackCount?: number;
+  plannedApproachMatchedFirstAttackTargetCount?: number;
+  plannedApproachReachedRangeWithoutAttackCount?: number;
+  plannedApproachNoReachNoAttackCount?: number;
+  plannedApproachNoAttackTargetDiedBeforeBattleEndCount?: number;
+  plannedApproachReachedRangeWithoutAttackWhileTargetAliveCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveCount?: number;
+  plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithoutUsingPlannedDestinationCount?: number;
+  plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithPathBlockedCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithoutUsingPlannedDestinationCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithAllyAdjacentBlockCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyAdjacentBlockCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithMixedAdjacentBlockCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeCount?: number;
+  plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeCount?: number;
 };
 
 type BotOnlyRoundSnapshot = {
@@ -276,6 +358,7 @@ type BotOnlyTestAccess = {
   battleResultsByPlayer: Map<string, {
     survivors: number;
     timeline?: BattleTimelineEvent[];
+    rawTimeline?: BattleTimelineEvent[];
     survivorSnapshots?: Array<{
       unitId: string;
     }>;
@@ -296,6 +379,52 @@ type BotOnlyMatchArtifacts = {
   clients: BotOnlyTestClient[];
   roundSnapshots: BotOnlyRoundSnapshot[];
 };
+
+type BotOnlyBaselineMatchArtifacts = {
+  serverRoom: BotOnlyServerRoom;
+  clients: BotOnlyTestClient[];
+  battles: BotOnlyBaselineBattleSummary[];
+  observedShopOffers: BotOnlyBaselineObservedShopOffer[];
+};
+
+type BotOnlyFinalPlayerEconomySnapshot = {
+  totalGoldEarned: number;
+  totalGoldSpent: number;
+  purchaseCount: number;
+  refreshCount: number;
+  sellCount: number;
+};
+
+type BotOnlyRoomTimingSnapshot = BotOnlyReportMetadata["timings"] & {
+  battleTimelineTimeScale: number;
+};
+
+type ReportUnitCombatProfile = {
+  range: number;
+};
+
+const GENERIC_REPORT_UNIT_COMBAT_PROFILES = [
+  { key: "vanguard", range: 1 },
+  { key: "ranger", range: 3 },
+  { key: "mage", range: 2 },
+  { key: "assassin", range: 1 },
+] as const;
+
+const REPORT_UNIT_COMBAT_PROFILE_BY_ID = new Map<string, ReportUnitCombatProfile>([
+  ...TOUHOU_UNITS.map((unit) => [unit.unitId, { range: unit.range }] as const),
+  ...HEROES.map((hero) => [hero.id, { range: hero.range }] as const),
+  ...SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, { range: unit.range }] as const),
+  ["remilia", { range: getMvpPhase1Boss().range }],
+  ...GENERIC_REPORT_UNIT_COMBAT_PROFILES.map((profile) => [profile.key, { range: profile.range }] as const),
+]);
+
+const REPORT_UNIT_COMBAT_PROFILE_BY_TYPE = new Map<string, ReportUnitCombatProfile>([
+  ...TOUHOU_UNITS.map((unit) => [unit.unitId, { range: unit.range }] as const),
+  ...HEROES.map((hero) => [hero.id, { range: hero.range }] as const),
+  ...SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, { range: unit.range }] as const),
+  ["remilia", { range: getMvpPhase1Boss().range }],
+  ...GENERIC_REPORT_UNIT_COMBAT_PROFILES.map((profile) => [profile.key, { range: profile.range }] as const),
+]);
 
 const BOT_ONLY_PHASE_PRIORITY: Record<RoundStateMessage["phase"], number> = {
   Waiting: 0,
@@ -331,6 +460,92 @@ const getBoardPlacementReader = (serverRoom: BotOnlyServerRoom): BoardPlacementR
   }).controller;
 
   return controller ?? null;
+};
+
+const readBotOnlyRoomTimingSnapshot = (
+  serverRoom: BotOnlyServerRoom,
+): BotOnlyRoomTimingSnapshot | null => {
+  const candidate = serverRoom as unknown as Partial<Record<keyof BotOnlyRoomTimingSnapshot, unknown>>;
+  const readyAutoStartMs = candidate.readyAutoStartMs;
+  const prepDurationMs = candidate.prepDurationMs;
+  const battleDurationMs = candidate.battleDurationMs;
+  const settleDurationMs = candidate.settleDurationMs;
+  const eliminationDurationMs = candidate.eliminationDurationMs;
+  const selectionTimeoutMs = candidate.selectionTimeoutMs;
+  const battleTimelineTimeScale = candidate.battleTimelineTimeScale;
+
+  if (
+    !Number.isFinite(readyAutoStartMs)
+    || !Number.isFinite(prepDurationMs)
+    || !Number.isFinite(battleDurationMs)
+    || !Number.isFinite(settleDurationMs)
+    || !Number.isFinite(eliminationDurationMs)
+    || !Number.isFinite(selectionTimeoutMs)
+    || !Number.isFinite(battleTimelineTimeScale)
+  ) {
+    return null;
+  }
+
+  return {
+    readyAutoStartMs: Number(readyAutoStartMs),
+    prepDurationMs: Number(prepDurationMs),
+    battleDurationMs: Number(battleDurationMs),
+    settleDurationMs: Number(settleDurationMs),
+    eliminationDurationMs: Number(eliminationDurationMs),
+    selectionTimeoutMs: Number(selectionTimeoutMs),
+    battleTimelineTimeScale: Number(battleTimelineTimeScale),
+  };
+};
+
+const areBotOnlyTimingsEqual = (
+  left: BotOnlyRoomTimingSnapshot,
+  right: BotOnlyRoomTimingSnapshot,
+): boolean =>
+  left.readyAutoStartMs === right.readyAutoStartMs
+  && left.prepDurationMs === right.prepDurationMs
+  && left.battleDurationMs === right.battleDurationMs
+  && left.settleDurationMs === right.settleDurationMs
+  && left.eliminationDurationMs === right.eliminationDurationMs
+  && left.selectionTimeoutMs === right.selectionTimeoutMs
+  && left.battleTimelineTimeScale === right.battleTimelineTimeScale;
+
+const resolveBotOnlyReportMetadata = (
+  serverRoom: BotOnlyServerRoom,
+): BotOnlyReportMetadata | undefined => {
+  const timings = readBotOnlyRoomTimingSnapshot(serverRoom);
+  if (!timings) {
+    return undefined;
+  }
+
+  let mode: BotOnlyReportMetadata["mode"] = "custom";
+  const defaultTimings: BotOnlyRoomTimingSnapshot = {
+    ...DEFAULT_GAME_ROOM_OPTIONS,
+  };
+  if (areBotOnlyTimingsEqual(timings, defaultTimings)) {
+    mode = "real-play";
+  } else if (timings.battleTimelineTimeScale > 0) {
+    const fastParityTimings: BotOnlyRoomTimingSnapshot = {
+      ...createFastParityGameRoomOptions({
+        timeScale: timings.battleTimelineTimeScale,
+      }),
+    };
+    if (areBotOnlyTimingsEqual(timings, fastParityTimings)) {
+      mode = "fast-parity";
+    }
+  }
+
+  return {
+    mode,
+    timeScale: timings.battleTimelineTimeScale,
+    timings: {
+      readyAutoStartMs: timings.readyAutoStartMs,
+      prepDurationMs: timings.prepDurationMs,
+      battleDurationMs: timings.battleDurationMs,
+      settleDurationMs: timings.settleDurationMs,
+      eliminationDurationMs: timings.eliminationDurationMs,
+      selectionTimeoutMs: timings.selectionTimeoutMs,
+    },
+  };
 };
 
 const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
@@ -851,6 +1066,14 @@ const distributeIntegerTotalByWeight = (
   return distributed;
 };
 
+const resolveReportUnitCombatProfile = (
+  unitId: string,
+  unitType: string,
+): ReportUnitCombatProfile | null =>
+  REPORT_UNIT_COMBAT_PROFILE_BY_ID.get(unitId)
+  ?? REPORT_UNIT_COMBAT_PROFILE_BY_TYPE.get(unitType)
+  ?? null;
+
 const buildUnitBattleOutcomesForBattle = (
   timeline: BattleTimelineEvent[] | undefined,
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
@@ -868,15 +1091,57 @@ const buildUnitBattleOutcomesForBattle = (
   const ownerByTrackedUnitId = buildTrackedUnitOwnerMap(playersAtBattleStart);
   const metadataByPlayerAndUnitId = buildBoardUnitMetadataMapForBattle(playersAtBattleStart);
   const playerById = new Map(playersAtBattleStart.map((player) => [player.playerId, player] as const));
-  const damageByBattleUnitId = new Map<string, number>();
-  const phaseContributionByBattleUnitId = new Map<string, number>();
-  const damageBySourceToTargetBattleUnitId = new Map<string, Map<string, number>>();
-  const currentHpByBattleUnitId = new Map<string, number>();
-  const deadUnitIds = new Set<string>();
   const battleStartUnitByBattleUnitId = new Map(
     battleStartEvent.units.map((unit) => [unit.battleUnitId, unit] as const),
   );
+  const damageByBattleUnitId = new Map<string, number>();
+  const phaseContributionByBattleUnitId = new Map<string, number>();
+  const damageBySourceToTargetBattleUnitId = new Map<string, Map<string, number>>();
+  const attackCountByBattleUnitId = new Map<string, number>();
+  const hitCountByBattleUnitId = new Map<string, number>();
+  const damageTakenByBattleUnitId = new Map<string, number>();
+  const moveCountByBattleUnitId = new Map<string, number>();
+  const firstMoveAtMsByBattleUnitId = new Map<string, number>();
+  const repositionMoveCountByBattleUnitId = new Map<string, number>();
+  const lateralLeftMoveCountByBattleUnitId = new Map<string, number>();
+  const lateralRightMoveCountByBattleUnitId = new Map<string, number>();
+  const firstLateralMoveDirectionByBattleUnitId = new Map<string, "left" | "right">();
+  const sharedPursuitMoveSampleCountByBattleUnitId = new Map<string, number>();
+  const contestedPursuitMoveSampleCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachGroupMoveSampleCountByBattleUnitId = new Map<string, number>();
+  const totalPlannedApproachGroupCompetitorCountByBattleUnitId = new Map<string, number>();
+  const totalPlannedApproachGroupAssignedCountByBattleUnitId = new Map<string, number>();
+  const oversubscribedPlannedApproachGroupMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachMoveSampleCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachStillOpenMoveCountByBattleUnitId = new Map<string, number>();
+  const usedPlannedApproachMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByAllyAdjacentMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByEnemyAdjacentMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByMixedAdjacentMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByRouteChokeMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByAllyFrontierChokeMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByEnemyFrontierChokeMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByMixedFrontierChokeMoveCountByBattleUnitId = new Map<string, number>();
+  const plannedApproachPathBlockedByUnclassifiedFrontierChokeMoveCountByBattleUnitId = new Map<string, number>();
+  const firstPlannedApproachTargetByBattleUnitId = new Map<string, string>();
+  const moveTargetDiagnosticSampleCountByBattleUnitId = new Map<string, number>();
+  const suboptimalMoveTargetCountByBattleUnitId = new Map<string, number>();
+  const totalExcessApproachStepsByBattleUnitId = new Map<string, number>();
+  const firstAttackAtMsByBattleUnitId = new Map<string, number>();
+  const currentHpByBattleUnitId = new Map<string, number>();
+  const deadUnitIds = new Set<string>();
+  const deathAtMsByBattleUnitId = new Map<string, number>();
+  const currentPositionByBattleUnitId = new Map(
+    battleStartEvent.units.map((unit) => [unit.battleUnitId, { x: unit.x, y: unit.y }] as const),
+  );
+  const initialNearestEnemyDistanceByBattleUnitId = new Map<string, number | null>();
+  const bestNearestEnemyDistanceByBattleUnitId = new Map<string, number | null>();
   const latestDamageSourceByTargetBattleUnitId = new Map<string, string>();
+  const outsideAttackRangeBeforeFirstAttackMsByBattleUnitId = new Map<string, number>();
+  const inAttackRangeBeforeFirstAttackMsByBattleUnitId = new Map<string, number>();
+  const afterFirstAttackMsByBattleUnitId = new Map<string, number>();
+  const firstReachedAttackRangeAtMsByBattleUnitId = new Map<string, number | null>();
   const latestKeyframeByBattleUnitId = new Map<
     string,
     {
@@ -884,6 +1149,8 @@ const buildUnitBattleOutcomesForBattle = (
       alive: boolean;
     }
   >();
+  let maxTimelineAtMs = 0;
+  let battleEndAtMs: number | null = null;
   const resolvePlayerRoleForBattleUnit = (
     battleUnitId: string,
   ): "boss" | "raid" | null => {
@@ -905,11 +1172,260 @@ const buildUnitBattleOutcomesForBattle = (
     return playerById.get(playerId)?.role === "boss" ? "boss" : "raid";
   };
 
+  const computeNearestEnemyDistance = (battleUnitId: string): number | null => {
+    const currentPosition = currentPositionByBattleUnitId.get(battleUnitId);
+    const currentUnit = battleStartUnitByBattleUnitId.get(battleUnitId);
+    if (!currentPosition || !currentUnit || deadUnitIds.has(battleUnitId)) {
+      return null;
+    }
+
+    let nearestDistance: number | null = null;
+    for (const candidate of battleStartEvent.units) {
+      if (candidate.side === currentUnit.side || deadUnitIds.has(candidate.battleUnitId)) {
+        continue;
+      }
+
+      const candidatePosition = currentPositionByBattleUnitId.get(candidate.battleUnitId);
+      if (!candidatePosition) {
+        continue;
+      }
+
+      const distance = Math.abs(currentPosition.x - candidatePosition.x)
+        + Math.abs(currentPosition.y - candidatePosition.y);
+      nearestDistance = nearestDistance == null
+        ? distance
+        : Math.min(nearestDistance, distance);
+    }
+
+    return nearestDistance;
+  };
+
+  const refreshNearestEnemyDistances = (): void => {
+    for (const unit of battleStartEvent.units) {
+      const nearestDistance = computeNearestEnemyDistance(unit.battleUnitId);
+      if (!initialNearestEnemyDistanceByBattleUnitId.has(unit.battleUnitId)) {
+        initialNearestEnemyDistanceByBattleUnitId.set(unit.battleUnitId, nearestDistance);
+      }
+      if (nearestDistance == null) {
+        continue;
+      }
+
+      const bestDistance = bestNearestEnemyDistanceByBattleUnitId.get(unit.battleUnitId);
+      if (bestDistance == null || nearestDistance < bestDistance) {
+        bestNearestEnemyDistanceByBattleUnitId.set(unit.battleUnitId, nearestDistance);
+      }
+    }
+  };
+
+  refreshNearestEnemyDistances();
+
   for (const event of timeline) {
+    if ("atMs" in event && typeof event.atMs === "number") {
+      maxTimelineAtMs = Math.max(maxTimelineAtMs, event.atMs);
+    }
+
+    if (event.type === "attackStart") {
+      attackCountByBattleUnitId.set(
+        event.sourceBattleUnitId,
+        (attackCountByBattleUnitId.get(event.sourceBattleUnitId) ?? 0) + 1,
+      );
+      if (!firstAttackAtMsByBattleUnitId.has(event.sourceBattleUnitId)) {
+        firstAttackAtMsByBattleUnitId.set(event.sourceBattleUnitId, event.atMs);
+      }
+      continue;
+    }
+
+    if (event.type === "move") {
+      const lateralDeltaX = event.to.x - event.from.x;
+      if (lateralDeltaX < 0) {
+        lateralLeftMoveCountByBattleUnitId.set(
+          event.battleUnitId,
+          (lateralLeftMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+        );
+        if (!firstLateralMoveDirectionByBattleUnitId.has(event.battleUnitId)) {
+          firstLateralMoveDirectionByBattleUnitId.set(event.battleUnitId, "left");
+        }
+      } else if (lateralDeltaX > 0) {
+        lateralRightMoveCountByBattleUnitId.set(
+          event.battleUnitId,
+          (lateralRightMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+        );
+        if (!firstLateralMoveDirectionByBattleUnitId.has(event.battleUnitId)) {
+          firstLateralMoveDirectionByBattleUnitId.set(event.battleUnitId, "right");
+        }
+      }
+      currentPositionByBattleUnitId.set(event.battleUnitId, event.to);
+      moveCountByBattleUnitId.set(
+        event.battleUnitId,
+        (moveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+      );
+      if (
+        typeof event.plannedApproachGroupTargetBattleUnitId === "string"
+        && typeof event.plannedApproachGroupCompetitorCountBeforeMove === "number"
+        && typeof event.plannedApproachGroupAssignedCountBeforeMove === "number"
+      ) {
+        plannedApproachGroupMoveSampleCountByBattleUnitId.set(
+          event.battleUnitId,
+          (plannedApproachGroupMoveSampleCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+        );
+        totalPlannedApproachGroupCompetitorCountByBattleUnitId.set(
+          event.battleUnitId,
+          (totalPlannedApproachGroupCompetitorCountByBattleUnitId.get(event.battleUnitId) ?? 0)
+            + event.plannedApproachGroupCompetitorCountBeforeMove,
+        );
+        totalPlannedApproachGroupAssignedCountByBattleUnitId.set(
+          event.battleUnitId,
+          (totalPlannedApproachGroupAssignedCountByBattleUnitId.get(event.battleUnitId) ?? 0)
+            + event.plannedApproachGroupAssignedCountBeforeMove,
+        );
+        if (event.plannedApproachGroupCompetitorCountBeforeMove > event.plannedApproachGroupAssignedCountBeforeMove) {
+          oversubscribedPlannedApproachGroupMoveCountByBattleUnitId.set(
+            event.battleUnitId,
+            (oversubscribedPlannedApproachGroupMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+          );
+        }
+      }
+      if (typeof event.plannedApproachTargetBattleUnitId === "string") {
+        plannedApproachMoveSampleCountByBattleUnitId.set(
+          event.battleUnitId,
+          (plannedApproachMoveSampleCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+        );
+        if (!firstPlannedApproachTargetByBattleUnitId.has(event.battleUnitId)) {
+          firstPlannedApproachTargetByBattleUnitId.set(
+            event.battleUnitId,
+            event.plannedApproachTargetBattleUnitId,
+          );
+        }
+        if (event.plannedApproachDestinationStillOpenBeforeMove) {
+          plannedApproachStillOpenMoveCountByBattleUnitId.set(
+            event.battleUnitId,
+            (plannedApproachStillOpenMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+          );
+        }
+        if (event.usedPlannedApproachDestination) {
+          usedPlannedApproachMoveCountByBattleUnitId.set(
+            event.battleUnitId,
+            (usedPlannedApproachMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+          );
+        }
+        if (event.plannedApproachDestinationPathBlockedBeforeMove) {
+          plannedApproachPathBlockedMoveCountByBattleUnitId.set(
+            event.battleUnitId,
+            (plannedApproachPathBlockedMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+          );
+          switch (event.plannedApproachDestinationPathBlockerTypeBeforeMove) {
+            case "ally_adjacent":
+              plannedApproachPathBlockedByAllyAdjacentMoveCountByBattleUnitId.set(
+                event.battleUnitId,
+                (plannedApproachPathBlockedByAllyAdjacentMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+              );
+              break;
+            case "enemy_adjacent":
+              plannedApproachPathBlockedByEnemyAdjacentMoveCountByBattleUnitId.set(
+                event.battleUnitId,
+                (plannedApproachPathBlockedByEnemyAdjacentMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+              );
+              break;
+            case "mixed_adjacent":
+              plannedApproachPathBlockedByMixedAdjacentMoveCountByBattleUnitId.set(
+                event.battleUnitId,
+                (plannedApproachPathBlockedByMixedAdjacentMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+              );
+              break;
+            case "route_choke":
+              plannedApproachPathBlockedByRouteChokeMoveCountByBattleUnitId.set(
+                event.battleUnitId,
+                (plannedApproachPathBlockedByRouteChokeMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+              );
+              switch (event.plannedApproachDestinationRouteChokeTypeBeforeMove) {
+                case "ally_frontier":
+                  plannedApproachPathBlockedByAllyFrontierChokeMoveCountByBattleUnitId.set(
+                    event.battleUnitId,
+                    (plannedApproachPathBlockedByAllyFrontierChokeMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+                  );
+                  break;
+                case "enemy_frontier":
+                  plannedApproachPathBlockedByEnemyFrontierChokeMoveCountByBattleUnitId.set(
+                    event.battleUnitId,
+                    (plannedApproachPathBlockedByEnemyFrontierChokeMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+                  );
+                  break;
+                case "mixed_frontier":
+                  plannedApproachPathBlockedByMixedFrontierChokeMoveCountByBattleUnitId.set(
+                    event.battleUnitId,
+                    (plannedApproachPathBlockedByMixedFrontierChokeMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+                  );
+                  break;
+                case "unclassified":
+                  plannedApproachPathBlockedByUnclassifiedFrontierChokeMoveCountByBattleUnitId.set(
+                    event.battleUnitId,
+                    (plannedApproachPathBlockedByUnclassifiedFrontierChokeMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+                  );
+                  break;
+                default:
+                  break;
+              }
+              break;
+            default:
+              break;
+          }
+        }
+      }
+      if (!firstMoveAtMsByBattleUnitId.has(event.battleUnitId)) {
+        firstMoveAtMsByBattleUnitId.set(event.battleUnitId, event.atMs);
+      }
+      if (firstAttackAtMsByBattleUnitId.has(event.battleUnitId)) {
+        repositionMoveCountByBattleUnitId.set(
+          event.battleUnitId,
+          (repositionMoveCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+        );
+      }
+      if (
+        typeof event.pursuedTargetBattleUnitId === "string"
+        && typeof event.bestApproachTargetBattleUnitId === "string"
+      ) {
+        moveTargetDiagnosticSampleCountByBattleUnitId.set(
+          event.battleUnitId,
+          (moveTargetDiagnosticSampleCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+        );
+        if (event.pursuedTargetBattleUnitId !== event.bestApproachTargetBattleUnitId) {
+          suboptimalMoveTargetCountByBattleUnitId.set(
+            event.battleUnitId,
+            (suboptimalMoveTargetCountByBattleUnitId.get(event.battleUnitId) ?? 0) + 1,
+          );
+        }
+      }
+      if (
+        typeof event.pursuedTargetRequiredStepsBeforeMove === "number"
+        && typeof event.bestApproachTargetRequiredStepsBeforeMove === "number"
+      ) {
+        totalExcessApproachStepsByBattleUnitId.set(
+          event.battleUnitId,
+          (totalExcessApproachStepsByBattleUnitId.get(event.battleUnitId) ?? 0)
+            + Math.max(
+              0,
+              event.pursuedTargetRequiredStepsBeforeMove - event.bestApproachTargetRequiredStepsBeforeMove,
+            ),
+        );
+      }
+      refreshNearestEnemyDistances();
+      continue;
+    }
+
     if (event.type === "damageApplied") {
       damageByBattleUnitId.set(
         event.sourceBattleUnitId,
         (damageByBattleUnitId.get(event.sourceBattleUnitId) ?? 0) + event.amount,
+      );
+      if (event.amount > 0) {
+        hitCountByBattleUnitId.set(
+          event.sourceBattleUnitId,
+          (hitCountByBattleUnitId.get(event.sourceBattleUnitId) ?? 0) + 1,
+        );
+      }
+      damageTakenByBattleUnitId.set(
+        event.targetBattleUnitId,
+        (damageTakenByBattleUnitId.get(event.targetBattleUnitId) ?? 0) + event.amount,
       );
       const sourceDamageByTarget = damageBySourceToTargetBattleUnitId.get(event.targetBattleUnitId)
         ?? new Map<string, number>();
@@ -975,21 +1491,226 @@ const buildUnitBattleOutcomesForBattle = (
         }
       }
       deadUnitIds.add(event.battleUnitId);
+      deathAtMsByBattleUnitId.set(
+        event.battleUnitId,
+        deathAtMsByBattleUnitId.get(event.battleUnitId) ?? event.atMs,
+      );
       currentHpByBattleUnitId.set(event.battleUnitId, 0);
       latestKeyframeByBattleUnitId.set(event.battleUnitId, {
         currentHp: 0,
         alive: false,
       });
+      refreshNearestEnemyDistances();
       continue;
     }
 
     if (event.type === "keyframe") {
       for (const unitState of event.units) {
+        currentPositionByBattleUnitId.set(unitState.battleUnitId, {
+          x: unitState.x,
+          y: unitState.y,
+        });
         latestKeyframeByBattleUnitId.set(unitState.battleUnitId, {
           currentHp: unitState.currentHp,
           alive: unitState.alive,
         });
+        if (!unitState.alive && !deathAtMsByBattleUnitId.has(unitState.battleUnitId)) {
+          deathAtMsByBattleUnitId.set(unitState.battleUnitId, event.atMs);
+          deadUnitIds.add(unitState.battleUnitId);
+        } else if (unitState.alive) {
+          deadUnitIds.delete(unitState.battleUnitId);
+        }
       }
+      refreshNearestEnemyDistances();
+      continue;
+    }
+
+    if (event.type === "battleEnd") {
+      battleEndAtMs = event.atMs;
+    }
+  }
+
+  const resolvedBattleDurationMs = battleEndAtMs ?? maxTimelineAtMs;
+  const attackRangeByBattleUnitId = new Map<string, number>();
+  const initialRowByBattleUnitId = new Map<string, number>();
+  const initialColumnByBattleUnitId = new Map<string, number>();
+  const sameColumnFrontAllyCountByBattleUnitId = new Map<string, number>();
+
+  for (const unit of battleStartEvent.units) {
+    const playerId = resolvePlayerIdForBattleUnit(
+      unit.ownerPlayerId,
+      unit.battleUnitId,
+      unit.sourceUnitId,
+      ownerByTrackedUnitId,
+    );
+    const sourceUnitId = unit.sourceUnitId ?? unit.battleUnitId;
+    const metadataUnitType = playerId == null
+      ? null
+      : (metadataByPlayerAndUnitId.get(`${playerId}::${sourceUnitId}`)?.[0]?.unitType ?? null);
+    const combatProfile = resolveReportUnitCombatProfile(
+      sourceUnitId,
+      metadataUnitType ?? sourceUnitId,
+    );
+    attackRangeByBattleUnitId.set(unit.battleUnitId, combatProfile?.range ?? 1);
+    initialRowByBattleUnitId.set(unit.battleUnitId, unit.y);
+    initialColumnByBattleUnitId.set(unit.battleUnitId, unit.x);
+  }
+
+  for (const unit of battleStartEvent.units) {
+    const frontAllyCount = battleStartEvent.units.filter((candidate) => (
+      candidate.battleUnitId !== unit.battleUnitId
+      && candidate.side === unit.side
+      && candidate.x === unit.x
+      && (
+        unit.side === "raid"
+          ? candidate.y < unit.y
+          : candidate.y > unit.y
+      )
+    )).length;
+    sameColumnFrontAllyCountByBattleUnitId.set(unit.battleUnitId, frontAllyCount);
+  }
+
+  const timedEventsByAtMs = new Map<number, BattleTimelineEvent[]>();
+  for (const event of timeline) {
+    if (!("atMs" in event) || typeof event.atMs !== "number" || !Number.isFinite(event.atMs)) {
+      continue;
+    }
+
+    const timedEvents = timedEventsByAtMs.get(event.atMs) ?? [];
+    timedEvents.push(event);
+    timedEventsByAtMs.set(event.atMs, timedEvents);
+  }
+
+  const intervalAliveByBattleUnitId = new Map<string, boolean>(
+    battleStartEvent.units.map((unit) => [unit.battleUnitId, true] as const),
+  );
+  const intervalPositionByBattleUnitId = new Map(
+    battleStartEvent.units.map((unit) => [unit.battleUnitId, { x: unit.x, y: unit.y }] as const),
+  );
+  const hasAttackedByBattleUnitId = new Map<string, boolean>(
+    battleStartEvent.units.map((unit) => [unit.battleUnitId, false] as const),
+  );
+
+  const computeNearestLivingEnemyDistanceAtInterval = (battleUnitId: string): number | null => {
+    const currentUnit = battleStartUnitByBattleUnitId.get(battleUnitId);
+    const currentPosition = intervalPositionByBattleUnitId.get(battleUnitId);
+    if (!currentUnit || !currentPosition || !intervalAliveByBattleUnitId.get(battleUnitId)) {
+      return null;
+    }
+
+    let nearestDistance: number | null = null;
+    for (const candidate of battleStartEvent.units) {
+      if (candidate.side === currentUnit.side || !intervalAliveByBattleUnitId.get(candidate.battleUnitId)) {
+        continue;
+      }
+
+      const candidatePosition = intervalPositionByBattleUnitId.get(candidate.battleUnitId);
+      if (!candidatePosition) {
+        continue;
+      }
+
+      const distance = Math.abs(currentPosition.x - candidatePosition.x)
+        + Math.abs(currentPosition.y - candidatePosition.y);
+      nearestDistance = nearestDistance == null
+        ? distance
+        : Math.min(nearestDistance, distance);
+    }
+
+    return nearestDistance;
+  };
+
+  const intervalBoundaries = Array.from(new Set([0, resolvedBattleDurationMs, ...timedEventsByAtMs.keys()]))
+    .filter((atMs) => atMs >= 0 && atMs <= resolvedBattleDurationMs)
+    .sort((left, right) => left - right);
+
+  for (let index = 0; index < intervalBoundaries.length - 1; index += 1) {
+    const currentAtMs = intervalBoundaries[index] ?? 0;
+    const nextAtMs = intervalBoundaries[index + 1] ?? currentAtMs;
+    const timedEvents = timedEventsByAtMs.get(currentAtMs) ?? [];
+
+    const moveEventsWithPursuedTarget = timedEvents.filter(
+      (event): event is MoveEvent =>
+        event.type === "move" && typeof event.pursuedTargetBattleUnitId === "string",
+    );
+    const moveEventsByPursuitKey = new Map<string, MoveEvent[]>();
+    for (const moveEvent of moveEventsWithPursuedTarget) {
+      const movingUnit = battleStartUnitByBattleUnitId.get(moveEvent.battleUnitId);
+      if (!movingUnit || !moveEvent.pursuedTargetBattleUnitId) {
+        continue;
+      }
+
+      const pursuitKey = `${currentAtMs}::${movingUnit.side}::${moveEvent.pursuedTargetBattleUnitId}`;
+      const groupedMoveEvents = moveEventsByPursuitKey.get(pursuitKey) ?? [];
+      groupedMoveEvents.push(moveEvent);
+      moveEventsByPursuitKey.set(pursuitKey, groupedMoveEvents);
+    }
+
+    for (const groupedMoveEvents of moveEventsByPursuitKey.values()) {
+      for (const moveEvent of groupedMoveEvents) {
+        sharedPursuitMoveSampleCountByBattleUnitId.set(
+          moveEvent.battleUnitId,
+          (sharedPursuitMoveSampleCountByBattleUnitId.get(moveEvent.battleUnitId) ?? 0) + 1,
+        );
+        if (groupedMoveEvents.length > 1) {
+          contestedPursuitMoveSampleCountByBattleUnitId.set(
+            moveEvent.battleUnitId,
+            (contestedPursuitMoveSampleCountByBattleUnitId.get(moveEvent.battleUnitId) ?? 0) + 1,
+          );
+        }
+      }
+    }
+
+    for (const event of timedEvents) {
+      if (event.type === "move") {
+        intervalPositionByBattleUnitId.set(event.battleUnitId, event.to);
+        continue;
+      }
+
+      if (event.type === "attackStart") {
+        hasAttackedByBattleUnitId.set(event.sourceBattleUnitId, true);
+        continue;
+      }
+
+      if (event.type === "unitDeath") {
+        intervalAliveByBattleUnitId.set(event.battleUnitId, false);
+      }
+    }
+
+    const intervalMs = Math.max(0, nextAtMs - currentAtMs);
+    if (intervalMs <= 0) {
+      continue;
+    }
+
+    for (const unit of battleStartEvent.units) {
+      if (!intervalAliveByBattleUnitId.get(unit.battleUnitId)) {
+        continue;
+      }
+
+      if (hasAttackedByBattleUnitId.get(unit.battleUnitId)) {
+        afterFirstAttackMsByBattleUnitId.set(
+          unit.battleUnitId,
+          (afterFirstAttackMsByBattleUnitId.get(unit.battleUnitId) ?? 0) + intervalMs,
+        );
+        continue;
+      }
+
+      const nearestEnemyDistance = computeNearestLivingEnemyDistanceAtInterval(unit.battleUnitId);
+      const attackRange = attackRangeByBattleUnitId.get(unit.battleUnitId) ?? 1;
+      if (nearestEnemyDistance != null && nearestEnemyDistance <= attackRange) {
+        if (!firstReachedAttackRangeAtMsByBattleUnitId.has(unit.battleUnitId)) {
+          firstReachedAttackRangeAtMsByBattleUnitId.set(unit.battleUnitId, currentAtMs);
+        }
+        inAttackRangeBeforeFirstAttackMsByBattleUnitId.set(
+          unit.battleUnitId,
+          (inAttackRangeBeforeFirstAttackMsByBattleUnitId.get(unit.battleUnitId) ?? 0) + intervalMs,
+        );
+        continue;
+      }
+
+      outsideAttackRangeBeforeFirstAttackMsByBattleUnitId.set(
+        unit.battleUnitId,
+        (outsideAttackRangeBeforeFirstAttackMsByBattleUnitId.get(unit.battleUnitId) ?? 0) + intervalMs,
+      );
     }
   }
 
@@ -1021,6 +1742,40 @@ const buildUnitBattleOutcomesForBattle = (
       );
       const alive = latestKeyframe?.alive
         ?? (!deadUnitIds.has(unit.battleUnitId) && finalHp > 0);
+      const lifetimeMs = Math.max(
+        0,
+        Math.min(
+          deathAtMsByBattleUnitId.get(unit.battleUnitId) ?? resolvedBattleDurationMs,
+          resolvedBattleDurationMs,
+        ),
+      );
+
+      const plannedApproachMoveSampleCount =
+        plannedApproachMoveSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0;
+      const firstAttackAtMs = firstAttackAtMsByBattleUnitId.get(unit.battleUnitId) ?? null;
+      const attackCount = attackCountByBattleUnitId.get(unit.battleUnitId) ?? 0;
+      const firstPlannedApproachTargetBattleUnitId =
+        firstPlannedApproachTargetByBattleUnitId.get(unit.battleUnitId) ?? null;
+      const firstAttackTargetBattleUnitId = firstAttackAtMs == null
+        ? null
+        : timeline.find(
+          (event): event is AttackStartEvent =>
+            event.type === "attackStart"
+            && event.sourceBattleUnitId === unit.battleUnitId
+            && event.atMs === firstAttackAtMs,
+        )?.targetBattleUnitId ?? null;
+      const plannedApproachTargetDeathAtMs = firstPlannedApproachTargetBattleUnitId == null
+        ? null
+        : deathAtMsByBattleUnitId.get(firstPlannedApproachTargetBattleUnitId) ?? null;
+      const plannedApproachTargetAliveAtBattleEnd =
+        firstPlannedApproachTargetBattleUnitId != null
+        && (
+          plannedApproachTargetDeathAtMs == null
+          || plannedApproachTargetDeathAtMs > resolvedBattleDurationMs
+        );
+      const reachedAttackRange =
+        (bestNearestEnemyDistanceByBattleUnitId.get(unit.battleUnitId) ?? Number.POSITIVE_INFINITY)
+        <= (attackRangeByBattleUnitId.get(unit.battleUnitId) ?? 1);
 
       return {
         playerId,
@@ -1035,6 +1790,181 @@ const buildUnitBattleOutcomesForBattle = (
         starLevel: metadata?.starLevel ?? 1,
         subUnitName: metadata?.subUnitName ?? "",
         isSpecialUnit: metadata == null,
+        attackCount,
+        hitCount: hitCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        damageTaken: damageTakenByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        moveCount: moveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        firstMoveAtMs: firstMoveAtMsByBattleUnitId.get(unit.battleUnitId) ?? null,
+        firstAttackAtMs,
+        repositionMoveCount: repositionMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        lifetimeMs,
+        battleDurationMs: resolvedBattleDurationMs,
+        initialNearestEnemyDistance: initialNearestEnemyDistanceByBattleUnitId.get(unit.battleUnitId) ?? null,
+        bestNearestEnemyDistance: bestNearestEnemyDistanceByBattleUnitId.get(unit.battleUnitId) ?? null,
+        moveTargetDiagnosticSampleCount: moveTargetDiagnosticSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        suboptimalMoveTargetCount: suboptimalMoveTargetCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        totalExcessApproachSteps: totalExcessApproachStepsByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        outsideAttackRangeBeforeFirstAttackMs:
+          outsideAttackRangeBeforeFirstAttackMsByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        inAttackRangeBeforeFirstAttackMs:
+          inAttackRangeBeforeFirstAttackMsByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        afterFirstAttackMs: afterFirstAttackMsByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        firstReachedAttackRangeAtMs:
+          firstReachedAttackRangeAtMsByBattleUnitId.get(unit.battleUnitId) ?? null,
+        initialRow: initialRowByBattleUnitId.get(unit.battleUnitId) ?? null,
+        initialColumn: initialColumnByBattleUnitId.get(unit.battleUnitId) ?? null,
+        sameColumnFrontAllyCount: sameColumnFrontAllyCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        lateralLeftMoveCount: lateralLeftMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        lateralRightMoveCount: lateralRightMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        firstLateralMoveDirection: firstLateralMoveDirectionByBattleUnitId.get(unit.battleUnitId) ?? null,
+        sharedPursuitMoveSampleCount:
+          sharedPursuitMoveSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        contestedPursuitMoveSampleCount:
+          contestedPursuitMoveSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        plannedApproachGroupMoveSampleCount:
+          plannedApproachGroupMoveSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        totalPlannedApproachGroupCompetitorCount:
+          totalPlannedApproachGroupCompetitorCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        totalPlannedApproachGroupAssignedCount:
+          totalPlannedApproachGroupAssignedCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        oversubscribedPlannedApproachGroupMoveCount:
+          oversubscribedPlannedApproachGroupMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        plannedApproachMoveSampleCount,
+        plannedApproachStillOpenMoveCount:
+          plannedApproachStillOpenMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        usedPlannedApproachMoveCount:
+          usedPlannedApproachMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        plannedApproachPathBlockedMoveCount:
+          plannedApproachPathBlockedMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
+        plannedApproachWithFirstAttackCount:
+          plannedApproachMoveSampleCount > 0 && firstAttackAtMs != null ? 1 : 0,
+        plannedApproachMatchedFirstAttackTargetCount:
+          plannedApproachMoveSampleCount > 0
+            && firstAttackTargetBattleUnitId != null
+            && firstAttackTargetBattleUnitId === firstPlannedApproachTargetBattleUnitId
+            ? 1
+            : 0,
+        plannedApproachReachedRangeWithoutAttackCount:
+          plannedApproachMoveSampleCount > 0 && attackCount <= 0 && reachedAttackRange ? 1 : 0,
+        plannedApproachNoReachNoAttackCount:
+          plannedApproachMoveSampleCount > 0 && attackCount <= 0 && !reachedAttackRange ? 1 : 0,
+        plannedApproachNoAttackTargetDiedBeforeBattleEndCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && firstPlannedApproachTargetBattleUnitId != null
+            && !plannedApproachTargetAliveAtBattleEnd
+            ? 1
+            : 0,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            ? 1
+            : 0,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithoutUsingPlannedDestinationCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (usedPlannedApproachMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) <= 0
+            ? 1
+            : 0,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithPathBlockedCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithoutUsingPlannedDestinationCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (usedPlannedApproachMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) <= 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithAllyAdjacentBlockCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByAllyAdjacentMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyAdjacentBlockCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByEnemyAdjacentMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithMixedAdjacentBlockCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByMixedAdjacentMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByRouteChokeMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByAllyFrontierChokeMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByEnemyFrontierChokeMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByMixedFrontierChokeMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeCount:
+          plannedApproachMoveSampleCount > 0
+            && attackCount <= 0
+            && !reachedAttackRange
+            && plannedApproachTargetAliveAtBattleEnd
+            && (plannedApproachPathBlockedByUnclassifiedFrontierChokeMoveCountByBattleUnitId.get(unit.battleUnitId) ?? 0) > 0
+            ? 1
+            : 0,
       };
     })
     .filter((unit): unit is ReportUnitBattleOutcome => unit !== null)
@@ -1060,6 +1990,23 @@ const resolveBattleDurationMsFromTimeline = (
   }
 
   return maxAtMs;
+};
+
+const resolveBattleEndReasonFromTimeline = (
+  timeline: BattleTimelineEvent[] | undefined,
+): BotOnlyBaselineBattleEndReason | undefined => {
+  if (!Array.isArray(timeline) || timeline.length === 0) {
+    return undefined;
+  }
+
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const event = timeline[index];
+    if (event?.type === "battleEnd") {
+      return event.endReason as BotOnlyBaselineBattleEndReason | undefined;
+    }
+  }
+
+  return undefined;
 };
 
 const resolveRemainingTimeFromDeadlineAtMs = (
@@ -1124,6 +2071,8 @@ const buildRoundBattleReport = (
   battleDurationOverrideMs?: number,
 ): BotOnlyRoundBattleReport => {
   const battleDurationMs = battleDurationOverrideMs ?? resolveBattleDurationMsFromTimeline(timeline);
+  const battleEndReason = resolveBattleEndReasonFromTimeline(timeline);
+  const bossIsLeft = battle.leftPlayerId === serverRoom.state.bossPlayerId;
   return {
     battleIndex: battle.battleIndex,
     leftPlayerId: battle.leftPlayerId,
@@ -1131,6 +2080,9 @@ const buildRoundBattleReport = (
     rightPlayerId: battle.rightPlayerId,
     rightLabel: getPlayerLabel(playerLabels, battle.rightPlayerId),
     ...(battleDurationMs !== undefined ? { battleDurationMs } : {}),
+    ...(battleEndReason !== undefined ? { battleEndReason } : {}),
+    bossSurvivors: bossIsLeft ? battle.leftSurvivors : battle.rightSurvivors,
+    raidSurvivors: bossIsLeft ? battle.rightSurvivors : battle.leftSurvivors,
     leftSpecialUnits: getSpecialBattleUnitsForPlayers(
       serverRoom,
       getBattleSidePlayerIds(serverRoom, battle.leftPlayerId),
@@ -1211,7 +2163,8 @@ const resolveBattleTimelineForReportBattle = (
 
   const testAccess = getTestAccess(serverRoom);
   for (const playerId of [battle.leftPlayerId, battle.rightPlayerId]) {
-    const timeline = testAccess?.battleResultsByPlayer.get(playerId)?.timeline;
+    const battleResult = testAccess?.battleResultsByPlayer.get(playerId);
+    const timeline = battleResult?.rawTimeline ?? battleResult?.timeline;
     if (Array.isArray(timeline) && timeline.length > 0) {
       return timeline;
     }
@@ -1228,7 +2181,8 @@ const captureBattleTimelinesForRound = (
 
   return clients
     .map((client) => {
-      const timeline = testAccess?.battleResultsByPlayer.get(client.sessionId)?.timeline;
+      const battleResult = testAccess?.battleResultsByPlayer.get(client.sessionId);
+      const timeline = battleResult?.rawTimeline ?? battleResult?.timeline;
       return {
         playerId: client.sessionId,
         battleId: resolveBattleIdFromTimeline(timeline),
@@ -1378,7 +2332,108 @@ test("resolveBattleTimelineForReportBattle prefers the round snapshot over lates
   ).toBe(roundOneTimeline);
 });
 
+test("resolveBattleTimelineForReportBattle prefers rawTimeline from controller battle results", () => {
+  const scaledTimeline = [{
+    type: "battleStart",
+    battleId: "r1-p1-p2-scaled",
+    round: 1,
+    boardConfig: {
+      width: 6,
+      height: 6,
+    },
+    units: [],
+  }] as unknown as BattleTimelineEvent[];
+  const rawTimeline = [{
+    type: "battleStart",
+    battleId: "r1-p1-p2-raw",
+    round: 1,
+    boardConfig: {
+      width: 6,
+      height: 6,
+    },
+    units: [],
+  }] as unknown as BattleTimelineEvent[];
+
+  const fakeRoom = {
+    controller: {
+      getBoardPlacementsForPlayer: () => [],
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer: new Map([
+          ["p1", {
+            survivors: 1,
+            timeline: scaledTimeline,
+            rawTimeline,
+            survivorSnapshots: [],
+          }],
+          ["p2", {
+            survivors: 0,
+            timeline: scaledTimeline,
+            rawTimeline,
+            survivorSnapshots: [],
+          }],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(
+    resolveBattleTimelineForReportBattle(fakeRoom, undefined, {
+      leftPlayerId: "p1",
+      rightPlayerId: "p2",
+    }),
+  ).toBe(rawTimeline);
+});
+
+test("captureBattleTimelinesForRound stores rawTimeline when available", () => {
+  const scaledTimeline = [{
+    type: "battleStart",
+    battleId: "scaled",
+    round: 1,
+    boardConfig: {
+      width: 6,
+      height: 6,
+    },
+    units: [],
+  }] as unknown as BattleTimelineEvent[];
+  const rawTimeline = [{
+    type: "battleStart",
+    battleId: "raw",
+    round: 1,
+    boardConfig: {
+      width: 6,
+      height: 6,
+    },
+    units: [],
+  }] as unknown as BattleTimelineEvent[];
+
+  const fakeRoom = {
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer: new Map([
+          ["p1", {
+            survivors: 1,
+            timeline: scaledTimeline,
+            rawTimeline,
+            survivorSnapshots: [],
+          }],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(captureBattleTimelinesForRound(fakeRoom, [{
+    sessionId: "p1",
+  }] as BotOnlyTestClient[])).toEqual([{
+    playerId: "p1",
+    battleId: "raw",
+    timeline: rawTimeline,
+  }]);
+});
+
 test("buildBotOnlyMatchRoundReport prefers captured round battle details over recomputing from latest state", () => {
+  const fastParityTimings = createFastParityGameRoomOptions({ timeScale: 0.02 });
   const snapshotBattle: BotOnlyRoundBattleReport = {
     battleIndex: 0,
     leftPlayerId: "boss-1",
@@ -1410,6 +2465,13 @@ test("buildBotOnlyMatchRoundReport prefers captured round battle details over re
   };
 
   const fakeRoom = {
+    readyAutoStartMs: fastParityTimings.readyAutoStartMs,
+    prepDurationMs: fastParityTimings.prepDurationMs,
+    battleDurationMs: fastParityTimings.battleDurationMs,
+    settleDurationMs: fastParityTimings.settleDurationMs,
+    eliminationDurationMs: fastParityTimings.eliminationDurationMs,
+    selectionTimeoutMs: fastParityTimings.selectionTimeoutMs,
+    battleTimelineTimeScale: fastParityTimings.battleTimelineTimeScale,
     state: {
       roundIndex: 1,
       bossPlayerId: "boss-1",
@@ -1525,6 +2587,10 @@ test("buildBotOnlyMatchRoundReport prefers captured round battle details over re
   });
 
   expect(report.rounds[0]?.battles[0]?.unitOutcomes[0]?.unitName).toBe("Round1Boss");
+  expect(report.metadata).toMatchObject({
+    mode: "fast-parity",
+    timeScale: 0.02,
+  });
 });
 
 test("buildPlayerConsequences keeps battle-start tracked units after controller snapshots reset", () => {
@@ -2093,6 +3159,1273 @@ test("buildUnitBattleOutcomesForBattle prefers the final keyframe for alive stat
   ]);
 });
 
+test("buildUnitBattleOutcomesForBattle tracks attack cadence and lifetime telemetry", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-telemetry",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "hero-p2",
+          ownerPlayerId: "p2",
+          sourceUnitId: "reimu",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 120,
+          maxHp: 120,
+          displayName: "霊夢",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "attackStart",
+      battleId: "battle-r3-telemetry",
+      atMs: 80,
+      sourceBattleUnitId: "boss-p1",
+      targetBattleUnitId: "hero-p2",
+    } satisfies AttackStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r3-telemetry",
+      atMs: 90,
+      sourceBattleUnitId: "boss-p1",
+      targetBattleUnitId: "hero-p2",
+      amount: 30,
+      remainingHp: 90,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "attackStart",
+      battleId: "battle-r3-telemetry",
+      atMs: 120,
+      sourceBattleUnitId: "hero-p2",
+      targetBattleUnitId: "boss-p1",
+    } satisfies AttackStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r3-telemetry",
+      atMs: 130,
+      sourceBattleUnitId: "hero-p2",
+      targetBattleUnitId: "boss-p1",
+      amount: 40,
+      remainingHp: 860,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "attackStart",
+      battleId: "battle-r3-telemetry",
+      atMs: 180,
+      sourceBattleUnitId: "boss-p1",
+      targetBattleUnitId: "hero-p2",
+    } satisfies AttackStartEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r3-telemetry",
+      atMs: 190,
+      sourceBattleUnitId: "boss-p1",
+      targetBattleUnitId: "hero-p2",
+      amount: 90,
+      remainingHp: 0,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "unitDeath",
+      battleId: "battle-r3-telemetry",
+      atMs: 260,
+      battleUnitId: "hero-p2",
+    },
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-telemetry",
+      atMs: 400,
+      winner: "boss",
+      endReason: "annihilation",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-telemetry",
+          opponentId: "p2",
+          won: true,
+          damageDealt: 120,
+          damageTaken: 40,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["hero-p2"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-telemetry",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 40,
+          damageTaken: 120,
+          survivors: 0,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual([
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "レミリア",
+      attackCount: 2,
+      hitCount: 2,
+      damageTaken: 40,
+      firstAttackAtMs: 80,
+      initialNearestEnemyDistance: 5,
+      bestNearestEnemyDistance: 5,
+      lifetimeMs: 400,
+      battleDurationMs: 400,
+    }),
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "霊夢",
+      attackCount: 1,
+      hitCount: 1,
+      damageTaken: 120,
+      firstAttackAtMs: 120,
+      initialNearestEnemyDistance: 5,
+      bestNearestEnemyDistance: 5,
+      lifetimeMs: 260,
+      battleDurationMs: 400,
+    }),
+  ]);
+});
+
+test("buildUnitBattleOutcomesForBattle tracks pre-contact and post-contact time buckets", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r4-time-buckets",
+      round: 4,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "raid-vanguard-0",
+          ownerPlayerId: "p2",
+          sourceUnitId: "vanguard",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 80,
+          maxHp: 80,
+          displayName: "前衛",
+        },
+        {
+          battleUnitId: "boss-ranger-0",
+          ownerPlayerId: "p1",
+          sourceUnitId: "ranger",
+          side: "boss",
+          x: 0,
+          y: 2,
+          currentHp: 50,
+          maxHp: 50,
+          displayName: "後衛",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r4-time-buckets",
+      atMs: 100,
+      battleUnitId: "raid-vanguard-0",
+      from: { x: 0, y: 5 },
+      to: { x: 0, y: 4 },
+    } satisfies MoveEvent,
+    {
+      type: "move",
+      battleId: "battle-r4-time-buckets",
+      atMs: 200,
+      battleUnitId: "raid-vanguard-0",
+      from: { x: 0, y: 4 },
+      to: { x: 0, y: 3 },
+    } satisfies MoveEvent,
+    {
+      type: "attackStart",
+      battleId: "battle-r4-time-buckets",
+      atMs: 500,
+      sourceBattleUnitId: "raid-vanguard-0",
+      targetBattleUnitId: "boss-ranger-0",
+    } satisfies AttackStartEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r4-time-buckets",
+      atMs: 1_000,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [{
+          cell: 12,
+          unitName: "後衛",
+          unitType: "ranger",
+          unitId: "ranger",
+          starLevel: 1,
+          subUnitName: "",
+        }],
+        trackedBattleUnitIds: ["boss-ranger-0"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r4-time-buckets",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [{
+          cell: 30,
+          unitName: "前衛",
+          unitType: "vanguard",
+          unitId: "vanguard",
+          starLevel: 1,
+          subUnitName: "",
+        }],
+        trackedBattleUnitIds: ["raid-vanguard-0"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r4-time-buckets",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "前衛",
+      outsideAttackRangeBeforeFirstAttackMs: 200,
+      inAttackRangeBeforeFirstAttackMs: 300,
+      afterFirstAttackMs: 500,
+      firstReachedAttackRangeAtMs: 200,
+      lifetimeMs: 1000,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle tracks initial and best nearest-enemy distance", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-distance",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "nazrin",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "ナズーリン",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-distance",
+      atMs: 20,
+      battleUnitId: "unit-p2-a",
+      from: { x: 0, y: 5 },
+      to: { x: 0, y: 4 },
+    } satisfies MoveEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-distance",
+      atMs: 40,
+      battleUnitId: "unit-p2-a",
+      from: { x: 0, y: 4 },
+      to: { x: 0, y: 3 },
+    } satisfies MoveEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-distance",
+      atMs: 80,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-distance",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-distance",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual([
+    expect.objectContaining({
+      playerId: "p1",
+      unitName: "レミリア",
+      initialNearestEnemyDistance: 5,
+      bestNearestEnemyDistance: 3,
+      attackCount: 0,
+    }),
+    expect.objectContaining({
+      playerId: "p2",
+      unitName: "ナズーリン",
+      initialNearestEnemyDistance: 5,
+      bestNearestEnemyDistance: 3,
+      attackCount: 0,
+    }),
+  ]);
+});
+
+test("buildUnitBattleOutcomesForBattle tracks move target mismatch diagnostics", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-move-diagnostics",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "nazrin",
+          side: "raid",
+          x: 0,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "ナズーリン",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-move-diagnostics",
+      atMs: 20,
+      battleUnitId: "unit-p2-a",
+      from: { x: 0, y: 5 },
+      to: { x: 0, y: 4 },
+      pursuedTargetBattleUnitId: "boss-p1",
+      bestApproachTargetBattleUnitId: "boss-p1-alt",
+      pursuedTargetRequiredStepsBeforeMove: 6,
+      bestApproachTargetRequiredStepsBeforeMove: 4,
+    } satisfies MoveEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-move-diagnostics",
+      atMs: 40,
+      battleUnitId: "unit-p2-a",
+      from: { x: 0, y: 4 },
+      to: { x: 0, y: 3 },
+      pursuedTargetBattleUnitId: "boss-p1",
+      bestApproachTargetBattleUnitId: "boss-p1",
+      pursuedTargetRequiredStepsBeforeMove: 5,
+      bestApproachTargetRequiredStepsBeforeMove: 5,
+    } satisfies MoveEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-move-diagnostics",
+      atMs: 80,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-move-diagnostics",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-move-diagnostics",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual([
+    expect.objectContaining({
+      playerId: "p1",
+      moveTargetDiagnosticSampleCount: 0,
+      suboptimalMoveTargetCount: 0,
+      totalExcessApproachSteps: 0,
+      sameColumnFrontAllyCount: 0,
+    }),
+    expect.objectContaining({
+      playerId: "p2",
+      moveTargetDiagnosticSampleCount: 2,
+      suboptimalMoveTargetCount: 1,
+      totalExcessApproachSteps: 2,
+      sameColumnFrontAllyCount: 0,
+    }),
+  ]);
+});
+
+test("buildUnitBattleOutcomesForBattle tracks planned approach destination diagnostics", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-planned-approach",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-target",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 2,
+          y: 2,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "yoshika",
+          side: "raid",
+          x: 2,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "宮古芳香",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-planned-approach",
+      atMs: 0,
+      battleUnitId: "unit-p2-a",
+      from: { x: 2, y: 5 },
+      to: { x: 3, y: 5 },
+      pursuedTargetBattleUnitId: "boss-target",
+      bestApproachTargetBattleUnitId: "boss-target",
+      plannedApproachGroupTargetBattleUnitId: "boss-target",
+      plannedApproachGroupCompetitorCountBeforeMove: 3,
+      plannedApproachGroupAssignedCountBeforeMove: 2,
+      plannedApproachTargetBattleUnitId: "boss-target",
+      plannedApproachDestinationStillOpenBeforeMove: true,
+      usedPlannedApproachDestination: true,
+      plannedApproachDestinationPathBlockedBeforeMove: false,
+    } satisfies MoveEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-planned-approach",
+      atMs: 20,
+      battleUnitId: "unit-p2-a",
+      from: { x: 3, y: 5 },
+      to: { x: 3, y: 4 },
+      pursuedTargetBattleUnitId: "boss-target",
+      bestApproachTargetBattleUnitId: "boss-target",
+      plannedApproachGroupTargetBattleUnitId: "boss-target",
+      plannedApproachGroupCompetitorCountBeforeMove: 3,
+      plannedApproachGroupAssignedCountBeforeMove: 2,
+      plannedApproachTargetBattleUnitId: "boss-target",
+      plannedApproachDestinationStillOpenBeforeMove: true,
+      usedPlannedApproachDestination: true,
+      plannedApproachDestinationPathBlockedBeforeMove: true,
+      plannedApproachDestinationPathBlockerTypeBeforeMove: "ally_adjacent",
+    } satisfies MoveEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-planned-approach",
+      atMs: 80,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-target"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-planned-approach",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-planned-approach",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      plannedApproachGroupMoveSampleCount: 2,
+      totalPlannedApproachGroupCompetitorCount: 6,
+      totalPlannedApproachGroupAssignedCount: 4,
+      oversubscribedPlannedApproachGroupMoveCount: 2,
+      plannedApproachMoveSampleCount: 2,
+      plannedApproachStillOpenMoveCount: 2,
+      usedPlannedApproachMoveCount: 2,
+      plannedApproachPathBlockedMoveCount: 1,
+      plannedApproachNoAttackTargetDiedBeforeBattleEndCount: 0,
+      plannedApproachReachedRangeWithoutAttackWhileTargetAliveCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveCount: 1,
+      plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithoutUsingPlannedDestinationCount: 0,
+      plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithPathBlockedCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithoutUsingPlannedDestinationCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedCount: 1,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithAllyAdjacentBlockCount: 1,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyAdjacentBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithMixedAdjacentBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeCount: 0,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle tracks planned approach route choke subtypes", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-planned-approach-route-choke",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-target",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 2,
+          y: 2,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "yoshika",
+          side: "raid",
+          x: 2,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "宮古芳香",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-planned-approach-route-choke",
+      atMs: 0,
+      battleUnitId: "unit-p2-a",
+      from: { x: 2, y: 5 },
+      to: { x: 3, y: 5 },
+      pursuedTargetBattleUnitId: "boss-target",
+      bestApproachTargetBattleUnitId: "boss-target",
+      plannedApproachTargetBattleUnitId: "boss-target",
+      plannedApproachDestinationStillOpenBeforeMove: true,
+      usedPlannedApproachDestination: true,
+      plannedApproachDestinationPathBlockedBeforeMove: true,
+      plannedApproachDestinationPathBlockerTypeBeforeMove: "route_choke",
+      plannedApproachDestinationRouteChokeTypeBeforeMove: "ally_frontier",
+    } satisfies MoveEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-planned-approach-route-choke",
+      atMs: 80,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-target"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-planned-approach-route-choke",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-planned-approach-route-choke",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      plannedApproachNoReachNoAttackWhileTargetAliveCount: 1,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedCount: 1,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockCount: 1,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeCount: 1,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeCount: 0,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle tracks planned approach target death before no-attack battle end", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-planned-approach-target-death",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-target",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 2,
+          y: 2,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "unit-p2-a",
+          ownerPlayerId: "p2",
+          sourceUnitId: "yoshika",
+          side: "raid",
+          x: 2,
+          y: 5,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "宮古芳香",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-planned-approach-target-death",
+      atMs: 0,
+      battleUnitId: "unit-p2-a",
+      from: { x: 2, y: 5 },
+      to: { x: 3, y: 5 },
+      plannedApproachTargetBattleUnitId: "boss-target",
+      plannedApproachDestinationStillOpenBeforeMove: true,
+      usedPlannedApproachDestination: true,
+    } satisfies MoveEvent,
+    {
+      type: "damageApplied",
+      battleId: "battle-r3-planned-approach-target-death",
+      atMs: 30,
+      sourceBattleUnitId: "ally-finisher",
+      targetBattleUnitId: "boss-target",
+      amount: 900,
+      remainingHp: 0,
+    } satisfies DamageAppliedEvent,
+    {
+      type: "unitDeath",
+      battleId: "battle-r3-planned-approach-target-death",
+      atMs: 30,
+      battleUnitId: "boss-target",
+    } satisfies UnitDeathEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-planned-approach-target-death",
+      atMs: 80,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-target"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-planned-approach-target-death",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 0,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["unit-p2-a"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-planned-approach-target-death",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 0,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      playerId: "p2",
+      plannedApproachMoveSampleCount: 1,
+      plannedApproachNoAttackTargetDiedBeforeBattleEndCount: 1,
+      plannedApproachReachedRangeWithoutAttackWhileTargetAliveCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveCount: 0,
+      plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithoutUsingPlannedDestinationCount: 0,
+      plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithPathBlockedCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithoutUsingPlannedDestinationCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithAllyAdjacentBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyAdjacentBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithMixedAdjacentBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeCount: 0,
+      plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeCount: 0,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle tracks same-column front ally count", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-front-ally-count",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-p1",
+          ownerPlayerId: "p1",
+          sourceUnitId: "remilia",
+          side: "boss",
+          x: 0,
+          y: 0,
+          currentHp: 900,
+          maxHp: 900,
+          displayName: "レミリア",
+        },
+        {
+          battleUnitId: "raid-front",
+          ownerPlayerId: "p2",
+          sourceUnitId: "yoshika",
+          side: "raid",
+          x: 0,
+          y: 3,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "宮古芳香",
+        },
+        {
+          battleUnitId: "raid-back",
+          ownerPlayerId: "p2",
+          sourceUnitId: "rin",
+          side: "raid",
+          x: 0,
+          y: 4,
+          currentHp: 450,
+          maxHp: 450,
+          displayName: "火焔猫燐",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-front-ally-count",
+      atMs: 100,
+      winner: "draw",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-p1"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-front-ally-count",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 2,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["raid-front", "raid-back"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-front-ally-count",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 2,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      unitId: "yoshika",
+      initialRow: 3,
+      initialColumn: 0,
+      sameColumnFrontAllyCount: 0,
+    }),
+    expect.objectContaining({
+      unitId: "rin",
+      initialRow: 4,
+      initialColumn: 0,
+      sameColumnFrontAllyCount: 1,
+    }),
+  ]));
+});
+
+test("buildUnitBattleOutcomesForBattle tracks lateral drift and shared pursuit contention", () => {
+  const timeline: BattleTimelineEvent[] = [
+    {
+      type: "battleStart",
+      battleId: "battle-r3-lateral-contention",
+      round: 3,
+      boardConfig: { width: 6, height: 6 },
+      units: [
+        {
+          battleUnitId: "boss-target",
+          ownerPlayerId: "p1",
+          sourceUnitId: "yoshika",
+          side: "boss",
+          x: 2,
+          y: 2,
+          currentHp: 550,
+          maxHp: 550,
+          displayName: "宮古芳香",
+        },
+        {
+          battleUnitId: "raid-front",
+          ownerPlayerId: "p2",
+          sourceUnitId: "yoshika",
+          side: "raid",
+          x: 2,
+          y: 4,
+          currentHp: 550,
+          maxHp: 550,
+          displayName: "宮古芳香",
+        },
+        {
+          battleUnitId: "raid-back",
+          ownerPlayerId: "p2",
+          sourceUnitId: "rin",
+          side: "raid",
+          x: 2,
+          y: 5,
+          currentHp: 620,
+          maxHp: 620,
+          displayName: "火焔猫燐",
+        },
+      ],
+    } satisfies BattleStartEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-lateral-contention",
+      atMs: 0,
+      battleUnitId: "raid-front",
+      from: { x: 2, y: 4 },
+      to: { x: 1, y: 4 },
+      pursuedTargetBattleUnitId: "boss-target",
+      bestApproachTargetBattleUnitId: "boss-target",
+    } satisfies MoveEvent,
+    {
+      type: "move",
+      battleId: "battle-r3-lateral-contention",
+      atMs: 0,
+      battleUnitId: "raid-back",
+      from: { x: 2, y: 5 },
+      to: { x: 1, y: 5 },
+      pursuedTargetBattleUnitId: "boss-target",
+      bestApproachTargetBattleUnitId: "boss-target",
+    } satisfies MoveEvent,
+    {
+      type: "battleEnd",
+      battleId: "battle-r3-lateral-contention",
+      atMs: 30,
+      winner: "boss",
+      endReason: "forced",
+    } satisfies BattleEndEvent,
+  ];
+
+  const result = buildUnitBattleOutcomesForBattle(
+    timeline,
+    [
+      {
+        playerId: "p1",
+        role: "boss",
+        hp: 100,
+        remainingLives: 0,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["boss-target"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-lateral-contention",
+          opponentId: "p2",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 1,
+          opponentSurvivors: 2,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+      {
+        playerId: "p2",
+        role: "raid",
+        hp: 100,
+        remainingLives: 2,
+        eliminated: false,
+        boardUnits: [],
+        trackedBattleUnitIds: ["raid-front", "raid-back"],
+        benchUnits: [],
+        lastBattle: {
+          battleId: "battle-r3-lateral-contention",
+          opponentId: "p1",
+          won: false,
+          damageDealt: 0,
+          damageTaken: 0,
+          survivors: 2,
+          opponentSurvivors: 1,
+          survivorUnitTypes: [],
+          timeline,
+        },
+      },
+    ],
+    new Map([
+      ["p1", "P1"],
+      ["p2", "P2"],
+    ]),
+  );
+
+  expect(result).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      unitId: "yoshika",
+      lateralLeftMoveCount: 1,
+      lateralRightMoveCount: 0,
+      firstLateralMoveDirection: "left",
+      sharedPursuitMoveSampleCount: 1,
+      contestedPursuitMoveSampleCount: 1,
+    }),
+    expect.objectContaining({
+      unitId: "rin",
+      lateralLeftMoveCount: 1,
+      lateralRightMoveCount: 0,
+      firstLateralMoveDirection: "left",
+      sharedPursuitMoveSampleCount: 1,
+      contestedPursuitMoveSampleCount: 1,
+    }),
+  ]));
+});
+
 test("buildUnitBattleOutcomesForBattle tracks per-unit phase contribution damage", () => {
   const timeline: BattleTimelineEvent[] = [
     {
@@ -2619,6 +4952,7 @@ const runBotOnlyHelperMatch = async (
   connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
   createRoom: () => Promise<BotOnlyServerRoom>,
   damageTargets?: Record<number, number>,
+  helperConfigs?: Array<{ wantsBoss: boolean; policy: "strength" | "growth" }>,
 ): Promise<BotOnlyMatchArtifacts> => {
   const serverRoom = await createRoom();
   const clients = await Promise.all([
@@ -2630,9 +4964,9 @@ const runBotOnlyHelperMatch = async (
   const playerLabels = getPlayerLabelMap(clients);
   const roundSnapshots: BotOnlyRoundSnapshot[] = [];
 
-  clients.forEach((client, helperIndex) => {
-    attachAutoFillHelperAutomationForTest(client, helperIndex);
-  });
+    clients.forEach((client, helperIndex) => {
+      attachAutoFillHelperAutomationForTest(client, helperIndex);
+    });
 
   await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000, {
     timeoutMessage: `Timed out while waiting for initial Prep phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
@@ -2749,11 +5083,340 @@ const runBotOnlyHelperMatch = async (
   };
 };
 
+const buildBotOnlyFinalPlayers = (
+  serverRoom: BotOnlyServerRoom,
+  clients: BotOnlyTestClient[],
+  playerLabels: Map<string, string>,
+): BotOnlyBaselineFinalPlayer[] => {
+  const ranking = Array.from(serverRoom.state.ranking) as string[];
+  const finalPlayerEconomyByPlayer = buildBotOnlyFinalPlayerEconomyByPlayer(serverRoom);
+
+  return clients.map((client) => {
+    const player = serverRoom.state.players.get(client.sessionId);
+    if (!player) {
+      throw new Error(`Expected final player state for ${client.sessionId}`);
+    }
+    const economy = finalPlayerEconomyByPlayer.get(client.sessionId) ?? {
+      totalGoldEarned: 0,
+      totalGoldSpent: 0,
+      purchaseCount: 0,
+      refreshCount: 0,
+      sellCount: 0,
+    };
+
+    return {
+      playerId: client.sessionId,
+      label: getPlayerLabel(playerLabels, client.sessionId),
+      role: player.role,
+      hp: player.hp,
+      gold: player.gold,
+      remainingLives: player.remainingLives,
+      eliminated: player.eliminated,
+      rank: ranking.indexOf(client.sessionId) + 1,
+      selectedHeroId: player.selectedHeroId,
+      selectedBossId: player.selectedBossId,
+      totalGoldEarned: economy.totalGoldEarned,
+      totalGoldSpent: economy.totalGoldSpent,
+      purchaseCount: economy.purchaseCount,
+      refreshCount: economy.refreshCount,
+      sellCount: economy.sellCount,
+      boardUnits: getReportBoardUnitsForPlayer(serverRoom, client.sessionId),
+    };
+  });
+};
+
+const buildBotOnlyFinalPlayerEconomyByPlayer = (
+  serverRoom: BotOnlyServerRoom,
+): Map<string, BotOnlyFinalPlayerEconomySnapshot> => {
+  const economyByPlayer = new Map<string, BotOnlyFinalPlayerEconomySnapshot>();
+
+  for (const actionLog of getMatchLogger(serverRoom).getActionLogs()) {
+    const current = economyByPlayer.get(actionLog.playerId) ?? {
+      totalGoldEarned: 0,
+      totalGoldSpent: 0,
+      purchaseCount: 0,
+      refreshCount: 0,
+      sellCount: 0,
+    };
+
+    if (actionLog.details.goldAfter > actionLog.details.goldBefore) {
+      current.totalGoldEarned += actionLog.details.goldAfter - actionLog.details.goldBefore;
+    } else if (actionLog.details.goldAfter < actionLog.details.goldBefore) {
+      current.totalGoldSpent += actionLog.details.goldBefore - actionLog.details.goldAfter;
+    }
+
+    switch (actionLog.actionType) {
+      case "buy_unit":
+      case "buy_boss_unit":
+        current.purchaseCount += 1;
+        break;
+      case "shop_refresh":
+        current.refreshCount += 1;
+        break;
+      case "sell_unit":
+      case "board_sell":
+        current.sellCount += 1;
+        break;
+      default:
+        break;
+    }
+
+    economyByPlayer.set(actionLog.playerId, current);
+  }
+
+  return economyByPlayer;
+};
+
+const buildBotOnlyBaselinePurchases = (
+  serverRoom: BotOnlyServerRoom,
+  playerLabels: Map<string, string>,
+): BotOnlyBaselinePurchase[] => {
+  const purchases: BotOnlyBaselinePurchase[] = [];
+
+  for (const actionLog of getMatchLogger(serverRoom).getActionLogs()) {
+    if (actionLog.actionType !== "buy_unit" && actionLog.actionType !== "buy_boss_unit") {
+      continue;
+    }
+
+    purchases.push({
+      playerId: actionLog.playerId,
+      label: getPlayerLabel(playerLabels, actionLog.playerId),
+      actionType: actionLog.actionType,
+      unitType: typeof actionLog.details.unitType === "string" ? actionLog.details.unitType : "",
+      cost: typeof actionLog.details.cost === "number" ? actionLog.details.cost : 0,
+    });
+  }
+
+  return purchases;
+};
+
+const runBotOnlyHelperMatchForBaseline = async (
+  connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
+  createRoom: () => Promise<BotOnlyServerRoom>,
+  damageTargets?: Record<number, number>,
+  helperConfigs?: Array<{ wantsBoss: boolean; policy: "strength" | "growth" }>,
+  matchIndex = 0,
+): Promise<BotOnlyBaselineMatchArtifacts> => {
+  const serverRoom = await createRoom();
+  const clients = await Promise.all([
+    connectClient(serverRoom),
+    connectClient(serverRoom),
+    connectClient(serverRoom),
+    connectClient(serverRoom),
+  ]);
+  const playerLabels = getPlayerLabelMap(clients);
+  const battles: BotOnlyBaselineBattleSummary[] = [];
+  const observedOfferKeySet = new Set<string>();
+  const observedOffersByKey = new Map<string, BotOnlyBaselineObservedShopOffer>();
+
+  const recordObservedOffer = (
+    client: BotOnlyTestClient,
+    state: unknown,
+    source: "shop" | "bossShop",
+    offers: Iterable<{
+      unitId?: string;
+      displayName?: string;
+      unitType?: string;
+      cost?: number;
+    }>,
+  ) => {
+    const typedState = state as {
+      roundIndex?: number;
+      players?: { get?: (key: string) => unknown };
+    } | null;
+    const player = typedState?.players?.get?.(client.sessionId) as {
+      role?: string;
+    } | null;
+    const role = player?.role === "boss" ? "boss" : player?.role === "raid" ? "raid" : null;
+    if (role === null) {
+      return;
+    }
+
+    let slotIndex = 0;
+    for (const offer of offers) {
+      const unitId = typeof offer?.unitId === "string" ? offer.unitId : "";
+      const unitType = typeof offer?.unitType === "string" ? offer.unitType : "";
+      const cost = typeof offer?.cost === "number" ? offer.cost : 0;
+      if (!unitId || !unitType || cost <= 0) {
+        slotIndex += 1;
+        continue;
+      }
+
+      const observationKey = [
+        typedState?.roundIndex ?? 0,
+        client.sessionId,
+        source,
+        slotIndex,
+        unitId,
+        cost,
+      ].join(":");
+      slotIndex += 1;
+      if (observedOfferKeySet.has(observationKey)) {
+        continue;
+      }
+      observedOfferKeySet.add(observationKey);
+
+      const aggregateKey = `${role}:${source}:${unitId}:${cost}`;
+      const existing = observedOffersByKey.get(aggregateKey) ?? {
+        playerId: client.sessionId,
+        label: getPlayerLabel(playerLabels, client.sessionId),
+        role,
+        source,
+        unitId,
+        unitName: typeof offer?.displayName === "string" && offer.displayName.length > 0
+          ? offer.displayName
+          : unitId,
+        unitType,
+        cost,
+        observationCount: 0,
+      };
+      existing.observationCount += 1;
+      observedOffersByKey.set(aggregateKey, existing);
+    }
+  };
+
+  for (const client of clients) {
+    client.onStateChange((state) => {
+      const typedState = state as {
+        players?: { get?: (key: string) => unknown };
+      } | null;
+      const player = typedState?.players?.get?.(client.sessionId) as {
+        shopOffers?: Iterable<{ unitId?: string; displayName?: string; unitType?: string; cost?: number }>;
+        bossShopOffers?: Iterable<{ unitId?: string; displayName?: string; unitType?: string; cost?: number }>;
+      } | null;
+      if (!player) {
+        return;
+      }
+
+      recordObservedOffer(client, state, "shop", player.shopOffers ?? []);
+      recordObservedOffer(client, state, "bossShop", player.bossShopOffers ?? []);
+    });
+  }
+
+    clients.forEach((client, helperIndex) => {
+      const heroId = AUTO_FILL_HERO_IDS[
+        (helperIndex + Math.max(0, Math.trunc(matchIndex))) % AUTO_FILL_HERO_IDS.length
+      ];
+      attachAutoFillHelperAutomationForTest(client, helperIndex, {
+        ...(heroId ? { heroId } : {}),
+      });
+    });
+
+  await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000, {
+    timeoutMessage: `Timed out while waiting for initial Prep phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
+  });
+
+  const startTime = Date.now();
+  const maxDurationMs = 20_000;
+
+  while (serverRoom.state.phase !== "End" && Date.now() - startTime < maxDurationMs) {
+    await waitForCondition(() => serverRoom.state.phase === "Battle", 2_000, {
+      timeoutMessage: `Timed out while waiting for Battle phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
+    });
+    const battleRoundIndex = serverRoom.state.roundIndex;
+    const playersAtBattleStart = captureRoundPlayers(
+      serverRoom,
+      clients,
+      getReportBattleStartUnitsForPlayer,
+    ).map((player) => ({
+      ...player,
+      trackedBattleUnitIds: getTrackedBattleUnitIdsForPlayerAtBattleStart(
+        serverRoom,
+        player.playerId,
+      ),
+    }));
+
+    const phaseDamage = damageTargets?.[serverRoom.state.roundIndex];
+    if (typeof phaseDamage === "number") {
+      serverRoom.setPendingPhaseDamageForTest(phaseDamage);
+    }
+
+    await waitForCondition(
+      () =>
+        getBotOnlyPhasePriority(serverRoom.state.phase) >= BOT_ONLY_PHASE_PRIORITY.Settle
+        || serverRoom.state.roundIndex > battleRoundIndex,
+      maxDurationMs,
+      {
+        timeoutMessage:
+          `Timed out while waiting for Settle or later `
+          + `(phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex}, battleRound=${battleRoundIndex})`,
+      },
+    );
+
+    const roundBattles = buildRoundBattleReportsFromCurrentState(
+      serverRoom,
+      battleRoundIndex,
+      playersAtBattleStart,
+      playerLabels,
+    );
+    for (const battle of roundBattles) {
+      battles.push({
+        leftPlayerId: battle.leftPlayerId,
+        rightPlayerId: battle.rightPlayerId,
+        winner: battle.winner,
+        ...(battle.battleEndReason !== undefined ? { battleEndReason: battle.battleEndReason } : {}),
+        ...(typeof battle.bossSurvivors === "number" ? { bossSurvivors: battle.bossSurvivors } : {}),
+        ...(typeof battle.raidSurvivors === "number" ? { raidSurvivors: battle.raidSurvivors } : {}),
+        unitDamageBreakdown: battle.unitDamageBreakdown.map((unit) => ({ ...unit })),
+        unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+      });
+    }
+
+    await waitForCondition(
+      () =>
+        serverRoom.state.phase === "Prep"
+        || serverRoom.state.phase === "End"
+        || serverRoom.state.roundIndex > battleRoundIndex,
+      maxDurationMs,
+      {
+        timeoutMessage:
+          `Timed out while waiting for next Prep/End `
+          + `(phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex}, battleRound=${battleRoundIndex})`,
+      },
+    );
+  }
+
+  return {
+    serverRoom,
+    clients,
+    battles,
+    observedShopOffers: Array.from(observedOffersByKey.values()),
+  };
+};
+
+const buildBotOnlyBaselineMatchSummary = (
+  artifacts: BotOnlyBaselineMatchArtifacts,
+): BotOnlyBaselineMatchSummary => {
+  const playerLabels = getPlayerLabelMap(artifacts.clients);
+  const metadata = resolveBotOnlyReportMetadata(artifacts.serverRoom);
+
+  return {
+    ...(metadata ? { metadata } : {}),
+    totalRounds: artifacts.serverRoom.state.roundIndex,
+    bossPlayerId: artifacts.serverRoom.state.bossPlayerId,
+    ranking: Array.from(artifacts.serverRoom.state.ranking) as string[],
+    playerLabels: Object.fromEntries(playerLabels),
+    purchases: buildBotOnlyBaselinePurchases(artifacts.serverRoom, playerLabels),
+    observedShopOffers: artifacts.observedShopOffers.map((offer) => ({ ...offer })),
+    finalPlayers: buildBotOnlyFinalPlayers(
+      artifacts.serverRoom,
+      artifacts.clients,
+      playerLabels,
+    ),
+    battles: artifacts.battles.map((battle) => ({
+      ...battle,
+      unitDamageBreakdown: battle.unitDamageBreakdown.map((unit) => ({ ...unit })),
+      unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+    })),
+  };
+};
+
 const buildBotOnlyMatchRoundReport = (
   artifacts: BotOnlyMatchArtifacts,
 ): BotOnlyMatchRoundReport => {
   const matchLogger = getMatchLogger(artifacts.serverRoom);
   const playerLabels = getPlayerLabelMap(artifacts.clients);
+  const metadata = resolveBotOnlyReportMetadata(artifacts.serverRoom);
   const roundLogs = matchLogger.getRoundLogs().sort((left, right) => left.roundIndex - right.roundIndex);
   const hpChangesByRound = new Map<number, ReturnType<MatchLogger["getHpChangeLogs"]>>();
   const purchaseLogsByRound = new Map<number, Array<{
@@ -2811,27 +5474,14 @@ const buildBotOnlyMatchRoundReport = (
     artifacts.roundSnapshots.map((snapshot) => [snapshot.roundIndex, snapshot]),
   );
   const ranking = Array.from(artifacts.serverRoom.state.ranking) as string[];
-  const finalPlayers = artifacts.clients.map((client) => {
-    const player = artifacts.serverRoom.state.players.get(client.sessionId);
-    if (!player) {
-      throw new Error(`Expected final player state for ${client.sessionId}`);
-    }
-
-    return {
-      playerId: client.sessionId,
-      label: getPlayerLabel(playerLabels, client.sessionId),
-      role: player.role,
-      hp: player.hp,
-      remainingLives: player.remainingLives,
-      eliminated: player.eliminated,
-      rank: ranking.indexOf(client.sessionId) + 1,
-      selectedHeroId: player.selectedHeroId,
-      selectedBossId: player.selectedBossId,
-      boardUnits: getReportBoardUnitsForPlayer(artifacts.serverRoom, client.sessionId),
-    };
-  });
+  const finalPlayers = buildBotOnlyFinalPlayers(
+    artifacts.serverRoom,
+    artifacts.clients,
+    playerLabels,
+  );
 
   return {
+    ...(metadata ? { metadata } : {}),
     totalRounds: artifacts.serverRoom.state.roundIndex,
     bossPlayerId: artifacts.serverRoom.state.bossPlayerId,
     raidPlayerIds: Array.from(artifacts.serverRoom.state.raidPlayerIds),
@@ -3096,6 +5746,19 @@ const buildBotOnlyHumanReadableRoundReport = (
 ): string => {
   const lines: string[] = [];
 
+  if (report.metadata) {
+    lines.push(`実行条件 mode=${report.metadata.mode} timeScale=${report.metadata.timeScale}`);
+    lines.push(
+      `timings ready=${report.metadata.timings.readyAutoStartMs}ms`
+      + ` selection=${report.metadata.timings.selectionTimeoutMs}ms`
+      + ` prep=${report.metadata.timings.prepDurationMs}ms`
+      + ` battle=${report.metadata.timings.battleDurationMs}ms`
+      + ` settle=${report.metadata.timings.settleDurationMs}ms`
+      + ` elimination=${report.metadata.timings.eliminationDurationMs}ms`,
+    );
+    lines.push("");
+  }
+
   for (const round of report.rounds) {
     const isFinalJudgmentRound = isFinalJudgmentRoundForHumanReport(report, round.roundIndex);
     const primaryBattle = round.battles[0];
@@ -3160,8 +5823,71 @@ const buildBotOnlyHumanReadableRoundReport = (
   return lines.join("\n");
 };
 
+test("buildRoundBattleReport records battle end reason and role-based survivor counts", () => {
+  const fakeRoom = {
+    state: {
+      bossPlayerId: "boss-1",
+      raidPlayerIds: ["raid-1", "raid-2", "raid-3"],
+      players: new Map([
+        ["boss-1", { selectedHeroId: "", selectedBossId: "remilia" }],
+        ["raid-1", { selectedHeroId: "reimu", selectedBossId: "" }],
+        ["raid-2", { selectedHeroId: "", selectedBossId: "" }],
+        ["raid-3", { selectedHeroId: "", selectedBossId: "" }],
+      ]),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  const report = buildRoundBattleReport(
+    fakeRoom,
+    {
+      battleIndex: 0,
+      leftPlayerId: "raid-1",
+      rightPlayerId: "boss-1",
+      winner: "right",
+      leftDamageDealt: 100,
+      rightDamageDealt: 250,
+      leftSurvivors: 2,
+      rightSurvivors: 1,
+    },
+    [{
+      type: "battleStart",
+      battleId: "battle-1",
+      round: 1,
+      boardConfig: { width: 6, height: 6 },
+      units: [],
+    }, {
+      type: "battleEnd",
+      battleId: "battle-1",
+      atMs: 800,
+      winner: "boss",
+      endReason: "timeout_hp_lead",
+    }],
+    [],
+    new Map([
+      ["boss-1", "P1"],
+      ["raid-1", "P2"],
+    ]),
+  );
+
+  expect(report.battleEndReason).toBe("timeout_hp_lead");
+  expect(report.bossSurvivors).toBe(1);
+  expect(report.raidSurvivors).toBe(2);
+});
+
 test("buildBotOnlyHumanReadableRoundReport omits phase hp only on the R12 final judgment round", () => {
   const text = buildBotOnlyHumanReadableRoundReport({
+    metadata: {
+      mode: "fast-parity",
+      timeScale: 0.02,
+      timings: {
+        readyAutoStartMs: 1_200,
+        prepDurationMs: 900,
+        battleDurationMs: 800,
+        settleDurationMs: 100,
+        eliminationDurationMs: 40,
+        selectionTimeoutMs: 600,
+      },
+    },
     totalRounds: 2,
     bossPlayerId: "boss-1",
     raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
@@ -3208,6 +5934,7 @@ test("buildBotOnlyHumanReadableRoundReport omits phase hp only on the R12 final 
     }],
   });
 
+  expect(text).toContain("実行条件 mode=fast-parity timeScale=0.02");
   expect(text).toContain("R1リザルト\nフェーズHP 350/600\nラウンドクリア");
   expect(text).toContain("R2リザルト\nフェーズHP 720/750\nラウンド失敗");
 
@@ -3830,121 +6557,65 @@ const buildBotOnlyBaselineAggregateReport = (
   reports: BotOnlyMatchRoundReport[],
   requestedMatchCount = reports.length,
 ): BotOnlyBaselineAggregateReport => {
-  const completedMatches = reports.length;
-  if (completedMatches === 0) {
-    return {
-      requestedMatchCount,
-      completedMatches: 0,
-      abortedMatches: requestedMatchCount,
-      bossWins: 0,
-      raidWins: 0,
-      bossWinRate: 0,
-      raidWinRate: 0,
-      averageRounds: 0,
-      minRounds: 0,
-      maxRounds: 0,
-      averageRemainingRaidPlayers: 0,
-      roundHistogram: {},
-      topDamageUnits: [],
-    };
-  }
-
-  let bossWins = 0;
-  let totalRounds = 0;
-  let totalRemainingRaidPlayers = 0;
-  let minRounds = Number.POSITIVE_INFINITY;
-  let maxRounds = 0;
-  const roundHistogram = new Map<number, number>();
-  const damageByUnit = new Map<string, {
-    unitId: string;
-    unitName: string;
-    side: "boss" | "raid";
-    totalDamage: number;
-    appearances: number;
-  }>();
-
-  for (const report of reports) {
-    if (report.ranking[0] === report.bossPlayerId) {
-      bossWins += 1;
-    }
-
-    totalRounds += report.totalRounds;
-    minRounds = Math.min(minRounds, report.totalRounds);
-    maxRounds = Math.max(maxRounds, report.totalRounds);
-    roundHistogram.set(
-      report.totalRounds,
-      (roundHistogram.get(report.totalRounds) ?? 0) + 1,
-    );
-
-    const remainingRaidPlayers = report.finalPlayers.filter(
-      (player) => player.role === "raid" && player.eliminated !== true,
-    ).length;
-    totalRemainingRaidPlayers += remainingRaidPlayers;
-
-    const seenUnitKeysInMatch = new Set<string>();
-    for (const round of report.rounds) {
-      for (const battle of round.battles) {
-        for (const contribution of battle.unitDamageBreakdown) {
-          const key = `${contribution.side}::${contribution.unitId}`;
-          const existing = damageByUnit.get(key) ?? {
-            unitId: contribution.unitId,
-            unitName: contribution.unitName,
-            side: contribution.side,
-            totalDamage: 0,
-            appearances: 0,
-          };
-          existing.totalDamage += contribution.totalDamage;
-          if (!seenUnitKeysInMatch.has(key)) {
-            existing.appearances += 1;
-            seenUnitKeysInMatch.add(key);
-          }
-          damageByUnit.set(key, existing);
-        }
-      }
-    }
-  }
-
-  const raidWins = completedMatches - bossWins;
-
-  return {
-    requestedMatchCount,
-    completedMatches,
-    abortedMatches: Math.max(0, requestedMatchCount - completedMatches),
-    bossWins,
-    raidWins,
-    bossWinRate: bossWins / completedMatches,
-    raidWinRate: raidWins / completedMatches,
-    averageRounds: totalRounds / completedMatches,
-    minRounds,
-    maxRounds,
-    averageRemainingRaidPlayers: totalRemainingRaidPlayers / completedMatches,
-    roundHistogram: Object.fromEntries(
-      Array.from(roundHistogram.entries())
-        .sort((left, right) => left[0] - right[0])
-        .map(([rounds, count]) => [String(rounds), count]),
-    ),
-    topDamageUnits: Array.from(damageByUnit.values())
-      .sort((left, right) =>
-        right.totalDamage - left.totalDamage
-        || right.appearances - left.appearances
-        || left.unitId.localeCompare(right.unitId))
-      .slice(0, 10)
-      .map((contribution) => ({
-        ...contribution,
-        averageDamagePerMatch: contribution.totalDamage / completedMatches,
+  return buildBotOnlyBaselineAggregateReportFromSummaries(
+    reports.map((report) => ({
+      ...(report.metadata == null ? {} : { metadata: report.metadata }),
+      totalRounds: report.totalRounds,
+      bossPlayerId: report.bossPlayerId,
+      ranking: report.ranking,
+      playerLabels: report.playerLabels,
+      finalPlayers: report.finalPlayers.map((player) => ({
+        playerId: player.playerId,
+        label: player.label,
+        role: player.role,
+        hp: player.hp,
+        gold: player.gold ?? 0,
+        remainingLives: player.remainingLives,
+        eliminated: player.eliminated,
+        rank: player.rank,
+        selectedHeroId: player.selectedHeroId,
+        selectedBossId: player.selectedBossId,
+        totalGoldEarned: player.totalGoldEarned ?? 0,
+        totalGoldSpent: player.totalGoldSpent ?? 0,
+        purchaseCount: player.purchaseCount ?? 0,
+        refreshCount: player.refreshCount ?? 0,
+        sellCount: player.sellCount ?? 0,
+        boardUnits: player.boardUnits,
       })),
-  };
+      battles: report.rounds.flatMap((round) =>
+        round.battles.map((battle) => {
+          const bossIsLeft = battle.leftPlayerId === report.bossPlayerId;
+          const bossSurvivors = bossIsLeft ? battle.leftSurvivors : battle.rightSurvivors;
+          const raidSurvivors = bossIsLeft ? battle.rightSurvivors : battle.leftSurvivors;
+          const battleEndReason = battle.battleEndReason
+            ?? (bossSurvivors === 0 && raidSurvivors === 0
+              ? "mutual_annihilation"
+              : bossSurvivors === 0 || raidSurvivors === 0
+                ? "annihilation"
+                : battle.winner === "draw"
+                  ? "timeout_hp_tie"
+                  : "timeout_hp_lead");
+          return {
+            ...battle,
+            battleEndReason,
+            bossSurvivors,
+            raidSurvivors,
+          };
+        })),
+    })),
+    requestedMatchCount,
+  );
 };
 
 const runBotOnlyBaselineMatches = async (
   requestedMatchCount: number,
-  runMatch: (matchIndex: number) => Promise<BotOnlyMatchRoundReport>,
+  runMatch: (matchIndex: number) => Promise<BotOnlyBaselineMatchSummary>,
   cleanupAfterMatch: () => Promise<void>,
 ): Promise<{
-  reports: BotOnlyMatchRoundReport[];
+  reports: BotOnlyBaselineMatchSummary[];
   failures: Array<{ matchIndex: number; message: string }>;
 }> => {
-  const reports: BotOnlyMatchRoundReport[] = [];
+  const reports: BotOnlyBaselineMatchSummary[] = [];
   const failures: Array<{ matchIndex: number; message: string }> = [];
 
   for (let matchIndex = 0; matchIndex < requestedMatchCount; matchIndex += 1) {
@@ -3969,6 +6640,18 @@ const runBotOnlyBaselineMatches = async (
 test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", () => {
   const aggregate = buildBotOnlyBaselineAggregateReport([
     {
+      metadata: {
+        mode: "fast-parity",
+        timeScale: 0.02,
+        timings: {
+          readyAutoStartMs: 500,
+          prepDurationMs: 900,
+          battleDurationMs: 800,
+          settleDurationMs: 200,
+          eliminationDurationMs: 150,
+          selectionTimeoutMs: 400,
+        },
+      },
       totalRounds: 3,
       bossPlayerId: "boss-1",
       raidPlayerIds: ["raid-a", "raid-b", "raid-c"],
@@ -3985,7 +6668,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 1,
           selectedHeroId: "",
           selectedBossId: "remilia",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 0,
+            unitName: "レミリア",
+            unitType: "remilia",
+            unitId: "unit-remilia-1",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
         {
           playerId: "raid-a",
@@ -3997,7 +6687,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 2,
           selectedHeroId: "reimu",
           selectedBossId: "",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 1,
+            unitName: "博麗霊夢",
+            unitType: "reimu",
+            unitId: "unit-reimu-1",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
         {
           playerId: "raid-b",
@@ -4009,7 +6706,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 3,
           selectedHeroId: "marisa",
           selectedBossId: "",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 2,
+            unitName: "霧雨魔理沙",
+            unitType: "marisa",
+            unitId: "unit-marisa-1",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
         {
           playerId: "raid-c",
@@ -4021,7 +6725,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 4,
           selectedHeroId: "okina",
           selectedBossId: "",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 3,
+            unitName: "摩多羅隠岐奈",
+            unitType: "okina",
+            unitId: "unit-okina-1",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
       ],
       rounds: [{
@@ -4049,7 +6760,68 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             side: "boss",
             totalDamage: 33,
           }],
-          unitOutcomes: [],
+          unitOutcomes: [
+            {
+              playerId: "boss-1",
+              label: "P1",
+              unitId: "remilia",
+              unitName: "レミリア",
+              unitType: "remilia",
+              side: "boss",
+              totalDamage: 33,
+              phaseContributionDamage: 33,
+              finalHp: 500,
+              alive: true,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+            {
+              playerId: "raid-a",
+              label: "P2",
+              unitId: "reimu",
+              unitName: "博麗霊夢",
+              unitType: "reimu",
+              side: "raid",
+              totalDamage: 0,
+              phaseContributionDamage: 0,
+              finalHp: 0,
+              alive: false,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+            {
+              playerId: "raid-b",
+              label: "P3",
+              unitId: "marisa",
+              unitName: "霧雨魔理沙",
+              unitType: "marisa",
+              side: "raid",
+              totalDamage: 0,
+              phaseContributionDamage: 0,
+              finalHp: 0,
+              alive: false,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+            {
+              playerId: "raid-c",
+              label: "P4",
+              unitId: "okina",
+              unitName: "摩多羅隠岐奈",
+              unitType: "okina",
+              side: "raid",
+              totalDamage: 0,
+              phaseContributionDamage: 0,
+              finalHp: 0,
+              alive: false,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+          ],
         }],
         hpChanges: [],
         purchases: [],
@@ -4065,6 +6837,18 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
       }],
     },
     {
+      metadata: {
+        mode: "fast-parity",
+        timeScale: 0.02,
+        timings: {
+          readyAutoStartMs: 500,
+          prepDurationMs: 900,
+          battleDurationMs: 800,
+          settleDurationMs: 200,
+          eliminationDurationMs: 150,
+          selectionTimeoutMs: 400,
+        },
+      },
       totalRounds: 6,
       bossPlayerId: "boss-2",
       raidPlayerIds: ["raid-d", "raid-e", "raid-f"],
@@ -4081,7 +6865,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 2,
           selectedHeroId: "",
           selectedBossId: "remilia",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 0,
+            unitName: "レミリア",
+            unitType: "remilia",
+            unitId: "unit-remilia-2",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
         {
           playerId: "raid-d",
@@ -4093,7 +6884,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 1,
           selectedHeroId: "reimu",
           selectedBossId: "",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 1,
+            unitName: "博麗霊夢",
+            unitType: "reimu",
+            unitId: "unit-reimu-2",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
         {
           playerId: "raid-e",
@@ -4105,7 +6903,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 3,
           selectedHeroId: "marisa",
           selectedBossId: "",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 2,
+            unitName: "霧雨魔理沙",
+            unitType: "marisa",
+            unitId: "unit-marisa-2",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
         {
           playerId: "raid-f",
@@ -4117,7 +6922,14 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
           rank: 4,
           selectedHeroId: "okina",
           selectedBossId: "",
-          boardUnits: [],
+          boardUnits: [{
+            cell: 3,
+            unitName: "十六夜咲夜",
+            unitType: "sakuya",
+            unitId: "unit-sakuya-1",
+            starLevel: 1,
+            subUnitName: "",
+          }],
         },
       ],
       rounds: [{
@@ -4155,7 +6967,68 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               totalDamage: 14,
             },
           ],
-          unitOutcomes: [],
+          unitOutcomes: [
+            {
+              playerId: "boss-2",
+              label: "P1",
+              unitId: "remilia",
+              unitName: "レミリア",
+              unitType: "remilia",
+              side: "boss",
+              totalDamage: 0,
+              phaseContributionDamage: 0,
+              finalHp: 0,
+              alive: false,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+            {
+              playerId: "raid-d",
+              label: "P2",
+              unitId: "reimu",
+              unitName: "博麗霊夢",
+              unitType: "reimu",
+              side: "raid",
+              totalDamage: 22,
+              phaseContributionDamage: 22,
+              finalHp: 240,
+              alive: true,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+            {
+              playerId: "raid-e",
+              label: "P3",
+              unitId: "marisa",
+              unitName: "霧雨魔理沙",
+              unitType: "marisa",
+              side: "raid",
+              totalDamage: 0,
+              phaseContributionDamage: 0,
+              finalHp: 0,
+              alive: false,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+            {
+              playerId: "raid-f",
+              label: "P4",
+              unitId: "okina",
+              unitName: "摩多羅隠岐奈",
+              unitType: "okina",
+              side: "raid",
+              totalDamage: 14,
+              phaseContributionDamage: 14,
+              finalHp: 180,
+              alive: true,
+              starLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            },
+          ],
         }],
         hpChanges: [],
         purchases: [],
@@ -4173,6 +7046,18 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
   ]);
 
   expect(aggregate).toEqual({
+    metadata: {
+      mode: "fast-parity",
+      timeScale: 0.02,
+      timings: {
+        readyAutoStartMs: 500,
+        prepDurationMs: 900,
+        battleDurationMs: 800,
+        settleDurationMs: 200,
+        eliminationDurationMs: 150,
+        selectionTimeoutMs: 400,
+      },
+    },
     requestedMatchCount: 2,
     completedMatches: 2,
     abortedMatches: 0,
@@ -4184,10 +7069,243 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
     minRounds: 3,
     maxRounds: 6,
     averageRemainingRaidPlayers: 1,
+    battleMetrics: {
+      totalBattles: 2,
+      averageBossSurvivorsAtBattleEnd: 0.5,
+      averageRaidSurvivorsAtBattleEnd: 0.5,
+      bothSidesSurvivedRate: 0,
+      bossWipedRate: 0.5,
+      raidWipedRate: 0.5,
+      endReasonCounts: {
+        annihilation: 2,
+        mutual_annihilation: 0,
+        timeout_hp_lead: 0,
+        timeout_hp_tie: 0,
+        forced: 0,
+        unexpected: 0,
+      },
+    },
     roundHistogram: {
       "3": 1,
       "6": 1,
     },
+    playerMetrics: {
+      P1: {
+        averagePlacement: 1.5,
+        firstPlaceRate: 0.5,
+        averageRemainingHp: 100,
+        averageRemainingLives: 0,
+        averageFinalGold: 0,
+        averageGoldEarned: 0,
+        averageGoldSpent: 0,
+        averagePurchaseCount: 0,
+        averageRefreshCount: 0,
+        averageSellCount: 0,
+      },
+      P2: {
+        averagePlacement: 1.5,
+        firstPlaceRate: 0.5,
+        averageRemainingHp: 100,
+        averageRemainingLives: 0.5,
+        averageFinalGold: 0,
+        averageGoldEarned: 0,
+        averageGoldSpent: 0,
+        averagePurchaseCount: 0,
+        averageRefreshCount: 0,
+        averageSellCount: 0,
+      },
+      P3: {
+        averagePlacement: 3,
+        firstPlaceRate: 0,
+        averageRemainingHp: 100,
+        averageRemainingLives: 0,
+        averageFinalGold: 0,
+        averageGoldEarned: 0,
+        averageGoldSpent: 0,
+        averagePurchaseCount: 0,
+        averageRefreshCount: 0,
+        averageSellCount: 0,
+      },
+      P4: {
+        averagePlacement: 4,
+        firstPlaceRate: 0,
+        averageRemainingHp: 100,
+        averageRemainingLives: 0.5,
+        averageFinalGold: 0,
+        averageGoldEarned: 0,
+        averageGoldSpent: 0,
+        averagePurchaseCount: 0,
+        averageRefreshCount: 0,
+        averageSellCount: 0,
+      },
+    },
+    bossBattleUnitMetrics: [
+      {
+        unitId: "remilia",
+        unitType: "remilia",
+        unitName: "レミリア",
+        battleAppearances: 2,
+        matchesPresent: 2,
+        averageStarLevel: 1,
+        averageDamagePerBattle: 16.5,
+        averageDamagePerMatch: 16.5,
+        activeBattleRate: 0,
+        averageAttackCountPerBattle: 0,
+        averageHitCountPerBattle: 0,
+        averageDamageTakenPerBattle: 0,
+        averageFirstAttackMs: null,
+        averageLifetimeMs: 0,
+        zeroDamageBattleRate: 0.5,
+        survivalRate: 0.5,
+        ownerWinRate: 0.5,
+        adoptionRate: 1,
+      },
+    ],
+    raidBattleUnitMetrics: [
+      {
+        unitId: "reimu",
+        unitType: "reimu",
+        unitName: "博麗霊夢",
+        battleAppearances: 2,
+        matchesPresent: 2,
+        averageStarLevel: 1,
+        averageDamagePerBattle: 11,
+        averageDamagePerMatch: 11,
+        activeBattleRate: 0,
+        averageAttackCountPerBattle: 0,
+        averageHitCountPerBattle: 0,
+        averageDamageTakenPerBattle: 0,
+        averageFirstAttackMs: null,
+        averageLifetimeMs: 0,
+        zeroDamageBattleRate: 0.5,
+        survivalRate: 0.5,
+        ownerWinRate: 0.5,
+        adoptionRate: 1,
+        subUnitBattleAppearances: 0,
+        subUnitMatchesPresent: 0,
+        subUnitAdoptionRate: 0,
+      },
+      {
+        unitId: "okina",
+        unitType: "okina",
+        unitName: "摩多羅隠岐奈",
+        battleAppearances: 2,
+        matchesPresent: 2,
+        averageStarLevel: 1,
+        averageDamagePerBattle: 7,
+        averageDamagePerMatch: 7,
+        activeBattleRate: 0,
+        averageAttackCountPerBattle: 0,
+        averageHitCountPerBattle: 0,
+        averageDamageTakenPerBattle: 0,
+        averageFirstAttackMs: null,
+        averageLifetimeMs: 0,
+        zeroDamageBattleRate: 0.5,
+        survivalRate: 0.5,
+        ownerWinRate: 0,
+        adoptionRate: 1,
+        subUnitBattleAppearances: 0,
+        subUnitMatchesPresent: 0,
+        subUnitAdoptionRate: 0,
+      },
+      {
+        unitId: "marisa",
+        unitType: "marisa",
+        unitName: "霧雨魔理沙",
+        battleAppearances: 2,
+        matchesPresent: 2,
+        averageStarLevel: 1,
+        averageDamagePerBattle: 0,
+        averageDamagePerMatch: 0,
+        activeBattleRate: 0,
+        averageAttackCountPerBattle: 0,
+        averageHitCountPerBattle: 0,
+        averageDamageTakenPerBattle: 0,
+        averageFirstAttackMs: null,
+        averageLifetimeMs: 0,
+        zeroDamageBattleRate: 1,
+        survivalRate: 0,
+        ownerWinRate: 0,
+        adoptionRate: 1,
+        subUnitBattleAppearances: 0,
+        subUnitMatchesPresent: 0,
+        subUnitAdoptionRate: 0,
+      },
+    ],
+    finalBoardUnitMetrics: [
+      {
+        unitId: "unit-marisa-1",
+        unitType: "marisa",
+        unitName: "霧雨魔理沙",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-marisa-2",
+        unitType: "marisa",
+        unitName: "霧雨魔理沙",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-okina-1",
+        unitType: "okina",
+        unitName: "摩多羅隠岐奈",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-reimu-1",
+        unitType: "reimu",
+        unitName: "博麗霊夢",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-reimu-2",
+        unitType: "reimu",
+        unitName: "博麗霊夢",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-remilia-1",
+        unitType: "remilia",
+        unitName: "レミリア",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-remilia-2",
+        unitType: "remilia",
+        unitName: "レミリア",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+      {
+        unitId: "unit-sakuya-1",
+        unitType: "sakuya",
+        unitName: "十六夜咲夜",
+        totalCopies: 1,
+        matchesPresent: 1,
+        averageCopiesPerMatch: 0.5,
+        adoptionRate: 0.5,
+      },
+    ],
     topDamageUnits: [
       {
         unitId: "remilia",
@@ -4214,6 +7332,212 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averageDamagePerMatch: 7,
       },
     ],
+    highCostSummary: {
+      offerObservationCount: 0,
+      offerMatchCount: 0,
+      purchaseCount: 0,
+      purchaseMatchCount: 0,
+      finalBoardCopies: 0,
+      finalBoardMatchCount: 0,
+      finalBoardAdoptionRate: 0,
+    },
+    highCostOfferMetrics: [],
+    rangeDamageEfficiencyMetrics: [
+      {
+        side: "boss",
+        rangeBand: "range_2_plus",
+        battleAppearances: 2,
+        totalDamage: 33,
+        totalTheoreticalBaseDamage: 0,
+        normalizedDamageEfficiency: 0,
+        totalAttackCount: 0,
+        totalTheoreticalAttackCount: 0,
+        attackOpportunityUtilization: null,
+        averageDamagePerBattle: 16.5,
+        averageFirstAttackMs: null,
+        firstAttackSamples: 0,
+        zeroDamageBattleRate: 0.5,
+      },
+      {
+        side: "raid",
+        rangeBand: "range_2_plus",
+        battleAppearances: 6,
+        totalDamage: 36,
+        totalTheoreticalBaseDamage: 0,
+        normalizedDamageEfficiency: 0,
+        totalAttackCount: 0,
+        totalTheoreticalAttackCount: 0,
+        attackOpportunityUtilization: null,
+        averageDamagePerBattle: 6,
+        averageFirstAttackMs: null,
+        firstAttackSamples: 0,
+        zeroDamageBattleRate: 0.6666666666666666,
+      },
+    ],
+    rangeActionDiagnosticsMetrics: [
+      {
+        side: "boss",
+        rangeBand: "range_2_plus",
+        battleAppearances: 2,
+        movedBattleRate: 0,
+        averageMoveCountPerBattle: 0,
+        averageFirstMoveMs: null,
+        firstMoveSamples: 0,
+        averageMoveToFirstAttackMs: null,
+        moveToFirstAttackSamples: 0,
+        repositionBattleRate: 0,
+        averageRepositionMoveCountPerBattle: 0,
+        reachedAttackRangeBattleRate: 0,
+        noAttackDespiteReachingRangeBattleRate: 0,
+        noAttackWithoutReachingRangeBattleRate: 1,
+        lateSingleAttackBattleRate: 0,
+        averageInitialNearestEnemyDistance: null,
+        averageBestNearestEnemyDistance: null,
+        averageDistanceClosed: null,
+        noAttackBattleRate: 1,
+        movedNoAttackBattleRate: 0,
+        attackedNoHitBattleRate: 0,
+        moveTargetDiagnosticSampleCount: 0,
+        suboptimalMoveTargetRate: null,
+        averageExcessApproachSteps: null,
+        averageOutsideAttackRangeBeforeFirstAttackMs: 0,
+        averageInAttackRangeBeforeFirstAttackMs: 0,
+        averageAfterFirstAttackMs: 0,
+        averageFirstReachedAttackRangeAtMs: null,
+        firstReachedAttackRangeSamples: 0,
+        averageLeftLateralMovesPerBattle: 0,
+        averageRightLateralMovesPerBattle: 0,
+        firstLateralMoveLeftRate: null,
+        firstLateralMoveRightRate: null,
+        firstLateralMoveSamples: 0,
+        sharedPursuitMoveSampleCount: 0,
+        contestedPursuitMoveRate: null,
+        plannedApproachGroupMoveSampleCount: 0,
+        averagePlannedApproachGroupCompetitorCount: null,
+        averagePlannedApproachGroupAssignedCount: null,
+        oversubscribedPlannedApproachGroupRate: null,
+        plannedApproachBattleCount: 0,
+        plannedApproachMoveSampleCount: 0,
+        plannedApproachStillOpenRate: null,
+        usedPlannedApproachRate: null,
+        plannedApproachPathBlockedRate: null,
+        plannedApproachFirstAttackRate: null,
+        plannedApproachMatchedFirstAttackTargetRate: null,
+        plannedApproachReachedRangeWithoutAttackRate: null,
+        plannedApproachNoReachNoAttackRate: null,
+        plannedApproachNoAttackTargetDiedBeforeBattleEndRate: null,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveRate: null,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithoutUsingPlannedDestinationRate: null,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithPathBlockedRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithoutUsingPlannedDestinationRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithAllyAdjacentBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyAdjacentBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithMixedAdjacentBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeRate: null,
+      },
+      {
+        side: "raid",
+        rangeBand: "range_2_plus",
+        battleAppearances: 6,
+        movedBattleRate: 0,
+        averageMoveCountPerBattle: 0,
+        averageFirstMoveMs: null,
+        firstMoveSamples: 0,
+        averageMoveToFirstAttackMs: null,
+        moveToFirstAttackSamples: 0,
+        repositionBattleRate: 0,
+        averageRepositionMoveCountPerBattle: 0,
+        reachedAttackRangeBattleRate: 0,
+        noAttackDespiteReachingRangeBattleRate: 0,
+        noAttackWithoutReachingRangeBattleRate: 1,
+        lateSingleAttackBattleRate: 0,
+        averageInitialNearestEnemyDistance: null,
+        averageBestNearestEnemyDistance: null,
+        averageDistanceClosed: null,
+        noAttackBattleRate: 1,
+        movedNoAttackBattleRate: 0,
+        attackedNoHitBattleRate: 0,
+        moveTargetDiagnosticSampleCount: 0,
+        suboptimalMoveTargetRate: null,
+        averageExcessApproachSteps: null,
+        averageOutsideAttackRangeBeforeFirstAttackMs: 0,
+        averageInAttackRangeBeforeFirstAttackMs: 0,
+        averageAfterFirstAttackMs: 0,
+        averageFirstReachedAttackRangeAtMs: null,
+        firstReachedAttackRangeSamples: 0,
+        averageLeftLateralMovesPerBattle: 0,
+        averageRightLateralMovesPerBattle: 0,
+        firstLateralMoveLeftRate: null,
+        firstLateralMoveRightRate: null,
+        firstLateralMoveSamples: 0,
+        sharedPursuitMoveSampleCount: 0,
+        contestedPursuitMoveRate: null,
+        plannedApproachGroupMoveSampleCount: 0,
+        averagePlannedApproachGroupCompetitorCount: null,
+        averagePlannedApproachGroupAssignedCount: null,
+        oversubscribedPlannedApproachGroupRate: null,
+        plannedApproachBattleCount: 0,
+        plannedApproachMoveSampleCount: 0,
+        plannedApproachStillOpenRate: null,
+        usedPlannedApproachRate: null,
+        plannedApproachPathBlockedRate: null,
+        plannedApproachFirstAttackRate: null,
+        plannedApproachMatchedFirstAttackTargetRate: null,
+        plannedApproachReachedRangeWithoutAttackRate: null,
+        plannedApproachNoReachNoAttackRate: null,
+        plannedApproachNoAttackTargetDiedBeforeBattleEndRate: null,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveRate: null,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithoutUsingPlannedDestinationRate: null,
+        plannedApproachReachedRangeWithoutAttackWhileTargetAliveWithPathBlockedRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithoutUsingPlannedDestinationRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithPathBlockedRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithAllyAdjacentBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyAdjacentBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithMixedAdjacentBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithRouteChokeBlockRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithAllyFrontierChokeRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithEnemyFrontierChokeRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithMixedFrontierChokeRate: null,
+        plannedApproachNoReachNoAttackWhileTargetAliveWithUnclassifiedFrontierChokeRate: null,
+      },
+    ],
+    rangeFormationDiagnosticsMetrics: [
+      {
+        side: "boss",
+        rangeBand: "range_2_plus",
+        battleAppearances: 2,
+        frontAllyBlockedBattleRate: 0,
+        averageFrontAllyCount: 0,
+        averageInitialRow: null,
+        averageInitialColumn: null,
+        zeroDamageBattleRateWithFrontAlly: null,
+        zeroDamageBattleRateWithoutFrontAlly: 0.5,
+        noAttackBattleRateWithFrontAlly: null,
+        noAttackBattleRateWithoutFrontAlly: 1,
+      },
+      {
+        side: "raid",
+        rangeBand: "range_2_plus",
+        battleAppearances: 6,
+        frontAllyBlockedBattleRate: 0,
+        averageFrontAllyCount: 0,
+        averageInitialRow: null,
+        averageInitialColumn: null,
+        zeroDamageBattleRateWithFrontAlly: null,
+        zeroDamageBattleRateWithoutFrontAlly: 0.6666666666666666,
+        noAttackBattleRateWithFrontAlly: null,
+        noAttackBattleRateWithoutFrontAlly: 1,
+      },
+    ],
+    raidMeleeCohortMetrics: [],
+    raidSpecialMeleeUnitDiagnostics: [],
   });
 });
 
@@ -4230,7 +7554,6 @@ test("runBotOnlyBaselineMatches cleans up after every match attempt", async () =
       return {
         totalRounds: matchIndex + 2,
         bossPlayerId: "boss",
-        raidPlayerIds: ["raid-1", "raid-2", "raid-3"],
         ranking: ["boss", "raid-1", "raid-2", "raid-3"],
         playerLabels: {
           boss: "Boss",
@@ -4239,7 +7562,7 @@ test("runBotOnlyBaselineMatches cleans up after every match attempt", async () =
           "raid-3": "Raid 3",
         },
         finalPlayers: [],
-        rounds: [],
+        battles: [],
       };
     },
     cleanupAfterMatch,
@@ -4257,20 +7580,44 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
     1,
     Number.parseInt(process.env.BOT_BASELINE_MATCH_COUNT ?? "10", 10) || 10,
   );
+  const baselineTimeoutMs = Math.max(
+    30_000,
+    Number.parseInt(process.env.BOT_BASELINE_TIMEOUT_MS ?? "120000", 10) || 120_000,
+  );
+  const baselineBossPolicy = resolveBotBalanceBaselineHelperPolicy(
+    process.env.BOT_BASELINE_BOSS_POLICY,
+  );
+  const baselineRaidPolicies = resolveBotBalanceBaselineRaidPolicies(
+    process.env.BOT_BASELINE_RAID_POLICIES,
+  );
+  const baselineHelperConfigs = createBotBalanceBaselineHelperConfigs({
+    bossPolicy: baselineBossPolicy,
+    raidPolicies: baselineRaidPolicies,
+  });
   const baselineTest = runBotBalanceBaseline ? test : test.skip;
+  const BOT_ONLY_FAST_PARITY_ROOM_TIMINGS = createFastParityGameRoomOptions({
+    timeScale: 0.02,
+  });
   const BOT_ONLY_MANUAL_ROOM_TIMINGS = {
-    prepDurationMs: 240,
-    battleDurationMs: 80,
-    settleDurationMs: 50,
-    eliminationDurationMs: 50,
+    prepDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.prepDurationMs,
+    battleDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.battleDurationMs,
+    settleDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.settleDurationMs,
+    eliminationDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.eliminationDurationMs,
+    selectionTimeoutMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.selectionTimeoutMs,
+    battleTimelineTimeScale: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.battleTimelineTimeScale,
   } as const;
   const BOT_ONLY_HELPER_ROOM_TIMINGS = {
-    readyAutoStartMs: 100,
-    prepDurationMs: 240,
-    battleDurationMs: 80,
-    settleDurationMs: 50,
-    eliminationDurationMs: 50,
+    readyAutoStartMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.readyAutoStartMs,
+    prepDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.prepDurationMs,
+    battleDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.battleDurationMs,
+    settleDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.settleDurationMs,
+    eliminationDurationMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.eliminationDurationMs,
+    selectionTimeoutMs: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.selectionTimeoutMs,
+    battleTimelineTimeScale: BOT_ONLY_FAST_PARITY_ROOM_TIMINGS.battleTimelineTimeScale,
   } as const;
+  const BOT_ONLY_BASELINE_ROOM_TIMINGS: Record<string, unknown> = {
+    ...createBotBalanceBaselineRoomTimings(0.02),
+  };
   const BOT_ONLY_DAMAGE_TARGETS: Record<number, number> = {
     1: 600,
     2: 750,
@@ -4312,7 +7659,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
       accepted: true,
     });
 
-    await waitForCondition(() => serverRoom.state.phase === "Battle", 1_000);
+    await waitForCondition(() => serverRoom.state.phase === "Battle", 2_000);
     await waitForCondition(
       () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
       2_000,
@@ -4347,7 +7694,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
 
     await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
     await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
-    await waitForCondition(() => serverRoom.state.phase === "Battle", 1_000);
+    await waitForCondition(() => serverRoom.state.phase === "Battle", 2_000);
     await waitForCondition(
       () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
       2_000,
@@ -4489,25 +7836,27 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
     async () => {
       const { reports, failures } = await runBotOnlyBaselineMatches(
         baselineMatchCount,
-        async () => {
-          const artifacts = await runBotOnlyHelperMatch(
+        async (matchIndex) => {
+          const artifacts = await runBotOnlyHelperMatchForBaseline(
             (room) => getTestServer().connectTo(room) as unknown as Promise<BotOnlyTestClient>,
             () => createRoomWithForcedFlags(getTestServer(), {
               enableBossExclusiveShop: true,
               enableHeroSystem: true,
               enableSubUnitSystem: true,
               enableTouhouRoster: true,
-            }, BOT_ONLY_HELPER_ROOM_TIMINGS),
+            }, BOT_ONLY_BASELINE_ROOM_TIMINGS),
             BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
+            baselineHelperConfigs,
+            matchIndex,
           );
-          return buildBotOnlyMatchRoundReport(artifacts);
+          return buildBotOnlyBaselineMatchSummary(artifacts);
         },
         async () => {
           await getTestServer().cleanup();
         },
       );
 
-      const aggregate = buildBotOnlyBaselineAggregateReport(reports, baselineMatchCount);
+      const aggregate = buildBotOnlyBaselineAggregateReportFromSummaries(reports, baselineMatchCount);
       console.log(JSON.stringify({
         type: "bot_balance_baseline",
         data: {
@@ -4524,6 +7873,6 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
         expect(aggregate.averageRounds).toBeGreaterThanOrEqual(2);
       }
     },
-    120_000,
+    baselineTimeoutMs,
   );
 });

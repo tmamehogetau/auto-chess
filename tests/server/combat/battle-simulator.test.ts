@@ -7,12 +7,18 @@ import {
   sharedBoardCoordinateToIndex,
 } from "../../../src/shared/board-geometry";
 import {
+  assignApproachDestinationsForTarget,
   BattleSimulator,
   calculateCellDistance,
+  countReachableApproachDestinationEntryCoordinates,
   createBattleUnit,
+  findBestApproachDestinationCoordinate,
+  findBestApproachTarget,
+  findShortestApproachStepToCoordinate,
   findTarget,
   type BattleUnit,
 } from "../../../src/server/combat/battle-simulator";
+import { createSeededBattleRng } from "../../../src/server/combat/battle-rng";
 import { resolveBattlePlacements } from "../../../src/server/unit-id-resolver";
 
 const LEGACY_RAID_COORDINATES = [
@@ -165,8 +171,7 @@ describe("battle-simulator", () => {
       expect(boss.attackPower).toBe(bossBaseline.attack);
       expect(boss.attackSpeed).toBe(bossBaseline.attackSpeed);
       expect(boss.attackRange).toBe(bossBaseline.range);
-      expect(boss.physicalReduction).toBe(bossBaseline.physicalReduction);
-      expect(boss.magicReduction).toBe(bossBaseline.magicReduction);
+      expect(boss.damageReduction).toBe(bossBaseline.damageReduction);
     });
 
     test("HP70%以上のレミリアは紅き夜の王でHP70%未満時より高いダメージを出す", () => {
@@ -201,7 +206,7 @@ describe("battle-simulator", () => {
         [raidUnitForPassive],
         [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
         [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
-        1_500,
+        5_000,
       );
 
       const nonPassiveResult = simulator.simulateBattle(
@@ -209,7 +214,7 @@ describe("battle-simulator", () => {
         [raidUnitWithoutPassive],
         [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
         [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
-        1_500,
+        5_000,
       );
 
       expect(passiveResult.damageDealt.left).toBeGreaterThan(nonPassiveResult.damageDealt.left);
@@ -479,8 +484,9 @@ describe("battle-simulator", () => {
         maxHp: 80,
         attackPower: 4,
         attackSpeed: 0.5,
+        movementSpeed: 1,
         attackRange: 1,
-        defense: 3,
+        damageReduction: 0,
       });
       expect(createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
         id: "left-ranger-1",
@@ -490,8 +496,9 @@ describe("battle-simulator", () => {
         maxHp: 50,
         attackPower: 5,
         attackSpeed: 0.8,
+        movementSpeed: 1,
         attackRange: 3,
-        defense: 0,
+        damageReduction: 0,
       });
       expect(createTestBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
         id: "right-mage-0",
@@ -501,8 +508,9 @@ describe("battle-simulator", () => {
         maxHp: 40,
         attackPower: 6,
         attackSpeed: 0.6,
+        movementSpeed: 1,
         attackRange: 2,
-        defense: 0,
+        damageReduction: 0,
       });
       expect(createTestBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
         id: "right-assassin-1",
@@ -512,8 +520,9 @@ describe("battle-simulator", () => {
         maxHp: 45,
         attackPower: 5,
         attackSpeed: 1,
+        movementSpeed: 1,
         attackRange: 1,
-        defense: 0,
+        damageReduction: 0,
       });
     });
 
@@ -565,12 +574,11 @@ describe("battle-simulator", () => {
         maxHp: 620,
         attackPower: 40,
         attackSpeed: 0.85,
+        movementSpeed: 2,
         attackRange: 1,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 0,
-        magicReduction: 0,
+        damageReduction: 5,
       });
     });
 
@@ -591,18 +599,14 @@ describe("battle-simulator", () => {
       );
 
       expect(scarletUnit).toMatchObject({
-        defense: 15,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 5,
-        magicReduction: 25,
+        damageReduction: 36,
       });
       expect(bossUnit).toMatchObject({
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 0,
-        magicReduction: 0,
+        damageReduction: 0,
       });
     });
   });
@@ -710,12 +714,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -738,12 +740,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -766,12 +766,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -790,11 +788,9 @@ describe("battle-simulator", () => {
           cell: 5,
           isDead: true,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -818,12 +814,10 @@ describe("battle-simulator", () => {
         cell: combatCellToRaidBoardIndex(2),
         isDead: false,
         attackCount: 0,
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -842,11 +836,9 @@ describe("battle-simulator", () => {
           cell: combatCellToBossBoardIndex(7),
           isDead: false,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -865,11 +857,9 @@ describe("battle-simulator", () => {
           cell: combatCellToBossBoardIndex(6),
           isDead: false,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -888,11 +878,9 @@ describe("battle-simulator", () => {
           cell: combatCellToBossBoardIndex(4),
           isDead: false,
           attackCount: 0,
-          defense: 3,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -918,11 +906,9 @@ describe("battle-simulator", () => {
         cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
         isDead: false,
         attackCount: 0,
-        defense: 0,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: undefined,
-        magicReduction: undefined,
+        damageReduction: 0,
         buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
@@ -944,6 +930,43 @@ describe("battle-simulator", () => {
       expect(target?.id).toBe(weakerEnemy.id);
     });
 
+    test("同HPかつ同距離なら cell が小さい敵を優先する", () => {
+      const attacker: BattleUnit = {
+        id: "left-ranger-0",
+        type: "ranger",
+        starLevel: 1,
+        hp: 50,
+        maxHp: 50,
+        attackPower: 5,
+        attackSpeed: 0.8,
+        attackRange: 3,
+        cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }),
+        isDead: false,
+        attackCount: 0,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        damageReduction: 0,
+        buffModifiers: {
+          attackMultiplier: 1.0,
+          defenseMultiplier: 1.0,
+          attackSpeedMultiplier: 1.0,
+        },
+      };
+      const lowerCellEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40 },
+        "right",
+        0,
+      );
+      const higherCellEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40 },
+        "right",
+        1,
+      );
+
+      const target = findTarget(attacker, [higherCellEnemy, lowerCellEnemy]);
+      expect(target?.id).toBe(lowerCellEnemy.id);
+    });
+
     test("射程外の敵は対象にならない", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
@@ -957,12 +980,10 @@ describe("battle-simulator", () => {
         cell: 0,
         isDead: false,
         attackCount: 0,
-        defense: 3,
         critRate: 0,
         critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
-          buffModifiers: {
+        damageReduction: 0,
+        buffModifiers: {
           attackMultiplier: 1.0,
           defenseMultiplier: 1.0,
           attackSpeedMultiplier: 1.0,
@@ -981,11 +1002,9 @@ describe("battle-simulator", () => {
           cell: 7,
           isDead: false,
           attackCount: 0,
-          defense: 0,
           critRate: 0,
           critDamageMultiplier: 1.5,
-          physicalReduction: undefined,
-          magicReduction: undefined,
+          damageReduction: 0,
           buffModifiers: {
             attackMultiplier: 1.0,
             defenseMultiplier: 1.0,
@@ -995,6 +1014,290 @@ describe("battle-simulator", () => {
       ];
       expect(findTarget(attacker, enemies)).toBeNull();
     });
+
+    test("接敵最短対象は最寄り敵と異なる場合がある", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const blockerA = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const blockerB = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const blockerC = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        3,
+      );
+      const blockerD = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        4,
+      );
+      const nearEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const farEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const bestApproachTarget = findBestApproachTarget(
+        attacker,
+        [nearEnemy, farEnemy],
+        [attacker, blockerA, blockerB, blockerC, blockerD],
+      );
+
+      expect(bestApproachTarget?.id).toBe(farEnemy.id);
+    });
+
+    test("味方近接が集中しすぎる敵よりも受け口に余裕がある敵を優先する", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const competitorA = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const competitorB = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const closeFrontBlocker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        3,
+      );
+      const closeLeftBlocker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        4,
+      );
+      const closeTopBlocker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        5,
+      );
+      const closeEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+      const roomyEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        1,
+      );
+
+      const bestApproachTarget = findBestApproachTarget(
+        attacker,
+        [closeEnemy, roomyEnemy],
+        [attacker, competitorA, competitorB, closeFrontBlocker, closeLeftBlocker, closeTopBlocker],
+      );
+
+      expect(bestApproachTarget?.id).toBe(roomyEnemy.id);
+    });
+
+    test("接敵マス競合が強い場合は空いている攻撃可能マスを優先する", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const blockerAhead = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const blockerLeft = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const enemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const destination = findBestApproachDestinationCoordinate(
+        attacker,
+        enemy,
+        [attacker, blockerAhead, blockerLeft],
+        [enemy],
+      );
+
+      expect(destination).toEqual({ x: 3, y: 2 });
+    });
+
+    test("予約済みの接敵マスは避けて次善の攻撃可能マスを選ぶ", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const blockerAhead = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const blockerLeft = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const enemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const destination = findBestApproachDestinationCoordinate(
+        attacker,
+        enemy,
+        [attacker, blockerAhead, blockerLeft],
+        [enemy],
+        new Set(["3,2"]),
+      );
+
+      expect(destination).toEqual({ x: 1, y: 2 });
+    });
+
+    test("接敵マスごとの入口数を数えられる", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const blockerNearFront = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const blockerNearRightEntrance = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const enemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      expect(
+        countReachableApproachDestinationEntryCoordinates(
+          attacker,
+          enemy,
+          { x: 1, y: 2 },
+          [attacker, blockerNearFront, blockerNearRightEntrance],
+          [enemy],
+        ),
+      ).toBe(3);
+      expect(
+        countReachableApproachDestinationEntryCoordinates(
+          attacker,
+          enemy,
+          { x: 3, y: 2 },
+          [attacker, blockerNearFront, blockerNearRightEntrance],
+          [enemy],
+        ),
+      ).toBe(2);
+    });
+
+    test("同歩数なら入口が広い接敵マスを優先する", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const blockerNearFront = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const blockerNearRightEntrance = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const remoteCompetitor = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        3,
+      );
+      const enemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const destination = findBestApproachDestinationCoordinate(
+        attacker,
+        enemy,
+        [attacker, blockerNearFront, blockerNearRightEntrance, remoteCompetitor],
+        [enemy],
+      );
+
+      expect(destination).toEqual({ x: 1, y: 2 });
+    });
+
+    test("同じ敵を追う近接は入力順ではなく別々の接敵マスへ割り当てる", () => {
+      const flexibleAttacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      const constrainedAttacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        1,
+      );
+      const blockerAhead = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        2,
+      );
+      const blockerLeft = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        3,
+      );
+      const enemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        "right",
+        0,
+      );
+
+      const assignments = assignApproachDestinationsForTarget(
+        [flexibleAttacker, constrainedAttacker],
+        enemy,
+        [flexibleAttacker, constrainedAttacker, blockerAhead, blockerLeft],
+        [enemy],
+      );
+
+      expect(assignments.size).toBe(2);
+      expect(assignments.get(constrainedAttacker.id)).toBeDefined();
+      expect(assignments.get(flexibleAttacker.id)).toBeDefined();
+      expect(assignments.get(flexibleAttacker.id)).not.toEqual(
+        assignments.get(constrainedAttacker.id),
+      );
+    });
+
   });
 
 describe("BattleSimulator", () => {
@@ -1134,6 +1437,174 @@ describe("BattleSimulator", () => {
         type: "move",
         from: { x: 1, y: 3 },
         to: { x: 0, y: 3 },
+      });
+    });
+
+    test("6x6 shared-board cells では接敵マスが競合する場合に空いている側へ回り込む", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index, true)),
+        leftPlacements,
+        rightPlacements,
+        500,
+        null,
+        null,
+        null,
+        { ...DEFAULT_FLAGS, enableBossExclusiveShop: true },
+      );
+
+      const rerouteMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      expect(rerouteMove).toMatchObject({
+        type: "move",
+        from: { x: 2, y: 4 },
+        to: { x: 3, y: 4 },
+        plannedApproachTargetBattleUnitId: "right-vanguard-0",
+        plannedApproachDestinationStillOpenBeforeMove: true,
+        usedPlannedApproachDestination: true,
+      });
+    });
+
+    test("射程1ユニットは移動後の初撃待ちを短縮する", () => {
+      const simulator = new BattleSimulator();
+      const leftPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+      ];
+      const rightPlacements: BoardUnitPlacement[] = [
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "ranger", starLevel: 1 },
+      ];
+
+      const result = simulator.simulateBattle(
+        leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
+        rightPlacements.map((placement, index) => createTestBattleUnit(placement, "right", index)),
+        leftPlacements,
+        rightPlacements,
+        1_500,
+      );
+
+      const firstLeftMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+      const firstLeftAttack = result.timeline.find(
+        (event) => event.type === "attackStart" && event.sourceBattleUnitId === "left-vanguard-0",
+      );
+
+      expect(firstLeftMove).toMatchObject({
+        type: "move",
+        atMs: 0,
+      });
+      expect(firstLeftAttack).toMatchObject({
+        type: "attackStart",
+        atMs: 250,
+      });
+    });
+
+    test("movementSpeed に応じて攻撃速度と独立して連続移動する", () => {
+      const simulator = new BattleSimulator();
+      const leftUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        "left",
+        0,
+      );
+      leftUnit.attackSpeed = 0;
+      leftUnit.movementSpeed = 2;
+
+      const rightUnit = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "ranger", starLevel: 1 },
+        "right",
+        0,
+      );
+      rightUnit.attackSpeed = 0;
+      rightUnit.movementSpeed = 0;
+
+      const result = simulator.simulateBattle([leftUnit], [rightUnit], [], [], 1_500);
+      const leftMoves = result.timeline.filter(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+
+      expect(leftMoves.length).toBeGreaterThanOrEqual(2);
+      expect(leftMoves[0]).toMatchObject({
+        type: "move",
+        atMs: 0,
+        from: { x: 0, y: 4 },
+        to: { x: 1, y: 4 },
+      });
+      expect(leftMoves[1]).toMatchObject({
+        type: "move",
+        atMs: 500,
+        from: { x: 1, y: 4 },
+        to: { x: 2, y: 4 },
+      });
+    });
+
+    test("move event に追跡対象と最適接敵対象の診断を載せる", () => {
+      const simulator = new BattleSimulator();
+      const leftUnits = [
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          "left",
+          0,
+        ),
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          "left",
+          1,
+        ),
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+          "left",
+          2,
+        ),
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+          "left",
+          3,
+        ),
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          "left",
+          4,
+        ),
+      ];
+      const rightUnits = [
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          "right",
+          0,
+        ),
+        createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 5, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          "right",
+          1,
+        ),
+      ];
+
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 1_500);
+      const firstMove = result.timeline.find(
+        (event) => event.type === "move" && event.battleUnitId === "left-vanguard-0",
+      );
+
+      expect(firstMove).toMatchObject({
+        type: "move",
+        pursuedTargetBattleUnitId: "right-vanguard-1",
+        bestApproachTargetBattleUnitId: "right-vanguard-1",
+        pursuedTargetDistanceBeforeMove: 5,
+        bestApproachTargetDistanceBeforeMove: 5,
+      });
+      expect(firstMove).toMatchObject({
+        pursuedTargetRequiredStepsBeforeMove: 8,
+        bestApproachTargetRequiredStepsBeforeMove: 8,
       });
     });
 
@@ -1288,9 +1759,78 @@ describe("BattleSimulator", () => {
       expect(rightUnitA.hp + rightUnitB.hp).toBeLessThan(rightUnitA.maxHp + rightUnitB.maxHp);
     });
 
+    test("player-scoped hero id でも sourceUnitId から hero skill を解決する", () => {
+      const simulator = new BattleSimulator();
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const heroUnit = createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", starLevel: 1 },
+          "left",
+          0,
+        );
+        heroUnit.id = "hero--session-123";
+        heroUnit.sourceUnitId = "marisa";
+        heroUnit.attackPower = 120;
+
+        const rightUnitA = createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 1, y: 1 }), unitType: "vanguard", starLevel: 1 },
+          "right",
+          0,
+        );
+        const rightUnitB = createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "ranger", starLevel: 1 },
+          "right",
+          1,
+        );
+
+        const result = simulator.simulateBattle([heroUnit], [rightUnitA, rightUnitB], [], [], 500);
+
+        const heroSkillDamageEvents = result.timeline.filter(
+          (event) => event.type === "damageApplied" && event.sourceBattleUnitId === "hero--session-123",
+        );
+
+        expect(heroSkillDamageEvents.length).toBeGreaterThan(0);
+        expect(result.damageDealt.left).toBeGreaterThan(0);
+        expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining("Invalid hero ID for unit"),
+        );
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
+    });
+
+    test("hero skill 未定義の有効 hero id は Invalid hero ID stderr を出さない", () => {
+      const simulator = new BattleSimulator();
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const heroUnit = createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", starLevel: 1 },
+          "left",
+          0,
+        );
+        heroUnit.id = "hero-p3";
+        heroUnit.sourceUnitId = "okina";
+
+        const rightUnit = createTestBattleUnit(
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+          "right",
+          0,
+        );
+
+        const result = simulator.simulateBattle([heroUnit], [rightUnit], [], [], 1_500);
+
+        expect(result.timeline.length).toBeGreaterThan(0);
+        expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining("Invalid hero ID for unit"),
+        );
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
+    });
+
     test("同じ入力からは同じ結果が得られる（決定論性）", () => {
-      const simulator1 = new BattleSimulator();
-      const simulator2 = new BattleSimulator();
+      const simulator1 = new BattleSimulator({ rng: createSeededBattleRng(12345) });
+      const simulator2 = new BattleSimulator({ rng: createSeededBattleRng(12345) });
 
       const createLeftUnits = (): BattleUnit[] => [
         createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
@@ -1308,6 +1848,47 @@ describe("BattleSimulator", () => {
       expect(result1.leftSurvivors.length).toBe(result2.leftSurvivors.length);
       expect(result1.rightSurvivors.length).toBe(result2.rightSurvivors.length);
       expect(result1.combatLog).toEqual(result2.combatLog);
+    });
+
+    test("異なる seed は crit-sensitive な戦闘結果を変えうる", () => {
+      const createLeftUnits = (): BattleUnit[] => {
+        const attacker = createTestBattleUnit(
+          { cell: 0, unitType: "ranger", starLevel: 1, attack: 20, critRate: 0.2366 },
+          "left",
+          0,
+        );
+        attacker.attackRange = 6;
+        attacker.attackSpeed = 0;
+        return [attacker];
+      };
+      const createRightUnits = (): BattleUnit[] => {
+        const defender = createTestBattleUnit(
+          { cell: 0, unitType: "vanguard", starLevel: 1, hp: 100 },
+          "right",
+          0,
+        );
+        defender.attackRange = 0;
+        defender.attackSpeed = 0;
+        return [defender];
+      };
+
+      const critResult = new BattleSimulator({ rng: createSeededBattleRng(1) }).simulateBattle(
+        createLeftUnits(),
+        createRightUnits(),
+        [],
+        [],
+        10,
+      );
+      const nonCritResult = new BattleSimulator({ rng: createSeededBattleRng(2) }).simulateBattle(
+        createLeftUnits(),
+        createRightUnits(),
+        [],
+        [],
+        10,
+      );
+
+      expect(critResult.damageDealt.left).toBeGreaterThan(nonCritResult.damageDealt.left);
+      expect(critResult.combatLog).not.toEqual(nonCritResult.combatLog);
     });
 
     test("現在のMVP戦闘ベースラインは同じ入力で正確に再現される", () => {
@@ -1339,25 +1920,25 @@ describe("BattleSimulator", () => {
 
       expect(result1).toEqual(result2);
       expect(result1).toEqual({
-        winner: "left",
+        winner: "draw",
         durationMs: 10_000,
         damageDealt: {
-          left: 54,
-          right: 50,
+          left: 73,
+          right: 73,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 72, cell: 14 },
-          { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },
+          { id: "left-vanguard-0", hp: 48, cell: 14 },
+          { id: "left-ranger-1", hp: 9, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 72, cell: 21 },
-          { id: "right-ranger-1", hp: 4, cell: combatCellToBossBoardIndex(6) },
+          { id: "right-vanguard-0", hp: 48, cell: 21 },
+          { id: "right-ranger-1", hp: 9, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
         combatLogEnd: [
-          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 1 damage (72/80)",
-          "Left Vanguard (cell 14) attacks Right Ranger (cell 15) for 4 damage (4/50)",
-          "Battle ended: Left wins (HP: 80 vs 76)",
+          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 3 damage (48/80)",
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 3 damage (48/80)",
+          "Battle ended: Draw (HP: 57 vs 57)",
         ],
       });
     });
@@ -1554,7 +2135,7 @@ describe("BattleSimulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.hp).toBe(45);
+      expect(leftUnits[0]?.hp).toBe(47);
     });
 
     test("chireiden reflection は反射ダメージを再反射しない", () => {
@@ -1592,8 +2173,82 @@ describe("BattleSimulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.hp).toBe(46);
-      expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(3);
+      expect(leftUnits[0]?.hp).toBe(47);
+      expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(2);
+    });
+
+    test("同時攻撃の damageApplied はヒットごとの remainingHp を保持する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftUnits: BattleUnit[] = [
+        createTestBattleUnit(
+          { cell: 1, unitType: "ranger", starLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
+          "left",
+          0,
+        ),
+        createTestBattleUnit(
+          { cell: 3, unitType: "ranger", starLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
+          "left",
+          1,
+        ),
+      ];
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit(
+          { cell: 2, unitType: "vanguard", starLevel: 1, hp: 80, attack: 1, attackSpeed: 0.1, range: 1, critRate: 0 },
+          "right",
+          0,
+        ),
+      ];
+
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 10);
+      const hitEvents = result.timeline.filter(
+        (event) => event.type === "damageApplied" && event.targetBattleUnitId === rightUnits[0]?.id,
+      );
+
+      expect(hitEvents).toHaveLength(2);
+      expect(hitEvents[0]).toMatchObject({ amount: 20, remainingHp: 60 });
+      expect(hitEvents[1]).toMatchObject({ amount: 20, remainingHp: 40 });
+    });
+
+    test("反射ダメージで boss が倒れた場合も勝敗が確定する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftBoss = createTestBattleUnit(
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }),
+          unitType: "vanguard",
+          starLevel: 1,
+          hp: 10,
+          attack: 20,
+          attackSpeed: 1,
+          range: 1,
+          critRate: 0,
+        },
+        "left",
+        0,
+        true,
+      );
+      const rightReflector = createTestBattleUnit(
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
+          unitType: "vanguard",
+          starLevel: 1,
+          hp: 100,
+          attack: 1,
+          attackSpeed: 0.1,
+          range: 1,
+          critRate: 0,
+        },
+        "right",
+        0,
+      );
+      rightReflector.reflectRatio = 1;
+
+      const result = simulator.simulateBattle([leftBoss], [rightReflector], [], [], 100);
+
+      expect(leftBoss.isDead).toBe(true);
+      expect(result.winner).toBe("right");
+      expect(result.combatLog.some((log) => log.includes("reflects"))).toBe(true);
     });
 
     test("戦闘ログにダメージ情報が記録される", () => {
@@ -1991,6 +2646,7 @@ describe("BattleSimulator", () => {
         enableHeroSystem: false,
         enableSharedPool: false,
         enablePhaseExpansion: false,
+        enableDominationSystem: false,
         enableSubUnitSystem: false,
         enableEmblemCells: false,
         enableSpellCard: false,
@@ -2031,15 +2687,15 @@ describe("BattleSimulator", () => {
         10_000,
       );
 
-      expect(result1.winner).toBe("left");
-      expect(result1.damageDealt).toEqual({ left: 54, right: 50 });
+      expect(result1.winner).toBe("draw");
+      expect(result1.damageDealt).toEqual({ left: 73, right: 73 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 72, cell: 14 },
-        { id: "left-ranger-1", hp: 8, cell: combatCellToRaidBoardIndex(1) },
+        { id: "left-vanguard-0", hp: 48, cell: 14 },
+        { id: "left-ranger-1", hp: 9, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 72, cell: 21 },
-        { id: "right-ranger-1", hp: 4, cell: combatCellToBossBoardIndex(6) },
+        { id: "right-vanguard-0", hp: 48, cell: 21 },
+        { id: "right-ranger-1", hp: 9, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);
     });

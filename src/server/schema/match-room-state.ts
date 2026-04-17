@@ -244,6 +244,8 @@ export class MatchRoomState extends Schema {
 
   declare public featureFlagsEnablePhaseExpansion: boolean;
 
+  declare public featureFlagsEnableDominationSystem: boolean;
+
   declare public featureFlagsEnableSubUnitSystem: boolean;
 
   declare public featureFlagsEnableSpellCard: boolean;
@@ -292,6 +294,7 @@ export class MatchRoomState extends Schema {
     this.featureFlagsEnableHeroSystem = false;
     this.featureFlagsEnableSharedPool = false;
     this.featureFlagsEnablePhaseExpansion = false;
+    this.featureFlagsEnableDominationSystem = false;
     this.featureFlagsEnableSubUnitSystem = false;
     this.featureFlagsEnableSpellCard = false;
     this.featureFlagsEnableRumorInfluence = false;
@@ -402,6 +405,7 @@ defineTypes(MatchRoomState, {
   featureFlagsEnableHeroSystem: "boolean",
   featureFlagsEnableSharedPool: "boolean",
   featureFlagsEnablePhaseExpansion: "boolean",
+  featureFlagsEnableDominationSystem: "boolean",
   featureFlagsEnableSubUnitSystem: "boolean",
   featureFlagsEnableSpellCard: "boolean",
   featureFlagsEnableRumorInfluence: "boolean",

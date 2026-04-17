@@ -17,6 +17,7 @@ const BASE_FLAGS: FeatureFlags = {
   enableHeroSystem: false,
   enableSharedPool: false,
   enablePhaseExpansion: false,
+  enableDominationSystem: false,
   enableSubUnitSystem: false,
   enableEmblemCells: false,
   enableSpellCard: false,

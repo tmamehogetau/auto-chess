@@ -9,6 +9,11 @@ import {
   ROSTER_KIND_TOUHOU,
   getTouhouDraftRosterUnits,
 } from "../../../src/server/roster/roster-provider";
+import {
+  hashToUint32 as productionHashToUint32,
+  pickRarity as productionPickRarity,
+  seedToUnitFloat as productionSeedToUnitFloat,
+} from "../../../src/server/match-room-controller/random-utils";
 
 describe("ShopOfferBuilder", () => {
   let builder: ShopOfferBuilder;
@@ -55,6 +60,31 @@ describe("ShopOfferBuilder", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
+
+  function mockTouhouRollStreams(costRoll: number, unitRoll = 0): void {
+    mockDeps.hashToUint32 = vi.fn((text: string) => {
+      if (text.endsWith(":touhou:cost")) {
+        return 1;
+      }
+
+      if (text.endsWith(":touhou:unit")) {
+        return 2;
+      }
+
+      return 0;
+    });
+    mockDeps.seedToUnitFloat = vi.fn((seed: number) => {
+      if (seed === 1) {
+        return costRoll;
+      }
+
+      if (seed === 2) {
+        return unitRoll;
+      }
+
+      return 0;
+    });
+  }
 
   describe("buildShopOffers", () => {
     test("creates 5 normal shop offers at level 1", () => {
@@ -152,12 +182,11 @@ describe("ShopOfferBuilder", () => {
         hp: 1000,
         attack: 100,
         attackSpeed: 1.0,
+        movementSpeed: 1,
         range: 1,
-        defense: 10,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 10,
-        magicReduction: 10,
+        damageReduction: 0,
         role: "テスト",
         skillDescription: "テストスキル",
         flavorText: "テストフレーバー",
@@ -184,12 +213,11 @@ describe("ShopOfferBuilder", () => {
         hp: 1000,
         attack: 100,
         attackSpeed: 1.0,
+        movementSpeed: 1,
         range: 1,
-        defense: 10,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        physicalReduction: 10,
-        magicReduction: 10,
+        damageReduction: 0,
         role: "テスト",
         skillDescription: "テストスキル",
         flavorText: "テストフレーバー",
@@ -320,8 +348,7 @@ describe("ShopOfferBuilder", () => {
       mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
       mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
-      mockDeps.hashToUint32 = vi.fn(() => 0);
-      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.8 : 0));
+      mockTouhouRollStreams(0.8, 0);
       const isUnitIdPoolDepletedMock = vi.fn(
         (unitId: string, cost: number) => cost === 2 && unitId === depletedCost2UnitId,
       );
@@ -369,7 +396,7 @@ describe("ShopOfferBuilder", () => {
         },
         {
           roundIndex: 8,
-          selectedCostRoll: 0.7,
+          selectedCostRoll: 0.4,
           depletedCosts: [3, 2],
           expectedCost: 4,
         },
@@ -382,8 +409,7 @@ describe("ShopOfferBuilder", () => {
         mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
         mockDeps.isSharedPoolEnabled = vi.fn(() => true);
         mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
-        mockDeps.hashToUint32 = vi.fn(() => 0);
-        mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? testCase.selectedCostRoll : 0));
+        mockTouhouRollStreams(testCase.selectedCostRoll, 0);
         mockDeps.isUnitIdPoolDepleted = vi.fn((_: string, cost: number) => depletedCosts.has(cost));
 
         builder = new ShopOfferBuilder(mockDeps);
@@ -415,7 +441,7 @@ describe("ShopOfferBuilder", () => {
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
       mockDeps.isPerUnitPoolEnabled = vi.fn(() => false);
       mockDeps.hashToUint32 = vi.fn(() => 0);
-      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.7 : 0));
+      mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.4 : 0));
       mockDeps.isPoolDepleted = vi.fn((cost: number) => cost === 3 || cost === 2);
 
       builder = new ShopOfferBuilder(mockDeps);
@@ -455,8 +481,7 @@ describe("ShopOfferBuilder", () => {
         mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
         mockDeps.isSharedPoolEnabled = vi.fn(() => true);
         mockDeps.isPerUnitPoolEnabled = vi.fn(() => true);
-        mockDeps.hashToUint32 = vi.fn(() => 0);
-        mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? 0.75 : 0));
+        mockTouhouRollStreams(0.75, 0);
         const depletedCosts = new Set(testCase.depletedCosts);
         const isUnitIdPoolDepletedMock = vi.fn((_: string, cost: number) => depletedCosts.has(cost));
         const isPoolDepletedMock = vi.fn(() => true);
@@ -492,20 +517,19 @@ describe("ShopOfferBuilder", () => {
     test("uses Touhou round-based weighting boundaries deterministically", () => {
       const touhouRoster = getTouhouDraftRosterUnits();
       const cases: Array<{ roundIndex: number; roll: number; expectedCost: number }> = [
-        { roundIndex: 1, roll: 0.849999, expectedCost: 1 },
-        { roundIndex: 1, roll: 0.85, expectedCost: 2 },
-        { roundIndex: 2, roll: 0.949999, expectedCost: 2 },
-        { roundIndex: 2, roll: 0.95, expectedCost: 3 },
+        { roundIndex: 1, roll: 0.799999, expectedCost: 1 },
+        { roundIndex: 1, roll: 0.8, expectedCost: 2 },
+        { roundIndex: 2, roll: 0.849999, expectedCost: 2 },
+        { roundIndex: 2, roll: 0.850001, expectedCost: 3 },
         { roundIndex: 4, roll: 0.97, expectedCost: 4 },
         { roundIndex: 10, roll: 0.97, expectedCost: 5 },
       ];
 
       mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
       mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
-      mockDeps.hashToUint32 = vi.fn(() => 0);
 
       for (const testCase of cases) {
-        mockDeps.seedToUnitFloat = vi.fn((seed: number) => (seed === 1 ? testCase.roll : 0));
+        mockTouhouRollStreams(testCase.roll, 0);
         builder = new ShopOfferBuilder(mockDeps);
 
         const offers = builder.buildShopOffers("player1", testCase.roundIndex, 0, 0, false);
@@ -514,6 +538,53 @@ describe("ShopOfferBuilder", () => {
         expect(offers.every((offer) => offer.cost === testCase.expectedCost)).toBe(true);
       }
     });
+
+    test("Touhou shop candidate sampling can reach every roster unit", () => {
+      const touhouRoster = getTouhouDraftRosterUnits();
+      const seenUnitIds = new Set<string>();
+      const remainingUnitCount = () => touhouRoster.length - seenUnitIds.size;
+
+      mockDeps.getActiveRosterKind = vi.fn(() => ROSTER_KIND_TOUHOU);
+      mockDeps.getTouhouDraftRosterUnits = vi.fn(() => touhouRoster);
+      mockDeps.hashToUint32 = productionHashToUint32;
+      mockDeps.seedToUnitFloat = productionSeedToUnitFloat;
+      mockDeps.pickRarity = productionPickRarity;
+
+      builder = new ShopOfferBuilder(mockDeps);
+
+      samplingLoop:
+      for (let roundIndex = 1; roundIndex <= 12; roundIndex += 1) {
+        for (let refreshCount = 0; refreshCount < 30; refreshCount += 1) {
+          for (let purchaseCount = 0; purchaseCount < 25; purchaseCount += 1) {
+            for (let playerIndex = 0; playerIndex < 32; playerIndex += 1) {
+              const offers = builder.buildShopOffers(
+                `player-${playerIndex}`,
+                roundIndex,
+                refreshCount,
+                purchaseCount,
+                false,
+              );
+
+              for (const offer of offers) {
+                if (typeof offer.unitId === "string" && offer.unitId.length > 0) {
+                  seenUnitIds.add(offer.unitId);
+                }
+              }
+
+              if (remainingUnitCount() === 0) {
+                break samplingLoop;
+              }
+            }
+          }
+        }
+      }
+
+      expect(
+        touhouRoster
+          .map((unit) => unit.unitId)
+          .filter((unitId) => !seenUnitIds.has(unitId)),
+      ).toEqual([]);
+    }, 15_000);
 
     test("produces deterministic results with same seed (MVP behavior)", () => {
       // Same inputs should produce same outputs (using hardcoded pools)

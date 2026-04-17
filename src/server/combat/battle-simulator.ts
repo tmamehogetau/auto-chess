@@ -1,12 +1,15 @@
 import type {
+  BattleTimelineEndReason,
   BattleKeyframeUnitState,
+  PlannedApproachPathBlockerType,
+  PlannedApproachRouteChokeType,
   BattleStartUnitSnapshot,
   BattleTimelineEvent,
   BattleTimelineSide,
   BoardUnitPlacement,
   BoardUnitType,
 } from "../../shared/room-messages";
-import { getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
+import { DEFAULT_MOVEMENT_SPEED, getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import {
@@ -43,6 +46,13 @@ import {
   createMoveEvent,
   createUnitDeathEvent,
 } from "./battle-timeline";
+import { createDefaultBattleRng, type BattleRng } from "./battle-rng";
+import {
+  buildAppliedDamageSummary,
+  calculateAttackDamage,
+  calculateReflectedDamage,
+  resolveUnitDefeatConsequences,
+} from "./battle-resolution-helpers";
 
 /**
  * アクションインターフェース
@@ -51,7 +61,7 @@ import {
 export interface Action {
   unit: BattleUnit;
   actionTime: number;
-  type: "attack" | "skill";
+  type: "attack" | "move" | "skill";
 }
 
 /**
@@ -69,20 +79,19 @@ export interface BattleUnit {
   maxHp: number;
   attackPower: number;
   attackSpeed: number; // 1秒あたりの攻撃回数（0.5 = 2秒に1回攻撃）
+  movementSpeed?: number;
   attackRange: number; // 1 = 近接, 2+ = 遠距離
   cell: number; // shared-board index on the 6x6 battle field
   isDead: boolean;
-  isBoss?: boolean; // ボスフラグ（ボス戦時のみ）
-  attackCount: number; // スキルトリガー用の攻撃回数トラッキング
-  defense: number; // ベース防御力（被ダメージを軽減）
-  critRate: number; // 0.0-1.0, クリティカルヒット率
-  critDamageMultiplier: number; // 1.5 = 150% クリティカルダメージ
-  physicalReduction: number | undefined; // 物理ダメージ軽減率（0-100）
-  magicReduction: number | undefined; // 魔法ダメージ軽減率（0-100）
+  isBoss?: boolean;
+  attackCount: number;
+  critRate: number;
+  critDamageMultiplier: number;
+  damageReduction: number;
   buffModifiers: {
-    attackMultiplier: number; // デフォルト 1.0
-    defenseMultiplier: number; // デフォルト 1.0
-    attackSpeedMultiplier: number; // デフォルト 1.0
+    attackMultiplier: number;
+    defenseMultiplier: number;
+    attackSpeedMultiplier: number;
   };
   reflectRatio?: number;
   ultimateDamageMultiplier?: number;
@@ -96,6 +105,7 @@ export interface BattleUnit {
  */
 export interface BattleResult {
   winner: "left" | "right" | "draw";
+  endReason: BattleTimelineEndReason;
   leftSurvivors: BattleUnit[];
   rightSurvivors: BattleUnit[];
   timeline: BattleTimelineEvent[];
@@ -116,15 +126,110 @@ interface BaseUnitStats {
   hp: number;
   attack: number;
   attackSpeed: number;
+  movementSpeed: number;
   range: number;
 }
 
 const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
-  vanguard: { hp: 80, attack: 4, attackSpeed: 0.5, range: 1 },
-  ranger: { hp: 50, attack: 5, attackSpeed: 0.8, range: 3 },
-  mage: { hp: 40, attack: 6, attackSpeed: 0.6, range: 2 },
-  assassin: { hp: 45, attack: 5, attackSpeed: 1.0, range: 1 },
+  vanguard: { hp: 80, attack: 4, attackSpeed: 0.5, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 1 },
+  ranger: { hp: 50, attack: 5, attackSpeed: 0.8, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 3 },
+  mage: { hp: 40, attack: 6, attackSpeed: 0.6, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 2 },
+  assassin: { hp: 45, attack: 5, attackSpeed: 1.0, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 1 },
 };
+
+const MELEE_POST_MOVE_ATTACK_DELAY_MS = 250;
+const ACTION_PRIORITY: Readonly<Record<Action["type"], number>> = {
+  attack: 0,
+  skill: 1,
+  move: 2,
+};
+
+function compareActionOrder(left: Action, right: Action): number {
+  if (left.actionTime !== right.actionTime) {
+    return left.actionTime - right.actionTime;
+  }
+
+  return ACTION_PRIORITY[left.type] - ACTION_PRIORITY[right.type];
+}
+
+function getAttackIntervalMs(unit: BattleUnit): number | null {
+  if (unit.attackSpeed <= 0) {
+    return null;
+  }
+
+  return 1000 / (unit.attackSpeed * unit.buffModifiers.attackSpeedMultiplier);
+}
+
+function getMoveIntervalMs(unit: BattleUnit): number | null {
+  const movementSpeed = unit.movementSpeed ?? DEFAULT_MOVEMENT_SPEED;
+  if (movementSpeed <= 0) {
+    return null;
+  }
+
+  return 1000 / movementSpeed;
+}
+
+function isHeroBattleUnit(unit: BattleUnit): boolean {
+  if (unit.id.startsWith("hero-")) {
+    return true;
+  }
+
+  if (typeof unit.sourceUnitId !== "string" || unit.sourceUnitId.length === 0) {
+    return false;
+  }
+
+  return HEROES.some((hero) => (
+    unit.sourceUnitId === hero.id
+    || unit.sourceUnitId === `hero-${hero.id}`
+  ));
+}
+
+function resolveHeroId(unit: BattleUnit): string | null {
+  const candidates = new Set<string>();
+
+  if (typeof unit.sourceUnitId === "string" && unit.sourceUnitId.length > 0) {
+    candidates.add(unit.sourceUnitId);
+    if (unit.sourceUnitId.startsWith("hero-")) {
+      candidates.add(unit.sourceUnitId.slice("hero-".length));
+    }
+  }
+
+  if (isHeroBattleUnit(unit)) {
+    candidates.add(unit.id.slice("hero-".length));
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    if (HEROES.some((hero) => hero.id === candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveHeroSkillDefinition(unit: BattleUnit): {
+  heroId: string;
+  skillDef: (typeof HERO_SKILL_DEFINITIONS)[string];
+} | null {
+  const heroId = resolveHeroId(unit);
+  if (!heroId) {
+    return null;
+  }
+
+  const skillDef = HERO_SKILL_DEFINITIONS[heroId];
+  if (skillDef) {
+    return {
+      heroId,
+      skillDef,
+    };
+  }
+
+  return null;
+}
 
 function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
   if (unit.isBoss) {
@@ -135,7 +240,7 @@ function resolveTimelineSide(unit: BattleUnit): BattleTimelineSide {
     return "raid";
   }
 
-  return (unit.id.startsWith("left") || unit.id.startsWith("hero-")) ? "raid" : "boss";
+  return (unit.id.startsWith("left") || isHeroBattleUnit(unit)) ? "raid" : "boss";
 }
 
 function resolveBattleSide(unit: BattleUnit): "left" | "right" {
@@ -147,7 +252,7 @@ function resolveBattleSide(unit: BattleUnit): "left" | "right" {
     return "right";
   }
 
-  if (unit.id.startsWith("left") || unit.id.startsWith("hero-")) {
+  if (unit.id.startsWith("left") || isHeroBattleUnit(unit)) {
     return "left";
   }
 
@@ -421,76 +526,64 @@ export function createBattleUnit(
     hp: resolvedHp,
     attack: resolvedAttack,
     attackSpeed: resolvedAttackSpeed,
+    movementSpeed: resolvedMovementSpeed,
     range: resolvedRange,
-    defense: resolvedDefense,
     critRate: resolvedCritRate,
     critDamageMultiplier: resolvedCritDamageMultiplier,
-    physicalReduction: resolvedPhysicalReduction,
-    magicReduction: resolvedMagicReduction,
+    damageReduction: resolvedDamageReduction,
   } = resolvedPlacement;
   const baseStats = BASE_STATS[unitType];
   const bossStats = isBoss && archetype === "remilia" ? getMvpPhase1Boss() : null;
 
-  // Scarlet Mansionユニットの特殊ステータスをチェック
   let finalHp: number;
   let finalAttack: number;
   let finalAttackSpeed: number;
+  let finalMovementSpeed: number;
   let finalRange: number;
-  let finalDefense: number;
   let finalCritRate: number;
   let finalCritDamageMultiplier: number;
-  let finalPhysicalReduction: number | undefined = undefined;
-  let finalMagicReduction: number | undefined = undefined;
+  let finalDamageReduction: number = 0;
 
   if (bossStats) {
-    // ボス（remilia）の場合、ボスステータスを適用
     finalHp = bossStats.hp;
     finalAttack = bossStats.attack;
     finalAttackSpeed = bossStats.attackSpeed;
+    finalMovementSpeed = bossStats.movementSpeed;
     finalRange = bossStats.range;
-    finalDefense = bossStats.defense;
     finalCritRate = bossStats.critRate;
     finalCritDamageMultiplier = bossStats.critDamageMultiplier;
-    finalPhysicalReduction = bossStats.physicalReduction;
-    finalMagicReduction = bossStats.magicReduction;
+    finalDamageReduction = bossStats.damageReduction;
   } else if (archetype && ["meiling", "sakuya", "patchouli"].includes(archetype)) {
-    // Scarlet Mansionユニットの場合、特殊ステータスを適用
     const scarletUnit = getScarletMansionUnitById(archetype);
     if (scarletUnit) {
       finalHp = scarletUnit.hp;
       finalAttack = scarletUnit.attack;
       finalAttackSpeed = scarletUnit.attackSpeed;
+      finalMovementSpeed = scarletUnit.movementSpeed;
       finalRange = scarletUnit.range;
-      finalDefense = scarletUnit.defense;
       finalCritRate = scarletUnit.critRate;
       finalCritDamageMultiplier = scarletUnit.critDamageMultiplier;
-      finalPhysicalReduction = scarletUnit.physicalReduction;
-      finalMagicReduction = scarletUnit.magicReduction;
+      finalDamageReduction = scarletUnit.damageReduction;
     } else {
-      // フォールバック: 通常ステータスを使用
       const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
       finalHp = baseStats.hp * starMultiplier;
       finalAttack = baseStats.attack * starMultiplier;
       finalAttackSpeed = baseStats.attackSpeed;
+      finalMovementSpeed = baseStats.movementSpeed;
       finalRange = baseStats.range;
-      finalDefense = unitType === "vanguard" ? 3 : 0;
       finalCritRate = 0;
       finalCritDamageMultiplier = 1.5;
-      finalPhysicalReduction = 0;
-      finalMagicReduction = 0;
     }
   } else {
-    // 通常ユニット: 星レベル倍率を適用
     const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
     finalHp = (resolvedHp ?? baseStats.hp) * starMultiplier;
     finalAttack = (resolvedAttack ?? baseStats.attack) * starMultiplier;
     finalAttackSpeed = resolvedAttackSpeed ?? baseStats.attackSpeed;
+    finalMovementSpeed = resolvedMovementSpeed ?? baseStats.movementSpeed;
     finalRange = resolvedRange ?? baseStats.range;
-    finalDefense = resolvedDefense ?? (unitType === "vanguard" ? 3 : 0);
     finalCritRate = resolvedCritRate ?? 0;
     finalCritDamageMultiplier = resolvedCritDamageMultiplier ?? 1.5;
-    finalPhysicalReduction = resolvedPhysicalReduction ?? 0;
-    finalMagicReduction = resolvedMagicReduction ?? 0;
+    finalDamageReduction = resolvedDamageReduction ?? 0;
   }
 
   return {
@@ -506,16 +599,15 @@ export function createBattleUnit(
     maxHp: finalHp,
     attackPower: finalAttack,
     attackSpeed: finalAttackSpeed,
+    movementSpeed: finalMovementSpeed,
     attackRange: finalRange,
     cell: resolveBoardIndexForCell(cell),
     isDead: false,
     isBoss,
     attackCount: 0,
-    defense: finalDefense,
     critRate: finalCritRate,
     critDamageMultiplier: finalCritDamageMultiplier,
-    physicalReduction: finalPhysicalReduction,
-    magicReduction: finalMagicReduction,
+    damageReduction: finalDamageReduction,
     buffModifiers: {
       attackMultiplier: 1.0,
       defenseMultiplier: 1.0,
@@ -643,47 +735,1004 @@ function findClosestLivingEnemy(attacker: BattleUnit, enemies: BattleUnit[]): Ba
   return closestTarget;
 }
 
+function buildOccupiedCoordinatesForMovement(
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+  movingUnitId: string,
+): Set<string> {
+  return new Set(
+    [...allies, ...enemies]
+      .filter((candidate) => !candidate.isDead && candidate.id !== movingUnitId)
+      .map((candidate) =>
+        coordinateKey(resolveCellCoordinate(candidate.cell, resolveBattleSide(candidate)))),
+  );
+}
+
+function buildOccupiedCoordinatesByTeam(
+  units: BattleUnit[],
+  excludedUnitId?: string,
+): Set<string> {
+  return new Set(
+    units
+      .filter((candidate) => !candidate.isDead && candidate.id !== excludedUnitId)
+      .map((candidate) =>
+        coordinateKey(resolveCellCoordinate(candidate.cell, resolveBattleSide(candidate)))),
+  );
+}
+
+function classifyPlannedApproachPathBlockerType(
+  currentCoordinate: { x: number; y: number },
+  destinationCoordinate: { x: number; y: number },
+  allyOccupiedCoordinates: ReadonlySet<string>,
+  enemyOccupiedCoordinates: ReadonlySet<string>,
+): PlannedApproachPathBlockerType {
+  let openImmediateCandidateCount = 0;
+  let allyBlockedImmediateCandidateCount = 0;
+  let enemyBlockedImmediateCandidateCount = 0;
+
+  for (const candidate of buildApproachCandidates(currentCoordinate, destinationCoordinate)) {
+    const candidateKey = coordinateKey(candidate);
+    if (allyOccupiedCoordinates.has(candidateKey)) {
+      allyBlockedImmediateCandidateCount += 1;
+      continue;
+    }
+    if (enemyOccupiedCoordinates.has(candidateKey)) {
+      enemyBlockedImmediateCandidateCount += 1;
+      continue;
+    }
+    openImmediateCandidateCount += 1;
+  }
+
+  if (openImmediateCandidateCount > 0) {
+    return "route_choke";
+  }
+  if (allyBlockedImmediateCandidateCount > 0 && enemyBlockedImmediateCandidateCount > 0) {
+    return "mixed_adjacent";
+  }
+  if (allyBlockedImmediateCandidateCount > 0) {
+    return "ally_adjacent";
+  }
+  if (enemyBlockedImmediateCandidateCount > 0) {
+    return "enemy_adjacent";
+  }
+  return "route_choke";
+}
+
+function classifyPlannedApproachRouteChokeType(
+  currentCoordinate: { x: number; y: number },
+  destinationCoordinate: { x: number; y: number },
+  allyOccupiedCoordinates: ReadonlySet<string>,
+  enemyOccupiedCoordinates: ReadonlySet<string>,
+): PlannedApproachRouteChokeType {
+  const queue: Array<{ x: number; y: number }> = [currentCoordinate];
+  const visited = new Set<string>([coordinateKey(currentCoordinate)]);
+  let allyFrontierBlockCount = 0;
+  let enemyFrontierBlockCount = 0;
+
+  while (queue.length > 0) {
+    const coordinate = queue.shift();
+    if (!coordinate) {
+      break;
+    }
+
+    for (const neighbor of buildApproachCandidates(coordinate, destinationCoordinate)) {
+      const neighborKey = coordinateKey(neighbor);
+      if (visited.has(neighborKey)) {
+        continue;
+      }
+      if (allyOccupiedCoordinates.has(neighborKey)) {
+        allyFrontierBlockCount += 1;
+        continue;
+      }
+      if (enemyOccupiedCoordinates.has(neighborKey)) {
+        enemyFrontierBlockCount += 1;
+        continue;
+      }
+
+      visited.add(neighborKey);
+      queue.push(neighbor);
+    }
+  }
+
+  if (allyFrontierBlockCount > 0 && enemyFrontierBlockCount > 0) {
+    return "mixed_frontier";
+  }
+  if (allyFrontierBlockCount > 0) {
+    return "ally_frontier";
+  }
+  if (enemyFrontierBlockCount > 0) {
+    return "enemy_frontier";
+  }
+  return "unclassified";
+}
+
+function calculateRequiredStepsToReachAttackRange(
+  currentCoordinate: { x: number; y: number },
+  targetCoordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+  attackRange: number,
+): number | null {
+  if (sharedBoardManhattanDistance(currentCoordinate, targetCoordinate) <= attackRange) {
+    return 0;
+  }
+
+  const queue: Array<{
+    coordinate: { x: number; y: number };
+    steps: number;
+  }> = [{ coordinate: currentCoordinate, steps: 0 }];
+  const visited = new Set<string>([coordinateKey(currentCoordinate)]);
+
+  while (queue.length > 0) {
+    const currentNode = queue.shift();
+    if (!currentNode) {
+      break;
+    }
+
+    const neighbors = buildApproachCandidates(currentNode.coordinate, targetCoordinate);
+    for (const neighbor of neighbors) {
+      const neighborKey = coordinateKey(neighbor);
+      if (visited.has(neighborKey) || occupiedCoordinates.has(neighborKey)) {
+        continue;
+      }
+
+      const nextSteps = currentNode.steps + 1;
+      if (sharedBoardManhattanDistance(neighbor, targetCoordinate) <= attackRange) {
+        return nextSteps;
+      }
+
+      visited.add(neighborKey);
+      queue.push({ coordinate: neighbor, steps: nextSteps });
+    }
+  }
+
+  return null;
+}
+
+function calculateRequiredStepsToCoordinate(
+  currentCoordinate: { x: number; y: number },
+  destinationCoordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+): number | null {
+  const destinationKey = coordinateKey(destinationCoordinate);
+  if (coordinateKey(currentCoordinate) === destinationKey) {
+    return 0;
+  }
+
+  const queue: Array<{
+    coordinate: { x: number; y: number };
+    steps: number;
+  }> = [{ coordinate: currentCoordinate, steps: 0 }];
+  const visited = new Set<string>([coordinateKey(currentCoordinate)]);
+
+  while (queue.length > 0) {
+    const currentNode = queue.shift();
+    if (!currentNode) {
+      break;
+    }
+
+    const neighbors = buildApproachCandidates(currentNode.coordinate, destinationCoordinate);
+    for (const neighbor of neighbors) {
+      const neighborKey = coordinateKey(neighbor);
+      if (visited.has(neighborKey) || occupiedCoordinates.has(neighborKey)) {
+        continue;
+      }
+
+      const nextSteps = currentNode.steps + 1;
+      if (neighborKey === destinationKey) {
+        return nextSteps;
+      }
+
+      visited.add(neighborKey);
+      queue.push({ coordinate: neighbor, steps: nextSteps });
+    }
+  }
+
+  return null;
+}
+
+function buildAttackDestinationCandidates(
+  targetCoordinate: { x: number; y: number },
+  attackRange: number,
+): Array<{ x: number; y: number }> {
+  const candidates: Array<{ x: number; y: number }> = [];
+
+  for (let x = 0; x < DEFAULT_SHARED_BOARD_CONFIG.width; x += 1) {
+    for (let y = 0; y < DEFAULT_SHARED_BOARD_CONFIG.height; y += 1) {
+      const candidate = { x, y };
+      const distance = sharedBoardManhattanDistance(candidate, targetCoordinate);
+      if (distance === 0 || distance > attackRange) {
+        continue;
+      }
+
+      candidates.push(candidate);
+    }
+  }
+
+  return candidates;
+}
+
+function countCompetingAlliesForDestination(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+  destinationCoordinate: { x: number; y: number },
+  attackerRequiredSteps: number,
+): { competingAllies: number; constrainedCompetingAllies: number } {
+  let competingAllies = 0;
+  let constrainedCompetingAllies = 0;
+
+  for (const ally of allies) {
+    if (ally.id === attacker.id || ally.isDead) {
+      continue;
+    }
+
+    const allyCoordinate = resolveCellCoordinate(ally.cell, resolveBattleSide(ally));
+    const allyOccupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, ally.id);
+    const allyRequiredSteps = calculateRequiredStepsToCoordinate(
+      allyCoordinate,
+      destinationCoordinate,
+      allyOccupiedCoordinates,
+    );
+
+    if (allyRequiredSteps != null && allyRequiredSteps <= attackerRequiredSteps) {
+      competingAllies += 1;
+      const allyReachableStats = resolveReachableApproachDestinationStats(ally, target, allies, enemies);
+      if (allyReachableStats.reachableDestinationCount <= 1) {
+        constrainedCompetingAllies += 1;
+      }
+    }
+  }
+
+  return {
+    competingAllies,
+    constrainedCompetingAllies,
+  };
+}
+
+type ReachableApproachDestinationStats = {
+  reachableDestinationCount: number;
+  bestRequiredSteps: number;
+};
+
+type ApproachTargetPressureMetrics = {
+  reachableDestinationCount: number;
+  competingAllyCount: number;
+  overload: number;
+};
+
+type ReachableApproachDestinationCandidate = {
+  coordinate: { x: number; y: number };
+  requiredSteps: number;
+  accessCount: number;
+  congestion: number;
+};
+
+function buildAdjacentCoordinates(coordinate: { x: number; y: number }): Array<{ x: number; y: number }> {
+  return [
+    { x: coordinate.x + 1, y: coordinate.y },
+    { x: coordinate.x - 1, y: coordinate.y },
+    { x: coordinate.x, y: coordinate.y + 1 },
+    { x: coordinate.x, y: coordinate.y - 1 },
+  ].filter(isCoordinateWithinBoard);
+}
+
+export function countReachableApproachDestinationEntryCoordinates(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  destinationCoordinate: { x: number; y: number },
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+): number {
+  const attackerSide = resolveBattleSide(attacker);
+  const targetSide = resolveBattleSide(target);
+  const currentCoordinate = resolveCellCoordinate(attacker.cell, attackerSide);
+  const targetCoordinate = resolveCellCoordinate(target.cell, targetSide);
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, attacker.id);
+  const destinationDistance = sharedBoardManhattanDistance(destinationCoordinate, targetCoordinate);
+
+  if (destinationDistance === 0 || destinationDistance > attacker.attackRange) {
+    return 0;
+  }
+
+  if (occupiedCoordinates.has(coordinateKey(destinationCoordinate))) {
+    return 0;
+  }
+
+  let reachableEntryCount = 0;
+  for (const adjacentCoordinate of buildAdjacentCoordinates(destinationCoordinate)) {
+    if (occupiedCoordinates.has(coordinateKey(adjacentCoordinate))) {
+      continue;
+    }
+
+    const requiredSteps = calculateRequiredStepsToCoordinate(
+      currentCoordinate,
+      adjacentCoordinate,
+      occupiedCoordinates,
+    );
+    if (requiredSteps != null) {
+      reachableEntryCount += 1;
+    }
+  }
+
+  return reachableEntryCount;
+}
+
+function resolveReachableApproachDestinationStats(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+): ReachableApproachDestinationStats {
+  const attackerSide = resolveBattleSide(attacker);
+  const targetSide = resolveBattleSide(target);
+  const currentCoordinate = resolveCellCoordinate(attacker.cell, attackerSide);
+  const targetCoordinate = resolveCellCoordinate(target.cell, targetSide);
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, attacker.id);
+  const candidates = buildAttackDestinationCandidates(targetCoordinate, attacker.attackRange)
+    .filter((candidate) => !occupiedCoordinates.has(coordinateKey(candidate)));
+
+  let reachableDestinationCount = 0;
+  let bestRequiredSteps = Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const requiredSteps = calculateRequiredStepsToCoordinate(
+      currentCoordinate,
+      candidate,
+      occupiedCoordinates,
+    );
+    if (requiredSteps == null) {
+      continue;
+    }
+
+    reachableDestinationCount += 1;
+    if (requiredSteps < bestRequiredSteps) {
+      bestRequiredSteps = requiredSteps;
+    }
+  }
+
+  return {
+    reachableDestinationCount,
+    bestRequiredSteps,
+  };
+}
+
+function resolveApproachTargetPressureMetrics(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+  attackerRequiredSteps: number,
+): ApproachTargetPressureMetrics {
+  const attackerStats = resolveReachableApproachDestinationStats(attacker, target, allies, enemies);
+  let competingAllyCount = attackerStats.reachableDestinationCount > 0 ? 1 : 0;
+
+  for (const ally of allies) {
+    if (
+      ally.id === attacker.id
+      || ally.isDead
+      || ally.attackRange !== attacker.attackRange
+    ) {
+      continue;
+    }
+
+    const allyStats = resolveReachableApproachDestinationStats(ally, target, allies, enemies);
+    if (allyStats.reachableDestinationCount <= 0) {
+      continue;
+    }
+
+    if (allyStats.bestRequiredSteps <= attackerRequiredSteps + 1) {
+      competingAllyCount += 1;
+    }
+  }
+
+  return {
+    reachableDestinationCount: attackerStats.reachableDestinationCount,
+    competingAllyCount,
+    overload: Math.max(0, competingAllyCount - attackerStats.reachableDestinationCount),
+  };
+}
+
+export function compareReachableApproachDestinationCandidate(
+  left: ReachableApproachDestinationCandidate,
+  right: ReachableApproachDestinationCandidate,
+): number {
+  if (left.requiredSteps !== right.requiredSteps) {
+    return left.requiredSteps - right.requiredSteps;
+  }
+
+  if (left.accessCount !== right.accessCount) {
+    return right.accessCount - left.accessCount;
+  }
+
+  if (left.congestion !== right.congestion) {
+    return left.congestion - right.congestion;
+  }
+
+  if (left.coordinate.y !== right.coordinate.y) {
+    return left.coordinate.y - right.coordinate.y;
+  }
+
+  return right.coordinate.x - left.coordinate.x;
+}
+
+function resolveReachableApproachDestinationCandidates(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+  reservedDestinationKeys: ReadonlySet<string> = new Set<string>(),
+): ReachableApproachDestinationCandidate[] {
+  const attackerSide = resolveBattleSide(attacker);
+  const targetSide = resolveBattleSide(target);
+  const currentCoordinate = resolveCellCoordinate(attacker.cell, attackerSide);
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, attacker.id);
+  const targetCoordinate = resolveCellCoordinate(target.cell, targetSide);
+  const candidates = buildAttackDestinationCandidates(targetCoordinate, attacker.attackRange)
+    .filter((candidate) => {
+      const key = coordinateKey(candidate);
+      return !occupiedCoordinates.has(key) && !reservedDestinationKeys.has(key);
+    });
+
+  return candidates
+    .map((candidate) => {
+      const requiredSteps = calculateRequiredStepsToCoordinate(
+        currentCoordinate,
+        candidate,
+        occupiedCoordinates,
+      );
+      if (requiredSteps == null) {
+        return null;
+      }
+
+      return {
+        coordinate: candidate,
+        requiredSteps,
+        accessCount: countReachableApproachDestinationEntryCoordinates(
+          attacker,
+          target,
+          candidate,
+          allies,
+          enemies,
+        ),
+        congestion: countOccupiedAdjacentCoordinates(candidate, occupiedCoordinates),
+      };
+    })
+    .filter((candidate): candidate is ReachableApproachDestinationCandidate => candidate != null)
+    .sort(compareReachableApproachDestinationCandidate);
+}
+
+export function assignApproachDestinationsForTarget(
+  attackers: BattleUnit[],
+  target: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+  reservedDestinationKeys: ReadonlySet<string> = new Set<string>(),
+): Map<string, { x: number; y: number }> {
+  const optionSets = attackers
+    .filter((attacker) => !attacker.isDead)
+    .map((attacker, originalIndex) => ({
+      attacker,
+      originalIndex,
+      options: resolveReachableApproachDestinationCandidates(
+        attacker,
+        target,
+        allies,
+        enemies,
+        reservedDestinationKeys,
+      ),
+    }))
+    .filter((entry) => entry.options.length > 0)
+    .sort((left, right) => {
+      if (left.options.length !== right.options.length) {
+        return left.options.length - right.options.length;
+      }
+
+      const bestCandidateComparison = compareReachableApproachDestinationCandidate(
+        left.options[0]!,
+        right.options[0]!,
+      );
+      if (bestCandidateComparison !== 0) {
+        return bestCandidateComparison;
+      }
+
+      return left.originalIndex - right.originalIndex;
+    });
+
+  let bestAssignedCount = -1;
+  let bestAccessCount = Number.NEGATIVE_INFINITY;
+  let bestRequiredSteps = Number.POSITIVE_INFINITY;
+  let bestCongestion = Number.POSITIVE_INFINITY;
+  let bestAssignments = new Map<string, { x: number; y: number }>();
+
+  const search = (
+    index: number,
+    usedDestinationKeys: Set<string>,
+    currentAssignments: Map<string, { x: number; y: number }>,
+    totalAccessCount: number,
+    totalRequiredSteps: number,
+    totalCongestion: number,
+  ) => {
+    if (index >= optionSets.length) {
+      const assignedCount = currentAssignments.size;
+      if (
+        assignedCount > bestAssignedCount
+        || (
+          assignedCount === bestAssignedCount
+          && (
+            totalAccessCount > bestAccessCount
+            || (
+              totalAccessCount === bestAccessCount
+              && totalRequiredSteps < bestRequiredSteps
+            )
+            || (
+              totalAccessCount === bestAccessCount
+              && totalRequiredSteps === bestRequiredSteps
+              && totalCongestion < bestCongestion
+            )
+          )
+        )
+      ) {
+        bestAssignedCount = assignedCount;
+        bestAccessCount = totalAccessCount;
+        bestRequiredSteps = totalRequiredSteps;
+        bestCongestion = totalCongestion;
+        bestAssignments = new Map(currentAssignments);
+      }
+      return;
+    }
+
+    const remainingUnits = optionSets.length - index;
+    if (currentAssignments.size + remainingUnits < bestAssignedCount) {
+      return;
+    }
+
+    search(
+      index + 1,
+      usedDestinationKeys,
+      currentAssignments,
+      totalAccessCount,
+      totalRequiredSteps,
+      totalCongestion,
+    );
+
+    const optionSet = optionSets[index]!;
+    for (const option of optionSet.options) {
+      const destinationKey = coordinateKey(option.coordinate);
+      if (usedDestinationKeys.has(destinationKey)) {
+        continue;
+      }
+
+      usedDestinationKeys.add(destinationKey);
+      currentAssignments.set(optionSet.attacker.id, option.coordinate);
+      search(
+        index + 1,
+        usedDestinationKeys,
+        currentAssignments,
+        totalAccessCount + option.accessCount,
+        totalRequiredSteps + option.requiredSteps,
+        totalCongestion + option.congestion,
+      );
+      currentAssignments.delete(optionSet.attacker.id);
+      usedDestinationKeys.delete(destinationKey);
+    }
+  };
+
+  search(0, new Set<string>(), new Map<string, { x: number; y: number }>(), 0, 0, 0);
+
+  return bestAssignments;
+}
+
+export function findBestApproachDestinationCoordinate(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+  reservedDestinationKeys: ReadonlySet<string> = new Set<string>(),
+): { x: number; y: number } | null {
+  const attackerSide = resolveBattleSide(attacker);
+  const targetSide = resolveBattleSide(target);
+  const currentCoordinate = resolveCellCoordinate(attacker.cell, attackerSide);
+  const targetCoordinate = resolveCellCoordinate(target.cell, targetSide);
+
+  if (sharedBoardManhattanDistance(currentCoordinate, targetCoordinate) <= attacker.attackRange) {
+    return currentCoordinate;
+  }
+
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, attacker.id);
+  const candidates = buildAttackDestinationCandidates(targetCoordinate, attacker.attackRange)
+    .filter((candidate) => {
+      const key = coordinateKey(candidate);
+      return !occupiedCoordinates.has(key) && !reservedDestinationKeys.has(key);
+    });
+
+  let bestDestination: { x: number; y: number } | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  let bestConstrainedCompetingAllies = Number.POSITIVE_INFINITY;
+  let bestCompetingAllies = Number.POSITIVE_INFINITY;
+  let bestAccessCount = Number.NEGATIVE_INFINITY;
+  let bestRequiredSteps = Number.POSITIVE_INFINITY;
+  let bestCongestion = Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const requiredSteps = calculateRequiredStepsToCoordinate(
+      currentCoordinate,
+      candidate,
+      occupiedCoordinates,
+    );
+    if (requiredSteps == null) {
+      continue;
+    }
+
+    const { competingAllies, constrainedCompetingAllies } = countCompetingAlliesForDestination(
+      attacker,
+      target,
+      allies,
+      enemies,
+      candidate,
+      requiredSteps,
+    );
+    const accessCount = countReachableApproachDestinationEntryCoordinates(
+      attacker,
+      target,
+      candidate,
+      allies,
+      enemies,
+    );
+    const congestion = countOccupiedAdjacentCoordinates(candidate, occupiedCoordinates);
+    const score = requiredSteps + competingAllies;
+
+    if (
+      score < bestScore
+      || (
+      score === bestScore
+      && (
+          constrainedCompetingAllies < bestConstrainedCompetingAllies
+          || (
+            constrainedCompetingAllies === bestConstrainedCompetingAllies
+            && (
+              competingAllies < bestCompetingAllies
+              || (
+                competingAllies === bestCompetingAllies
+                && (
+                  accessCount > bestAccessCount
+                  || (
+                    accessCount === bestAccessCount
+                    && (
+                      requiredSteps < bestRequiredSteps
+                      || (
+                        requiredSteps === bestRequiredSteps
+                        && (
+                          congestion < bestCongestion
+                          || (
+                            congestion === bestCongestion
+                            && bestDestination != null
+                            && (
+                              candidate.y < bestDestination.y
+                              || (candidate.y === bestDestination.y && candidate.x > bestDestination.x)
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      || (score === bestScore && bestDestination == null)
+    ) {
+      bestDestination = candidate;
+      bestScore = score;
+      bestConstrainedCompetingAllies = constrainedCompetingAllies;
+      bestCompetingAllies = competingAllies;
+      bestAccessCount = accessCount;
+      bestRequiredSteps = requiredSteps;
+      bestCongestion = congestion;
+    }
+  }
+
+  return bestDestination;
+}
+export function findShortestApproachStepToCoordinate(
+  currentCoordinate: { x: number; y: number },
+  destinationCoordinate: { x: number; y: number },
+  occupiedCoordinates: Set<string>,
+): { x: number; y: number } | null {
+  const destinationKey = coordinateKey(destinationCoordinate);
+  if (coordinateKey(currentCoordinate) === destinationKey) {
+    return null;
+  }
+
+  const queue: Array<{
+    coordinate: { x: number; y: number };
+    firstStep: { x: number; y: number } | null;
+  }> = [{ coordinate: currentCoordinate, firstStep: null }];
+  const visited = new Set<string>([coordinateKey(currentCoordinate)]);
+
+  while (queue.length > 0) {
+    const currentNode = queue.shift();
+    if (!currentNode) {
+      break;
+    }
+
+    const neighbors = buildApproachCandidates(currentNode.coordinate, destinationCoordinate);
+    for (const neighbor of neighbors) {
+      const neighborKey = coordinateKey(neighbor);
+      if (visited.has(neighborKey) || occupiedCoordinates.has(neighborKey)) {
+        continue;
+      }
+
+      const firstStep = currentNode.firstStep ?? neighbor;
+      if (neighborKey === destinationKey) {
+        return firstStep;
+      }
+
+      visited.add(neighborKey);
+      queue.push({ coordinate: neighbor, firstStep });
+    }
+  }
+
+  return null;
+}
+
+export function findBestApproachTarget(
+  attacker: BattleUnit,
+  enemies: BattleUnit[],
+  allies: BattleUnit[],
+): BattleUnit | null {
+  const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+  if (livingEnemies.length === 0) {
+    return null;
+  }
+
+  const attackerSide = resolveBattleSide(attacker);
+  const currentCoordinate = resolveCellCoordinate(attacker.cell, attackerSide);
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, attacker.id);
+
+  let bestTarget: BattleUnit | null = null;
+  let bestOverload = Number.POSITIVE_INFINITY;
+  let bestReachableDestinationCount = -1;
+  let bestRequiredSteps = Number.POSITIVE_INFINITY;
+  let bestDirectDistance = Number.POSITIVE_INFINITY;
+
+  for (const enemy of livingEnemies) {
+    const enemySide = resolveBattleSide(enemy);
+    const targetCoordinate = resolveCellCoordinate(enemy.cell, enemySide);
+    const requiredSteps = calculateRequiredStepsToReachAttackRange(
+      currentCoordinate,
+      targetCoordinate,
+      occupiedCoordinates,
+      attacker.attackRange,
+    );
+    const comparableSteps = requiredSteps ?? Number.POSITIVE_INFINITY;
+    const directDistance = calculateCellDistance(attacker.cell, enemy.cell, attackerSide, enemySide);
+    const targetPressure = attacker.attackRange === 1 && requiredSteps != null
+      ? resolveApproachTargetPressureMetrics(attacker, enemy, allies, enemies, requiredSteps)
+      : null;
+    const overload = targetPressure?.overload ?? 0;
+    const reachableDestinationCount = targetPressure?.reachableDestinationCount ?? Number.POSITIVE_INFINITY;
+
+    if (
+      comparableSteps < bestRequiredSteps
+      || (
+        comparableSteps === bestRequiredSteps
+        && overload < bestOverload
+      )
+      || (
+        comparableSteps === bestRequiredSteps
+        && overload === bestOverload
+        && reachableDestinationCount > bestReachableDestinationCount
+      )
+      || (
+        comparableSteps === bestRequiredSteps
+        && overload === bestOverload
+        && reachableDestinationCount === bestReachableDestinationCount
+        && (
+          directDistance < bestDirectDistance
+          || (
+            directDistance === bestDirectDistance
+            && bestTarget
+            && (
+              enemy.hp < bestTarget.hp
+              || (enemy.hp === bestTarget.hp && enemy.cell < bestTarget.cell)
+            )
+          )
+        )
+      )
+      || (
+        comparableSteps === bestRequiredSteps
+        && overload === bestOverload
+        && reachableDestinationCount === bestReachableDestinationCount
+        && directDistance === bestDirectDistance
+        && bestTarget == null
+      )
+    ) {
+      bestTarget = enemy;
+      bestOverload = overload;
+      bestReachableDestinationCount = reachableDestinationCount;
+      bestRequiredSteps = comparableSteps;
+      bestDirectDistance = directDistance;
+    }
+  }
+
+  return bestTarget;
+}
+
+type MoveActionDiagnostics = {
+  pursuedTarget: BattleUnit | null;
+  bestApproachTarget: BattleUnit | null;
+  pursuedTargetDistanceBeforeMove: number | null;
+  bestApproachTargetDistanceBeforeMove: number | null;
+  pursuedTargetRequiredStepsBeforeMove: number | null;
+  bestApproachTargetRequiredStepsBeforeMove: number | null;
+};
+
+function resolveMoveActionDiagnostics(
+  unit: BattleUnit,
+  allies: BattleUnit[],
+  enemies: BattleUnit[],
+): MoveActionDiagnostics {
+  const bestApproachTarget = findBestApproachTarget(unit, enemies, allies);
+  const pursuedTarget = bestApproachTarget ?? findClosestLivingEnemy(unit, enemies);
+  const unitSide = resolveBattleSide(unit);
+  const currentCoordinate = resolveCellCoordinate(unit.cell, unitSide);
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, unit.id);
+
+  const buildTargetMetrics = (target: BattleUnit | null): {
+    directDistance: number | null;
+    requiredSteps: number | null;
+  } => {
+    if (!target) {
+      return {
+        directDistance: null,
+        requiredSteps: null,
+      };
+    }
+
+    const targetSide = resolveBattleSide(target);
+    const targetCoordinate = resolveCellCoordinate(target.cell, targetSide);
+    return {
+      directDistance: calculateCellDistance(unit.cell, target.cell, unitSide, targetSide),
+      requiredSteps: calculateRequiredStepsToReachAttackRange(
+        currentCoordinate,
+        targetCoordinate,
+        occupiedCoordinates,
+        unit.attackRange,
+      ),
+    };
+  };
+
+  const pursuedMetrics = buildTargetMetrics(pursuedTarget);
+  const bestApproachMetrics = buildTargetMetrics(bestApproachTarget);
+
+  return {
+    pursuedTarget,
+    bestApproachTarget,
+    pursuedTargetDistanceBeforeMove: pursuedMetrics.directDistance,
+    bestApproachTargetDistanceBeforeMove: bestApproachMetrics.directDistance,
+    pursuedTargetRequiredStepsBeforeMove: pursuedMetrics.requiredSteps,
+    bestApproachTargetRequiredStepsBeforeMove: bestApproachMetrics.requiredSteps,
+  };
+}
+
 function moveUnitBySimpleApproach(
   unit: BattleUnit,
   allies: BattleUnit[],
   enemies: BattleUnit[],
   combatLog: string[],
-): boolean {
-  const nearestEnemy = findClosestLivingEnemy(unit, enemies);
+  approachTarget: BattleUnit | null = null,
+  reservedApproachDestinationKeys: Set<string> | null = null,
+  plannedDestinationCoordinate: { x: number; y: number } | null = null,
+): {
+  moved: boolean;
+  plannedDestinationStillOpenBeforeMove: boolean | null;
+  usedPlannedApproachDestination: boolean;
+  plannedApproachDestinationPathBlockedBeforeMove: boolean;
+  plannedApproachDestinationPathBlockerTypeBeforeMove: PlannedApproachPathBlockerType | null;
+  plannedApproachDestinationRouteChokeTypeBeforeMove: PlannedApproachRouteChokeType | null;
+} {
+  const nearestEnemy = approachTarget ?? findClosestLivingEnemy(unit, enemies);
   if (!nearestEnemy) {
-    return false;
+    return {
+      moved: false,
+      plannedDestinationStillOpenBeforeMove: null,
+      usedPlannedApproachDestination: false,
+      plannedApproachDestinationPathBlockedBeforeMove: false,
+      plannedApproachDestinationPathBlockerTypeBeforeMove: null,
+      plannedApproachDestinationRouteChokeTypeBeforeMove: null,
+    };
   }
 
   const unitSide = resolveBattleSide(unit);
   const enemySide = resolveBattleSide(nearestEnemy);
   const currentDistance = calculateCellDistance(unit.cell, nearestEnemy.cell, unitSide, enemySide);
   if (currentDistance <= unit.attackRange) {
-    return false;
+    return {
+      moved: false,
+      plannedDestinationStillOpenBeforeMove: null,
+      usedPlannedApproachDestination: false,
+      plannedApproachDestinationPathBlockedBeforeMove: false,
+      plannedApproachDestinationPathBlockerTypeBeforeMove: null,
+      plannedApproachDestinationRouteChokeTypeBeforeMove: null,
+    };
   }
 
   const previousCell = unit.cell;
   const currentCoordinate = resolveCellCoordinate(unit.cell, unitSide);
-  const targetCoordinate = resolveCellCoordinate(nearestEnemy.cell, enemySide);
-  const occupiedCoordinates = new Set(
-    [...allies, ...enemies]
-      .filter((candidate) => !candidate.isDead && candidate.id !== unit.id)
-      .map((candidate) =>
-        coordinateKey(resolveCellCoordinate(candidate.cell, resolveBattleSide(candidate))),
-      ),
-  );
-  const nextCoordinate = findShortestApproachStep(
-    currentCoordinate,
-    targetCoordinate,
-    occupiedCoordinates,
-    unit.attackRange,
-  );
+  const occupiedCoordinates = buildOccupiedCoordinatesForMovement(allies, enemies, unit.id);
+  const allyOccupiedCoordinates = buildOccupiedCoordinatesByTeam(allies, unit.id);
+  const enemyOccupiedCoordinates = buildOccupiedCoordinatesByTeam(enemies);
+  const plannedDestinationKey = plannedDestinationCoordinate == null
+    ? null
+    : coordinateKey(plannedDestinationCoordinate);
+  const plannedDestinationStillOpenBeforeMove = plannedDestinationKey != null
+    ? !occupiedCoordinates.has(plannedDestinationKey)
+    : null;
+  const preferredDestination = plannedDestinationStillOpenBeforeMove
+    ? plannedDestinationCoordinate
+    : findBestApproachDestinationCoordinate(
+      unit,
+      nearestEnemy,
+      allies,
+      enemies,
+      reservedApproachDestinationKeys ?? undefined,
+    );
+  const usedPlannedApproachDestination = plannedDestinationCoordinate != null
+    && plannedDestinationStillOpenBeforeMove === true;
+  const targetCoordinate = preferredDestination
+    ?? resolveCellCoordinate(nearestEnemy.cell, enemySide);
+  const nextCoordinate = preferredDestination
+    ? findShortestApproachStepToCoordinate(
+      currentCoordinate,
+      targetCoordinate,
+      occupiedCoordinates,
+    )
+    : findShortestApproachStep(
+      currentCoordinate,
+      targetCoordinate,
+      occupiedCoordinates,
+      unit.attackRange,
+    );
+  const plannedApproachDestinationPathBlockedBeforeMove = usedPlannedApproachDestination
+    && nextCoordinate == null;
+  const plannedApproachDestinationPathBlockerTypeBeforeMove = plannedApproachDestinationPathBlockedBeforeMove
+    ? classifyPlannedApproachPathBlockerType(
+      currentCoordinate,
+      targetCoordinate,
+      allyOccupiedCoordinates,
+      enemyOccupiedCoordinates,
+    )
+    : null;
+  const plannedApproachDestinationRouteChokeTypeBeforeMove =
+    plannedApproachDestinationPathBlockedBeforeMove
+      && plannedApproachDestinationPathBlockerTypeBeforeMove === "route_choke"
+      ? classifyPlannedApproachRouteChokeType(
+        currentCoordinate,
+        targetCoordinate,
+        allyOccupiedCoordinates,
+        enemyOccupiedCoordinates,
+      )
+      : null;
   const fallbackCoordinate = nextCoordinate
     ?? findFallbackApproachStep(currentCoordinate, targetCoordinate, occupiedCoordinates);
   if (!fallbackCoordinate) {
-    return false;
+    return {
+      moved: false,
+      plannedDestinationStillOpenBeforeMove,
+      usedPlannedApproachDestination,
+      plannedApproachDestinationPathBlockedBeforeMove,
+      plannedApproachDestinationPathBlockerTypeBeforeMove,
+      plannedApproachDestinationRouteChokeTypeBeforeMove,
+    };
   }
 
   unit.cell = sharedBoardCoordinateToIndex(fallbackCoordinate, DEFAULT_SHARED_BOARD_CONFIG);
+  if (preferredDestination && reservedApproachDestinationKeys) {
+    reservedApproachDestinationKeys.add(coordinateKey(preferredDestination));
+  }
 
   const sideLabel = resolveBattleSide(unit) === "left" ? "Left" : "Right";
   const typeLabel = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
@@ -691,7 +1740,14 @@ function moveUnitBySimpleApproach(
     `${sideLabel} ${typeLabel} moves from cell ${previousCell} to cell ${unit.cell}`,
   );
 
-  return true;
+  return {
+    moved: true,
+    plannedDestinationStillOpenBeforeMove,
+    usedPlannedApproachDestination,
+    plannedApproachDestinationPathBlockedBeforeMove,
+    plannedApproachDestinationPathBlockerTypeBeforeMove,
+    plannedApproachDestinationRouteChokeTypeBeforeMove,
+  };
 }
 
 /**
@@ -763,7 +1819,7 @@ function applySynergyEffects(unit: BattleUnit, effects: SynergyEffects, tier: nu
   if (effects.defense) {
     const defenseValue = effects.defense[idx];
     if (defenseValue !== undefined) {
-      unit.defense += defenseValue;
+      unit.damageReduction += defenseValue;
     }
   }
 
@@ -883,6 +1939,12 @@ function hasLivingUnits(units: BattleUnit[]): boolean {
  * ターン制戦闘ループを実装
  */
 export class BattleSimulator {
+  private readonly rng: BattleRng;
+
+  constructor(options?: { rng?: BattleRng }) {
+    this.rng = options?.rng ?? createDefaultBattleRng();
+  }
+
   /**
    * 戦闘をシミュレート
    * ターゲット選択ロジックとターン制戦闘ループを使用して戦闘をシミュレート
@@ -906,12 +1968,16 @@ export class BattleSimulator {
     round: number = 0,
   ): BattleResult {
     try {
+      const timeoutEnabled = round < 12;
+      const effectiveMaxDurationMs = timeoutEnabled ? maxDurationMs : Number.POSITIVE_INFINITY;
+
       // Bug #3 fix: Validate input teams
       if (!leftUnits || leftUnits.length === 0 || !rightUnits || rightUnits.length === 0) {
         console.warn("Battle simulation with empty teams");
         const isBothEmpty = (!leftUnits || leftUnits.length === 0) && (!rightUnits || rightUnits.length === 0);
         const result: BattleResult = {
           winner: leftUnits.length > 0 ? "left" : rightUnits.length > 0 ? "right" : "draw",
+          endReason: isBothEmpty ? "mutual_annihilation" : "annihilation",
           leftSurvivors: leftUnits.filter(u => !u.isDead),
           rightSurvivors: rightUnits.filter(u => !u.isDead),
           timeline: [],
@@ -970,6 +2036,8 @@ export class BattleSimulator {
 
       const allUnits = [...leftUnits, ...rightUnits];
       const actionQueue: Action[] = [];
+      const nextScheduledAttackAtByUnitId = new Map<string, number>();
+      const nextScheduledMoveAtByUnitId = new Map<string, number>();
       let currentTime = 0;
       const bossBattleSide: "left" | "right" | null = leftUnits.some((unit) => unit.isBoss)
         ? "left"
@@ -1022,11 +2090,18 @@ export class BattleSimulator {
         targetUnit: BattleUnit,
         amount: number,
       ): "left" | "right" | null => {
+        const sourceSide = resolveBattleSide(sourceUnit);
+        const appliedDamageSummary = buildAppliedDamageSummary(
+          sourceSide,
+          targetUnit,
+          amount,
+          bossBattleSide,
+        );
+
         if (amount <= 0) {
           return null;
         }
 
-        const sourceSide = resolveBattleSide(sourceUnit);
         timeline.push(createDamageAppliedEvent({
           type: "damageApplied",
           battleId,
@@ -1037,19 +2112,13 @@ export class BattleSimulator {
           remainingHp: Math.max(0, targetUnit.hp),
         }));
 
-        if (sourceSide === "left") {
-          damageDealtLeft += amount;
-        } else {
-          damageDealtRight += amount;
-        }
+        damageDealtLeft += appliedDamageSummary.damageDealtLeftIncrement;
+        damageDealtRight += appliedDamageSummary.damageDealtRightIncrement;
+        bossDamage += appliedDamageSummary.bossDamageIncrement;
+        phaseDamageToBossSide += appliedDamageSummary.phaseDamageIncrement;
 
-        if (targetUnit.isBoss) {
-          bossDamage += amount;
-          phaseDamageToBossSide += amount;
-        }
-
-        if (targetUnit.hp <= 0 && !targetUnit.isDead) {
-          if (targetUnit.isBoss) {
+        if (appliedDamageSummary.defeatedTarget && !targetUnit.isDead) {
+          if (appliedDamageSummary.bossBreakTriggered) {
             return resolveBossBreakWinner(sourceSide, targetUnit);
           }
 
@@ -1061,11 +2130,6 @@ export class BattleSimulator {
             atMs: currentTime,
             battleUnitId: targetUnit.id,
           }));
-
-          const targetSide = resolveBattleSide(targetUnit);
-          if (bossBattleSide !== null && targetSide === bossBattleSide) {
-            phaseDamageToBossSide += Math.floor(targetUnit.maxHp / 2);
-          }
         }
 
         return null;
@@ -1092,21 +2156,257 @@ export class BattleSimulator {
         return null;
       };
 
-      // 全ユニットの初期アクションをキューに追加
-      for (const unit of allUnits) {
+      type PendingAttack = {
+        sourceUnit: BattleUnit;
+        targetUnit: BattleUnit;
+        unitSide: "left" | "right";
+        actualDamage: number;
+        remainingHpAfterHit: number;
+        reflectedDamage: number;
+        isCrit: boolean;
+        bossPassiveActive: boolean;
+        scarletBossLifestealActive: boolean;
+      };
+
+      const scheduleTriggeredSkill = (unit: BattleUnit) => {
+        const skillDef = SKILL_DEFINITIONS[unit.type];
+        if (
+          skillDef
+          && skillDef.triggerType === "on_attack_count"
+          && skillDef.triggerCount !== undefined
+          && unit.attackCount % skillDef.triggerCount === 0
+        ) {
+          actionQueue.push({
+            unit,
+            actionTime: currentTime,
+            type: "skill",
+          });
+        }
+      };
+
+      const scheduleAttackAt = (unit: BattleUnit, actionTime: number) => {
+        nextScheduledAttackAtByUnitId.set(unit.id, actionTime);
         actionQueue.push({
           unit,
-          actionTime: 0,
+          actionTime,
           type: "attack",
         });
+      };
+
+      const scheduleMoveAt = (unit: BattleUnit, actionTime: number) => {
+        nextScheduledMoveAtByUnitId.set(unit.id, actionTime);
+        actionQueue.push({
+          unit,
+          actionTime,
+          type: "move",
+        });
+      };
+
+      const scheduleNextAttack = (unit: BattleUnit) => {
+        const attackIntervalMs = getAttackIntervalMs(unit);
+        if (attackIntervalMs === null) {
+          nextScheduledAttackAtByUnitId.delete(unit.id);
+          return;
+        }
+
+        scheduleAttackAt(unit, currentTime + attackIntervalMs);
+      };
+
+      const scheduleNextMove = (unit: BattleUnit) => {
+        const moveIntervalMs = getMoveIntervalMs(unit);
+        if (moveIntervalMs === null) {
+          nextScheduledMoveAtByUnitId.delete(unit.id);
+          return;
+        }
+
+        scheduleMoveAt(unit, currentTime + moveIntervalMs);
+      };
+
+      const schedulePostMoveAttack = (unit: BattleUnit) => {
+        if (unit.attackRange !== 1) {
+          return;
+        }
+
+        const attackIntervalMs = getAttackIntervalMs(unit);
+        if (attackIntervalMs === null) {
+          return;
+        }
+
+        const desiredAttackTime = currentTime + Math.min(attackIntervalMs, MELEE_POST_MOVE_ATTACK_DELAY_MS);
+        const scheduledAttackTime = nextScheduledAttackAtByUnitId.get(unit.id);
+        if (scheduledAttackTime === undefined || desiredAttackTime < scheduledAttackTime) {
+          scheduleAttackAt(unit, desiredAttackTime);
+        }
+      };
+
+      const resolveAttackDamage = (
+        attacker: BattleUnit,
+        target: BattleUnit,
+      ): { actualDamage: number; isCrit: boolean; bossPassiveActive: boolean } => {
+        const isCrit = this.rng.nextFloat() < attacker.critRate;
+        const bossPassiveActive = isBossPassiveActive(attacker);
+
+        return {
+          actualDamage: calculateAttackDamage(attacker, target, isCrit, bossPassiveActive),
+          isCrit,
+          bossPassiveActive,
+        };
+      };
+
+      const collectAttackBatch = (firstAction: Action): Action[] => {
+        const batch = [firstAction];
+
+        while (
+          actionQueue[0]
+          && actionQueue[0]!.type === "attack"
+          && actionQueue[0]!.actionTime === firstAction.actionTime
+        ) {
+          batch.push(actionQueue.shift()!);
+        }
+
+        return batch;
+      };
+
+      const collectMoveBatch = (firstAction: Action): Action[] => {
+        const batch = [firstAction];
+
+        while (
+          actionQueue[0]
+          && actionQueue[0]!.type === "move"
+          && actionQueue[0]!.actionTime === firstAction.actionTime
+        ) {
+          batch.push(actionQueue.shift()!);
+        }
+
+        return batch;
+      };
+
+      const resolvePendingDeaths = (pendingAttacks: PendingAttack[]): "left" | "right" | null => {
+        let pendingWinner: "left" | "right" | null = null;
+
+        for (const pendingAttack of pendingAttacks) {
+          const {
+            sourceUnit,
+            targetUnit,
+            unitSide,
+            actualDamage,
+            remainingHpAfterHit,
+            reflectedDamage,
+            isCrit,
+            bossPassiveActive,
+            scarletBossLifestealActive,
+          } = pendingAttack;
+          const appliedDamageSummary = buildAppliedDamageSummary(
+            unitSide,
+            targetUnit,
+            actualDamage,
+            bossBattleSide,
+            false,
+          );
+
+          timeline.push(createDamageAppliedEvent({
+            type: "damageApplied",
+            battleId,
+            atMs: currentTime,
+            sourceBattleUnitId: sourceUnit.id,
+            targetBattleUnitId: targetUnit.id,
+            amount: actualDamage,
+            remainingHp: remainingHpAfterHit,
+          }));
+
+          damageDealtLeft += appliedDamageSummary.damageDealtLeftIncrement;
+          damageDealtRight += appliedDamageSummary.damageDealtRightIncrement;
+          bossDamage += appliedDamageSummary.bossDamageIncrement;
+          phaseDamageToBossSide += appliedDamageSummary.phaseDamageIncrement;
+
+          if (reflectedDamage > 0) {
+            sourceUnit.hp -= reflectedDamage;
+            combatLog.push(
+              `${generateUnitName(targetUnit)} reflects ${reflectedDamage} damage to ${generateUnitName(sourceUnit)}`,
+            );
+          }
+
+          if (bossPassiveActive && actualDamage > 0) {
+            const healAmount = Math.floor(actualDamage * 0.05);
+            sourceUnit.hp = Math.min(sourceUnit.maxHp, sourceUnit.hp + healAmount);
+            if (healAmount > 0) {
+              combatLog.push(
+                `${generateUnitName(sourceUnit)} Boss Passive heals for ${healAmount} HP (${sourceUnit.hp}/${sourceUnit.maxHp})`,
+              );
+            }
+          }
+
+          if (scarletBossLifestealActive && actualDamage > 0) {
+            const healAmount = Math.max(1, Math.floor(actualDamage * 0.1));
+            sourceUnit.hp = Math.min(sourceUnit.maxHp, sourceUnit.hp + healAmount);
+            combatLog.push(
+              `${generateUnitName(sourceUnit)} Scarlet Mansion Synergy lifesteals ${healAmount} HP (${sourceUnit.hp}/${sourceUnit.maxHp})`,
+            );
+          }
+
+          if (isCrit) {
+            combatLog.push(
+              `${generateUnitName(sourceUnit)} CRITICAL HIT on ${generateUnitName(targetUnit)} for ${actualDamage} damage!`,
+            );
+          } else {
+            combatLog.push(
+              `${generateUnitName(sourceUnit)} attacks ${generateUnitName(targetUnit)} for ${actualDamage} damage (${targetUnit.hp}/${targetUnit.maxHp})`,
+            );
+          }
+        }
+
+        for (const unit of allUnits) {
+          if (unit.isDead || unit.hp > 0) {
+            continue;
+          }
+
+          const defeatConsequences = resolveUnitDefeatConsequences(unit, bossBattleSide);
+
+          if (unit.isBoss) {
+            const bossFinisher = pendingAttacks.find((pendingAttack) => pendingAttack.targetUnit.id === unit.id);
+            if (bossFinisher && pendingWinner === null) {
+              pendingWinner = resolveBossBreakWinner(bossFinisher.unitSide, unit);
+              continue;
+            }
+
+            const reflectedBossFinisher = pendingAttacks.find((pendingAttack) =>
+              pendingAttack.sourceUnit.id === unit.id && pendingAttack.reflectedDamage > 0);
+            if (reflectedBossFinisher && pendingWinner === null) {
+              pendingWinner = resolveBossBreakWinner(
+                resolveBattleSide(reflectedBossFinisher.targetUnit),
+                unit,
+              );
+            }
+            continue;
+          }
+
+          unit.isDead = true;
+          combatLog.push(`${generateUnitName(unit)} has been defeated!`);
+          timeline.push(createUnitDeathEvent({
+            type: "unitDeath",
+            battleId,
+            atMs: currentTime,
+            battleUnitId: unit.id,
+          }));
+
+          phaseDamageToBossSide += defeatConsequences.phaseDamageIncrement;
+        }
+
+        return pendingWinner;
+      };
+
+      // 全ユニットの初期アクションをキューに追加
+      for (const unit of allUnits) {
+        scheduleAttackAt(unit, 0);
+        if (getMoveIntervalMs(unit) !== null) {
+          scheduleMoveAt(unit, 0);
+        }
       }
 
       // ヒーローのスキルを戦闘開始時に発動
       for (const unit of allUnits) {
-        if (unit.id.startsWith("hero-")) {
-          // ヒーローのIDからヒーローを取得して、スキルが定義されているか確認
-          const heroId = unit.id.replace("hero-", "").split("-")[0];
-          if (heroId && HERO_SKILL_DEFINITIONS[heroId]) {
+        if (isHeroBattleUnit(unit)) {
+          if (resolveHeroSkillDefinition(unit)) {
             actionQueue.push({
               unit,
               actionTime: 100, // 戦闘開始直後に発動（100ms後）
@@ -1116,14 +2416,14 @@ export class BattleSimulator {
         }
       }
 
-      actionQueue.sort((a, b) => a.actionTime - b.actionTime);
+      actionQueue.sort(compareActionOrder);
 
       // Bug #3 fix: Add iteration counter to prevent infinite loops
       let iterationCount = 0;
       const MAX_ITERATIONS = 10000;
 
       // 戦闘ループ
-      while (currentTime < maxDurationMs && hasLivingUnits(leftUnits) && hasLivingUnits(rightUnits)) {
+      while (currentTime < effectiveMaxDurationMs && hasLivingUnits(leftUnits) && hasLivingUnits(rightUnits)) {
         iterationCount++;
         if (iterationCount > MAX_ITERATIONS) {
           console.error("Battle simulation exceeded max iterations");
@@ -1139,206 +2439,288 @@ export class BattleSimulator {
         continue;
       }
 
+      if (timeoutEnabled && action.actionTime > maxDurationMs) {
+        currentTime = maxDurationMs;
+        break;
+      }
+
       currentTime = action.actionTime;
       appendDueKeyframes(currentTime);
 
       if (action.type === "attack") {
-        const unitSide = resolveBattleSide(action.unit);
-        const enemies = unitSide === "left" ? rightUnits : leftUnits;
-        const allies = unitSide === "left" ? leftUnits : rightUnits;
-        const target = findTarget(action.unit, enemies);
+        const pendingAttacks: PendingAttack[] = [];
+        const attackBatch = collectAttackBatch(action);
 
-        if (target) {
-          timeline.push(createAttackStartEvent({
-            type: "attackStart",
-            battleId,
-            atMs: currentTime,
-            sourceBattleUnitId: action.unit.id,
-            targetBattleUnitId: target.id,
-          }));
-          // クリティカルヒット判定
-          const isCrit = Math.random() < action.unit.critRate;
-          const critMultiplier = isCrit ? action.unit.critDamageMultiplier : 1.0;
-
-          // ボスパッシブ「紅色の世界」の判定とATKバフ適用
-          const bossPassiveActive = isBossPassiveActive(action.unit);
-          const bossAtkMultiplier = bossPassiveActive ? 1.2 : 1.0;
-
-          // 防御力とバフモディファイアとクリティカルとボスパッシブを適用したダメージ計算
-          const baseDamage = action.unit.attackPower * action.unit.buffModifiers.attackMultiplier * critMultiplier * bossAtkMultiplier;
-          const defense = target.defense * target.buffModifiers.defenseMultiplier;
-          let actualDamage = Math.max(1, Math.floor(baseDamage - defense));
-
-          // 物理軽減と魔法軽減を適用（ボスユニットの場合）
-          if (action.unit.type === "mage" && target.magicReduction !== undefined) {
-            // 魔法攻撃の場合は魔法軽減を適用
-            actualDamage = Math.max(1, Math.floor(actualDamage * (1 - target.magicReduction / 100)));
-          } else if (target.physicalReduction !== undefined) {
-            // 物理攻撃の場合は物理軽減を適用
-            actualDamage = Math.max(1, Math.floor(actualDamage * (1 - target.physicalReduction / 100)));
+        for (const attackAction of attackBatch) {
+          if (attackAction.unit.isDead) {
+            continue;
+          }
+          if (nextScheduledAttackAtByUnitId.get(attackAction.unit.id) !== attackAction.actionTime) {
+            continue;
           }
 
-          target.hp -= actualDamage;
-          timeline.push(createDamageAppliedEvent({
-            type: "damageApplied",
-            battleId,
-            atMs: currentTime,
-            sourceBattleUnitId: action.unit.id,
-            targetBattleUnitId: target.id,
-            amount: actualDamage,
-            remainingHp: Math.max(0, target.hp),
-          }));
+          const unitSide = resolveBattleSide(attackAction.unit);
+          const enemies = unitSide === "left" ? rightUnits : leftUnits;
+          const target = findTarget(attackAction.unit, enemies);
 
-          if ((target.reflectRatio ?? 0) > 0 && actualDamage > 0) {
-            const reflectedDamage = Math.max(1, Math.floor(actualDamage * (target.reflectRatio ?? 0)));
-            action.unit.hp -= reflectedDamage;
-            combatLog.push(
-              `${generateUnitName(target)} reflects ${reflectedDamage} damage to ${generateUnitName(action.unit)}`,
-            );
-
-            const forcedReflectWinner = recordAppliedDamage(target, action.unit, reflectedDamage);
-            if (forcedReflectWinner) {
-              forcedWinner = forcedReflectWinner;
-              break;
-            }
-          }
-
-          // ボスパッシブ「紅色の世界」の回復効果（与えたダメージの5%回復）
-          if (bossPassiveActive && actualDamage > 0) {
-            const healAmount = Math.floor(actualDamage * 0.05);
-            action.unit.hp = Math.min(action.unit.maxHp, action.unit.hp + healAmount);
-            if (healAmount > 0) {
-              combatLog.push(
-                `${generateUnitName(action.unit)} Boss Passive heals for ${healAmount} HP (${action.unit.hp}/${action.unit.maxHp})`,
-              );
-            }
-          }
-
-          const scarletBossLifestealActive = unitSide === "left"
-            ? leftScarletBossLifestealActive
-            : rightScarletBossLifestealActive;
-          const canTriggerScarletBossLifesteal = scarletBossLifestealActive
-            && action.unit.isBoss
-            && actualDamage > 0;
-
-          if (canTriggerScarletBossLifesteal) {
-            const healAmount = Math.max(1, Math.floor(actualDamage * 0.1));
-            action.unit.hp = Math.min(action.unit.maxHp, action.unit.hp + healAmount);
-            combatLog.push(
-              `${generateUnitName(action.unit)} Scarlet Mansion Synergy lifesteals ${healAmount} HP (${action.unit.hp}/${action.unit.maxHp})`,
-            );
-          }
-
-          // ダメージ追跡
-          const isAttackerLeft = unitSide === "left";
-          if (isAttackerLeft) {
-            damageDealtLeft += actualDamage;
-          } else {
-            damageDealtRight += actualDamage;
-          }
-
-          // ボスダメージ記録
-          if (target.isBoss) {
-            bossDamage += actualDamage;
-            phaseDamageToBossSide += actualDamage;
-          }
-
-          if (isCrit) {
-            combatLog.push(
-              `${generateUnitName(action.unit)} CRITICAL HIT on ${generateUnitName(target)} for ${actualDamage} damage!`,
-            );
-          } else {
-            combatLog.push(
-              `${generateUnitName(action.unit)} attacks ${generateUnitName(target)} for ${actualDamage} damage (${target.hp}/${target.maxHp})`,
-            );
-          }
-
-          if (target.isBoss && target.hp <= 0) {
-            forcedWinner = resolveBossBreakWinner(unitSide, target);
-            break;
-          }
-
-          if (target.hp <= 0) {
-            target.isDead = true;
-            combatLog.push(`${generateUnitName(target)} has been defeated!`);
-            timeline.push(createUnitDeathEvent({
-              type: "unitDeath",
+          if (target) {
+            timeline.push(createAttackStartEvent({
+              type: "attackStart",
               battleId,
               atMs: currentTime,
-              battleUnitId: target.id,
+              sourceBattleUnitId: attackAction.unit.id,
+              targetBattleUnitId: target.id,
             }));
 
-            const targetSide = resolveBattleSide(target);
-            if (bossBattleSide !== null && targetSide === bossBattleSide) {
-              phaseDamageToBossSide += Math.floor(target.maxHp / 2);
+            const { actualDamage, isCrit, bossPassiveActive } = resolveAttackDamage(attackAction.unit, target);
+            target.hp -= actualDamage;
+            pendingAttacks.push({
+              sourceUnit: attackAction.unit,
+              targetUnit: target,
+              unitSide,
+              actualDamage,
+              remainingHpAfterHit: Math.max(0, target.hp),
+              reflectedDamage: calculateReflectedDamage(actualDamage, target.reflectRatio),
+              isCrit,
+              bossPassiveActive,
+              scarletBossLifestealActive: Boolean(
+                (unitSide === "left" ? leftScarletBossLifestealActive : rightScarletBossLifestealActive)
+                && attackAction.unit.isBoss
+              ),
+            });
+
+            attackAction.unit.attackCount++;
+            scheduleTriggeredSkill(attackAction.unit);
+          } else {
+            nextScheduledAttackAtByUnitId.delete(attackAction.unit.id);
+          }
+
+          scheduleNextAttack(attackAction.unit);
+        }
+
+        const forcedAttackWinner = resolvePendingDeaths(pendingAttacks);
+        if (forcedAttackWinner) {
+          forcedWinner = forcedAttackWinner;
+          break;
+        }
+      } else if (action.type === "move") {
+        const moveBatch = collectMoveBatch(action);
+        const actionableMoveBatch = moveBatch.filter(
+          (moveAction) => nextScheduledMoveAtByUnitId.get(moveAction.unit.id) === moveAction.actionTime,
+        );
+        const reservedApproachDestinationKeys: Record<"left" | "right", Set<string>> = {
+          left: new Set<string>(),
+          right: new Set<string>(),
+        };
+        const plannedApproachDestinationsBySide: Record<
+        "left" | "right",
+        Map<string, { target: BattleUnit; destination: { x: number; y: number } }>
+        > = {
+          left: new Map<string, { target: BattleUnit; destination: { x: number; y: number } }>(),
+          right: new Map<string, { target: BattleUnit; destination: { x: number; y: number } }>(),
+        };
+        const plannedApproachGroupDiagnosticsBySide: Record<
+        "left" | "right",
+        Map<string, {
+          target: BattleUnit;
+          competitorCount: number;
+          assignedCount: number;
+        }>
+        > = {
+          left: new Map<string, {
+            target: BattleUnit;
+            competitorCount: number;
+            assignedCount: number;
+          }>(),
+          right: new Map<string, {
+            target: BattleUnit;
+            competitorCount: number;
+            assignedCount: number;
+          }>(),
+        };
+        const plannedApproachDestinationKeysBySide: Record<"left" | "right", Set<string>> = {
+          left: new Set<string>(),
+          right: new Set<string>(),
+        };
+
+        for (const unitSide of ["left", "right"] as const) {
+          const allies = unitSide === "left" ? leftUnits : rightUnits;
+          const enemies = unitSide === "left" ? rightUnits : leftUnits;
+          const groupedAttackers = new Map<string, { target: BattleUnit; attackers: BattleUnit[] }>();
+
+          for (const moveAction of actionableMoveBatch) {
+            if (resolveBattleSide(moveAction.unit) !== unitSide || moveAction.unit.attackRange !== 1) {
+              continue;
+            }
+
+            if (findTarget(moveAction.unit, enemies)) {
+              continue;
+            }
+
+            const approachTarget = findBestApproachTarget(moveAction.unit, enemies, allies)
+              ?? findClosestLivingEnemy(moveAction.unit, enemies);
+            if (!approachTarget) {
+              continue;
+            }
+
+            const existingGroup = groupedAttackers.get(approachTarget.id);
+            if (existingGroup) {
+              existingGroup.attackers.push(moveAction.unit);
+            } else {
+              groupedAttackers.set(approachTarget.id, {
+                target: approachTarget,
+                attackers: [moveAction.unit],
+              });
             }
           }
 
-          // 攻撃カウントを増加
-      action.unit.attackCount++;
+          for (const { target, attackers } of groupedAttackers.values()) {
+            const assignments = assignApproachDestinationsForTarget(
+              attackers,
+              target,
+              allies,
+              enemies,
+              plannedApproachDestinationKeysBySide[unitSide],
+            );
+            const competitorCount = attackers.length;
+            const assignedCount = assignments.size;
 
-      // スキルトリガーのチェック
-      const skillDef = SKILL_DEFINITIONS[action.unit.type];
-      if (skillDef && skillDef.triggerType === 'on_attack_count' &&
-          skillDef.triggerCount !== undefined &&
-          action.unit.attackCount % skillDef.triggerCount === 0) {
-        // スキルを即座にスケジュール
-        actionQueue.push({
-          unit: action.unit,
-          actionTime: currentTime,
-          type: 'skill'
-        });
-      }
+            for (const attacker of attackers) {
+              plannedApproachGroupDiagnosticsBySide[unitSide].set(attacker.id, {
+                target,
+                competitorCount,
+                assignedCount,
+              });
+            }
 
-      // 次の攻撃をスケジュール（0でない場合）
-          if (action.unit.attackSpeed > 0) {
-            const nextAttackTime = currentTime + (1000 / (action.unit.attackSpeed * action.unit.buffModifiers.attackSpeedMultiplier));
-            actionQueue.push({
-              unit: action.unit,
-              actionTime: nextAttackTime,
-              type: "attack",
-            });
+            for (const attacker of attackers) {
+              const destination = assignments.get(attacker.id);
+              if (!destination) {
+                continue;
+              }
+
+              plannedApproachDestinationsBySide[unitSide].set(attacker.id, {
+                target,
+                destination,
+              });
+              plannedApproachDestinationKeysBySide[unitSide].add(coordinateKey(destination));
+            }
           }
-        } else {
-          const previousCell = action.unit.cell;
-          moveUnitBySimpleApproach(action.unit, allies, enemies, combatLog);
-          if (action.unit.cell !== previousCell) {
-            timeline.push(createMoveEvent({
-              type: "move",
-              battleId,
-              atMs: currentTime,
-              battleUnitId: action.unit.id,
-              from: resolveTimelineCoordinate({ ...action.unit, cell: previousCell }),
-              to: resolveTimelineCoordinate(action.unit),
-            }));
+        }
+
+        for (const moveAction of moveBatch) {
+          if (nextScheduledMoveAtByUnitId.get(moveAction.unit.id) !== moveAction.actionTime) {
+            continue;
           }
 
-          // 攻撃カウントを増加（ターゲットが見つからない場合も）
-          action.unit.attackCount++;
+          const unitSide = resolveBattleSide(moveAction.unit);
+          const enemies = unitSide === "left" ? rightUnits : leftUnits;
+          const allies = unitSide === "left" ? leftUnits : rightUnits;
+          const target = findTarget(moveAction.unit, enemies);
+          const plannedApproach = plannedApproachDestinationsBySide[unitSide].get(moveAction.unit.id);
+          const plannedApproachGroupDiagnostics = plannedApproachGroupDiagnosticsBySide[unitSide].get(
+            moveAction.unit.id,
+          );
+          const moveDiagnostics = target == null
+            ? resolveMoveActionDiagnostics(moveAction.unit, allies, enemies)
+            : null;
+          let moveExecutionResult: ReturnType<typeof moveUnitBySimpleApproach> | null = null;
 
-          // 次の攻撃をスケジュール
-          if (action.unit.attackSpeed > 0) {
-            const nextAttackTime = currentTime + (1000 / (action.unit.attackSpeed * action.unit.buffModifiers.attackSpeedMultiplier));
-            actionQueue.push({
-              unit: action.unit,
-              actionTime: nextAttackTime,
-              type: "attack",
-            });
+          if (!target) {
+            const previousCell = moveAction.unit.cell;
+            const blockedApproachDestinationKeys = new Set<string>([
+              ...reservedApproachDestinationKeys[unitSide],
+              ...plannedApproachDestinationKeysBySide[unitSide],
+            ]);
+            if (plannedApproach) {
+              blockedApproachDestinationKeys.delete(coordinateKey(plannedApproach.destination));
+            }
+            moveExecutionResult = moveUnitBySimpleApproach(
+              moveAction.unit,
+              allies,
+              enemies,
+              combatLog,
+              plannedApproach?.target ?? moveDiagnostics?.pursuedTarget ?? null,
+              blockedApproachDestinationKeys,
+              plannedApproach?.destination ?? null,
+            );
+            if (moveExecutionResult.moved && moveAction.unit.cell !== previousCell) {
+              timeline.push(createMoveEvent({
+                type: "move",
+                battleId,
+                atMs: currentTime,
+                battleUnitId: moveAction.unit.id,
+                from: resolveTimelineCoordinate({ ...moveAction.unit, cell: previousCell }),
+                to: resolveTimelineCoordinate(moveAction.unit),
+                ...(moveDiagnostics?.pursuedTarget
+                  ? { pursuedTargetBattleUnitId: moveDiagnostics.pursuedTarget.id }
+                  : {}),
+                ...(moveDiagnostics?.bestApproachTarget
+                  ? { bestApproachTargetBattleUnitId: moveDiagnostics.bestApproachTarget.id }
+                  : {}),
+                ...(plannedApproachGroupDiagnostics
+                  ? {
+                    plannedApproachGroupTargetBattleUnitId: plannedApproachGroupDiagnostics.target.id,
+                    plannedApproachGroupCompetitorCountBeforeMove:
+                      plannedApproachGroupDiagnostics.competitorCount,
+                    plannedApproachGroupAssignedCountBeforeMove:
+                      plannedApproachGroupDiagnostics.assignedCount,
+                  }
+                  : {}),
+                ...(plannedApproach
+                  ? {
+                    plannedApproachTargetBattleUnitId: plannedApproach.target.id,
+                    usedPlannedApproachDestination: moveExecutionResult.usedPlannedApproachDestination,
+                    plannedApproachDestinationPathBlockedBeforeMove:
+                      moveExecutionResult.plannedApproachDestinationPathBlockedBeforeMove,
+                    ...(moveExecutionResult.plannedApproachDestinationPathBlockerTypeBeforeMove != null
+                      ? {
+                        plannedApproachDestinationPathBlockerTypeBeforeMove:
+                          moveExecutionResult.plannedApproachDestinationPathBlockerTypeBeforeMove,
+                      }
+                      : {}),
+                    ...(moveExecutionResult.plannedApproachDestinationRouteChokeTypeBeforeMove != null
+                      ? {
+                        plannedApproachDestinationRouteChokeTypeBeforeMove:
+                          moveExecutionResult.plannedApproachDestinationRouteChokeTypeBeforeMove,
+                      }
+                      : {}),
+                  }
+                  : {}),
+                ...(plannedApproach && moveExecutionResult.plannedDestinationStillOpenBeforeMove != null
+                  ? {
+                    plannedApproachDestinationStillOpenBeforeMove:
+                      moveExecutionResult.plannedDestinationStillOpenBeforeMove,
+                  }
+                  : {}),
+                pursuedTargetDistanceBeforeMove: moveDiagnostics?.pursuedTargetDistanceBeforeMove ?? null,
+                bestApproachTargetDistanceBeforeMove: moveDiagnostics?.bestApproachTargetDistanceBeforeMove ?? null,
+                pursuedTargetRequiredStepsBeforeMove: moveDiagnostics?.pursuedTargetRequiredStepsBeforeMove ?? null,
+                bestApproachTargetRequiredStepsBeforeMove: moveDiagnostics?.bestApproachTargetRequiredStepsBeforeMove ?? null,
+              }));
+            }
           }
+
+          if (moveExecutionResult?.moved) {
+            schedulePostMoveAttack(moveAction.unit);
+          }
+          scheduleNextMove(moveAction.unit);
         }
       } else if (action.type === "skill") {
         // ヒーローユニットかどうかを判定
-        const isHero = action.unit.id.startsWith("hero-");
+        const isHero = isHeroBattleUnit(action.unit);
         let skillExecuted = false;
 
         if (isHero) {
-          // ヒーロースキルを使用（ヒーローIDからヒーローを取得）
-          const heroId = action.unit.id.replace("hero-", "").split("-")[0];
-          if (!heroId) {
-            console.error(`Invalid hero ID for unit: ${action.unit.id}`);
+          // ヒーロースキルを使用（sourceUnitId 優先でヒーロー定義を解決）
+          const resolvedHeroSkill = resolveHeroSkillDefinition(action.unit);
+          if (!resolvedHeroSkill) {
+            if (!resolveHeroId(action.unit)) {
+              console.error(`Invalid hero ID for unit: ${action.unit.id}`);
+            }
             continue;
           }
-          const heroSkillDef = HERO_SKILL_DEFINITIONS[heroId];
+          const { heroId, skillDef: heroSkillDef } = resolvedHeroSkill;
           if (heroSkillDef && heroSkillDef.execute) {
             const isLeftSide = leftUnits.includes(action.unit);
             const allies = isLeftSide ? leftUnits : rightUnits;
@@ -1393,14 +2775,15 @@ export class BattleSimulator {
         }
       }
 
-      actionQueue.sort((a, b) => a.actionTime - b.actionTime);
+      actionQueue.sort(compareActionOrder);
     }
 
       const result = this.determineBattleResult(
         leftUnits, 
         rightUnits, 
         currentTime, 
-      maxDurationMs, 
+      maxDurationMs,
+      timeoutEnabled,
       timeline,
         combatLog,
         damageDealtLeft, 
@@ -1416,6 +2799,7 @@ export class BattleSimulator {
       // Return a draw result on error (Bug #3 fix)
       const result: BattleResult = {
         winner: "draw",
+        endReason: "unexpected",
         leftSurvivors: leftUnits ? leftUnits.filter(u => !u.isDead) : [],
         rightSurvivors: rightUnits ? rightUnits.filter(u => !u.isDead) : [],
         timeline: [],
@@ -1448,6 +2832,7 @@ export class BattleSimulator {
     rightUnits: BattleUnit[],
     currentTime: number,
     maxDurationMs: number,
+    timeoutEnabled: boolean,
     timeline: BattleTimelineEvent[],
     combatLog: string[],
     damageDealtLeft: number,
@@ -1457,11 +2842,15 @@ export class BattleSimulator {
     forcedWinner: "left" | "right" | null = null,
   ): BattleResult {
     // BattleResult の基本オブジェクトを作成（bossDamage は条件付きで追加）
-    const createResult = (winner: "left" | "right" | "draw"): BattleResult => {
+    const createResult = (
+      winner: "left" | "right" | "draw",
+      endReason: BattleTimelineEndReason,
+    ): BattleResult => {
       const leftSurvivors = leftUnits.filter((unit) => !unit.isDead);
       const rightSurvivors = rightUnits.filter((unit) => !unit.isDead);
       const baseResult = {
         winner,
+        endReason,
         leftSurvivors,
         rightSurvivors,
         timeline: [
@@ -1471,6 +2860,7 @@ export class BattleSimulator {
             battleId: timeline[0]?.battleId ?? "battle-unknown",
             atMs: currentTime,
             winner: resolveTimelineWinner(winner),
+            endReason,
           }),
         ],
         combatLog,
@@ -1494,43 +2884,43 @@ export class BattleSimulator {
     const rightSurvivors = rightUnits.filter((unit) => !unit.isDead);
 
     if (forcedWinner) {
-      return createResult(forcedWinner);
+      return createResult(forcedWinner, "forced");
     }
 
     if (leftSurvivors.length === 0 && rightSurvivors.length === 0) {
       combatLog.push("Battle ended: Draw (all units defeated)");
-      return createResult("draw");
+      return createResult("draw", "mutual_annihilation");
     }
 
     if (leftSurvivors.length === 0) {
       combatLog.push("Battle ended: Right wins");
-      return createResult("right");
+      return createResult("right", "annihilation");
     }
 
     if (rightSurvivors.length === 0) {
       combatLog.push("Battle ended: Left wins");
-      return createResult("left");
+      return createResult("left", "annihilation");
     }
 
     // 時間制限に達した場合
-    if (currentTime >= maxDurationMs) {
+    if (timeoutEnabled && currentTime >= maxDurationMs) {
       const leftTotalHp = leftSurvivors.reduce((sum, unit) => sum + unit.hp, 0);
       const rightTotalHp = rightSurvivors.reduce((sum, unit) => sum + unit.hp, 0);
 
       if (leftTotalHp > rightTotalHp) {
         combatLog.push(`Battle ended: Left wins (HP: ${leftTotalHp} vs ${rightTotalHp})`);
-        return createResult("left");
+        return createResult("left", "timeout_hp_lead");
       } else if (rightTotalHp > leftTotalHp) {
         combatLog.push(`Battle ended: Right wins (HP: ${rightTotalHp} vs ${leftTotalHp})`);
-        return createResult("right");
+        return createResult("right", "timeout_hp_lead");
       } else {
         combatLog.push(`Battle ended: Draw (HP: ${leftTotalHp} vs ${rightTotalHp})`);
-        return createResult("draw");
+        return createResult("draw", "timeout_hp_tie");
       }
     }
 
     combatLog.push("Battle ended: Unexpected termination");
-    return createResult("draw");
+    return createResult("draw", "unexpected");
   }
 }
 

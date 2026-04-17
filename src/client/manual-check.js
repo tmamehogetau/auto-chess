@@ -82,8 +82,8 @@ const HEROES = [
     id: 'reimu',
     name: '霊夢',
     role: 'balance',
-    hp: 120,
-    attack: 18,
+    hp: 680,
+    attack: 45,
     skill: {
       name: '夢符「二重結界」',
       description: '味方全体に防御バフ（被ダメージ-20%）',
@@ -93,19 +93,19 @@ const HEROES = [
     id: 'marisa',
     name: '魔理沙',
     role: 'dps',
-    hp: 100,
-    attack: 25,
+    hp: 400,
+    attack: 60,
     skill: {
-      name: '恋符「マスタースパーク」',
-      description: '全敵に強力な魔法ダメージ（ATK × 3.0）',
+      name: '星符「ドラゴンメテオ」',
+      description: '直線ビームで全敵に魔法ダメージ（ATK × 2.0）',
     },
   },
   {
     id: 'okina',
     name: '隠岐奈',
     role: 'support',
-    hp: 110,
-    attack: 16,
+    hp: 540,
+    attack: 40,
     skill: {
       name: '秘神「裏表の逆転」',
       description: '味方全体に攻撃力バフ（与ダメージ+25%）',
@@ -114,9 +114,9 @@ const HEROES = [
   {
     id: 'keiki',
     name: '袿姫',
-    role: 'tank',
-    hp: 180,
-    attack: 12,
+    role: 'support',
+    hp: 880,
+    attack: 30,
     skill: {
       name: '埴安神「偶像の加護」',
       description: '自身の被ダメージ-40%、周囲の味方に被ダメージ-15%',
@@ -125,12 +125,23 @@ const HEROES = [
   {
     id: 'jyoon',
     name: '女苑',
-    role: 'economy',
-    hp: 90,
-    attack: 14,
+    role: 'dps',
+    hp: 500,
+    attack: 35,
     skill: {
-      name: '吉凶「星の導き」',
-      description: '味方全体に攻撃力バフ（与ダメージ+15%）',
+      name: '財符「黄金のトルネード」',
+      description: '攻撃毎に自己ATK+10%累積（最大+50%）',
+    },
+  },
+  {
+    id: 'yuiman',
+    name: 'ユイマン・浅間',
+    role: 'support',
+    hp: 520,
+    attack: 38,
+    skill: {
+      name: '虚構「ディスコミュニケーション」',
+      description: '最もHPの低い敵の攻撃を一時無効化（プレースホルダー）',
     },
   },
 ];

@@ -6,7 +6,7 @@
  */
 
 import type { BoardUnitType } from "../shared/room-messages";
-import type { CombatStats, UnitId } from "../shared/types";
+import { DEFAULT_MOVEMENT_SPEED, type CombatStats, type UnitId } from "../shared/types";
 
 export interface ScarletMansionUnit extends CombatStats {
   /** ユニットID */
@@ -27,6 +27,21 @@ export interface ScarletMansionUnit extends CombatStats {
   flavorText: string;
 }
 
+function approximateLegacyDamageReduction(input: {
+  defense: number;
+  physicalReduction: number;
+  magicReduction: number;
+}): number {
+  const representativeIncomingDamage = 60;
+  const flatReductionShare = Math.min(0.8, Math.max(0, input.defense) / representativeIncomingDamage);
+  const reductionShare = Math.max(
+    0,
+    Math.min(1, (input.physicalReduction + input.magicReduction) / 200),
+  );
+
+  return Math.round((1 - (1 - flatReductionShare) * (1 - reductionShare)) * 100);
+}
+
 /**
  * 紅魔館ユニット定義
  * ボス専用ショップで購入可能
@@ -41,12 +56,15 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     hp: 850,
     attack: 65,
     attackSpeed: 0.85,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 1,
-    defense: 17.5,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 20,
-    magicReduction: 15,
+    damageReduction: approximateLegacyDamageReduction({
+      defense: 17.5,
+      physicalReduction: 20,
+      magicReduction: 15,
+    }),
     role: "序盤の壁",
     skillDescription: "彩華「虹色太極拳」- 周囲の敵攻撃を誘引し、被ダメージを軽減",
     flavorText: "紅魔館の門番。悠々自適に勤務中。",
@@ -60,12 +78,15 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     hp: 720,
     attack: 95,
     attackSpeed: 1.15,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 2,
-    defense: 10,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 10,
-    magicReduction: 10,
+    damageReduction: approximateLegacyDamageReduction({
+      defense: 10,
+      physicalReduction: 10,
+      magicReduction: 10,
+    }),
     role: "守護サポート",
     skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
     flavorText: "紅魔館のメイド長。完璧で瀟洒な仕事人。",
@@ -79,12 +100,15 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     hp: 600,
     attack: 140,
     attackSpeed: 0.75,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 4,
-    defense: 15,
     critRate: 0,
     critDamageMultiplier: 1.5,
-    physicalReduction: 5,
-    magicReduction: 25,
+    damageReduction: approximateLegacyDamageReduction({
+      defense: 15,
+      physicalReduction: 5,
+      magicReduction: 25,
+    }),
     role: "爆発補助",
     skillDescription: "火水木金土符「賢者の石」- ランダムな敵3体に大魔法ダメージ",
     flavorText: "紅魔館の魔法使い。動きたくない。",

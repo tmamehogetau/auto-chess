@@ -466,6 +466,7 @@ describe("shared-board client", () => {
           battleId: "battle-raid-1",
           atMs: 400,
           winner: "raid",
+          endReason: "annihilation",
         },
       ],
     });
@@ -713,6 +714,7 @@ describe("shared-board client", () => {
           battleId: "battle-raid-dup",
           atMs: 400,
           winner: "raid",
+          endReason: "annihilation",
         },
       ],
     };

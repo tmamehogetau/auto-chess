@@ -101,9 +101,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   vanguard: {
     name: 'Shield Wall',
     triggerType: 'on_attack_count',
-    triggerCount: 3,  // 3 回攻撃ごと
+    triggerCount: 3,
     execute: (caster, allies, _enemies, log) => {
-      // 味方全員に残り戦闘中 +50% 防御力を付与
       for (const ally of allies) {
         if (!ally.isDead) {
           ally.buffModifiers.defenseMultiplier *= 1.5;
@@ -117,7 +116,6 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     triggerType: 'on_attack_count',
     triggerCount: 3,
     execute: (caster, _allies, enemies, log) => {
-      // HP が最も低い敵に 2 倍攻撃ダメージを与える
       const target = selectLowestHpTarget(caster, enemies);
       if (target) {
         const damage = calculateUltimateDamage(
@@ -135,7 +133,6 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     triggerType: 'on_attack_count',
     triggerCount: 3,
     execute: (caster, _allies, enemies, log) => {
-      // 全敵に 1.5 倍攻撃ダメージを与える
       for (const enemy of enemies) {
         if (!enemy.isDead) {
           const damage = calculateUltimateDamage(
@@ -160,9 +157,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   assassin: {
     name: 'Backstab',
     triggerType: 'on_attack_count',
-    triggerCount: 2,  // Assassin はトリガーが速い
+    triggerCount: 2,
     execute: (caster, _allies, enemies, log) => {
-      // HP が最も低い敵に 3 倍ダメージを与える
       const target = selectLowestHpTarget(caster, enemies);
       if (target) {
         const damage = calculateUltimateDamage(
@@ -193,17 +189,16 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
     }
   },
   marisa: {
-    name: 'マスタースパーク',
+    name: 'ドラゴンメテオ',
     triggerType: 'on_mana_full',
     execute: (caster, _allies, enemies, log) => {
-      // 全敵に魔法ダメージ（ATK × 3.0）
-      const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 3.0);
-      for (const enemy of enemies) {
-        if (!enemy.isDead) {
-          enemy.hp -= damage;
-        }
+      const target = enemies.find((enemy) => !enemy.isDead);
+      if (!target) {
+        return;
       }
-      log.push(`${caster.type} activates マスタースパーク! Deals ${damage} damage to all enemies`);
+      const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
+      target.hp -= damage;
+      log.push(`${caster.type} activates ドラゴンメテオ! Deals ${damage} damage to ${target.type}`);
     }
   },
   sanae: {
@@ -264,6 +259,21 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
       if (affectedEnemies.length > 0) {
         log.push(`${caster.type} activates 時符『プライベートスクウェア』! ${affectedEnemies.length} enemies slowed by -30% attack speed at cell ${centerCell}`);
         // 注: 移動速度 -60% は将来的な実装待ち
+      }
+    }
+  },
+  yuiman: {
+    name: 'ディスコミュニケーション',
+    triggerType: 'on_mana_full',
+    execute: (caster, _allies, enemies, log) => {
+      const target = selectLowestHpTarget(caster, enemies);
+      if (target?.debuffImmunityCategories?.includes("crowd_control")) {
+        log.push(`${caster.type} activates ディスコミュニケーション! ${target.type} resisted the slow`);
+        return;
+      }
+      if (target) {
+        target.buffModifiers.attackSpeedMultiplier *= 0.5;
+        log.push(`${caster.type} activates ディスコミュニケーション! Slowed ${target.type}`);
       }
     }
   }

@@ -111,4 +111,12 @@ describe("unit id data integrity", () => {
     expect(jyoon?.synergyBonusType).toBe("vanguard");
     expect(jyoon?.movementSpeed).toBe(DEFAULT_MOVEMENT_SPEED * 2);
   });
+
+  test("heroes with range 2 or higher keep the default movement speed", () => {
+    const okina = HEROES.find((hero) => hero.id === "okina");
+
+    expect(okina).toBeDefined();
+    expect(okina?.range).toBeGreaterThanOrEqual(2);
+    expect(okina?.movementSpeed).toBe(DEFAULT_MOVEMENT_SPEED);
+  });
 });

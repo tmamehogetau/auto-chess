@@ -3,6 +3,7 @@ import {
   sharedBoardIndexToCoordinate,
   sharedBoardManhattanDistance,
 } from "../../shared/board-geometry";
+import type { BoardCoordinate } from "../../shared/board-geometry";
 import type { BattleUnit } from "./battle-simulator";
 
 export interface SkillEffect {
@@ -97,6 +98,51 @@ function selectBestAreaCenter(caster: BattleUnit, enemies: BattleUnit[], radius:
   return bestCenter;
 }
 
+function buildLineCoordinates(from: BoardCoordinate, to: BoardCoordinate): BoardCoordinate[] {
+  const coordinates: BoardCoordinate[] = [];
+  let currentX = from.x;
+  let currentY = from.y;
+  const deltaX = Math.abs(to.x - from.x);
+  const stepX = from.x < to.x ? 1 : -1;
+  const deltaY = -Math.abs(to.y - from.y);
+  const stepY = from.y < to.y ? 1 : -1;
+  let error = deltaX + deltaY;
+
+  while (true) {
+    coordinates.push({ x: currentX, y: currentY });
+
+    if (currentX === to.x && currentY === to.y) {
+      return coordinates;
+    }
+
+    const doubledError = error * 2;
+    if (doubledError >= deltaY) {
+      error += deltaY;
+      currentX += stepX;
+    }
+    if (doubledError <= deltaX) {
+      error += deltaX;
+      currentY += stepY;
+    }
+  }
+}
+
+function getUnitsOnBeamLine(caster: BattleUnit, primaryTarget: BattleUnit, enemies: BattleUnit[]): BattleUnit[] {
+  const from = sharedBoardIndexToCoordinate(caster.cell);
+  const to = sharedBoardIndexToCoordinate(primaryTarget.cell);
+  const lineCoordinates = buildLineCoordinates(from, to);
+  const lineSet = new Set(lineCoordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`));
+
+  return enemies.filter((enemy) => {
+    if (enemy.isDead) {
+      return false;
+    }
+
+    const coordinate = sharedBoardIndexToCoordinate(enemy.cell);
+    return lineSet.has(`${coordinate.x},${coordinate.y}`);
+  });
+}
+
 export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   vanguard: {
     name: 'Shield Wall',
@@ -189,16 +235,29 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
     }
   },
   marisa: {
-    name: 'ドラゴンメテオ',
+    name: '恋符「マスタースパーク」',
     triggerType: 'on_mana_full',
     execute: (caster, _allies, enemies, log) => {
-      const target = enemies.find((enemy) => !enemy.isDead);
-      if (!target) {
+      const primaryTarget = enemies.find((enemy) => !enemy.isDead);
+      if (!primaryTarget) {
         return;
       }
-      const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
-      target.hp -= damage;
-      log.push(`${caster.type} activates ドラゴンメテオ! Deals ${damage} damage to ${target.type}`);
+
+      const targets = getUnitsOnBeamLine(caster, primaryTarget, enemies);
+      if (targets.length === 0) {
+        return;
+      }
+
+      for (const target of targets) {
+        const damage = calculateUltimateDamage(
+          caster,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0,
+          target,
+        );
+        target.hp -= damage;
+      }
+
+      log.push(`${caster.type} activates 恋符「マスタースパーク」! Hits ${targets.length} enemies`);
     }
   },
   sanae: {

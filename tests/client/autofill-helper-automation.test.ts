@@ -8,6 +8,10 @@ import {
 } from "../../src/client/autofill-helper-automation.js";
 
 describe("autofill helper automation", () => {
+  test("auto-fill hero pool includes yuiman", () => {
+    expect(AUTO_FILL_HERO_IDS).toContain("yuiman");
+  });
+
   test("preference stage auto-readies a helper so bot-only lobbies can start", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

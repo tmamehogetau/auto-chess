@@ -1,11 +1,57 @@
 import type { BattleUnit } from "../server/combat/battle-simulator";
 import {
+  type BoardCoordinate,
   sharedBoardIndexToCoordinate,
   sharedBoardManhattanDistance,
 } from "../shared/board-geometry";
 import { DEFAULT_MOVEMENT_SPEED, type BoardUnitType, type CombatStats } from "../shared/types";
 
 const DEFAULT_MELEE_MOVEMENT_SPEED = DEFAULT_MOVEMENT_SPEED * 2;
+
+function buildLineCoordinates(from: BoardCoordinate, to: BoardCoordinate): BoardCoordinate[] {
+  const coordinates: BoardCoordinate[] = [];
+  let currentX = from.x;
+  let currentY = from.y;
+  const deltaX = Math.abs(to.x - from.x);
+  const stepX = from.x < to.x ? 1 : -1;
+  const deltaY = -Math.abs(to.y - from.y);
+  const stepY = from.y < to.y ? 1 : -1;
+  let error = deltaX + deltaY;
+
+  while (true) {
+    coordinates.push({ x: currentX, y: currentY });
+
+    if (currentX === to.x && currentY === to.y) {
+      return coordinates;
+    }
+
+    const doubledError = error * 2;
+    if (doubledError >= deltaY) {
+      error += deltaY;
+      currentX += stepX;
+    }
+    if (doubledError <= deltaX) {
+      error += deltaX;
+      currentY += stepY;
+    }
+  }
+}
+
+function getUnitsOnBeamLine(caster: BattleUnit, primaryTarget: BattleUnit, enemies: BattleUnit[]): BattleUnit[] {
+  const from = sharedBoardIndexToCoordinate(caster.cell);
+  const to = sharedBoardIndexToCoordinate(primaryTarget.cell);
+  const lineCoordinates = buildLineCoordinates(from, to);
+  const lineSet = new Set(lineCoordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`));
+
+  return enemies.filter((enemy) => {
+    if (enemy.isDead) {
+      return false;
+    }
+
+    const coordinate = sharedBoardIndexToCoordinate(enemy.cell);
+    return lineSet.has(`${coordinate.x},${coordinate.y}`);
+  });
+}
 
 export interface Hero extends CombatStats {
   id: string;
@@ -67,16 +113,25 @@ export const HEROES: Hero[] = [
     critDamageMultiplier: 1.5,
     damageReduction: 0,
     skill: {
-      name: '星符「ドラゴンメテオ」',
-      description: '直線ビームで単体に魔法ダメージ（ATK × 2.0）',
+      name: '恋符「マスタースパーク」',
+      description: 'ターゲットとの直線上の敵に魔法ダメージ（ATK × 2.0）',
       effect: (caster, _allies, enemies, log) => {
-        const target = enemies.find((enemy) => !enemy.isDead);
-        if (!target) {
+        const primaryTarget = enemies.find((enemy) => !enemy.isDead);
+        if (!primaryTarget) {
           return;
         }
-        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
-        target.hp -= damage;
-        log.push(`${caster.type} activates 星符「ドラゴンメテオ」! Deals ${damage} damage to ${target.type}`);
+
+        const targets = getUnitsOnBeamLine(caster, primaryTarget, enemies);
+        if (targets.length === 0) {
+          return;
+        }
+
+        for (const target of targets) {
+          const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
+          target.hp -= damage;
+        }
+
+        log.push(`${caster.type} activates 恋符「マスタースパーク」! Hits ${targets.length} enemies`);
       },
     },
   },
@@ -90,7 +145,7 @@ export const HEROES: Hero[] = [
     hp: 540,
     attack: 40,
     attackSpeed: 0.7,
-    movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED,
+    movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 4,
     critRate: 0,
     critDamageMultiplier: 1.5,

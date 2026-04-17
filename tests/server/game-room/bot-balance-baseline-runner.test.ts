@@ -1,7 +1,11 @@
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import {
   BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE,
+  baselineChunkConfigMatches,
+  createBaselineChunkConfigSnapshot,
   createBotBalanceBaselineHelperConfigs,
   createBotBalanceBaselineRoomTimings,
   createBaselineChunkDefinitions,
@@ -16,31 +20,64 @@ import {
 
 describe("bot balance baseline runner helpers", () => {
   test("builds chunk definitions with stable paths", () => {
-    const chunks = createBaselineChunkDefinitions(12, 5, "C:\\tmp\\baseline");
+    const outputDir = "/tmp/baseline";
+    const chunks = createBaselineChunkDefinitions(12, 5, outputDir);
 
     expect(chunks).toEqual([
       {
         chunkIndex: 0,
         matchStartIndex: 0,
         requestedMatchCount: 5,
-        chunkJsonPath: "C:\\tmp\\baseline\\chunk-001.json",
-        logPath: "C:\\tmp\\baseline\\chunk-001.log",
+        chunkJsonPath: join(outputDir, "chunk-001.json"),
+        logPath: join(outputDir, "chunk-001.log"),
       },
       {
         chunkIndex: 1,
         matchStartIndex: 5,
         requestedMatchCount: 5,
-        chunkJsonPath: "C:\\tmp\\baseline\\chunk-002.json",
-        logPath: "C:\\tmp\\baseline\\chunk-002.log",
+        chunkJsonPath: join(outputDir, "chunk-002.json"),
+        logPath: join(outputDir, "chunk-002.log"),
       },
       {
         chunkIndex: 2,
         matchStartIndex: 10,
         requestedMatchCount: 2,
-        chunkJsonPath: "C:\\tmp\\baseline\\chunk-003.json",
-        logPath: "C:\\tmp\\baseline\\chunk-003.log",
+        chunkJsonPath: join(outputDir, "chunk-003.json"),
+        logPath: join(outputDir, "chunk-003.log"),
       },
     ]);
+  });
+
+  test("returns no chunks when requested match count is non-positive", () => {
+    expect(createBaselineChunkDefinitions(0, 5, "/tmp/baseline")).toEqual([]);
+    expect(createBaselineChunkDefinitions(-3, 5, "/tmp/baseline")).toEqual([]);
+  });
+
+  test("matches resume chunk snapshots only when the baseline config is unchanged", () => {
+    const baselineConfig = createBaselineChunkConfigSnapshot({
+      requestedMatchCount: 5,
+      bossPolicy: "growth",
+      raidPolicies: ["strength", "growth", "growth"],
+    });
+
+    expect(baselineChunkConfigMatches(baselineConfig, baselineConfig)).toBe(true);
+    expect(baselineChunkConfigMatches(undefined, baselineConfig)).toBe(false);
+    expect(baselineChunkConfigMatches(
+      createBaselineChunkConfigSnapshot({
+        requestedMatchCount: 4,
+        bossPolicy: "growth",
+        raidPolicies: ["strength", "growth", "growth"],
+      }),
+      baselineConfig,
+    )).toBe(false);
+    expect(baselineChunkConfigMatches(
+      createBaselineChunkConfigSnapshot({
+        requestedMatchCount: 5,
+        bossPolicy: "strength",
+        raidPolicies: ["strength", "growth", "growth"],
+      }),
+      baselineConfig,
+    )).toBe(false);
   });
 
   test("uses sane defaults for parallelism and worker port offsets", () => {

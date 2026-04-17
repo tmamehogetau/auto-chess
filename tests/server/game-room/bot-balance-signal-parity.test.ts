@@ -149,7 +149,11 @@ const advanceToNextPhaseWindow = (
     throw new Error(`Expected phase deadline while phase=${controller.phase}`);
   }
 
-  const nextNowMs = Math.max(nowMs + 1, phaseDeadlineAtMs + 1);
+  const coarseAdvanceMs = controller.phase === "Battle" ? 1_000 : 50;
+  const nextNowMs = Math.max(
+    nowMs + (nowMs > phaseDeadlineAtMs ? coarseAdvanceMs : 1),
+    phaseDeadlineAtMs + 1,
+  );
   controller.advanceByTime(nextNowMs);
   return nextNowMs;
 };
@@ -317,9 +321,11 @@ const expectAggregateSummariesClose = (
 
 describe("bot-only balance signal parity", () => {
   let originalEnv = captureManagedFlagEnv();
+  let originalSuppressVerboseLogs: string | undefined;
 
   beforeEach(() => {
     originalEnv = captureManagedFlagEnv();
+    originalSuppressVerboseLogs = process.env.SUPPRESS_VERBOSE_TEST_LOGS;
     for (const [flagName, envVarName] of Object.entries(FLAG_ENV_VARS)) {
       process.env[envVarName] = String(
         FLAG_CONFIGURATIONS.ALL_DISABLED[flagName as keyof typeof FLAG_CONFIGURATIONS.ALL_DISABLED],
@@ -331,6 +337,11 @@ describe("bot-only balance signal parity", () => {
 
   afterEach(() => {
     restoreManagedFlagEnv(originalEnv);
+    if (originalSuppressVerboseLogs === undefined) {
+      delete process.env.SUPPRESS_VERBOSE_TEST_LOGS;
+    } else {
+      process.env.SUPPRESS_VERBOSE_TEST_LOGS = originalSuppressVerboseLogs;
+    }
     FeatureFlagService.resetForTests();
   });
 

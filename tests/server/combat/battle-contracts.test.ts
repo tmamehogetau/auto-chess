@@ -75,6 +75,17 @@ describe("battle contracts", () => {
     expect(calculateAttackDamage(attacker, target, false, false)).toBe(1);
   });
 
+  test("damage helper still honors defenseMultiplier buffs", () => {
+    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", starLevel: 1, attack: 20 }, "left", 0);
+    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    target.damageReduction = 20;
+
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(16);
+
+    target.buffModifiers.defenseMultiplier = 1.25;
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(12);
+  });
+
   test("reflection helper never returns less than 1 damage when reflection applies", () => {
     expect(calculateReflectedDamage(10, 0.1)).toBe(1);
     expect(calculateReflectedDamage(37, 0.2)).toBe(7);

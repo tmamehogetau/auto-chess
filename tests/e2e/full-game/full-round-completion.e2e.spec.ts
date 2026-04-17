@@ -214,6 +214,17 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
     async () => {
       const gameRoom = await testServer.createRoom<GameRoom>("game");
       const clients = await setupGameWith4Players(gameRoom);
+      const targetLoserSessionId = clients[0]!.sessionId;
+      const STRONG_PLACEMENTS = [
+        { cell: 0, unitType: "vanguard", starLevel: 3 },
+        { cell: 1, unitType: "vanguard", starLevel: 3 },
+        { cell: 2, unitType: "ranger", starLevel: 3 },
+        { cell: 3, unitType: "ranger", starLevel: 3 },
+        { cell: 4, unitType: "mage", starLevel: 3 },
+        { cell: 5, unitType: "mage", starLevel: 3 },
+        { cell: 6, unitType: "assassin", starLevel: 3 },
+        { cell: 7, unitType: "assassin", starLevel: 3 },
+      ];
 
       // 各プレイヤーのHP推移を記録
       const hpHistory = new Map<string, Array<{ round: number; hp: number }>>();
@@ -236,12 +247,12 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
           for (const client of clients) {
             const player = gameRoom.state.players.get(client.sessionId);
             if (player && !player.eliminated) {
+              const placements = client.sessionId === targetLoserSessionId
+                ? []
+                : STRONG_PLACEMENTS;
               client.send("prep_command", {
                 cmdSeq: round,
-                boardPlacements: [
-                  { cell: 0, unitType: "vanguard", starLevel: 1 },
-                  { cell: 1, unitType: "ranger", starLevel: 1 },
-                ],
+                boardPlacements: placements,
               });
             }
           }

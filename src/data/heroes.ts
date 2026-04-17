@@ -68,15 +68,15 @@ export const HEROES: Hero[] = [
     damageReduction: 0,
     skill: {
       name: '星符「ドラゴンメテオ」',
-      description: '直線ビームで全敵に魔法ダメージ（ATK × 2.0）',
+      description: '直線ビームで単体に魔法ダメージ（ATK × 2.0）',
       effect: (caster, _allies, enemies, log) => {
-        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
-        for (const enemy of enemies) {
-          if (!enemy.isDead) {
-            enemy.hp -= damage;
-          }
+        const target = enemies.find((enemy) => !enemy.isDead);
+        if (!target) {
+          return;
         }
-        log.push(`${caster.type} activates 星符「ドラゴンメテオ」! Deals ${damage} damage to all enemies`);
+        const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
+        target.hp -= damage;
+        log.push(`${caster.type} activates 星符「ドラゴンメテオ」! Deals ${damage} damage to ${target.type}`);
       },
     },
   },
@@ -193,10 +193,20 @@ export const HEROES: Hero[] = [
       name: '虚構「ディスコミュニケーション」',
       description: '最もHPの低い敵の攻撃を一時無効化（プレースホルダー）',
       effect: (caster, _allies, enemies, log) => {
-        const target = enemies.find((e) => !e.isDead);
+        const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+        const target = livingEnemies.reduce<BattleUnit | null>((lowest, enemy) => {
+          if (lowest == null || enemy.hp < lowest.hp) {
+            return enemy;
+          }
+          return lowest;
+        }, null);
+        if (target?.debuffImmunityCategories?.includes("crowd_control")) {
+          log.push(`${caster.type} activates 虚構「ディスコミュニケーション」! ${target.type} resisted the slow`);
+          return;
+        }
         if (target) {
           target.buffModifiers.attackSpeedMultiplier *= 0.5;
-          log.push(`${caster.type} activates 虚構「ディスコミュニケーション」! Silenced ${target.type}`);
+          log.push(`${caster.type} activates 虚構「ディスコミュニケーション」! Slowed ${target.type}`);
         }
       },
     },

@@ -774,7 +774,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedRin.range).toBe(1);
           expect(resolvedRin.critRate).toBe(0);
           expect(resolvedRin.critDamageMultiplier).toBe(1.5);
-          expect(resolvedRin.damageReduction).toBe(0);
+          expect(resolvedRin.damageReduction).toBe(5);
 
           expect(resolvedZanmu.unitType).toBe("mage");
           expect(resolvedZanmu.unitId).toBe("zanmu");

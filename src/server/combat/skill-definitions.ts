@@ -192,13 +192,13 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
     name: 'ドラゴンメテオ',
     triggerType: 'on_mana_full',
     execute: (caster, _allies, enemies, log) => {
-      const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
-      for (const enemy of enemies) {
-        if (!enemy.isDead) {
-          enemy.hp -= damage;
-        }
+      const target = enemies.find((enemy) => !enemy.isDead);
+      if (!target) {
+        return;
       }
-      log.push(`${caster.type} activates ドラゴンメテオ! Deals ${damage} damage to all enemies`);
+      const damage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0);
+      target.hp -= damage;
+      log.push(`${caster.type} activates ドラゴンメテオ! Deals ${damage} damage to ${target.type}`);
     }
   },
   sanae: {
@@ -266,10 +266,14 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
     name: 'ディスコミュニケーション',
     triggerType: 'on_mana_full',
     execute: (caster, _allies, enemies, log) => {
-      const target = enemies.find((e) => !e.isDead);
+      const target = selectLowestHpTarget(caster, enemies);
+      if (target?.debuffImmunityCategories?.includes("crowd_control")) {
+        log.push(`${caster.type} activates ディスコミュニケーション! ${target.type} resisted the slow`);
+        return;
+      }
       if (target) {
         target.buffModifiers.attackSpeedMultiplier *= 0.5;
-        log.push(`${caster.type} activates ディスコミュニケーション! Silenced ${target.type}`);
+        log.push(`${caster.type} activates ディスコミュニケーション! Slowed ${target.type}`);
       }
     }
   }

@@ -170,7 +170,18 @@ function getMoveIntervalMs(unit: BattleUnit): number | null {
 }
 
 function isHeroBattleUnit(unit: BattleUnit): boolean {
-  return unit.id.startsWith("hero-");
+  if (unit.id.startsWith("hero-")) {
+    return true;
+  }
+
+  if (typeof unit.sourceUnitId !== "string" || unit.sourceUnitId.length === 0) {
+    return false;
+  }
+
+  return HEROES.some((hero) => (
+    unit.sourceUnitId === hero.id
+    || unit.sourceUnitId === `hero-${hero.id}`
+  ));
 }
 
 function resolveHeroId(unit: BattleUnit): string | null {
@@ -2150,6 +2161,8 @@ export class BattleSimulator {
         targetUnit: BattleUnit;
         unitSide: "left" | "right";
         actualDamage: number;
+        remainingHpAfterHit: number;
+        reflectedDamage: number;
         isCrit: boolean;
         bossPassiveActive: boolean;
         scarletBossLifestealActive: boolean;
@@ -2272,7 +2285,17 @@ export class BattleSimulator {
         let pendingWinner: "left" | "right" | null = null;
 
         for (const pendingAttack of pendingAttacks) {
-          const { sourceUnit, targetUnit, unitSide, actualDamage, isCrit, bossPassiveActive, scarletBossLifestealActive } = pendingAttack;
+          const {
+            sourceUnit,
+            targetUnit,
+            unitSide,
+            actualDamage,
+            remainingHpAfterHit,
+            reflectedDamage,
+            isCrit,
+            bossPassiveActive,
+            scarletBossLifestealActive,
+          } = pendingAttack;
           const appliedDamageSummary = buildAppliedDamageSummary(
             unitSide,
             targetUnit,
@@ -2288,7 +2311,7 @@ export class BattleSimulator {
             sourceBattleUnitId: sourceUnit.id,
             targetBattleUnitId: targetUnit.id,
             amount: actualDamage,
-            remainingHp: Math.max(0, targetUnit.hp),
+            remainingHp: remainingHpAfterHit,
           }));
 
           damageDealtLeft += appliedDamageSummary.damageDealtLeftIncrement;
@@ -2296,7 +2319,6 @@ export class BattleSimulator {
           bossDamage += appliedDamageSummary.bossDamageIncrement;
           phaseDamageToBossSide += appliedDamageSummary.phaseDamageIncrement;
 
-          const reflectedDamage = calculateReflectedDamage(actualDamage, targetUnit.reflectRatio);
           if (reflectedDamage > 0) {
             sourceUnit.hp -= reflectedDamage;
             combatLog.push(
@@ -2344,6 +2366,16 @@ export class BattleSimulator {
             const bossFinisher = pendingAttacks.find((pendingAttack) => pendingAttack.targetUnit.id === unit.id);
             if (bossFinisher && pendingWinner === null) {
               pendingWinner = resolveBossBreakWinner(bossFinisher.unitSide, unit);
+              continue;
+            }
+
+            const reflectedBossFinisher = pendingAttacks.find((pendingAttack) =>
+              pendingAttack.sourceUnit.id === unit.id && pendingAttack.reflectedDamage > 0);
+            if (reflectedBossFinisher && pendingWinner === null) {
+              pendingWinner = resolveBossBreakWinner(
+                resolveBattleSide(reflectedBossFinisher.targetUnit),
+                unit,
+              );
             }
             continue;
           }
@@ -2447,6 +2479,8 @@ export class BattleSimulator {
               targetUnit: target,
               unitSide,
               actualDamage,
+              remainingHpAfterHit: Math.max(0, target.hp),
+              reflectedDamage: calculateReflectedDamage(actualDamage, target.reflectRatio),
               isCrit,
               bossPassiveActive,
               scarletBossLifestealActive: Boolean(

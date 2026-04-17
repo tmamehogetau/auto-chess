@@ -13,6 +13,8 @@ import {
   type BotBalanceBaselineSummary,
 } from "../tests/server/game-room/bot-balance-baseline-human-report";
 import {
+  baselineChunkConfigMatches,
+  createBaselineChunkConfigSnapshot,
   createBotBalanceBaselineHelperConfigs,
   createBaselineChunkDefinitions,
   resolveBotBalanceBaselineHelperPolicy,
@@ -20,6 +22,7 @@ import {
   resolveBotBalanceBaselinePortOffsetBase,
   resolveBotBalanceBaselineRaidPolicies,
   resolveBotBalanceBaselineWorkerPortOffset,
+  type BaselineChunkConfigSnapshot,
 } from "../tests/server/game-room/bot-balance-baseline-runner";
 
 type ChunkFailure = {
@@ -31,6 +34,7 @@ type ChunkRunRecord = {
   chunkIndex: number;
   matchStartIndex: number;
   requestedMatchCount: number;
+  baselineConfig: BaselineChunkConfigSnapshot;
   workerIndex: number;
   portOffset: number;
   aggregate: BotOnlyBaselineAggregateReport;
@@ -162,7 +166,10 @@ function parseCliOptions(argv: string[]): CliOptions {
   };
 }
 
-function readChunkRecordIfPresent(path: string): ChunkRunRecord | null {
+function readChunkRecordIfPresent(
+  path: string,
+  expectedConfig?: BaselineChunkConfigSnapshot,
+): ChunkRunRecord | null {
   if (!existsSync(path)) {
     return null;
   }
@@ -172,10 +179,15 @@ function readChunkRecordIfPresent(path: string): ChunkRunRecord | null {
     typeof parsed.chunkIndex !== "number"
     || typeof parsed.matchStartIndex !== "number"
     || typeof parsed.requestedMatchCount !== "number"
+    || parsed.baselineConfig == null
     || parsed.aggregate == null
     || typeof parsed.logPath !== "string"
   ) {
     throw new Error(`Existing chunk file has an invalid shape: ${path}`);
+  }
+
+  if (expectedConfig && !baselineChunkConfigMatches(parsed.baselineConfig, expectedConfig)) {
+    throw new Error(`Existing chunk file baseline config does not match current run: ${path}`);
   }
 
   return parsed as ChunkRunRecord;
@@ -300,6 +312,11 @@ async function runBaselineChunk(
     chunkIndex,
     matchStartIndex,
     requestedMatchCount,
+    baselineConfig: createBaselineChunkConfigSnapshot({
+      requestedMatchCount,
+      bossPolicy,
+      raidPolicies,
+    }),
     workerIndex,
     portOffset,
     aggregate: parsed.aggregate,
@@ -336,7 +353,14 @@ async function main(): Promise<void> {
       }
 
       const existingChunk = options.resume
-        ? readChunkRecordIfPresent(chunkDefinition.chunkJsonPath)
+        ? readChunkRecordIfPresent(
+          chunkDefinition.chunkJsonPath,
+          createBaselineChunkConfigSnapshot({
+            requestedMatchCount: chunkDefinition.requestedMatchCount,
+            bossPolicy: options.bossPolicy,
+            raidPolicies: options.raidPolicies,
+          }),
+        )
         : null;
       const chunkRecord = existingChunk ?? await runBaselineChunk(
         repoRoot,

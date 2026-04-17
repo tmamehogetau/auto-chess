@@ -40,6 +40,7 @@ const expectHeroBattleUnitToMatchDefinition = (
     maxHp: hero?.hp,
     attackPower: hero?.attack,
     attackSpeed: hero?.attackSpeed,
+    movementSpeed: hero?.movementSpeed,
     attackRange: hero?.range,
     critRate: hero?.critRate,
     critDamageMultiplier: hero?.critDamageMultiplier,
@@ -185,6 +186,40 @@ describe("BattleResolutionService", () => {
       expect(result.outcome.loserId).toBe("player1");
       expect(result.leftBattleResult.won).toBe(false);
       expect(result.rightBattleResult.won).toBe(true);
+    });
+
+    it("omits timeline fields when the battle replay has no events", () => {
+      const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
+      const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "left",
+        leftSurvivors: [leftBattleUnits[0]],
+        rightSurvivors: [],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 100, right: 0 },
+        timeline: [],
+      });
+
+      const result = service.resolveMatchup({
+        battleId: "r1-p1-p2",
+        roundIndex: 1,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits,
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+      });
+
+      expect("timeline" in result.leftBattleResult).toBe(false);
+      expect("rawTimeline" in result.leftBattleResult).toBe(false);
+      expect("timeline" in result.rightBattleResult).toBe(false);
+      expect("rawTimeline" in result.rightBattleResult).toBe(false);
     });
 
     it("preserves hero battle identity on survivor snapshots", () => {

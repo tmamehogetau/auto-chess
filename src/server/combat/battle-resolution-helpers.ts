@@ -28,7 +28,11 @@ export function calculateAttackDamage(
     * critMultiplier
     * bossAtkMultiplier;
   const damageReduction = target.damageReduction ?? 0;
-  const actualDamage = Math.max(1, Math.floor(baseDamage * (1 - damageReduction / 100)));
+  const defenseMultiplier = Math.max(target.buffModifiers.defenseMultiplier ?? 1, 0.01);
+  const actualDamage = Math.max(
+    1,
+    Math.floor((baseDamage * (1 - damageReduction / 100)) / defenseMultiplier),
+  );
 
   return actualDamage;
 }

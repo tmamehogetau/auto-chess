@@ -578,7 +578,7 @@ describe("battle-simulator", () => {
         attackRange: 1,
         critRate: 0,
         critDamageMultiplier: 1.5,
-        damageReduction: 0,
+        damageReduction: 5,
       });
     });
 
@@ -601,7 +601,7 @@ describe("battle-simulator", () => {
       expect(scarletUnit).toMatchObject({
         critRate: 0,
         critDamageMultiplier: 1.5,
-        damageReduction: 0,
+        damageReduction: 36,
       });
       expect(bossUnit).toMatchObject({
         critRate: 0,
@@ -1923,22 +1923,22 @@ describe("BattleSimulator", () => {
         winner: "draw",
         durationMs: 10_000,
         damageDealt: {
-          left: 85,
-          right: 85,
+          left: 73,
+          right: 73,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 40, cell: 14 },
-          { id: "left-ranger-1", hp: 5, cell: combatCellToRaidBoardIndex(1) },
+          { id: "left-vanguard-0", hp: 48, cell: 14 },
+          { id: "left-ranger-1", hp: 9, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 40, cell: 21 },
-          { id: "right-ranger-1", hp: 5, cell: combatCellToBossBoardIndex(6) },
+          { id: "right-vanguard-0", hp: 48, cell: 21 },
+          { id: "right-ranger-1", hp: 9, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
         combatLogEnd: [
-          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 5 damage (40/80)",
-          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 5 damage (40/80)",
-          "Battle ended: Draw (HP: 45 vs 45)",
+          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 3 damage (48/80)",
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 3 damage (48/80)",
+          "Battle ended: Draw (HP: 57 vs 57)",
         ],
       });
     });
@@ -2175,6 +2175,80 @@ describe("BattleSimulator", () => {
 
       expect(leftUnits[0]?.hp).toBe(47);
       expect(result.combatLog.filter((log) => log.includes("reflects"))).toHaveLength(2);
+    });
+
+    test("同時攻撃の damageApplied はヒットごとの remainingHp を保持する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftUnits: BattleUnit[] = [
+        createTestBattleUnit(
+          { cell: 1, unitType: "ranger", starLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
+          "left",
+          0,
+        ),
+        createTestBattleUnit(
+          { cell: 3, unitType: "ranger", starLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
+          "left",
+          1,
+        ),
+      ];
+      const rightUnits: BattleUnit[] = [
+        createTestBattleUnit(
+          { cell: 2, unitType: "vanguard", starLevel: 1, hp: 80, attack: 1, attackSpeed: 0.1, range: 1, critRate: 0 },
+          "right",
+          0,
+        ),
+      ];
+
+      const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 10);
+      const hitEvents = result.timeline.filter(
+        (event) => event.type === "damageApplied" && event.targetBattleUnitId === rightUnits[0]?.id,
+      );
+
+      expect(hitEvents).toHaveLength(2);
+      expect(hitEvents[0]).toMatchObject({ amount: 20, remainingHp: 60 });
+      expect(hitEvents[1]).toMatchObject({ amount: 20, remainingHp: 40 });
+    });
+
+    test("反射ダメージで boss が倒れた場合も勝敗が確定する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftBoss = createTestBattleUnit(
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }),
+          unitType: "vanguard",
+          starLevel: 1,
+          hp: 10,
+          attack: 20,
+          attackSpeed: 1,
+          range: 1,
+          critRate: 0,
+        },
+        "left",
+        0,
+        true,
+      );
+      const rightReflector = createTestBattleUnit(
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
+          unitType: "vanguard",
+          starLevel: 1,
+          hp: 100,
+          attack: 1,
+          attackSpeed: 0.1,
+          range: 1,
+          critRate: 0,
+        },
+        "right",
+        0,
+      );
+      rightReflector.reflectRatio = 1;
+
+      const result = simulator.simulateBattle([leftBoss], [rightReflector], [], [], 100);
+
+      expect(leftBoss.isDead).toBe(true);
+      expect(result.winner).toBe("right");
+      expect(result.combatLog.some((log) => log.includes("reflects"))).toBe(true);
     });
 
     test("戦闘ログにダメージ情報が記録される", () => {
@@ -2614,14 +2688,14 @@ describe("BattleSimulator", () => {
       );
 
       expect(result1.winner).toBe("draw");
-      expect(result1.damageDealt).toEqual({ left: 85, right: 85 });
+      expect(result1.damageDealt).toEqual({ left: 73, right: 73 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 40, cell: 14 },
-        { id: "left-ranger-1", hp: 5, cell: combatCellToRaidBoardIndex(1) },
+        { id: "left-vanguard-0", hp: 48, cell: 14 },
+        { id: "left-ranger-1", hp: 9, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 40, cell: 21 },
-        { id: "right-ranger-1", hp: 5, cell: combatCellToBossBoardIndex(6) },
+        { id: "right-vanguard-0", hp: 48, cell: 21 },
+        { id: "right-ranger-1", hp: 9, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);
     });

@@ -19,7 +19,6 @@ import { sharedBoardCoordinateToIndex } from "../../../src/shared/board-geometry
  */
 
 describe("Boss Raid Simulation", () => {
-  const simulator = new BattleSimulator();
   const LEGACY_RAID_COORDINATES = [
     { x: 1, y: 3 },
     { x: 2, y: 3 },
@@ -100,7 +99,7 @@ describe("Boss Raid Simulation", () => {
       createRaidUnit(unit.type, unit.starLevel, index),
     );
     const simulatorForRun = seed === undefined
-      ? simulator
+      ? new BattleSimulator()
       : new BattleSimulator({ rng: createSeededBattleRng(seed) });
 
     if (debug) {
@@ -191,6 +190,7 @@ describe("Boss Raid Simulation", () => {
     });
 
     test("melee and assassin units use simple approach movement", () => {
+      const simulator = new BattleSimulator();
       const createStationaryBoss = () => {
         const boss = createBattleUnit(
           {
@@ -242,6 +242,7 @@ describe("Boss Raid Simulation", () => {
     });
 
     test("simple approach movement also runs in non-raid battles", () => {
+      const simulator = new BattleSimulator();
       const leftUnits = [
         createBattleUnit(
           { cell: legacySlotToSharedIndex(0, "left"), unitType: "vanguard", starLevel: 1 },

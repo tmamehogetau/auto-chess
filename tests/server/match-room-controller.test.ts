@@ -1208,6 +1208,66 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("raid aggregate remap avoids standalone hero cells", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+        const { battleResolutionService } = controller.getTestAccess();
+        const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+        controller.setReady("p1", true);
+        controller.setReady("p2", true);
+        controller.setReady("p3", true);
+        controller.setReady("p4", true);
+        controller.startIfReady(2_000);
+
+        controller.selectHero("p1", "reimu");
+        controller.selectHero("p3", "marisa");
+        controller.selectHero("p4", "okina");
+
+        expect(controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard" }]))
+          .toMatchObject({ success: true });
+        expect(controller.applyPrepPlacementForPlayer("p1", [
+          { cell: 4, unitType: "ranger" },
+          { cell: 5, unitType: "ranger" },
+        ])).toMatchObject({ success: true });
+        expect(controller.applyPrepPlacementForPlayer("p3", [{ cell: 6, unitType: "mage" }]))
+          .toMatchObject({ success: true });
+        expect(controller.applyPrepPlacementForPlayer("p4", [{ cell: 7, unitType: "assassin" }]))
+          .toMatchObject({ success: true });
+
+        controller.advanceByTime(32_000);
+        controller.advanceByTime(42_000);
+
+        const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+        expect(firstCall).toBeDefined();
+
+        const raidBattleUnits = [firstCall?.leftBattleUnits ?? [], firstCall?.rightBattleUnits ?? []].find((units) =>
+          units.some((unit: { id: string }) => unit.id === "hero-p1" || unit.id === "hero-p3" || unit.id === "hero-p4"),
+        ) ?? [];
+        const heroCells = new Set(
+          raidBattleUnits
+            .filter((unit: { id: string }) => unit.id.startsWith("hero-"))
+            .map((unit: { cell: number }) => unit.cell),
+        );
+        const nonHeroCells = raidBattleUnits
+          .filter((unit: { id: string }) => !unit.id.startsWith("hero-"))
+          .map((unit: { cell: number }) => unit.cell);
+
+        expect(nonHeroCells.some((cell) => heroCells.has(cell))).toBe(false);
+      },
+    );
+  });
+
   test("ラウンドが進むと対戦ペアがローテーションする", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
@@ -4745,8 +4805,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(91);
+    expect(controller.getPlayerHp("p1")).toBe(91);
+    expect(controller.getPlayerHp("p4")).toBe(100);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {

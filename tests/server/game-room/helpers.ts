@@ -418,10 +418,7 @@ const applyOptimisticPrepCommandToPlayer = (
   }
 
   if (typeof payload.shopRefreshCount === "number") {
-    if (typeof nextPlayer.gold === "number") {
-      nextPlayer.gold = Math.max(0, nextPlayer.gold - payload.shopRefreshCount * 2);
-    }
-    return nextPlayer;
+    return null;
   }
 
   if (typeof payload.benchSellIndex === "number") {
@@ -431,12 +428,7 @@ const applyOptimisticPrepCommandToPlayer = (
       return nextPlayer;
     }
 
-    benchUnits.splice(benchIndex, 1);
-    nextPlayer.benchUnits = benchUnits;
-    const benchUnitIds = Array.from(nextPlayer.benchUnitIds ?? []);
-    benchUnitIds.splice(benchIndex, 1);
-    nextPlayer.benchUnitIds = benchUnitIds;
-    return nextPlayer;
+    return null;
   }
 
   const benchToBoardCell = payload.benchToBoardCell as

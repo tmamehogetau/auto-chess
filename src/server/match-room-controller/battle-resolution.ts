@@ -231,12 +231,16 @@ export class BattleResolutionService {
       this.deps.featureFlags,
       roundIndex,
     );
-    const scaledTimeline = scaleBattleTimeline(
-      battleResult.timeline,
-      this.deps.battleTimelineTimeScale ?? 1,
-    );
-    const timelineField = scaledTimeline ? { timeline: scaledTimeline } : {};
-    const rawTimelineField = battleResult.timeline.length > 0
+    const scaledTimeline = battleResult.timeline.length > 0
+      ? (scaleBattleTimeline(
+        battleResult.timeline,
+        this.deps.battleTimelineTimeScale ?? 1,
+      ) ?? [])
+      : [];
+    const timelineField: Partial<Pick<PlayerBattleResult, "timeline">> = scaledTimeline.length > 0
+      ? { timeline: scaledTimeline }
+      : {};
+    const rawTimelineField: Partial<Pick<PlayerBattleResult, "rawTimeline">> = battleResult.timeline.length > 0
       ? { rawTimeline: battleResult.timeline.map((event) => ({ ...event })) }
       : {};
 
@@ -519,6 +523,7 @@ export class BattleResolutionService {
       maxHp: hero.hp,
       attackPower: hero.attack,
       attackSpeed: hero.attackSpeed,
+      movementSpeed: hero.movementSpeed,
       attackRange: hero.range,
       cell: resolvedBoardCellIndex,
       isDead: false,

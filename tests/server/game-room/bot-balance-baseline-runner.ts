@@ -32,6 +32,16 @@ export type BaselineChunkDefinition = {
   logPath: string;
 };
 
+export type BaselineChunkConfigSnapshot = {
+  requestedMatchCount: number;
+  bossPolicy: BotBalanceBaselineHelperPolicy;
+  raidPolicies: [
+    BotBalanceBaselineHelperPolicy,
+    BotBalanceBaselineHelperPolicy,
+    BotBalanceBaselineHelperPolicy,
+  ];
+};
+
 export function resolveBotBalanceBaselineHelperPolicy(
   rawValue: string | undefined | null,
 ): BotBalanceBaselineHelperPolicy {
@@ -70,6 +80,36 @@ export function createBotBalanceBaselineHelperConfigs(options: {
   ];
 }
 
+export function createBaselineChunkConfigSnapshot(options: {
+  requestedMatchCount: number;
+  bossPolicy: BotBalanceBaselineHelperPolicy;
+  raidPolicies: BotBalanceBaselineHelperPolicy[];
+}): BaselineChunkConfigSnapshot {
+  return {
+    requestedMatchCount: Math.max(0, Math.trunc(options.requestedMatchCount)),
+    bossPolicy: resolveBotBalanceBaselineHelperPolicy(options.bossPolicy),
+    raidPolicies: [
+      resolveBotBalanceBaselineHelperPolicy(options.raidPolicies[0]),
+      resolveBotBalanceBaselineHelperPolicy(options.raidPolicies[1]),
+      resolveBotBalanceBaselineHelperPolicy(options.raidPolicies[2]),
+    ],
+  };
+}
+
+export function baselineChunkConfigMatches(
+  actual: BaselineChunkConfigSnapshot | undefined,
+  expected: BaselineChunkConfigSnapshot,
+): boolean {
+  if (!actual) {
+    return false;
+  }
+
+  return actual.requestedMatchCount === expected.requestedMatchCount
+    && actual.bossPolicy === expected.bossPolicy
+    && actual.raidPolicies.length === expected.raidPolicies.length
+    && actual.raidPolicies.every((policy, index) => policy === expected.raidPolicies[index]);
+}
+
 function resolveRuntimeAvailableParallelism(): number {
   try {
     return getAvailableParallelism();
@@ -83,7 +123,10 @@ export function createBaselineChunkDefinitions(
   chunkSize: number,
   outputDir: string,
 ): BaselineChunkDefinition[] {
-  const normalizedMatchCount = Math.max(1, Math.trunc(matchCount));
+  const normalizedMatchCount = Math.trunc(matchCount);
+  if (normalizedMatchCount <= 0) {
+    return [];
+  }
   const normalizedChunkSize = Math.max(1, Math.trunc(chunkSize));
   const definitions: BaselineChunkDefinition[] = [];
 

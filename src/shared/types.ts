@@ -81,11 +81,11 @@ export interface MvpPhase1Boss {
 
 type MvpPhase1Data = {
   units: Array<
-    Omit<MvpPhase1Unit, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">
-    & Partial<Pick<MvpPhase1Unit, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">>
+    Omit<MvpPhase1Unit, "movementSpeed" | "critRate" | "critDamageMultiplier">
+    & Partial<Pick<MvpPhase1Unit, "movementSpeed" | "critRate" | "critDamageMultiplier">>
   >;
-  boss: Omit<MvpPhase1Boss, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">
-    & Partial<Pick<MvpPhase1Boss, "movementSpeed" | "critRate" | "critDamageMultiplier" | "damageReduction">>;
+  boss: Omit<MvpPhase1Boss, "movementSpeed" | "critRate" | "critDamageMultiplier">
+    & Partial<Pick<MvpPhase1Boss, "movementSpeed" | "critRate" | "critDamageMultiplier">>;
 };
 
 const MVP_PHASE1_DATA = mvpPhase1UnitsData as MvpPhase1Data;
@@ -96,7 +96,6 @@ function normalizeMvpPhase1Unit(unit: MvpPhase1Data["units"][number]): MvpPhase1
     movementSpeed: unit.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
     critRate: unit.critRate ?? 0,
     critDamageMultiplier: unit.critDamageMultiplier ?? 1.5,
-    damageReduction: unit.damageReduction ?? 0,
   };
 }
 
@@ -106,7 +105,6 @@ function normalizeMvpPhase1Boss(boss: MvpPhase1Data["boss"]): MvpPhase1Boss {
     movementSpeed: boss.movementSpeed ?? DEFAULT_MOVEMENT_SPEED,
     critRate: boss.critRate ?? 0,
     critDamageMultiplier: boss.critDamageMultiplier ?? 1.5,
-    damageReduction: boss.damageReduction ?? 0,
   };
 }
 

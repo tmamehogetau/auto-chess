@@ -3354,6 +3354,83 @@ describe("shared-board client", () => {
     ]);
   });
 
+  test("shared board attached Yuiman sub slot publishes hero-specific hover detail", async () => {
+    const gridElement = new FakeElement();
+    const cursorListElement = new FakeElement();
+    const hoverCalls: unknown[] = [];
+
+    let stateChangeHandler: ((state: unknown) => void) | null = null;
+
+    const room = {
+      sessionId: "player-1",
+      send: () => {},
+      onLeave: (_handler: () => void) => {},
+      onMessage: (_type: string, _handler: (message: unknown) => void) => {},
+      onStateChange: (handler: (state: unknown) => void) => {
+        stateChangeHandler = handler;
+      },
+    };
+
+    const client = {
+      joinOrCreate: async () => room,
+    };
+
+    initSharedBoardClient(
+      {
+        gridElement: gridElement as unknown as HTMLElement,
+        cursorListElement: cursorListElement as unknown as HTMLElement,
+      },
+      {
+        client,
+        gamePlayerId: "player-1",
+        joinOrCreate: async () => room,
+        isSubUnitSystemEnabled: () => true,
+        getPlayerBoardSubUnits: () => ["24:hero:yuiman"],
+        getPlayerFacingPhase: () => "deploy",
+        getPlayerPlacementSide: () => "raid",
+        onHoverDetailChange: (detail: unknown) => {
+          hoverCalls.push(detail);
+        },
+        onLog: () => {},
+        showMessage: () => {},
+      },
+    );
+
+    await connectSharedBoard(client as object);
+    if (!stateChangeHandler) {
+      throw new Error("Expected stateChangeHandler to be registered");
+    }
+
+    (stateChangeHandler as (state: unknown) => void)({
+      boardWidth: 6,
+      boardHeight: 6,
+      cells: {
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+      },
+      cursors: {},
+      players: {
+        "player-1": { isSpectator: false },
+      },
+    });
+
+    const subSlot = findDescendantByClass(gridElement.children[24], "shared-board-sub-slot");
+    if (!subSlot) {
+      throw new Error("Expected attached sub slot to be rendered");
+    }
+
+    (subSlot as FakeElement & { onmouseenter?: () => void }).onmouseenter?.();
+
+    expect(hoverCalls).toEqual([
+      expect.objectContaining({
+        kicker: "Sub Unit",
+        title: "ユイマン・浅間",
+        lines: expect.arrayContaining([
+          "装着先: 美鈴",
+        ]),
+      }),
+    ]);
+  });
+
   test("shared board attached Okina sub slot renders a hero portrait in the sub slot", async () => {
     const gridElement = new FakeElement();
     const cursorListElement = new FakeElement();

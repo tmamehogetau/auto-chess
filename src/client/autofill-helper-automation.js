@@ -7,6 +7,7 @@ export const AUTO_FILL_HERO_IDS = [
   "okina",
   "keiki",
   "jyoon",
+  "yuiman",
 ];
 const AUTO_FILL_SPECIAL_UNIT_IDS = new Set([
   AUTO_FILL_BOSS_ID,

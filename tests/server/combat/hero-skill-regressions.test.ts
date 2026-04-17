@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { HEROES } from "../../../src/data/heroes";
 import { BattleSimulator, type BattleUnit } from "../../../src/server/combat/battle-simulator";
 import { HERO_SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
 
@@ -33,19 +34,46 @@ function createBattleUnit(overrides: Partial<BattleUnit>): BattleUnit {
 }
 
 describe("hero skill regressions", () => {
-  test("Dragon Meteor hero skill only damages one target", () => {
+  test("Master Spark hits every enemy on the line between caster and target", () => {
     const marisaSkill = HERO_SKILL_DEFINITIONS.marisa!;
-    const caster = createBattleUnit({ id: "hero-left", sourceUnitId: "marisa" });
-    const firstEnemy = createBattleUnit({ id: "enemy-1", sourceUnitId: "enemy-1", battleSide: "right", hp: 200, maxHp: 200 });
-    const secondEnemy = createBattleUnit({ id: "enemy-2", sourceUnitId: "enemy-2", battleSide: "right", hp: 200, maxHp: 200 });
+    const caster = createBattleUnit({ id: "hero-left", sourceUnitId: "marisa", cell: 0 });
+    const primaryTarget = createBattleUnit({
+      id: "enemy-1",
+      sourceUnitId: "enemy-1",
+      battleSide: "right",
+      cell: 3,
+      hp: 200,
+      maxHp: 200,
+    });
+    const linedEnemy = createBattleUnit({
+      id: "enemy-2",
+      sourceUnitId: "enemy-2",
+      battleSide: "right",
+      cell: 2,
+      hp: 200,
+      maxHp: 200,
+    });
+    const offLineEnemy = createBattleUnit({
+      id: "enemy-3",
+      sourceUnitId: "enemy-3",
+      battleSide: "right",
+      cell: 7,
+      hp: 200,
+      maxHp: 200,
+    });
     const log: string[] = [];
 
-    marisaSkill.execute(caster, [caster], [firstEnemy, secondEnemy], log);
+    marisaSkill.execute(caster, [caster], [primaryTarget, linedEnemy, offLineEnemy], log);
 
-    expect(firstEnemy.hp).toBe(80);
-    expect(secondEnemy.hp).toBe(200);
-    expect(log[0]).toContain("Deals 120 damage");
-    expect(log[0]).not.toContain("all enemies");
+    expect(primaryTarget.hp).toBe(80);
+    expect(linedEnemy.hp).toBe(80);
+    expect(offLineEnemy.hp).toBe(200);
+    expect(log[0]).toContain("マスタースパーク");
+  });
+
+  test("Master Spark log and hero data use Master Spark naming", () => {
+    expect(HERO_SKILL_DEFINITIONS.marisa?.name).toBe("恋符「マスタースパーク」");
+    expect(HEROES.find((hero) => hero.id === "marisa")?.skill.name).toBe("恋符「マスタースパーク」");
   });
 
   test("Yuiman targets the lowest-HP enemy and respects crowd-control immunity", () => {

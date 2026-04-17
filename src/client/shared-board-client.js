@@ -1128,6 +1128,7 @@ function resolveHeroDetailName(heroId) {
     okina: "隠岐奈",
     keiki: "袿姫",
     jyoon: "女苑",
+    yuiman: "ユイマン・浅間",
   })[heroId] ?? "Hero";
 }
 

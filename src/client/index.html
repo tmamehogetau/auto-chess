@@ -1338,7 +1338,7 @@
         margin-bottom: 1px;
       }
 
-      .bench-slot .unit-stars {
+      .bench-slot .unit-level-badge {
         font-size: 10px;
       }
 
@@ -1562,16 +1562,16 @@
         pointer-events: none;
       }
 
-      /* Star Colors */
-      .stars-1 {
+      /* Unit Level Colors */
+      .level-tier-1 {
         color: var(--bronze);
       }
 
-      .stars-2 {
+      .level-tier-2 {
         color: var(--silver);
       }
 
-      .stars-3 {
+      .level-tier-3 {
         color: var(--gold);
       }
 
@@ -2388,11 +2388,11 @@
             <span class="status-value hp" data-hp-display>100</span>
           </div>
           <div class="status-item">
-            <span class="status-label">Level</span>
+            <span class="status-label">Special Lv</span>
             <span class="status-value" data-level-display>1</span>
           </div>
            <div class="status-item">
-             <span class="status-label">XP</span>
+             <span class="status-label">Next Up</span>
              <span class="status-value xp" data-xp-display>0</span>
            </div>
            <div class="status-item">
@@ -2502,6 +2502,20 @@
       </div>
 
       <!-- Boss Exclusive Shop -->
+      <div class="shop-section" data-hero-exclusive-shop-section aria-label="Hero Exclusive Shop" style="display: none;">
+        <div class="shop-title" data-hero-exclusive-shop-title>✨ Hero Exclusive</div>
+        <div class="shop-grid boss-shop-grid" data-hero-exclusive-shop>
+          <div class="shop-card boss" data-hero-exclusive-shop-slot="0">
+            <span class="boss-shop-badge">EXCLUSIVE</span>
+            <div class="icon">❓</div>
+            <div class="name">-</div>
+            <div class="cost">0G</div>
+            <span class="boss-shop-sold">SOLD</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Boss Exclusive Shop -->
       <div class="shop-section" data-boss-shop-section aria-label="Boss Exclusive Shop" style="display: none;">
         <div class="shop-title" data-boss-shop-title>👑 Boss Exclusive</div>
         <div class="shop-grid boss-shop-grid" data-boss-shop data-boss-shop-grid>
@@ -2576,7 +2590,7 @@
           Refresh Shop (2G)
         </button>
         <button class="action-btn" data-buy-xp-btn disabled>
-          Buy XP (4G)
+          Upgrade +1
         </button>
       </div>
 

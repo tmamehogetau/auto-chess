@@ -12,13 +12,19 @@ import type {
 import { DEFAULT_MOVEMENT_SPEED, getMvpPhase1Boss, type SubUnitConfig } from "../../shared/types";
 import { DEFAULT_FLAGS, type FeatureFlags } from "../../shared/feature-flags";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
+import { getHeroExclusiveUnitById } from "../../data/hero-exclusive-units";
 import {
   sharedBoardCoordinateToIndex,
   sharedBoardManhattanDistance,
   sharedBoardIndexToCoordinate,
 } from "../../shared/board-geometry";
-import { getStarCombatMultiplier } from "../star-level-config";
-import { SKILL_DEFINITIONS, HERO_SKILL_DEFINITIONS } from "./skill-definitions";
+import { getUnitLevelCombatMultiplier } from "../unit-level-config";
+import {
+  HERO_SKILL_DEFINITIONS,
+  resolvePairSkillDefinition,
+  resolvePairSkillDefinitions,
+  resolveUnitSkillDefinition,
+} from "./skill-definitions";
 import {
   SYNERGY_DEFINITIONS,
   TOUHOU_FACTION_DEFINITIONS,
@@ -74,7 +80,7 @@ export interface BattleUnit {
   sourceUnitId?: string;
   battleSide?: "left" | "right";
   type: BoardUnitType;
-  starLevel: number;
+  unitLevel?: number;
   hp: number;
   maxHp: number;
   attackPower: number;
@@ -97,6 +103,8 @@ export interface BattleUnit {
   ultimateDamageMultiplier?: number;
   bonusDamageVsDebuffedTarget?: number;
   debuffImmunityCategories?: string[];
+  pairSkillIds?: string[];
+  pairSkillState?: Record<string, boolean>;
 }
 
 /**
@@ -209,6 +217,54 @@ function resolveHeroId(unit: BattleUnit): string | null {
   }
 
   return null;
+}
+
+function applyPairSkillBindings(
+  units: BattleUnit[],
+  placements: BoardUnitPlacement[],
+  combatLog: string[],
+): void {
+  const entryCount = Math.min(units.length, placements.length);
+
+  for (let index = 0; index < entryCount; index += 1) {
+    const unit = units[index];
+    const placement = placements[index];
+    if (!unit || !placement?.subUnit?.unitId) {
+      continue;
+    }
+
+    const heroExclusiveUnit = getHeroExclusiveUnitById(placement.subUnit.unitId);
+    if (!heroExclusiveUnit || heroExclusiveUnit.pairSkillId.length === 0) {
+      continue;
+    }
+
+    unit.pairSkillIds = [...(unit.pairSkillIds ?? []), heroExclusiveUnit.pairSkillId];
+    unit.pairSkillState = { ...(unit.pairSkillState ?? {}) };
+    const pairSkillDefinition = resolvePairSkillDefinition(heroExclusiveUnit.pairSkillId);
+    combatLog.push(
+      `${generateUnitName(unit)} links pair skill (${heroExclusiveUnit.displayName}): ${pairSkillDefinition?.name ?? heroExclusiveUnit.pairSkillId}`,
+    );
+  }
+}
+
+function executePairSkillsBeforeTakeDamage(
+  target: BattleUnit,
+  attacker: BattleUnit,
+  combatLog: string[],
+): void {
+  for (const pairSkillDefinition of resolvePairSkillDefinitions(target)) {
+    pairSkillDefinition.executeOnBeforeTakeDamage?.(target, attacker, combatLog);
+  }
+}
+
+function executePairSkillsAfterAttackHit(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  combatLog: string[],
+): void {
+  for (const pairSkillDefinition of resolvePairSkillDefinitions(attacker)) {
+    pairSkillDefinition.executeOnAfterAttackHit?.(attacker, target, combatLog);
+  }
 }
 
 function resolveHeroSkillDefinition(unit: BattleUnit): {
@@ -520,7 +576,7 @@ export function createBattleUnit(
   const resolvedPlacement = resolveBattlePlacement(placement, flags);
   const {
     unitType,
-    starLevel = 1,
+    unitLevel: resolvedUnitLevel,
     cell,
     archetype,
     hp: resolvedHp,
@@ -532,6 +588,7 @@ export function createBattleUnit(
     critDamageMultiplier: resolvedCritDamageMultiplier,
     damageReduction: resolvedDamageReduction,
   } = resolvedPlacement;
+  const unitLevel = resolvedUnitLevel ?? 1;
   const baseStats = BASE_STATS[unitType];
   const bossStats = isBoss && archetype === "remilia" ? getMvpPhase1Boss() : null;
 
@@ -565,9 +622,9 @@ export function createBattleUnit(
       finalCritDamageMultiplier = scarletUnit.critDamageMultiplier;
       finalDamageReduction = scarletUnit.damageReduction;
     } else {
-      const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
-      finalHp = baseStats.hp * starMultiplier;
-      finalAttack = baseStats.attack * starMultiplier;
+      const unitLevelMultiplier = isBoss ? 1.0 : getUnitLevelCombatMultiplier(unitLevel);
+      finalHp = baseStats.hp * unitLevelMultiplier;
+      finalAttack = baseStats.attack * unitLevelMultiplier;
       finalAttackSpeed = baseStats.attackSpeed;
       finalMovementSpeed = baseStats.movementSpeed;
       finalRange = baseStats.range;
@@ -575,9 +632,9 @@ export function createBattleUnit(
       finalCritDamageMultiplier = 1.5;
     }
   } else {
-    const starMultiplier = isBoss ? 1.0 : getStarCombatMultiplier(starLevel);
-    finalHp = (resolvedHp ?? baseStats.hp) * starMultiplier;
-    finalAttack = (resolvedAttack ?? baseStats.attack) * starMultiplier;
+    const unitLevelMultiplier = isBoss ? 1.0 : getUnitLevelCombatMultiplier(unitLevel);
+    finalHp = (resolvedHp ?? baseStats.hp) * unitLevelMultiplier;
+    finalAttack = (resolvedAttack ?? baseStats.attack) * unitLevelMultiplier;
     finalAttackSpeed = resolvedAttackSpeed ?? baseStats.attackSpeed;
     finalMovementSpeed = resolvedMovementSpeed ?? baseStats.movementSpeed;
     finalRange = resolvedRange ?? baseStats.range;
@@ -594,7 +651,7 @@ export function createBattleUnit(
     sourceUnitId: resolvedPlacement.unitId ?? `${side}-${unitType}-${index}`,
     battleSide: side,
     type: unitType,
-    starLevel,
+    unitLevel,
     hp: finalHp,
     maxHp: finalHp,
     attackPower: finalAttack,
@@ -2034,6 +2091,9 @@ export class BattleSimulator {
         );
       }
 
+      applyPairSkillBindings(leftUnits, leftPlacements, combatLog);
+      applyPairSkillBindings(rightUnits, rightPlacements, combatLog);
+
       const allUnits = [...leftUnits, ...rightUnits];
       const actionQueue: Action[] = [];
       const nextScheduledAttackAtByUnitId = new Map<string, number>();
@@ -2169,7 +2229,7 @@ export class BattleSimulator {
       };
 
       const scheduleTriggeredSkill = (unit: BattleUnit) => {
-        const skillDef = SKILL_DEFINITIONS[unit.type];
+        const skillDef = resolveUnitSkillDefinition(unit);
         if (
           skillDef
           && skillDef.triggerType === "on_attack_count"
@@ -2243,6 +2303,8 @@ export class BattleSimulator {
         attacker: BattleUnit,
         target: BattleUnit,
       ): { actualDamage: number; isCrit: boolean; bossPassiveActive: boolean } => {
+        executePairSkillsBeforeTakeDamage(target, attacker, combatLog);
+
         const isCrit = this.rng.nextFloat() < attacker.critRate;
         const bossPassiveActive = isBossPassiveActive(attacker);
 
@@ -2488,6 +2550,8 @@ export class BattleSimulator {
                 && attackAction.unit.isBoss
               ),
             });
+
+            executePairSkillsAfterAttackHit(attackAction.unit, target, combatLog);
 
             attackAction.unit.attackCount++;
             scheduleTriggeredSkill(attackAction.unit);
@@ -2747,7 +2811,7 @@ export class BattleSimulator {
           }
         } else {
           // 通常ユニットのスキルを使用
-          const skillDef = SKILL_DEFINITIONS[action.unit.type];
+          const skillDef = resolveUnitSkillDefinition(action.unit);
           if (skillDef && skillDef.execute) {
             const isLeftSide = leftUnits.includes(action.unit);
             const allies = isLeftSide ? leftUnits : rightUnits;

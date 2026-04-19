@@ -17,9 +17,9 @@ describe("unit-effects", () => {
     const result = normalizeBoardPlacements(placements);
 
     expect(result.normalized).toEqual([
-      { cell: 1, unitType: "vanguard", starLevel: 1 },
-      { cell: 4, unitType: "ranger", starLevel: 1 },
-      { cell: 5, unitType: "mage", starLevel: 1 },
+      { cell: 1, unitType: "vanguard", unitLevel: 1 },
+      { cell: 4, unitType: "ranger", unitLevel: 1 },
+      { cell: 5, unitType: "mage", unitLevel: 1 },
     ]);
     expect(result.errorCode).toBeUndefined();
   });
@@ -30,29 +30,38 @@ describe("unit-effects", () => {
     const result = normalizeBoardPlacements(placements);
 
     expect(result.normalized).toEqual([
-      { cell: 5, unitType: "mage", unitId: "mage_apprentice", starLevel: 1 },
+      { cell: 5, unitType: "mage", unitId: "mage_apprentice", unitLevel: 1 },
     ]);
     expect(result.errorCode).toBeUndefined();
   });
 
-  test("starLevelが不正な配置はrejectする", () => {
-    const placements: BoardUnitPlacement[] = [{ cell: 0, unitType: "mage", starLevel: 0 }];
+  test("unitLevelが不正な配置はrejectする", () => {
+    const placements: BoardUnitPlacement[] = [{ cell: 0, unitType: "mage", unitLevel: 0 }];
 
     const result = normalizeBoardPlacements(placements);
 
     expect(result.normalized).toBeNull();
-    expect(result.errorCode).toBe("INVALID_STAR_LEVEL");
+    expect(result.errorCode).toBe("INVALID_UNIT_LEVEL");
   });
 
-  test("starLevel=2は同じ配置のstarLevel=1より火力が高い", () => {
-    const base: BoardUnitPlacement[] = [{ cell: 4, unitType: "mage", starLevel: 1 }];
-    const upgraded: BoardUnitPlacement[] = [{ cell: 4, unitType: "mage", starLevel: 2 }];
+  test("unitLevel=7 の配置は正規化して受理する", () => {
+    const placements: BoardUnitPlacement[] = [{ cell: 0, unitType: "mage", unitLevel: 7 }];
+
+    const result = normalizeBoardPlacements(placements);
+
+    expect(result.normalized).toEqual([{ cell: 0, unitType: "mage", unitLevel: 7 }]);
+    expect(result.errorCode).toBeUndefined();
+  });
+
+  test("unitLevel=2は同じ配置のunitLevel=1より火力が高い", () => {
+    const base: BoardUnitPlacement[] = [{ cell: 4, unitType: "mage", unitLevel: 1 }];
+    const upgraded: BoardUnitPlacement[] = [{ cell: 4, unitType: "mage", unitLevel: 2 }];
 
     const basePower = calculateBoardPower(base);
     const upgradedPower = calculateBoardPower(upgraded);
 
     expect(upgradedPower).toBeGreaterThan(basePower);
-    expect(upgradedPower).toBe(basePower * 2);
+    expect(upgradedPower).toBeCloseTo(basePower * 1.15, 5);
   });
 
   test("normalizeBoardPlacementsは重複セルをrejectする", () => {

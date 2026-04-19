@@ -16,11 +16,11 @@ import { resolveBattlePlacements, resolveSharedPoolCost } from "../unit-id-resol
 import { calculateSynergyDetails, getTouhouFactionTierEffect } from "../combat/synergy-definitions";
 import {
   calculateSellValue,
-  getMinimumPurchaseCountForTier,
-  getUpgradeTierForPurchaseCount,
-  STAR_LEVEL_MIN,
+  getMinimumPurchaseCountForUnitLevel,
+  getUnitLevelForPurchaseCount,
+  UNIT_LEVEL_MIN,
   UNIT_SELL_VALUE_BY_TYPE,
-} from "../star-level-config";
+} from "../unit-level-config";
 
 export interface ShopManagerShopOffer {
   unitType: BoardUnitType;
@@ -31,14 +31,14 @@ export interface ShopManagerShopOffer {
   cost: number;
   isRumorUnit?: boolean;
   purchased?: boolean;
-  starLevel?: number;
+  unitLevel?: number;
 }
 
 export interface ShopManagerBenchUnit {
   unitType: BoardUnitType;
   unitId?: string;
   cost: number;
-  starLevel: number;
+  unitLevel?: number;
   unitCount: number;
 }
 
@@ -72,6 +72,7 @@ export interface ShopManagerDeps<TBattleResult = unknown> {
   rumorInfluenceEligibleByPlayer: Map<string, boolean>;
   shopOffersByPlayer: Map<string, ShopManagerShopOffer[]>;
   bossShopOffersByPlayer: Map<string, ShopManagerShopOffer[]>;
+  heroExclusiveShopOffersByPlayer: Map<string, ShopManagerShopOffer[]>;
   battleResultsByPlayer: Map<string, TBattleResult>;
   benchUnitsByPlayer: Map<string, ShopManagerBenchUnit[]>;
   boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
@@ -178,7 +179,7 @@ export class ShopManager<TBattleResult = unknown> {
     const purchasedBenchUnit: ShopManagerBenchUnit = {
       unitType: boughtOffer.unitType,
       cost: purchasedUnitCost,
-      starLevel: STAR_LEVEL_MIN,
+      unitLevel: UNIT_LEVEL_MIN,
       unitCount: 1,
     };
 
@@ -235,7 +236,7 @@ export class ShopManager<TBattleResult = unknown> {
     const benchUnit: ShopManagerBenchUnit = {
       unitType: bossOffer.unitType,
       cost: bossOffer.cost,
-      starLevel: bossOffer.starLevel ?? STAR_LEVEL_MIN,
+      unitLevel: bossOffer.unitLevel ?? UNIT_LEVEL_MIN,
       unitCount: 1,
     };
     if (bossOffer.unitId !== undefined) {
@@ -250,7 +251,42 @@ export class ShopManager<TBattleResult = unknown> {
     }
 
     this.addPurchasedUnitToInventory(playerId, benchUnit);
-    bossOffer.purchased = true;
+    bossOffers[slotIndex] = normalizePurchasedOffer(bossOffer, true);
+    this.deps.bossShopOffersByPlayer.set(playerId, bossOffers);
+  }
+
+  public buyHeroExclusiveShopOffer(playerId: string, slotIndex: number): void {
+    const heroExclusiveOffers = this.deps.heroExclusiveShopOffersByPlayer.get(playerId) ?? [];
+    const benchUnits = [...(this.deps.benchUnitsByPlayer.get(playerId) ?? [])];
+    if (slotIndex >= heroExclusiveOffers.length) {
+      return;
+    }
+
+    const heroExclusiveOffer = heroExclusiveOffers[slotIndex];
+    if (!heroExclusiveOffer || heroExclusiveOffer.purchased) {
+      return;
+    }
+
+    const benchUnit: ShopManagerBenchUnit = {
+      unitType: heroExclusiveOffer.unitType,
+      cost: heroExclusiveOffer.cost,
+      unitLevel: heroExclusiveOffer.unitLevel ?? UNIT_LEVEL_MIN,
+      unitCount: 1,
+    };
+    if (heroExclusiveOffer.unitId !== undefined) {
+      benchUnit.unitId = heroExclusiveOffer.unitId;
+    }
+
+    if (
+      benchUnits.length >= this.deps.maxBenchSize
+      && !this.wouldPurchasedUnitMergeIntoInventory(playerId, benchUnit)
+    ) {
+      return;
+    }
+
+    this.addPurchasedUnitToInventory(playerId, benchUnit);
+    heroExclusiveOffers[slotIndex] = normalizePurchasedOffer(heroExclusiveOffer, true);
+    this.deps.heroExclusiveShopOffersByPlayer.set(playerId, heroExclusiveOffers);
   }
 
   public deployBenchUnitToBoard(playerId: string, benchIndex: number, cell: number, slot: "main" | "sub" = "main"): void {
@@ -272,7 +308,7 @@ export class ShopManager<TBattleResult = unknown> {
 
       const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
         unitType: benchUnit.unitType,
-        starLevel: benchUnit.starLevel,
+        unitLevel: benchUnit.unitLevel ?? UNIT_LEVEL_MIN,
         sellValue: benchUnit.cost,
         unitCount: benchUnit.unitCount,
       };
@@ -286,9 +322,9 @@ export class ShopManager<TBattleResult = unknown> {
         const replacedSubUnit: ShopManagerBenchUnit = {
           unitType: hostPlacement.subUnit.unitType,
           cost: hostPlacement.subUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[hostPlacement.subUnit.unitType] ?? 1,
-          starLevel: hostPlacement.subUnit.starLevel ?? STAR_LEVEL_MIN,
+          unitLevel: hostPlacement.subUnit.unitLevel ?? UNIT_LEVEL_MIN,
           unitCount: this.getTrackedPurchaseCount(
-            hostPlacement.subUnit.starLevel,
+            hostPlacement.subUnit.unitLevel,
             hostPlacement.subUnit.unitCount,
           ),
         };
@@ -308,7 +344,7 @@ export class ShopManager<TBattleResult = unknown> {
     const boardPlacement: BoardUnitPlacement = {
       cell,
       unitType: benchUnit.unitType,
-      starLevel: benchUnit.starLevel,
+      unitLevel: benchUnit.unitLevel ?? UNIT_LEVEL_MIN,
       sellValue: benchUnit.cost,
       unitCount: benchUnit.unitCount,
     };
@@ -327,9 +363,9 @@ export class ShopManager<TBattleResult = unknown> {
       const swappedBenchUnit: ShopManagerBenchUnit = {
         unitType: replacedPlacement.unitType,
         cost: replacedPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[replacedPlacement.unitType] ?? 1,
-        starLevel: replacedPlacement.starLevel ?? STAR_LEVEL_MIN,
+        unitLevel: replacedPlacement.unitLevel ?? UNIT_LEVEL_MIN,
         unitCount: this.getTrackedPurchaseCount(
-          replacedPlacement.starLevel,
+          replacedPlacement.unitLevel,
           replacedPlacement.unitCount,
         ),
       };
@@ -370,8 +406,8 @@ export class ShopManager<TBattleResult = unknown> {
     const benchUnit: ShopManagerBenchUnit = {
       unitType: returnedPlacement.unitType,
       cost: returnedPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[returnedPlacement.unitType] ?? 1,
-      starLevel: returnedPlacement.starLevel ?? STAR_LEVEL_MIN,
-      unitCount: this.getTrackedPurchaseCount(returnedPlacement.starLevel, returnedPlacement.unitCount),
+      unitLevel: returnedPlacement.unitLevel ?? UNIT_LEVEL_MIN,
+      unitCount: this.getTrackedPurchaseCount(returnedPlacement.unitLevel, returnedPlacement.unitCount),
     };
     if (returnedPlacement.unitId !== undefined) {
       benchUnit.unitId = returnedPlacement.unitId;
@@ -383,9 +419,9 @@ export class ShopManager<TBattleResult = unknown> {
       const detachedSubUnit: ShopManagerBenchUnit = {
         unitType: returnedPlacement.subUnit.unitType,
         cost: returnedPlacement.subUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[returnedPlacement.subUnit.unitType] ?? 1,
-        starLevel: returnedPlacement.subUnit.starLevel ?? STAR_LEVEL_MIN,
+        unitLevel: returnedPlacement.subUnit.unitLevel ?? UNIT_LEVEL_MIN,
         unitCount: this.getTrackedPurchaseCount(
-          returnedPlacement.subUnit.starLevel,
+          returnedPlacement.subUnit.unitLevel,
           returnedPlacement.subUnit.unitCount,
         ),
       };
@@ -430,7 +466,7 @@ export class ShopManager<TBattleResult = unknown> {
     const sellValue = calculateSellValue(
       benchUnit.cost,
       benchUnit.unitType,
-      benchUnit.starLevel,
+      benchUnit.unitLevel,
       benchUnit.unitCount,
     );
     this.deps.goldByPlayer.set(playerId, currentGold + sellValue);
@@ -597,47 +633,47 @@ export class ShopManager<TBattleResult = unknown> {
     targetUnit: ShopManagerBenchUnit,
     purchasedUnit: ShopManagerBenchUnit,
   ): void {
-    const nextPurchaseCount = this.getTrackedPurchaseCount(targetUnit.starLevel, targetUnit.unitCount) + purchasedUnit.unitCount;
+    const nextPurchaseCount = this.getTrackedPurchaseCount(targetUnit.unitLevel, targetUnit.unitCount) + purchasedUnit.unitCount;
     targetUnit.cost += purchasedUnit.cost;
     targetUnit.unitCount = nextPurchaseCount;
-    targetUnit.starLevel = getUpgradeTierForPurchaseCount(nextPurchaseCount);
+    targetUnit.unitLevel = getUnitLevelForPurchaseCount(nextPurchaseCount);
   }
 
   private applyPurchasedUnitToBoardPlacement(
     targetPlacement: BoardUnitPlacement,
     purchasedUnit: ShopManagerBenchUnit,
   ): void {
-    const nextPurchaseCount = this.getTrackedPurchaseCount(targetPlacement.starLevel, targetPlacement.unitCount) + purchasedUnit.unitCount;
+    const nextPurchaseCount = this.getTrackedPurchaseCount(targetPlacement.unitLevel, targetPlacement.unitCount) + purchasedUnit.unitCount;
     const currentSellValue = targetPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[targetPlacement.unitType] ?? 1;
     targetPlacement.sellValue = currentSellValue + purchasedUnit.cost;
     targetPlacement.unitCount = nextPurchaseCount;
-    targetPlacement.starLevel = getUpgradeTierForPurchaseCount(nextPurchaseCount);
+    targetPlacement.unitLevel = getUnitLevelForPurchaseCount(nextPurchaseCount);
   }
 
   private applyPurchasedUnitToAttachedSubUnit(
     targetSubUnit: AttachedSubUnitPlacement,
     purchasedUnit: ShopManagerBenchUnit,
   ): void {
-    const nextPurchaseCount = this.getTrackedPurchaseCount(targetSubUnit.starLevel, targetSubUnit.unitCount) + purchasedUnit.unitCount;
+    const nextPurchaseCount = this.getTrackedPurchaseCount(targetSubUnit.unitLevel, targetSubUnit.unitCount) + purchasedUnit.unitCount;
     const currentSellValue = targetSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[targetSubUnit.unitType] ?? 1;
     targetSubUnit.sellValue = currentSellValue + purchasedUnit.cost;
     targetSubUnit.unitCount = nextPurchaseCount;
-    targetSubUnit.starLevel = getUpgradeTierForPurchaseCount(nextPurchaseCount);
+    targetSubUnit.unitLevel = getUnitLevelForPurchaseCount(nextPurchaseCount);
   }
 
-  private getTrackedPurchaseCount(starLevel: number | undefined, unitCount: number | undefined): number {
+  private getTrackedPurchaseCount(unitLevel: number | undefined, unitCount: number | undefined): number {
     if (unitCount !== undefined && Number.isInteger(unitCount) && unitCount > 0) {
       return unitCount;
     }
 
-    return getMinimumPurchaseCountForTier(starLevel ?? STAR_LEVEL_MIN);
+    return getMinimumPurchaseCountForUnitLevel(unitLevel ?? UNIT_LEVEL_MIN);
   }
 
   private buildPlacementSettlement(
-    placement: Pick<BoardUnitPlacement, "unitType" | "unitId" | "sellValue" | "starLevel" | "unitCount">
-      | Pick<AttachedSubUnitPlacement, "unitType" | "unitId" | "sellValue" | "starLevel" | "unitCount">,
+    placement: Pick<BoardUnitPlacement, "unitType" | "unitId" | "sellValue" | "unitLevel" | "unitCount">
+      | Pick<AttachedSubUnitPlacement, "unitType" | "unitId" | "sellValue" | "unitLevel" | "unitCount">,
   ): { unitType: BoardUnitType; unitId?: string; unitCount: number; paidCost: number; sellValue: number } {
-    const unitCount = this.getTrackedPurchaseCount(placement.starLevel, placement.unitCount);
+    const unitCount = this.getTrackedPurchaseCount(placement.unitLevel, placement.unitCount);
     const paidCost = placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1;
 
     return {
@@ -647,7 +683,7 @@ export class ShopManager<TBattleResult = unknown> {
       sellValue: calculateSellValue(
         paidCost,
         placement.unitType,
-        placement.starLevel ?? STAR_LEVEL_MIN,
+        placement.unitLevel ?? UNIT_LEVEL_MIN,
         unitCount,
       ),
       ...(placement.unitId !== undefined ? { unitId: placement.unitId } : {}),
@@ -702,4 +738,21 @@ export class ShopManager<TBattleResult = unknown> {
     const factionEffect = getTouhouFactionTierEffect("kou_ryuudou", tier);
     return factionEffect?.special?.firstFreeRefreshes ?? 0;
   }
+}
+
+function normalizePurchasedOffer(
+  offer: ShopManagerShopOffer,
+  purchased: boolean,
+): ShopManagerShopOffer {
+  return {
+    unitType: offer.unitType,
+    rarity: offer.rarity,
+    cost: offer.cost,
+    unitLevel: offer.unitLevel ?? UNIT_LEVEL_MIN,
+    purchased,
+    ...(offer.unitId !== undefined ? { unitId: offer.unitId } : {}),
+    ...(offer.displayName !== undefined ? { displayName: offer.displayName } : {}),
+    ...(offer.factionId !== undefined ? { factionId: offer.factionId } : {}),
+    ...(offer.isRumorUnit !== undefined ? { isRumorUnit: offer.isRumorUnit } : {}),
+  };
 }

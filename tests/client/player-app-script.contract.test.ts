@@ -58,7 +58,7 @@ describe("player-app script contract", () => {
     expect(source.includes("shopBuySlotIndex")).toBe(true);
     expect(source.includes("bossShopBuySlotIndex")).toBe(true);
     expect(source.includes("shopRefreshCount")).toBe(true);
-    expect(source.includes("xpPurchaseCount")).toBe(true);
+    expect(source.includes("specialUnitUpgradeCount")).toBe(true);
     expect(source.includes("benchToBoardCell")).toBe(true);
     expect(source.includes('slot: "sub"')).toBe(true);
     expect(source.includes("boardToBenchCell")).toBe(true);

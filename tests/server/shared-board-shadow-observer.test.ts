@@ -8,7 +8,7 @@ function createControllerMock() {
   return {
     getPlayerIds: vi.fn(() => ["player-a"]),
     getBoardPlacementsForPlayer: vi.fn(() => [
-      { cell: sharedCellIndex, unitType: "vanguard", starLevel: 1 },
+      { cell: sharedCellIndex, unitType: "vanguard", unitLevel: 1 },
     ]),
   };
 }
@@ -54,7 +54,7 @@ function createExtendedFootprintControllerMock() {
   return {
     getPlayerIds: vi.fn(() => ["player-a"]),
     getBoardPlacementsForPlayer: vi.fn(() => [
-      { cell: sharedCellIndex, unitType: "vanguard", starLevel: 1 },
+      { cell: sharedCellIndex, unitType: "vanguard", unitLevel: 1 },
     ]),
   };
 }
@@ -166,7 +166,7 @@ describe("SharedBoardShadowObserver", () => {
     const observer = new SharedBoardShadowObserver({
       getPlayerIds: vi.fn(() => ["player-a"]),
       getBoardPlacementsForPlayer: vi.fn(() => [
-        { cell: 0, unitType: "vanguard", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
       ]),
     } as never);
 

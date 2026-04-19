@@ -216,7 +216,7 @@ type ReportUnitBattleOutcome = {
   phaseContributionDamage: number;
   finalHp: number;
   alive: boolean;
-  starLevel: number;
+  unitLevel: number;
   subUnitName: string;
   isSpecialUnit: boolean;
   attackCount?: number;
@@ -370,7 +370,7 @@ type ReportBoardUnit = {
   unitName: string;
   unitType: string;
   unitId: string;
-  starLevel: number;
+  unitLevel: number;
   subUnitName: string;
 };
 
@@ -565,7 +565,7 @@ const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
       ?? placement.unitType,
     unitType: placement.unitType,
     unitId: placement.unitId ?? "",
-    starLevel: placement.starLevel ?? 1,
+    unitLevel: placement.unitLevel ?? 1,
     subUnitName:
       (placement.subUnit?.unitType == null
         ? undefined
@@ -1787,7 +1787,7 @@ const buildUnitBattleOutcomesForBattle = (
         phaseContributionDamage: phaseContributionByBattleUnitId.get(unit.battleUnitId) ?? 0,
         finalHp,
         alive,
-        starLevel: metadata?.starLevel ?? 1,
+        unitLevel: metadata?.unitLevel ?? 1,
         subUnitName: metadata?.subUnitName ?? "",
         isSpecialUnit: metadata == null,
         attackCount,
@@ -2458,7 +2458,7 @@ test("buildBotOnlyMatchRoundReport prefers captured round battle details over re
       phaseContributionDamage: 0,
       finalHp: 50,
       alive: true,
-      starLevel: 1,
+      unitLevel: 1,
       subUnitName: "",
       isSpecialUnit: false,
     }],
@@ -2637,7 +2637,7 @@ test("buildPlayerConsequences keeps battle-start tracked units after controller 
         unitName: "ナズーリン",
         unitType: "ranger",
         unitId: "nazrin",
-        starLevel: 1,
+        unitLevel: 1,
         subUnitName: "",
       }],
       trackedBattleUnitIds: ["nazrin", "hero-p1"],
@@ -2665,7 +2665,7 @@ test("buildPlayerConsequences keeps battle-start tracked units after controller 
         unitName: "ナズーリン",
         unitType: "ranger",
         unitId: "nazrin",
-        starLevel: 1,
+        unitLevel: 1,
         subUnitName: "",
       }],
       trackedBattleUnitIds: ["nazrin", "hero-p1"],
@@ -3412,7 +3412,7 @@ test("buildUnitBattleOutcomesForBattle tracks pre-contact and post-contact time 
           unitName: "後衛",
           unitType: "ranger",
           unitId: "ranger",
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
         }],
         trackedBattleUnitIds: ["boss-ranger-0"],
@@ -3440,7 +3440,7 @@ test("buildUnitBattleOutcomesForBattle tracks pre-contact and post-contact time 
           unitName: "前衛",
           unitType: "vanguard",
           unitId: "vanguard",
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
         }],
         trackedBattleUnitIds: ["raid-vanguard-0"],
@@ -5784,7 +5784,7 @@ const buildBotOnlyHumanReadableRoundReport = (
       for (const unit of bossUnits) {
         const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
         lines.push(
-          `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
+          `${unit.unitName} Lv${unit.unitLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
         );
       }
 
@@ -5796,7 +5796,7 @@ const buildBotOnlyHumanReadableRoundReport = (
         for (const unit of unitOutcomes) {
           const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
           lines.push(
-            `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
+            `${unit.unitName} Lv${unit.unitLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
           );
         }
       }
@@ -6015,7 +6015,7 @@ test("buildBotOnlyHumanReadableRoundReport prefers player wipe status for raid o
           phaseContributionDamage: 0,
           finalHp: 120,
           alive: true,
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
           isSpecialUnit: true,
         }],
@@ -6172,7 +6172,7 @@ test("normalizeRoundPhaseContributionDamage aligns raid contribution totals to p
           phaseContributionDamage: 50,
           finalHp: 0,
           alive: false,
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
           isSpecialUnit: false,
         },
@@ -6186,7 +6186,7 @@ test("normalizeRoundPhaseContributionDamage aligns raid contribution totals to p
           phaseContributionDamage: 80,
           finalHp: 100,
           alive: true,
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
           isSpecialUnit: true,
         },
@@ -6200,7 +6200,7 @@ test("normalizeRoundPhaseContributionDamage aligns raid contribution totals to p
           phaseContributionDamage: 20,
           finalHp: 120,
           alive: true,
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
           isSpecialUnit: false,
         },
@@ -6261,7 +6261,7 @@ test("normalizeRoundPhaseContributionDamage keeps duplicate raid units distinct"
           phaseContributionDamage: 120,
           finalHp: 90,
           alive: true,
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
           isSpecialUnit: false,
         },
@@ -6275,7 +6275,7 @@ test("normalizeRoundPhaseContributionDamage keeps duplicate raid units distinct"
           phaseContributionDamage: 80,
           finalHp: 60,
           alive: true,
-          starLevel: 1,
+          unitLevel: 1,
           subUnitName: "",
           isSpecialUnit: false,
         },
@@ -6673,7 +6673,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "レミリア",
             unitType: "remilia",
             unitId: "unit-remilia-1",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6692,7 +6692,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "博麗霊夢",
             unitType: "reimu",
             unitId: "unit-reimu-1",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6711,7 +6711,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "霧雨魔理沙",
             unitType: "marisa",
             unitId: "unit-marisa-1",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6730,7 +6730,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "摩多羅隠岐奈",
             unitType: "okina",
             unitId: "unit-okina-1",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6772,7 +6772,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 33,
               finalHp: 500,
               alive: true,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -6787,7 +6787,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 0,
               finalHp: 0,
               alive: false,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -6802,7 +6802,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 0,
               finalHp: 0,
               alive: false,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -6817,7 +6817,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 0,
               finalHp: 0,
               alive: false,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -6870,7 +6870,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "レミリア",
             unitType: "remilia",
             unitId: "unit-remilia-2",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6889,7 +6889,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "博麗霊夢",
             unitType: "reimu",
             unitId: "unit-reimu-2",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6908,7 +6908,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "霧雨魔理沙",
             unitType: "marisa",
             unitId: "unit-marisa-2",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6927,7 +6927,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
             unitName: "十六夜咲夜",
             unitType: "sakuya",
             unitId: "unit-sakuya-1",
-            starLevel: 1,
+            unitLevel: 1,
             subUnitName: "",
           }],
         },
@@ -6979,7 +6979,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 0,
               finalHp: 0,
               alive: false,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -6994,7 +6994,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 22,
               finalHp: 240,
               alive: true,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -7009,7 +7009,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 0,
               finalHp: 0,
               alive: false,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -7024,7 +7024,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
               phaseContributionDamage: 14,
               finalHp: 180,
               alive: true,
-              starLevel: 1,
+              unitLevel: 1,
               subUnitName: "",
               isSpecialUnit: false,
             },
@@ -7146,7 +7146,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         unitName: "レミリア",
         battleAppearances: 2,
         matchesPresent: 2,
-        averageStarLevel: 1,
+        averageunitLevel: 1,
         averageDamagePerBattle: 16.5,
         averageDamagePerMatch: 16.5,
         activeBattleRate: 0,
@@ -7168,7 +7168,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         unitName: "博麗霊夢",
         battleAppearances: 2,
         matchesPresent: 2,
-        averageStarLevel: 1,
+        averageunitLevel: 1,
         averageDamagePerBattle: 11,
         averageDamagePerMatch: 11,
         activeBattleRate: 0,
@@ -7191,7 +7191,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         unitName: "摩多羅隠岐奈",
         battleAppearances: 2,
         matchesPresent: 2,
-        averageStarLevel: 1,
+        averageunitLevel: 1,
         averageDamagePerBattle: 7,
         averageDamagePerMatch: 7,
         activeBattleRate: 0,
@@ -7214,7 +7214,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         unitName: "霧雨魔理沙",
         battleAppearances: 2,
         matchesPresent: 2,
-        averageStarLevel: 1,
+        averageunitLevel: 1,
         averageDamagePerBattle: 0,
         averageDamagePerMatch: 0,
         activeBattleRate: 0,

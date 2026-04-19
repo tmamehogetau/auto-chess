@@ -27,6 +27,7 @@ describe("PrepCommandValidator", () => {
     getBoardUnitCount: vi.fn().mockReturnValue(4),
     getMaxBoardUnitCount: vi.fn().mockReturnValue(8),
     getBossShopOffers: vi.fn().mockReturnValue([]),
+    getHeroExclusiveShopOffers: vi.fn().mockReturnValue([]),
     getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     isBossPlayer: vi.fn().mockReturnValue(false),
     isSubUnitSystemEnabled: vi.fn().mockReturnValue(false),
@@ -47,6 +48,8 @@ describe("PrepCommandValidator", () => {
       enableTouhouFactions: false,
       enablePerUnitSharedPool: false,
     }),
+    getSpecialUnitLevel: vi.fn().mockReturnValue(1),
+    getSelectedSpecialUnitId: vi.fn().mockReturnValue("reimu"),
     ...overrides,
   });
 
@@ -139,18 +142,28 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
-    test("invalid xpPurchaseCount returns INVALID_PAYLOAD", () => {
+    test("invalid specialUnitUpgradeCount returns INVALID_PAYLOAD", () => {
       const deps = createDependencies();
 
-      const result = validatePrepCommand("p1", 1, 1000, { xpPurchaseCount: 0 }, deps);
+      const result = validatePrepCommand("p1", 1, 1000, { specialUnitUpgradeCount: 0 }, deps);
 
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
-    test("excessive xpPurchaseCount returns INVALID_PAYLOAD", () => {
+    test("excessive specialUnitUpgradeCount returns INVALID_PAYLOAD", () => {
       const deps = createDependencies();
 
-      const result = validatePrepCommand("p1", 1, 1000, { xpPurchaseCount: 11 }, deps);
+      const result = validatePrepCommand("p1", 1, 1000, { specialUnitUpgradeCount: 11 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("specialUnitUpgradeCount beyond level cap returns INVALID_PAYLOAD", () => {
+      const deps = createDependencies({
+        getSpecialUnitLevel: vi.fn().mockReturnValue(6),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { specialUnitUpgradeCount: 2 }, deps);
 
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
@@ -349,7 +362,7 @@ describe("PrepCommandValidator", () => {
     test("benchToBoardCell sub slot rejects when sub-unit system is disabled", () => {
       const deps = createDependencies({
         getBenchUnits: vi.fn().mockReturnValue([
-          { unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 },
+          { unitType: "mage", cost: 2, unitLevel: 1, unitCount: 1 },
         ]),
         getBoardPlacements: vi.fn().mockReturnValue([
           { cell: 3, unitType: "vanguard" },
@@ -373,7 +386,7 @@ describe("PrepCommandValidator", () => {
             unitType: "vanguard",
             subUnit: {
               unitType: "mage",
-              starLevel: 1,
+              unitLevel: 1,
               unitCount: 1,
               sellValue: 1,
             },
@@ -428,7 +441,7 @@ describe("PrepCommandValidator", () => {
             unitType: "vanguard",
             unitId: `bench-${index}`,
             cost: 1,
-            starLevel: 1,
+            unitLevel: 1,
             unitCount: 1,
           })),
         ),
@@ -443,7 +456,7 @@ describe("PrepCommandValidator", () => {
             subUnit: {
               unitType: "mage",
               unitId: "patchouli",
-              starLevel: 1,
+              unitLevel: 1,
               unitCount: 1,
               sellValue: 2,
             },
@@ -637,6 +650,89 @@ describe("PrepCommandValidator", () => {
       expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
+    test("heroExclusiveShopBuySlotIndex for boss player returns INVALID_PAYLOAD", () => {
+      const deps = createDependencies({
+        isBossPlayer: vi.fn().mockReturnValue(true),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("heroExclusiveShopBuySlotIndex with already purchased offer returns INVALID_PAYLOAD", () => {
+      const deps = createDependencies({
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3, purchased: true },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
+    test("heroExclusiveShopBuySlotIndex with full bench returns BENCH_FULL", () => {
+      const deps = createDependencies({
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
+        getBenchUnits: vi.fn().mockReturnValue(new Array(8).fill({ unitType: "ranger" })),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "BENCH_FULL" });
+    });
+
+    test("heroExclusiveShopBuySlotIndex allows a full-bench buy when a matching attached sub unit can merge", () => {
+      const deps = createDependencies({
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
+        getBenchUnits: vi.fn().mockReturnValue(
+          Array.from({ length: 8 }, (_, index) => ({
+            unitType: "vanguard",
+            unitId: `bench-${index}`,
+            cost: 1,
+            unitLevel: 1,
+            unitCount: 1,
+          })),
+        ),
+        getBoardPlacements: vi.fn().mockReturnValue([
+          {
+            cell: 4,
+            unitType: "mage",
+            unitId: "patchouli",
+            subUnit: {
+              unitType: "vanguard",
+              unitId: "mayumi",
+              unitLevel: 1,
+              unitCount: 1,
+              sellValue: 3,
+            },
+          },
+        ] satisfies BoardUnitPlacement[]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toBeNull();
+    });
+
+    test("heroExclusiveShopBuySlotIndex with insufficient gold returns INSUFFICIENT_GOLD", () => {
+      const deps = createDependencies({
+        getGold: vi.fn().mockReturnValue(2),
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
+    });
+
     test("bossShopBuySlotIndex with already purchased offer returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         isBossPlayer: vi.fn().mockReturnValue(true),
@@ -675,7 +771,7 @@ describe("PrepCommandValidator", () => {
             unitType: "vanguard",
             unitId: `bench-${index}`,
             cost: 1,
-            starLevel: 1,
+            unitLevel: 1,
             unitCount: 1,
           })),
         ),
@@ -687,7 +783,7 @@ describe("PrepCommandValidator", () => {
             subUnit: {
               unitType: "mage",
               unitId: "patchouli",
-              starLevel: 1,
+              unitLevel: 1,
               unitCount: 1,
               sellValue: 2,
             },
@@ -721,7 +817,7 @@ describe("PrepCommandValidator", () => {
         getGold: vi.fn().mockReturnValue(1),
       });
 
-      const result = validatePrepCommand("p1", 1, 1000, { xpPurchaseCount: 1 }, deps);
+      const result = validatePrepCommand("p1", 1, 1000, { specialUnitUpgradeCount: 1 }, deps);
 
       expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
     });
@@ -731,7 +827,7 @@ describe("PrepCommandValidator", () => {
         getGold: vi.fn().mockReturnValue(20),
       });
 
-      const result = validatePrepCommand("p1", 1, 1000, { xpPurchaseCount: 1 }, deps);
+      const result = validatePrepCommand("p1", 1, 1000, { specialUnitUpgradeCount: 1 }, deps);
 
       expect(result).toBeNull();
     });
@@ -790,12 +886,12 @@ describe("PrepCommandValidator", () => {
       expect(result).toBeNull();
     });
 
-    test("valid xp purchase returns null with correct context", () => {
+    test("valid special unit upgrade returns null with correct context", () => {
       const deps = createDependencies({
         getGold: vi.fn().mockReturnValue(20),
       });
 
-      const result = validatePrepCommand("p1", 1, 1000, { xpPurchaseCount: 2 }, deps);
+      const result = validatePrepCommand("p1", 1, 1000, { specialUnitUpgradeCount: 2 }, deps);
 
       expect(result).toBeNull();
     });
@@ -809,6 +905,19 @@ describe("PrepCommandValidator", () => {
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { shopBuySlotIndex: 0 }, deps);
+
+      expect(result).toBeNull();
+    });
+
+    test("valid hero-exclusive shop buy returns null with correct context", () => {
+      const deps = createDependencies({
+        getGold: vi.fn().mockReturnValue(10),
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
 
       expect(result).toBeNull();
     });
@@ -883,7 +992,7 @@ describe("PrepCommandValidator", () => {
 
     test("benchToBoardCell into reserved hero or boss cell returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
-        getBenchUnits: vi.fn().mockReturnValue([{ unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 }]),
+        getBenchUnits: vi.fn().mockReturnValue([{ unitType: "mage", cost: 2, unitLevel: 1, unitCount: 1 }]),
         getReservedBoardCells: vi.fn().mockReturnValue([2]),
       });
 
@@ -977,6 +1086,30 @@ describe("PrepCommandValidator", () => {
       }, deps);
 
       expect(result).toBeNull();
+    });
+
+    test("boardPlacements の unitLevel=7 は有効", () => {
+      const deps = createDependencies();
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardPlacements: [
+          { cell: 0, unitType: "vanguard", unitLevel: 7 },
+        ],
+      }, deps);
+
+      expect(result).toBeNull();
+    });
+
+    test("boardPlacements の unitLevel=8 は INVALID_UNIT_LEVEL", () => {
+      const deps = createDependencies();
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardPlacements: [
+          { cell: 0, unitType: "vanguard", unitLevel: 8 },
+        ],
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_UNIT_LEVEL" });
     });
 
     test("boardPlacements using reserved hero or boss cells returns INVALID_PAYLOAD", () => {

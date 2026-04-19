@@ -3,7 +3,7 @@ import type { CommandPayload } from "../../match-room-controller/prep-command-va
 
 export interface MergeUnitsPayload {
   unitType: string;
-  starLevel: number;
+  unitLevel?: number;
   benchIndices?: number[];
   boardCells?: number[];
 }
@@ -19,7 +19,7 @@ export function buildPrepCommandPayload(
     message.boardUnitCount === undefined &&
     message.boardPlacements === undefined &&
     message.heroPlacementCell === undefined &&
-    message.xpPurchaseCount === undefined &&
+    message.specialUnitUpgradeCount === undefined &&
     message.shopRefreshCount === undefined &&
     message.shopBuySlotIndex === undefined &&
     message.shopLock === undefined &&
@@ -41,7 +41,9 @@ export function buildPrepCommandPayload(
     ...(message.boardUnitCount !== undefined && { boardUnitCount: message.boardUnitCount }),
     ...(message.boardPlacements !== undefined && { boardPlacements: message.boardPlacements }),
     ...(message.heroPlacementCell !== undefined && { heroPlacementCell: message.heroPlacementCell }),
-    ...(message.xpPurchaseCount !== undefined && { xpPurchaseCount: message.xpPurchaseCount }),
+    ...(message.specialUnitUpgradeCount !== undefined && {
+      specialUnitUpgradeCount: message.specialUnitUpgradeCount,
+    }),
     ...(message.shopRefreshCount !== undefined && { shopRefreshCount: message.shopRefreshCount }),
     ...(message.shopBuySlotIndex !== undefined && { shopBuySlotIndex: message.shopBuySlotIndex }),
     ...(message.shopLock !== undefined && { shopLock: message.shopLock }),

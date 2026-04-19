@@ -210,7 +210,7 @@ describe("E2E: Unit Operations Flow", () => {
   );
 
   it(
-    "should complete unit synthesis (star level up)",
+    "should advance unit level through repeated purchases",
     { timeout: 30_000 },
     async () => {
       const gameRoom = await testServer.createRoom<GameRoom>("game");
@@ -235,10 +235,10 @@ describe("E2E: Unit Operations Flow", () => {
         expect(buyResult).toEqual({ accepted: true });
       }
 
-      // Verify purchase-count progression: 3 buys still remain tier 1 on a single stack
+      // Verify purchase-count progression: 3 buys advance the single stack to Lv3
       const playerAfter = gameRoom.state.players.get(targetClient.sessionId);
       expect(playerAfter?.benchUnits.length).toBe(1);
-      expect(playerAfter?.benchUnits[0]).toBe("vanguard");
+      expect(playerAfter?.benchUnits[0]).toBe("vanguard:3");
       expect(playerAfter?.ownedVanguard).toBe(3);
 
       // Gold should be decreased by 3 (1 gold per unit)
@@ -252,7 +252,7 @@ describe("E2E: Unit Operations Flow", () => {
   );
 
   it(
-    "should complete chain synthesis (3-star unit)",
+    "should cap unit level through repeated purchases",
     { timeout: 30_000 },
     async () => {
       const gameRoom = await testServer.createRoom<GameRoom>("game");
@@ -262,7 +262,7 @@ describe("E2E: Unit Operations Flow", () => {
       const playerBefore = gameRoom.state.players.get(targetClient.sessionId);
       const initialGold = Number(playerBefore?.gold ?? 0);
 
-      // Buy 9 identical vanguard units for chain synthesis
+      // Buy 9 identical vanguard units and verify the stack caps at Lv7
       for (let i = 1; i <= 9; i++) {
         forceShopOffers(gameRoom, targetClient.sessionId, "vanguard");
 
@@ -277,10 +277,10 @@ describe("E2E: Unit Operations Flow", () => {
         expect(buyResult).toEqual({ accepted: true });
       }
 
-      // Verify chain synthesis: 9 units should merge into 1 star-3 unit
+      // Verify level cap: 9 units should still merge into 1 Lv7 unit
       const playerAfter = gameRoom.state.players.get(targetClient.sessionId);
       expect(playerAfter?.benchUnits.length).toBe(1);
-      expect(playerAfter?.benchUnits[0]).toBe("vanguard:3");
+      expect(playerAfter?.benchUnits[0]).toBe("vanguard:7");
       expect(playerAfter?.ownedVanguard).toBe(9);
 
       // Gold should be decreased by 9 (1 gold per unit)

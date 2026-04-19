@@ -375,17 +375,17 @@ describe("MatchLogger - P1 Feature Logs", () => {
   describe("updateFinalUnits", () => {
     it("入力配列の変更が記録済みユニットに影響しないこと", () => {
       const boardUnits = [
-        { unitType: "vanguard", starLevel: 1, cell: 0 },
+        { unitType: "vanguard", unitLevel: 1, cell: 0 },
       ];
       const benchUnits = [
-        { unitType: "ranger", starLevel: 2, benchIndex: 0 },
+        { unitType: "ranger", unitLevel: 2, benchIndex: 0 },
       ];
 
       logger.updateFinalUnits("player-1", boardUnits, benchUnits);
 
       // Modify input after recording
       boardUnits[0]!.unitType = "modified";
-      benchUnits[0]!.starLevel = 99;
+      benchUnits[0]!.unitLevel = 99;
 
       // Verify generateSummary returns unchanged data
       const summary = logger.generateSummary(null, ["player-1", "player-2"], 5, {
@@ -399,16 +399,16 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
       const player = summary.players.find((p) => p.playerId === "player-1")!;
       expect(player.finalBoardUnits[0]!.unitType).toBe("vanguard");
-      expect(player.finalBenchUnits[0]!.starLevel).toBe(2);
+      expect(player.finalBenchUnits[0]!.unitLevel).toBe(2);
     });
   });
 
   describe("generateSummary", () => {
     it("should defensively copy final units in summary", () => {
       const boardUnits = [
-        { unitType: "vanguard", starLevel: 1, cell: 0 },
+        { unitType: "vanguard", unitLevel: 1, cell: 0 },
       ];
-      const benchUnits: { unitType: string; starLevel: number; benchIndex: number }[] = [];
+      const benchUnits: { unitType: string; unitLevel: number; benchIndex: number }[] = [];
 
       logger.updateFinalUnits("player-1", boardUnits, benchUnits);
 
@@ -526,7 +526,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
     it("should defensively copy benchIndices in merge action logs", () => {
       logger.logAction("player-1", 1, "merge", {
         unitType: "vanguard",
-        starLevel: 2,
+        unitLevel: 2,
         benchIndices: [0, 1, 2],
         goldBefore: 10,
         goldAfter: 10,
@@ -550,7 +550,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
     it("should defensively copy boardCells in merge action logs", () => {
       logger.logAction("player-1", 1, "merge", {
         unitType: "ranger",
-        starLevel: 3,
+        unitLevel: 3,
         boardCells: [5, 10, 15],
         goldBefore: 10,
         goldAfter: 10,
@@ -588,7 +588,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const benchIndices = [0, 1, 2];
       const details = {
         unitType: "vanguard",
-        starLevel: 2,
+        unitLevel: 2,
         benchIndices,
         goldBefore: 10,
         goldAfter: 10,
@@ -609,7 +609,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       const boardCells = [5, 10, 15];
       const details = {
         unitType: "ranger",
-        starLevel: 3,
+        unitLevel: 3,
         boardCells,
         goldBefore: 10,
         goldAfter: 10,
@@ -750,8 +750,8 @@ describe("MatchLogger - P1 Feature Logs", () => {
     it("should include top1CompositionSignature as string from winner's board", () => {
       // Setup: Winner has board units
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
-        { unitType: "ranger", starLevel: 1, cell: 1 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
+        { unitType: "ranger", unitLevel: 1, cell: 1 },
       ], []);
 
       const kpi = logger.getGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
@@ -768,7 +768,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
     it("should return empty signature when winner is null", () => {
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
       ], []);
 
       const kpi = logger.getGameplayKpiSummary(null, ["player-1", "player-2"], 8, featureFlags);
@@ -857,7 +857,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
         logger.incrementRoundsSurvived("player-1");
       }
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
       ], []);
 
       // Some prep commands with failures
@@ -907,8 +907,8 @@ describe("MatchLogger - P1 Feature Logs", () => {
 
     it("should include top1 composition signature as string from winner's board", () => {
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
-        { unitType: "ranger", starLevel: 1, cell: 1 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
+        { unitType: "ranger", unitLevel: 1, cell: 1 },
       ], []);
 
       logger.outputGameplayKpiSummary("player-1", ["player-1", "player-2"], 8, featureFlags);
@@ -937,7 +937,7 @@ describe("MatchLogger - P1 Feature Logs", () => {
       // Setup complete match
       logger.incrementRoundsSurvived("player-1");
       logger.updateFinalUnits("player-1", [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
       ], []);
 
       // Call both output methods

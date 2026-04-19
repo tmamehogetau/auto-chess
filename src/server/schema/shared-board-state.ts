@@ -8,6 +8,7 @@ export class SharedBoardCellState extends Schema {
   declare public ownerId: string;
   declare public displayName: string;
   declare public portraitKey: string;
+  declare public unitLevel: number;
   declare public lockedBy: string;
   declare public lockUntilMs: number;
   // 紋章マス用拡張スロット（将来実装予約）
@@ -20,6 +21,7 @@ export class SharedBoardCellState extends Schema {
     this.ownerId = "";
     this.displayName = "";
     this.portraitKey = "";
+    this.unitLevel = 1;
     this.lockedBy = "";
     this.lockUntilMs = 0;
   }
@@ -98,6 +100,7 @@ defineTypes(SharedBoardCellState, {
   ownerId: "string",
   displayName: "string",
   portraitKey: "string",
+  unitLevel: "number",
   lockedBy: "string",
   lockUntilMs: "number",
 });

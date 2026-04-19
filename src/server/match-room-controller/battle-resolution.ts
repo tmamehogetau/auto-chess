@@ -11,6 +11,7 @@ import type { FeatureFlags } from "../../shared/feature-flags";
 import { resolveSharedBoardUnitPresentation } from "../shared-board-unit-presentation";
 import type { BattleResultSurvivorSnapshot } from "../types/player-state-types";
 import { scaleBattleTimeline } from "../combat/battle-timeline-scale";
+import { getSpecialUnitCombatMultiplier } from "../special-unit-level-config";
 
 /**
  * Spell combat modifiers
@@ -503,11 +504,13 @@ export class BattleResolutionService {
     playerId: string,
     boardCellIndex?: number,
     battleSide: "left" | "right" = "left",
+    heroUnitLevel: number = 1,
   ): BattleUnit | null {
     if (!heroId) return null;
 
     const hero = HEROES.find((h) => h.id === heroId);
     if (!hero) return null;
+    const unitMultiplier = getSpecialUnitCombatMultiplier(heroUnitLevel, hero.id);
     const resolvedBoardCellIndex = (
       typeof boardCellIndex === "number" && Number.isInteger(boardCellIndex)
     ) ? boardCellIndex : 8;
@@ -518,10 +521,10 @@ export class BattleResolutionService {
       sourceUnitId: hero.id,
       battleSide,
       type: hero.unitType,
-      starLevel: 1,
-      hp: hero.hp,
-      maxHp: hero.hp,
-      attackPower: hero.attack,
+      unitLevel: heroUnitLevel,
+      hp: hero.hp * unitMultiplier,
+      maxHp: hero.hp * unitMultiplier,
+      attackPower: hero.attack * unitMultiplier,
       attackSpeed: hero.attackSpeed,
       movementSpeed: hero.movementSpeed,
       attackRange: hero.range,
@@ -545,6 +548,7 @@ export class BattleResolutionService {
     boardCellIndex?: number,
     phaseHpTarget?: number,
     battleSide: "left" | "right" = "right",
+    bossUnitLevel: number = 1,
   ): BattleUnit | null {
     if (!bossId) return null;
 
@@ -555,6 +559,10 @@ export class BattleResolutionService {
       typeof boardCellIndex === "number" && Number.isInteger(boardCellIndex)
     ) ? boardCellIndex : 2;
     const bossStats = getMvpPhase1Boss();
+    const unitMultiplier = getSpecialUnitCombatMultiplier(bossUnitLevel, boss.id);
+    const resolvedBossHp = typeof phaseHpTarget === "number" && phaseHpTarget > 0
+      ? phaseHpTarget
+      : bossStats.hp * unitMultiplier;
 
     return {
       id: `boss-${playerId}`,
@@ -562,10 +570,10 @@ export class BattleResolutionService {
       sourceUnitId: boss.id,
       battleSide,
       type: "vanguard" as BoardUnitType,
-      starLevel: 1,
-      hp: typeof phaseHpTarget === "number" && phaseHpTarget > 0 ? phaseHpTarget : bossStats.hp,
-      maxHp: typeof phaseHpTarget === "number" && phaseHpTarget > 0 ? phaseHpTarget : bossStats.hp,
-      attackPower: bossStats.attack,
+      unitLevel: bossUnitLevel,
+      hp: resolvedBossHp,
+      maxHp: resolvedBossHp,
+      attackPower: bossStats.attack * unitMultiplier,
       attackSpeed: bossStats.attackSpeed,
       attackRange: bossStats.range,
       cell: resolvedBoardCellIndex,

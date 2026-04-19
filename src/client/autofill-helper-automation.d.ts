@@ -80,8 +80,8 @@ export function buildAutoFillHelperActions(input: {
     benchUnits?: unknown[] | Iterable<unknown> | null;
     benchUnitIds?: unknown[] | Iterable<unknown> | null;
     boardSubUnits?: unknown[] | Iterable<unknown> | null;
+    specialUnitLevel?: number | null;
     level?: number | null;
-    xp?: number | null;
     ownedUnits?: Record<string, number> | null;
     activeSynergies?:
       | Array<{ unitType?: string | null; count?: number | null; tier?: number | null } | unknown>

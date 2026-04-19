@@ -30,11 +30,13 @@ type SharedBoardRoomLike = {
     playerId: string;
     heroId: string;
     cellIndex: number | null;
+    unitLevel?: number;
   }) => void;
   applyBossPlacementFromGame?: (input: {
     playerId: string;
     bossId: string;
     cellIndex: number | null;
+    unitLevel?: number;
   }) => void;
 };
 
@@ -53,6 +55,7 @@ type ControllerLike = {
   getHeroPlacementForPlayer?: (playerId: string) => number | null;
   getSelectedBoss?: (playerId: string) => string;
   getBossPlacementForPlayer?: (playerId: string) => number | null;
+  getSpecialUnitLevelForPlayer?: (playerId: string) => number;
 };
 
 type ShadowObserverLike = {
@@ -193,6 +196,7 @@ export class BridgeDiffBroadcaster {
         playerId,
         heroId,
         cellIndex: heroCellIndex,
+        unitLevel: this.deps.controller.getSpecialUnitLevelForPlayer?.(playerId) ?? 1,
       });
 
       const bossId = this.deps.controller.getSelectedBoss?.(playerId) ?? "";
@@ -201,6 +205,7 @@ export class BridgeDiffBroadcaster {
         playerId,
         bossId,
         cellIndex: bossCellIndex,
+        unitLevel: this.deps.controller.getSpecialUnitLevelForPlayer?.(playerId) ?? 1,
       });
     }
   }

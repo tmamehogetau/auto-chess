@@ -243,8 +243,7 @@ export function syncPlayerStateFromController(
   playerState.eliminated = controllerStatus.eliminated;
   playerState.boardUnitCount = controllerStatus.boardUnitCount;
   playerState.gold = controllerStatus.gold;
-  playerState.xp = controllerStatus.xp;
-  playerState.level = controllerStatus.level;
+  playerState.specialUnitLevel = controllerStatus.specialUnitLevel;
   playerState.shopLocked = controllerStatus.shopLocked;
 
   // Owned units breakdown
@@ -325,6 +324,19 @@ export function syncPlayerStateFromController(
     playerState.bossShopOffers.push(nextOffer);
   }
 
+  clearArraySchema(playerState.heroExclusiveShopOffers);
+  for (const offer of controllerStatus.heroExclusiveShopOffers || []) {
+    const nextOffer = new ShopOfferState();
+    nextOffer.unitType = toBoardUnitType(offer.unitType);
+    nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
+    nextOffer.cost = offer.cost;
+    nextOffer.rarity = offer.rarity;
+    nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    playerState.heroExclusiveShopOffers.push(nextOffer);
+  }
+
   // Last battle result
   if (controllerStatus.lastBattleResult) {
     playerState.lastBattleResult.opponentId = controllerStatus.lastBattleResult.opponentId;
@@ -382,8 +394,7 @@ export function syncPlayerStateFromCommandResult(
 
   playerState.boardUnitCount = cmdResult.boardUnitCount;
   playerState.gold = cmdResult.gold;
-  playerState.xp = cmdResult.xp;
-  playerState.level = cmdResult.level;
+  playerState.specialUnitLevel = cmdResult.specialUnitLevel;
   playerState.shopLocked = cmdResult.shopLocked;
 
   playerState.ownedVanguard = cmdResult.ownedUnits.vanguard;
@@ -464,6 +475,19 @@ export function syncPlayerStateFromCommandResult(
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
     playerState.bossShopOffers.push(nextOffer);
+  }
+
+  clearArraySchema(playerState.heroExclusiveShopOffers);
+  for (const offer of cmdResult.heroExclusiveShopOffers || []) {
+    const nextOffer = new ShopOfferState();
+    nextOffer.unitType = toBoardUnitType(offer.unitType);
+    nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
+    nextOffer.cost = offer.cost;
+    nextOffer.rarity = offer.rarity;
+    nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    playerState.heroExclusiveShopOffers.push(nextOffer);
   }
 
   // Last battle result

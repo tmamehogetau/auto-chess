@@ -10,7 +10,7 @@ const MAX_AUTO_FILL_BOTS = 3;
 export interface BoardUnitPlacement {
   cell: number;
   unitType: string;
-  starLevel?: number;
+  unitLevel?: number;
 }
 
 export interface BattleResult {
@@ -97,7 +97,7 @@ export function parseBoardUnitToken(token: unknown): BoardUnitPlacement | null {
 
   const cellText = match[1];
   const unitType = match[2]?.trim();
-  const starLevelText = match[3];
+  const unitLevelText = match[3];
 
   if (!cellText || !unitType) {
     return null;
@@ -109,16 +109,16 @@ export function parseBoardUnitToken(token: unknown): BoardUnitPlacement | null {
     return null;
   }
 
-  const starLevel = starLevelText ? Number.parseInt(starLevelText, 10) : 1;
+  const unitLevel = unitLevelText ? Number.parseInt(unitLevelText, 10) : 1;
 
-  if (!Number.isInteger(starLevel) || starLevel < 1) {
+  if (!Number.isInteger(unitLevel) || unitLevel < 1) {
     return null;
   }
 
   return {
     cell,
     unitType,
-    starLevel,
+    unitLevel,
   };
 }
 

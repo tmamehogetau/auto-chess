@@ -64,7 +64,12 @@ import {
 import {
   calculateSellValue,
   UNIT_SELL_VALUE_BY_TYPE,
-} from "./star-level-config";
+} from "./unit-level-config";
+import {
+  SPECIAL_UNIT_LEVEL_MAX,
+  SPECIAL_UNIT_LEVEL_MIN,
+  upgradeSpecialUnitLevel,
+} from "./special-unit-level-config";
 import { HEROES } from "../data/heroes";
 import { isBossCharacterId } from "../shared/boss-characters";
 import { FeatureFlagService } from "./feature-flag-service";
@@ -138,8 +143,7 @@ interface PlayerFacingPhaseState {
 const INITIAL_GOLD = 15;
 const INITIAL_RAID_GOLD = 5;
 const INITIAL_BOSS_GOLD = 8;
-const INITIAL_XP = 0;
-const INITIAL_LEVEL = 1;
+const INITIAL_SPECIAL_UNIT_LEVEL = SPECIAL_UNIT_LEVEL_MIN;
 const RAID_PREP_BASE_INCOME = 5;
 const BOSS_PREP_BASE_INCOME = 9;
 const RAID_PHASE_SUCCESS_BONUS = 2;
@@ -152,8 +156,6 @@ const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
 const BOSS_SHOP_SIZE = 2;
 const MIN_BOARD_CELL_INDEX = COMBAT_CELL_MIN_INDEX;
 const MAX_BOARD_CELL_INDEX = COMBAT_CELL_MAX_INDEX;
-const MAX_LEVEL = 6;
-
 const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   1: 600,
   2: 750,
@@ -199,14 +201,6 @@ const RAID_PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   12: 3000,
 };
 
-const XP_COSTS_BY_LEVEL: Readonly<Record<number, number>> = {
-  1: 2,
-  2: 2,
-  3: 6,
-  4: 10,
-  5: 20,
-};
-
 const RAID_AGGREGATE_CORE_BATTLE_COLUMNS = [1, 3, 5, 0, 2, 4] as const;
 const RAID_AGGREGATE_BATTLE_COLUMNS = [1, 0, 3, 2, 5, 4] as const;
 const RAID_AGGREGATE_MELEE_ROWS = [3, 4, 5] as const;
@@ -231,7 +225,7 @@ interface ShopOffer {
   cost: number;
   isRumorUnit?: boolean;
   purchased?: boolean;
-  starLevel?: number;
+  unitLevel?: number;
 }
 
 interface OwnedUnits {
@@ -245,7 +239,7 @@ interface BenchUnit {
   unitType: BoardUnitType;
   unitId?: string;
   cost: number;
-  starLevel: number;
+  unitLevel: number;
   unitCount: number;
 }
 
@@ -385,9 +379,7 @@ export class MatchRoomController {
 
   private readonly goldByPlayer: Map<string, number>;
 
-  private readonly xpByPlayer: Map<string, number>;
-
-  private readonly levelByPlayer: Map<string, number>;
+  private readonly specialUnitLevelByPlayer: Map<string, number>;
 
   private readonly shopOffersByPlayer: Map<string, ShopOffer[]>;
 
@@ -469,6 +461,8 @@ export class MatchRoomController {
 
   private readonly bossShopOffersByPlayer: Map<string, ShopOffer[]>;
 
+  private readonly heroExclusiveShopOffersByPlayer: Map<string, ShopOffer[]> = new Map<string, ShopOffer[]>();
+
   private readonly subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig>;
 
   private readonly featureFlags: {
@@ -516,8 +510,7 @@ export class MatchRoomController {
     this.boardPlacementsByPlayer = new Map<string, BoardUnitPlacement[]>();
     this.battleInputSnapshotByPlayer = new Map<string, BoardUnitPlacement[]>();
     this.goldByPlayer = new Map<string, number>();
-    this.xpByPlayer = new Map<string, number>();
-    this.levelByPlayer = new Map<string, number>();
+    this.specialUnitLevelByPlayer = new Map<string, number>();
     this.shopOffersByPlayer = new Map<string, ShopOffer[]>();
     this.shopRefreshCountByPlayer = new Map<string, number>();
     this.shopPurchaseCountByPlayer = new Map<string, number>();
@@ -582,7 +575,8 @@ export class MatchRoomController {
       hashToUint32,
       seedToUnitFloat,
       pickRarity,
-      getPlayerLevel: (playerId: string) => this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL,
+      getSpecialUnitLevel: (playerId: string) =>
+        this.specialUnitLevelByPlayer.get(playerId) ?? INITIAL_SPECIAL_UNIT_LEVEL,
       isSharedPoolEnabled: () => this.enableSharedPool,
       isPoolDepleted: (cost: number) => this.sharedPool?.isDepleted(cost) ?? false,
       isPerUnitPoolEnabled: () => this.rosterFlags.enablePerUnitSharedPool,
@@ -604,8 +598,7 @@ export class MatchRoomController {
       this.boardUnitCountByPlayer.set(playerId, 0);
       this.boardPlacementsByPlayer.set(playerId, []);
       this.goldByPlayer.set(playerId, INITIAL_GOLD);
-      this.xpByPlayer.set(playerId, INITIAL_XP);
-      this.levelByPlayer.set(playerId, INITIAL_LEVEL);
+      this.specialUnitLevelByPlayer.set(playerId, INITIAL_SPECIAL_UNIT_LEVEL);
       this.shopOffersByPlayer.set(playerId, []);
       this.shopRefreshCountByPlayer.set(playerId, 0);
       this.shopPurchaseCountByPlayer.set(playerId, 0);
@@ -621,6 +614,7 @@ export class MatchRoomController {
       this.selectedHeroByPlayer.set(playerId, "");
       this.heroPlacementByPlayer.set(playerId, -1);
       this.heroSubHostCellByPlayer.set(playerId, -1);
+      this.heroExclusiveShopOffersByPlayer.set(playerId, []);
       this.selectedBossByPlayer.set(playerId, "");
       this.bossPlacementByPlayer.set(playerId, -1);
       this.wantsBossByPlayer.set(playerId, false);
@@ -694,6 +688,7 @@ export class MatchRoomController {
       rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
       shopOffersByPlayer: this.shopOffersByPlayer,
       bossShopOffersByPlayer: this.bossShopOffersByPlayer,
+      heroExclusiveShopOffersByPlayer: this.heroExclusiveShopOffersByPlayer,
       battleResultsByPlayer: this.battleResultsByPlayer,
       benchUnitsByPlayer: this.benchUnitsByPlayer,
       boardPlacementsByPlayer: this.boardPlacementsByPlayer,
@@ -803,13 +798,13 @@ export class MatchRoomController {
       roleByPlayer: this.roleByPlayer,
       getFinalRoundShield: (playerId) => this.getDisplayedFinalRoundShield(playerId),
       goldByPlayer: this.goldByPlayer,
-      xpByPlayer: this.xpByPlayer,
-      levelByPlayer: this.levelByPlayer,
+      specialUnitLevelByPlayer: this.specialUnitLevelByPlayer,
       shopOffersByPlayer: this.shopOffersByPlayer,
       shopLockedByPlayer: this.shopLockedByPlayer,
       benchUnitsByPlayer: this.benchUnitsByPlayer,
       ownedUnitsByPlayer: this.ownedUnitsByPlayer,
       bossShopOffersByPlayer: this.bossShopOffersByPlayer,
+      heroExclusiveShopOffersByPlayer: this.heroExclusiveShopOffersByPlayer,
       battleResultsByPlayer: this.battleResultsByPlayer,
       selectedHeroByPlayer: this.selectedHeroByPlayer,
       rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
@@ -823,8 +818,7 @@ export class MatchRoomController {
       enableSharedPool: this.enableSharedPool,
       sharedPool: this.sharedPool,
       initialGold: INITIAL_GOLD,
-      initialXp: INITIAL_XP,
-      initialLevel: INITIAL_LEVEL,
+      initialSpecialUnitLevel: INITIAL_SPECIAL_UNIT_LEVEL,
       buildActiveSynergies: (playerId, boardPlacements) => {
         const heroSynergyBonusType = this.resolveHeroSynergyBonusType(playerId);
         return this.calculateActiveSynergies(boardPlacements, heroSynergyBonusType, playerId);
@@ -832,39 +826,39 @@ export class MatchRoomController {
       resolveBenchUnitDisplayName: (benchUnit) =>
         this.resolveBenchUnitDisplayName(benchUnit as BenchUnit),
       formatBoardUnitToken: (playerId, placement) => {
-        const starLevel = placement.starLevel ?? 1;
+        const unitLevel = placement.unitLevel ?? 1;
         const hasSubUnitAssist = this.enableSubUnitSystem
           && (
             placement.subUnit !== undefined
             || this.getHeroSubHostCellForPlayer(playerId) === placement.cell
           );
 
-        if (starLevel > 1 || hasSubUnitAssist) {
-          const tokenWithStarLevel = `${placement.cell}:${placement.unitType}:${starLevel}`;
+        if (unitLevel > 1 || hasSubUnitAssist) {
+          const tokenWithUnitLevel = `${placement.cell}:${placement.unitType}:${unitLevel}`;
           if (hasSubUnitAssist) {
-            return `${tokenWithStarLevel}:sub`;
+            return `${tokenWithUnitLevel}:sub`;
           }
-          return tokenWithStarLevel;
+          return tokenWithUnitLevel;
         }
 
         return `${placement.cell}:${placement.unitType}`;
       },
       formatBoardSubUnitToken: (cell, subUnit) => {
-        const starLevel = subUnit.starLevel ?? 1;
+        const unitLevel = subUnit.unitLevel ?? 1;
         const detail = typeof subUnit.unitId === "string" && subUnit.unitId.length > 0
           ? subUnit.unitId
           : "";
 
-        if (starLevel > 1 && detail.length > 0) {
-          return `${cell}:${subUnit.unitType}:${starLevel}:${detail}`;
+        if (unitLevel > 1 && detail.length > 0) {
+          return `${cell}:${subUnit.unitType}:${unitLevel}:${detail}`;
         }
 
         if (detail.length > 0) {
           return `${cell}:${subUnit.unitType}:${detail}`;
         }
 
-        if (starLevel > 1) {
-          return `${cell}:${subUnit.unitType}:${starLevel}`;
+        if (unitLevel > 1) {
+          return `${cell}:${subUnit.unitType}:${unitLevel}`;
         }
 
         return `${cell}:${subUnit.unitType}`;
@@ -1034,6 +1028,10 @@ export class MatchRoomController {
 
   public getBossPlacementForPlayer(playerId: string): number | null {
     return this.playerStateQuery.getBossPlacementForPlayer(playerId);
+  }
+
+  public getSpecialUnitLevelForPlayer(playerId: string): number {
+    return this.getSpecialUnitLevel(playerId);
   }
 
   public applyHeroPlacementForPlayer(
@@ -1331,7 +1329,7 @@ export class MatchRoomController {
    * @param playerId プレイヤーID
    * @returns ベンチユニット配列
    */
-  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; starLevel: number }> {
+  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; unitLevel: number }> {
     return this.playerStateQuery.getBenchUnitsForPlayer(playerId);
   }
 
@@ -1339,7 +1337,7 @@ export class MatchRoomController {
     unitType: "vanguard" | "ranger" | "mage" | "assassin";
     unitId?: string;
     cost: number;
-    starLevel: number;
+    unitLevel: number;
     unitCount: number;
   }> {
     this.ensureKnownPlayer(playerId);
@@ -1641,7 +1639,7 @@ export class MatchRoomController {
       nextBenchUnits.push({
         unitType: placement.unitType,
         cost: placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1,
-        starLevel: placement.starLevel ?? 1,
+        unitLevel: placement.unitLevel ?? 1,
         unitCount: placement.unitCount ?? 1,
         ...(placement.unitId !== undefined ? { unitId: placement.unitId } : {}),
       });
@@ -1651,7 +1649,7 @@ export class MatchRoomController {
       nextBenchUnits.push({
         unitType: heroAttachedSubUnit.unitType,
         cost: heroAttachedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[heroAttachedSubUnit.unitType] ?? 1,
-        starLevel: heroAttachedSubUnit.starLevel ?? 1,
+        unitLevel: heroAttachedSubUnit.unitLevel ?? 1,
         unitCount: heroAttachedSubUnit.unitCount ?? 1,
         ...(heroAttachedSubUnit.unitId !== undefined ? { unitId: heroAttachedSubUnit.unitId } : {}),
       });
@@ -1733,6 +1731,7 @@ export class MatchRoomController {
       getBoardUnitCount: (id) => this.resolveUnitCount(id),
       getMaxBoardUnitCount: (id) => this.resolveBoardUnitLimit(id),
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
+      getHeroExclusiveShopOffers: (id) => this.heroExclusiveShopOffersByPlayer.get(id) ?? [],
       getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       isBossPlayer: (id) => this.isBossPlayer(id),
       isSubUnitSystemEnabled: () => this.enableSubUnitSystem,
@@ -1746,6 +1745,8 @@ export class MatchRoomController {
       },
       getPrepDeadlineAtMs: () => this.prepDeadlineAtMs,
       getRosterFlags: () => this.rosterFlags,
+      getSpecialUnitLevel: (id) => this.getSpecialUnitLevel(id),
+      getSelectedSpecialUnitId: (id) => this.resolveSelectedSpecialUnitId(id),
       getReservedBoardCells: () => this.getReservedSpecialBoardCells(),
       getSelectedHeroIdForPlayer: (id) => this.selectedHeroByPlayer.get(id) ?? "",
       getHeroPlacementForPlayer: (id) => this.getHeroPlacementForPlayer(id),
@@ -1764,10 +1765,13 @@ export class MatchRoomController {
         const current = this.goldByPlayer.get(id) ?? INITIAL_GOLD;
         this.goldByPlayer.set(id, current + amount);
       },
-      addXp: (id, amount) => this.addXp(id, amount),
+      getSpecialUnitLevel: (id) => this.getSpecialUnitLevel(id),
+      getSelectedSpecialUnitId: (id) => this.resolveSelectedSpecialUnitId(id),
+      upgradeSpecialUnit: (id, count) => this.upgradeSpecialUnit(id, count),
       getShopRefreshGoldCost: (id, count) => this.getShopRefreshGoldCost(id, count),
       refreshShop: (id, count) => this.refreshShopByCount(id, count),
       buyShopOffer: (id, slotIndex) => this.buyShopOfferBySlot(id, slotIndex),
+      buyHeroExclusiveShopOffer: (id, slotIndex) => this.buyHeroExclusiveShopOffer(id, slotIndex),
       deployBenchUnitToBoard: (id, benchIndex, cell, slot) =>
         this.deployBenchUnitToBoard(id, benchIndex, cell, slot),
       returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
@@ -1795,6 +1799,7 @@ export class MatchRoomController {
       getOwnedUnits: (id) => this.ownedUnitsByPlayer.get(id) ?? { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
       getBoardPlacements: (id) => this.boardPlacementsByPlayer.get(id) ?? [],
       getShopOffers: (id) => this.shopOffersByPlayer.get(id) ?? [],
+      getHeroExclusiveShopOffers: (id) => this.heroExclusiveShopOffersByPlayer.get(id) ?? [],
       getBossShopOffers: (id) => this.bossShopOffersByPlayer.get(id) ?? [],
       getRosterFlags: () => this.rosterFlags,
       logBossShop: (id, offers, purchase) => this.logBossShopPurchase(id, offers, purchase),
@@ -1803,6 +1808,10 @@ export class MatchRoomController {
 
   private buyBossShopOffer(playerId: string, slotIndex: number): void {
     this.shopManager.buyBossShopOffer(playerId, slotIndex);
+  }
+
+  private buyHeroExclusiveShopOffer(playerId: string, slotIndex: number): void {
+    this.shopManager.buyHeroExclusiveShopOffer(playerId, slotIndex);
   }
 
   private logBossShopPurchase(
@@ -1829,35 +1838,55 @@ export class MatchRoomController {
     });
   }
 
-  private addXp(playerId: string, gainedXp: number): void {
-    let currentXp = (this.xpByPlayer.get(playerId) ?? INITIAL_XP) + gainedXp;
-    let currentLevel = this.levelByPlayer.get(playerId) ?? INITIAL_LEVEL;
+  private getSpecialUnitLevel(playerId: string): number {
+    return this.specialUnitLevelByPlayer.get(playerId) ?? INITIAL_SPECIAL_UNIT_LEVEL;
+  }
 
-    while (currentLevel < MAX_LEVEL) {
-      const levelCost = XP_COSTS_BY_LEVEL[currentLevel];
-
-      if (levelCost === undefined || currentXp < levelCost) {
-        break;
-      }
-
-      currentXp -= levelCost;
-      currentLevel += 1;
+  private resolveSelectedSpecialUnitId(playerId: string): string | undefined {
+    if (this.isBossPlayer(playerId)) {
+      return this.selectedBossByPlayer.get(playerId) ?? undefined;
     }
 
-    this.xpByPlayer.set(playerId, currentXp);
-    this.levelByPlayer.set(playerId, currentLevel);
+    return this.selectedHeroByPlayer.get(playerId) ?? undefined;
+  }
+
+  private upgradeSpecialUnit(playerId: string, upgradeCount: number): void {
+    const currentLevel = this.getSpecialUnitLevel(playerId);
+    const nextLevel = upgradeSpecialUnitLevel(currentLevel, upgradeCount);
+    if (nextLevel === null) {
+      return;
+    }
+
+    this.specialUnitLevelByPlayer.set(playerId, nextLevel);
   }
 
   private initializeShopsForPrep(): void {
     this.shopManager.initializeShopsForPrep();
+    this.refreshHeroExclusiveShopOffersForPrep();
   }
 
   private refreshShopsForPrep(): void {
     this.shopManager.refreshShopsForPrep();
+    this.refreshHeroExclusiveShopOffersForPrep();
   }
 
   private refreshShopByCount(playerId: string, refreshCount: number): void {
     this.shopManager.refreshShopByCount(playerId, refreshCount);
+  }
+
+  private refreshHeroExclusiveShopOffersForPrep(): void {
+    for (const playerId of this.playerIds) {
+      if (this.isBossPlayer(playerId)) {
+        this.heroExclusiveShopOffersByPlayer.set(playerId, []);
+        continue;
+      }
+
+      const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+      this.heroExclusiveShopOffersByPlayer.set(
+        playerId,
+        this.shopOfferBuilder.buildHeroExclusiveShopOffers(selectedHeroId),
+      );
+    }
   }
 
   private buyShopOfferBySlot(playerId: string, slotIndex: number): void {
@@ -1909,7 +1938,7 @@ export class MatchRoomController {
 
     const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
       unitType: benchUnit.unitType,
-      starLevel: benchUnit.starLevel,
+      unitLevel: benchUnit.unitLevel,
       sellValue: benchUnit.cost,
       unitCount: benchUnit.unitCount,
     };
@@ -1924,7 +1953,7 @@ export class MatchRoomController {
       const returnedBenchUnit: BenchUnit = {
         unitType: replacedSubUnit.unitType,
         cost: replacedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[replacedSubUnit.unitType] ?? 1,
-        starLevel: replacedSubUnit.starLevel ?? 1,
+        unitLevel: replacedSubUnit.unitLevel ?? 1,
         unitCount: replacedSubUnit.unitCount ?? 1,
       };
       if (replacedSubUnit.unitId !== undefined) {
@@ -1952,7 +1981,7 @@ export class MatchRoomController {
     const returnedBenchUnit: BenchUnit = {
       unitType: attachedSubUnit.unitType,
       cost: attachedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[attachedSubUnit.unitType] ?? 1,
-      starLevel: attachedSubUnit.starLevel ?? 1,
+      unitLevel: attachedSubUnit.unitLevel ?? 1,
       unitCount: attachedSubUnit.unitCount ?? 1,
     };
     if (attachedSubUnit.unitId !== undefined) {
@@ -2238,7 +2267,7 @@ export class MatchRoomController {
   ): NonNullable<BoardUnitPlacement["subUnit"]> {
     const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
       unitType: benchUnit.unitType,
-      starLevel: benchUnit.starLevel,
+      unitLevel: benchUnit.unitLevel,
       sellValue: benchUnit.cost,
       unitCount: benchUnit.unitCount,
     };
@@ -2253,7 +2282,7 @@ export class MatchRoomController {
   ): NonNullable<BoardUnitPlacement["subUnit"]> {
     const attachedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
       unitType: placement.unitType,
-      starLevel: placement.starLevel ?? 1,
+      unitLevel: placement.unitLevel ?? 1,
       sellValue: placement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[placement.unitType] ?? 1,
       unitCount: placement.unitCount ?? 1,
     };
@@ -2275,7 +2304,7 @@ export class MatchRoomController {
     const benchUnit: BenchUnit = {
       unitType: attachedSubUnit.unitType,
       cost: attachedSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[attachedSubUnit.unitType] ?? 1,
-      starLevel: attachedSubUnit.starLevel ?? 1,
+      unitLevel: attachedSubUnit.unitLevel ?? 1,
       unitCount: attachedSubUnit.unitCount ?? 1,
     };
     if (attachedSubUnit.unitId !== undefined) {
@@ -2291,7 +2320,7 @@ export class MatchRoomController {
     const placement: BoardUnitPlacement = {
       cell,
       unitType: attachedSubUnit.unitType,
-      starLevel: attachedSubUnit.starLevel ?? 1,
+      unitLevel: attachedSubUnit.unitLevel ?? 1,
       unitCount: attachedSubUnit.unitCount ?? 1,
     };
     if (attachedSubUnit.sellValue !== undefined) {
@@ -2350,8 +2379,7 @@ export class MatchRoomController {
     this.boardUnitCountByPlayer.delete(playerId);
     this.boardPlacementsByPlayer.delete(playerId);
     this.goldByPlayer.delete(playerId);
-    this.xpByPlayer.delete(playerId);
-    this.levelByPlayer.delete(playerId);
+    this.specialUnitLevelByPlayer.delete(playerId);
     this.shopOffersByPlayer.delete(playerId);
     this.shopRefreshCountByPlayer.delete(playerId);
     this.shopPurchaseCountByPlayer.delete(playerId);
@@ -3082,6 +3110,7 @@ export class MatchRoomController {
         heroPlayerId,
         this.resolveHeroBattleCell(heroPlayerId),
         side,
+        this.getSpecialUnitLevel(heroPlayerId),
       );
       if (heroBattleUnit) {
         battleUnits.push(heroBattleUnit);
@@ -3105,6 +3134,7 @@ export class MatchRoomController {
           this.getBossPlacementForPlayer(bossPlayerId) ?? undefined,
           phaseHpTarget,
           side,
+          this.getSpecialUnitLevel(bossPlayerId),
         );
         if (bossBattleUnit) {
           battleUnits.push(bossBattleUnit);
@@ -3419,7 +3449,7 @@ export class MatchRoomController {
     return left.unitType === right.unitType
       && (left.unitId ?? "") === (right.unitId ?? "")
       && (left.factionId ?? "") === (right.factionId ?? "")
-      && (left.starLevel ?? 1) === (right.starLevel ?? 1)
+      && (left.unitLevel ?? 1) === (right.unitLevel ?? 1)
       && (left.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[left.unitType] ?? 1)
         === (right.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[right.unitType] ?? 1)
       && (left.unitCount ?? 1) === (right.unitCount ?? 1)

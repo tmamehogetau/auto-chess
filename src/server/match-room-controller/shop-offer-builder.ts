@@ -1,5 +1,6 @@
 import type { BoardUnitType } from "../../shared/room-messages";
 import type { RumorUnit } from "../../data/rumor-units";
+import { getHeroExclusiveOffersForHero } from "../../data/hero-exclusive-units";
 import type { ScarletMansionUnit } from "../../data/scarlet-mansion-units";
 import { ROSTER_KIND_TOUHOU, type RosterUnit } from "../roster/roster-provider";
 
@@ -16,12 +17,12 @@ interface ShopOffer {
   cost: number;
   isRumorUnit?: boolean;
   purchased?: boolean;
-  starLevel?: number;
+  unitLevel?: number;
 }
 
 const SHOP_SIZE = 5;
 const BOSS_SHOP_SIZE = 2;
-const MAX_LEVEL = 6;
+const MAX_LEVEL = 7;
 
 const UNIT_TYPE_TO_COST: Readonly<Record<BoardUnitType, number>> = {
   vanguard: 1,
@@ -43,6 +44,7 @@ const SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, numb
   4: [0.45, 0.4, 0.15],
   5: [0.3, 0.45, 0.25],
   6: [0.2, 0.45, 0.35],
+  7: [0.2, 0.45, 0.35],
 };
 
 const TOUHOU_SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, number, number, number, number]>> = {
@@ -52,6 +54,7 @@ const TOUHOU_SHOP_ODDS_BY_LEVEL: Readonly<Record<number, readonly [number, numbe
   4: [0.35, 0.3, 0.2, 0.15, 0],
   5: [0.2, 0.3, 0.25, 0.15, 0.1],
   6: [0.15, 0.25, 0.25, 0.2, 0.15],
+  7: [0.15, 0.25, 0.25, 0.2, 0.15],
 };
 
 const TOUHOU_SHOP_ODDS_BY_ROUND: Readonly<Record<number, readonly [number, number, number, number, number]>> = {
@@ -84,8 +87,8 @@ export interface ShopOfferBuilderDependencies {
   seedToUnitFloat: (seed: number) => number;
   /** Pick rarity based on odds and roll */
   pickRarity: (odds: readonly [number, number, number], roll: number) => LegacyRarity;
-  /** Get player level for rarity calculation */
-  getPlayerLevel: (playerId: string) => number;
+  /** Get special unit level for rarity calculation */
+  getSpecialUnitLevel: (playerId: string) => number;
   /** Check if shared pool system is enabled */
   isSharedPoolEnabled: () => boolean;
   /** Check if a specific pool cost is depleted */
@@ -184,6 +187,21 @@ export class ShopOfferBuilder {
     return offers;
   }
 
+  buildHeroExclusiveShopOffers(selectedHeroId: string): ShopOffer[] {
+    const heroExclusiveUnits = getHeroExclusiveOffersForHero(selectedHeroId);
+    if (heroExclusiveUnits.length === 0) {
+      return [];
+    }
+
+    return heroExclusiveUnits.slice(0, 1).map((unit) => ({
+      unitType: unit.unitType,
+      unitId: unit.unitId,
+      displayName: unit.displayName,
+      rarity: unit.cost as UnitRarity,
+      cost: unit.cost,
+    }));
+  }
+
   /**
    * Build a replacement offer after a purchase
    * Used to fill a slot after a player buys an offer
@@ -234,7 +252,7 @@ export class ShopOfferBuilder {
     refreshCount: number,
     nonce: number,
   ): ShopOffer {
-    const level = this.deps.getPlayerLevel(playerId);
+    const level = this.deps.getSpecialUnitLevel(playerId);
     const odds = SHOP_ODDS_BY_LEVEL[level] ?? SHOP_ODDS_BY_LEVEL[MAX_LEVEL] ?? [1, 0, 0];
     const seedBase = this.deps.hashToUint32(
       `${playerId}:${roundIndex}:${refreshCount}:${nonce}:${this.deps.setId}`,

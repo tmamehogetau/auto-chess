@@ -923,8 +923,8 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
     shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
-    benchUnitsSnapshot?: Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number }>,
-    boardPlacementsSnapshot?: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; starLevel?: number; unitCount?: number }>,
+    benchUnitsSnapshot?: Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; unitLevel: number; unitCount: number }>,
+    boardPlacementsSnapshot?: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; unitLevel?: number; unitCount?: number }>,
   ): void {
     logPrepCommandActions(sessionId, commandPayload, {
       logger: this.matchLogger,
@@ -1337,14 +1337,14 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         // Convert placements to BoardUnitSnapshot format
         const finalBoardUnits = boardPlacements.map((placement) => ({
           unitType: placement.unitType,
-          starLevel: placement.starLevel ?? 1,
+          unitLevel: placement.unitLevel ?? 1,
           cell: placement.cell,
         }));
 
         // Convert bench units to BenchUnitSnapshot format
         const finalBenchUnits = benchUnits.map((unit, index) => ({
           unitType: unit.unitType,
-          starLevel: unit.starLevel ?? 1,
+          unitLevel: unit.unitLevel ?? 1,
           benchIndex: index,
         }));
 

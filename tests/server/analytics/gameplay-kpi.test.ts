@@ -118,11 +118,11 @@ describe("buildTop1CompositionSignature", () => {
   it("returns signature from top-ranked player's board units", () => {
     const players = [
       playerSummary("p2", 2, 5, [
-        { unitType: "loser-unit", starLevel: 1, cell: 0 },
+        { unitType: "loser-unit", unitLevel: 1, cell: 0 },
       ]),
       playerSummary("p1", 1, 8, [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
-        { unitType: "ranger", starLevel: 1, cell: 1 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
+        { unitType: "ranger", unitLevel: 1, cell: 1 },
       ]),
     ];
     const summary = matchSummary(8, players, "p1");
@@ -130,8 +130,8 @@ describe("buildTop1CompositionSignature", () => {
     const signature = buildTop1CompositionSignature(summary);
 
     expect(signature).toEqual([
-      { unitType: "ranger", starLevel: 1 },
-      { unitType: "vanguard", starLevel: 2 },
+      { unitType: "ranger", unitLevel: 1 },
+      { unitType: "vanguard", unitLevel: 2 },
     ]);
   });
 
@@ -145,7 +145,7 @@ describe("buildTop1CompositionSignature", () => {
     const players = [
       playerSummary("p1", 1, 8, []),
       playerSummary("p2", 2, 5, [
-        { unitType: "has-units", starLevel: 1, cell: 0 },
+        { unitType: "has-units", unitLevel: 1, cell: 0 },
       ]),
     ];
     const summary = matchSummary(8, players, "p1");
@@ -158,7 +158,7 @@ describe("buildTop1CompositionSignature", () => {
   it("returns empty array when winner is null", () => {
     const players = [
       playerSummary("p1", 1, 8, [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
       ]),
     ];
     const summary = matchSummary(8, players, null);
@@ -168,12 +168,12 @@ describe("buildTop1CompositionSignature", () => {
     expect(signature).toEqual([]);
   });
 
-  it("canonicalizes units by unitType then starLevel regardless of board slot", () => {
+  it("canonicalizes units by unitType then unitLevel regardless of board slot", () => {
     const players = [
       playerSummary("p1", 1, 8, [
-        { unitType: "middle", starLevel: 1, cell: 5 },
-        { unitType: "first", starLevel: 3, cell: 8 },
-        { unitType: "last", starLevel: 2, cell: 2 },
+        { unitType: "middle", unitLevel: 1, cell: 5 },
+        { unitType: "first", unitLevel: 3, cell: 8 },
+        { unitType: "last", unitLevel: 2, cell: 2 },
       ]),
     ];
     const summary = matchSummary(8, players, "p1");
@@ -181,33 +181,33 @@ describe("buildTop1CompositionSignature", () => {
     const signature = buildTop1CompositionSignature(summary);
 
     expect(signature).toEqual([
-      { unitType: "first", starLevel: 3 },
-      { unitType: "last", starLevel: 2 },
-      { unitType: "middle", starLevel: 1 },
+      { unitType: "first", unitLevel: 3 },
+      { unitType: "last", unitLevel: 2 },
+      { unitType: "middle", unitLevel: 1 },
     ]);
   });
 
-  it("ignores cell order and sorts by unitType then starLevel", () => {
+  it("ignores cell order and sorts by unitType then unitLevel", () => {
     const players = [
       playerSummary("p1", 1, 8, [
-        { unitType: "vanguard", starLevel: 2, cell: 0 },
+        { unitType: "vanguard", unitLevel: 2, cell: 0 },
       ]),
     ];
     const summary = matchSummary(8, players, "p1");
 
     const signature = buildTop1CompositionSignature(summary);
 
-    expect(signature).toEqual([{ unitType: "vanguard", starLevel: 2 }]);
+    expect(signature).toEqual([{ unitType: "vanguard", unitLevel: 2 }]);
   });
 
   it("finds winner by winner field, not just rank 1", () => {
     // Edge case: ranking order might differ from winner
     const players = [
       playerSummary("p1", 1, 8, [
-        { unitType: "rank1-unit", starLevel: 1, cell: 0 },
+        { unitType: "rank1-unit", unitLevel: 1, cell: 0 },
       ]),
       playerSummary("p2", 2, 8, [
-        { unitType: "actual-winner-unit", starLevel: 2, cell: 0 },
+        { unitType: "actual-winner-unit", unitLevel: 2, cell: 0 },
       ]),
     ];
     // Winner is p2 even though p1 is rank 1 in this scenario
@@ -215,7 +215,7 @@ describe("buildTop1CompositionSignature", () => {
 
     const signature = buildTop1CompositionSignature(summary);
 
-    expect(signature).toEqual([{ unitType: "actual-winner-unit", starLevel: 2 }]);
+    expect(signature).toEqual([{ unitType: "actual-winner-unit", unitLevel: 2 }]);
   });
 });
 
@@ -226,9 +226,9 @@ describe("buildTop1CompositionSignature", () => {
 describe("buildGameplayKpiSummary", () => {
   it("calculates r8CompletionRate and counts for aggregation (R8到達バイナリ)", () => {
     const players = [
-      playerSummary("p1", 1, 8, [{ unitType: "a", starLevel: 1, cell: 0 }]),
-      playerSummary("p2", 2, 5, [{ unitType: "b", starLevel: 1, cell: 0 }]),
-      playerSummary("p3", 3, 3, [{ unitType: "c", starLevel: 1, cell: 0 }]),
+      playerSummary("p1", 1, 8, [{ unitType: "a", unitLevel: 1, cell: 0 }]),
+      playerSummary("p2", 2, 5, [{ unitType: "b", unitLevel: 1, cell: 0 }]),
+      playerSummary("p3", 3, 3, [{ unitType: "c", unitLevel: 1, cell: 0 }]),
     ];
     const summary = matchSummary(8, players, "p1");
 
@@ -244,10 +244,10 @@ describe("buildGameplayKpiSummary", () => {
   it("includes top1CompositionSignature as string for aggregation", () => {
     const players = [
       playerSummary("p1", 1, 8, [
-        { unitType: "vanguard", starLevel: 3, cell: 0 },
-        { unitType: "ranger", starLevel: 2, cell: 1 },
+        { unitType: "vanguard", unitLevel: 3, cell: 0 },
+        { unitType: "ranger", unitLevel: 2, cell: 1 },
       ]),
-      playerSummary("p2", 2, 5, [{ unitType: "other", starLevel: 1, cell: 0 }]),
+      playerSummary("p2", 2, 5, [{ unitType: "other", unitLevel: 1, cell: 0 }]),
     ];
     const summary = matchSummary(8, players, "p1");
 
@@ -274,8 +274,8 @@ describe("buildGameplayKpiSummary", () => {
 
   it("preserves totalRounds and playerCount", () => {
     const players = [
-      playerSummary("p1", 1, 10, [{ unitType: "a", starLevel: 1, cell: 0 }]),
-      playerSummary("p2", 2, 7, [{ unitType: "b", starLevel: 1, cell: 0 }]),
+      playerSummary("p1", 1, 10, [{ unitType: "a", unitLevel: 1, cell: 0 }]),
+      playerSummary("p2", 2, 7, [{ unitType: "b", unitLevel: 1, cell: 0 }]),
     ];
     const summary = matchSummary(10, players, "p1");
 
@@ -288,7 +288,7 @@ describe("buildGameplayKpiSummary", () => {
   it("handles single player match", () => {
     const players = [
       playerSummary("solo", 1, 5, [
-        { unitType: "only", starLevel: 2, cell: 0 },
+        { unitType: "only", unitLevel: 2, cell: 0 },
       ]),
     ];
     const summary = matchSummary(5, players, "solo");

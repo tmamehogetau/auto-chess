@@ -53,6 +53,7 @@ class FakeElement {
   public className = "";
   public dataset: Record<string, string> = {};
   public textContent = "";
+  public hidden = false;
   public disabled = false;
   public onclick: (() => void) | null = null;
   public onmouseenter: (() => void) | null = null;
@@ -299,8 +300,7 @@ describe("player surface renderers", () => {
       player: {
         role: "boss",
         gold: 19,
-        level: 3,
-        xp: 2,
+        specialUnitLevel: 3,
         hp: 88,
         remainingLives: 2,
         bossShopOffers: [
@@ -323,7 +323,7 @@ describe("player surface renderers", () => {
     expect(shopCopyElement.textContent).toContain("19G");
     expect(shopCopyElement.textContent).toContain("LV 3");
     expect(shopCopyElement.textContent).toContain("HP 88");
-    expect(heroUpgradeCopyElement.textContent).toContain("主人公強化");
+    expect(heroUpgradeCopyElement.textContent).toContain("ボス強化");
     expect(heroUpgradeCopyElement.textContent).toContain("LV 3");
     expect(refreshCopyElement.textContent).toContain("リロード");
     expect(bossShopCopyElement.textContent).toContain("Boss shop");
@@ -333,6 +333,62 @@ describe("player surface renderers", () => {
     expect(roomCopyElement.textContent).toContain("shared-456");
     expect(deadlineCopyElement.textContent).toContain("Prep deadline");
     expect(deadlineCopyElement.textContent).toContain("15s remaining");
+  });
+
+  test("prep summary renders raid hero-exclusive shop copy and slot when offers are present", () => {
+    const heroExclusiveShopElement = new FakeElement();
+    const heroExclusiveShopCopyElement = new FakeElement();
+    const heroExclusiveShopSlotElements = Array.from({ length: 1 }, () => new FakeButtonElement());
+    const player: Parameters<typeof renderPlayerPrepSummary>[0]["player"] = {
+      role: "raid",
+      ready: false,
+      selectedHeroId: "keiki",
+      gold: 9,
+      heroExclusiveShopOffers: [
+        { unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi", displayName: "杖刀偶磨弓" },
+      ],
+    };
+
+    renderPlayerPrepSummary({
+      heroExclusiveShopElement: heroExclusiveShopElement as unknown as HTMLElement,
+      heroExclusiveShopCopyElement: heroExclusiveShopCopyElement as unknown as HTMLElement,
+      heroExclusiveShopSlotElements: heroExclusiveShopSlotElements as unknown as HTMLButtonElement[],
+      player,
+      currentPhase: "Prep",
+      playerFacingPhase: "purchase",
+      selectedBenchIndex: null,
+    });
+
+    expect(heroExclusiveShopElement.hidden).toBe(false);
+    expect(heroExclusiveShopCopyElement.textContent).toContain("EXCLUSIVE");
+    expect(heroExclusiveShopCopyElement.textContent).toContain("通常配置可能");
+    expect(heroExclusiveShopCopyElement.textContent).toContain("main/sub");
+    expect(heroExclusiveShopSlotElements[0]?.textContent).toContain("杖刀偶磨弓");
+    expect(heroExclusiveShopSlotElements[0]?.textContent).toContain("3G");
+    expect(heroExclusiveShopSlotElements[0]?.disabled).toBe(false);
+  });
+
+  test("prep summary hides raid hero-exclusive shop when no hero is selected", () => {
+    const heroExclusiveShopElement = new FakeElement();
+    const heroExclusiveShopCopyElement = new FakeElement();
+    const player: Parameters<typeof renderPlayerPrepSummary>[0]["player"] = {
+      role: "raid",
+      gold: 9,
+      selectedHeroId: "",
+      heroExclusiveShopOffers: [],
+    };
+
+    renderPlayerPrepSummary({
+      heroExclusiveShopElement: heroExclusiveShopElement as unknown as HTMLElement,
+      heroExclusiveShopCopyElement: heroExclusiveShopCopyElement as unknown as HTMLElement,
+      player,
+      currentPhase: "Prep",
+      playerFacingPhase: "purchase",
+      selectedBenchIndex: null,
+    });
+
+    expect(heroExclusiveShopElement.hidden).toBe(true);
+    expect(heroExclusiveShopCopyElement.textContent).toContain("主人公選択後");
   });
 
   test("prep summary renders purchase shop entries with icons for the four-section shop surface", () => {
@@ -405,6 +461,24 @@ describe("player surface renderers", () => {
 
     expect(benchSlotElements[0]?.textContent).toContain("紅美鈴");
     expect(benchSlotElements[1]?.textContent).toContain("パチュリー・ノーレッジ");
+  });
+
+  test("prep summary shows unit level in bench labels when a reserve unit is upgraded", () => {
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      player: {
+        benchUnits: ["vanguard:2", "mage"],
+        benchDisplayNames: ["紅美鈴", "パチュリー・ノーレッジ"],
+      },
+      currentPhase: "Prep",
+      selectedBenchIndex: null,
+    });
+
+    expect(benchSlotElements[0]?.textContent).toContain("紅美鈴 Lv2");
+    expect(benchSlotElements[1]?.textContent).toContain("パチュリー・ノーレッジ");
+    expect(benchSlotElements[1]?.textContent).not.toContain("Lv");
   });
 
   test("prep summary renders idle guidance in the left detail card when nothing is hovered", () => {
@@ -566,8 +640,7 @@ describe("player surface renderers", () => {
         boardUnitCount: 1,
         gold: 11,
         hp: 92,
-        level: 3,
-        xp: 2,
+        specialUnitLevel: 3,
         remainingLives: 2,
         ready: false,
       },
@@ -745,8 +818,7 @@ describe("player surface renderers", () => {
     renderPlayerPrepSummary({
       heroUpgradeCopyElement: heroUpgradeCopyElement as unknown as HTMLElement,
       player: {
-        level: 3,
-        xp: 2,
+        specialUnitLevel: 3,
       },
       currentPhase: "Prep",
       selectedBenchIndex: null,

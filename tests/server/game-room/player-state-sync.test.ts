@@ -59,8 +59,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 3,
         gold: 25,
-        xp: 4,
-        level: 2,
+        specialUnitLevel: 2,
         shopOffers: [
           { unitType: "vanguard", unitId: "shop:vanguard", cost: 1, rarity: 1, isRumorUnit: false },
           { unitType: "mage", unitId: "shop:mage", cost: 2, rarity: 2, isRumorUnit: true },
@@ -77,6 +76,9 @@ describe("player-state-sync", () => {
         },
         bossShopOffers: [
           { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false },
+        ],
+        heroExclusiveShopOffers: [
+          { unitType: "vanguard", unitId: "mayumi", cost: 3, rarity: 3, isRumorUnit: false },
         ],
         lastBattleResult: {
           opponentId: "player-2",
@@ -106,8 +108,7 @@ describe("player-state-sync", () => {
       expect(playerState.eliminated).toBe(false);
       expect(playerState.boardUnitCount).toBe(3);
       expect(playerState.gold).toBe(25);
-      expect(playerState.xp).toBe(4);
-      expect(playerState.level).toBe(2);
+      expect(playerState.specialUnitLevel).toBe(2);
       expect(playerState.shopLocked).toBe(true);
 
       // Owned units
@@ -142,8 +143,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 3,
         gold: 25,
-        xp: 4,
-        level: 2,
+        specialUnitLevel: 2,
         shopOffers: [
           {
             unitType: "vanguard",
@@ -196,8 +196,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 0,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -230,8 +229,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -295,8 +293,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -369,8 +366,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -405,8 +401,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -448,8 +443,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -477,8 +471,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -486,6 +479,9 @@ describe("player-state-sync", () => {
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         bossShopOffers: [
           { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false },
+        ],
+        heroExclusiveShopOffers: [
+          { unitType: "vanguard", unitId: "mayumi", cost: 3, rarity: 3, isRumorUnit: false },
         ],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -503,6 +499,8 @@ describe("player-state-sync", () => {
       expect(playerState.bossShopOffers.length).toBe(1);
       expect(playerState.bossShopOffers[0]!.unitType).toBe("vanguard");
       expect(playerState.bossShopOffers[0]!.cost).toBe(5);
+      expect((playerState as any).heroExclusiveShopOffers.length).toBe(1);
+      expect((playerState as any).heroExclusiveShopOffers[0]!.unitId).toBe("mayumi");
     });
 
     it("should sync boss preference fields from controller status", () => {
@@ -512,8 +510,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -543,8 +540,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [
           { unitType: "mage", unitId: "shop:mage", cost: 2, rarity: 2, isRumorUnit: true },
           { unitType: "vanguard", unitId: "shop:vanguard", cost: 1, rarity: 1, isRumorUnit: false },
@@ -585,8 +581,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 2,
         gold: 10,
-        xp: 2,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [{ unitType: "mage", unitId: "shop:mage", cost: 3, rarity: 2, isRumorUnit: false }],
         shopLocked: false,
         benchUnits: ["new-unit-1"],
@@ -621,8 +616,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 5,
         gold: 30,
-        xp: 8,
-        level: 3,
+        specialUnitLevel: 3,
         shopLocked: false,
         ownedUnits: {
           vanguard: 3,
@@ -655,8 +649,7 @@ describe("player-state-sync", () => {
       expect(playerState.lastCmdSeq).toBe(42);
       expect(playerState.boardUnitCount).toBe(5);
       expect(playerState.gold).toBe(30);
-      expect(playerState.xp).toBe(8);
-      expect(playerState.level).toBe(3);
+      expect(playerState.specialUnitLevel).toBe(3);
       expect(playerState.shopLocked).toBe(false);
       expect(playerState.ownedVanguard).toBe(3);
       expect(playerState.ownedRanger).toBe(2);
@@ -680,8 +673,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 5,
         gold: 30,
-        xp: 8,
-        level: 3,
+        specialUnitLevel: 3,
         shopLocked: false,
         ownedUnits: {
           vanguard: 3,
@@ -745,8 +737,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -766,8 +757,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -794,8 +784,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 2,
         gold: 20,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -818,8 +807,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [
@@ -846,8 +834,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -859,6 +846,9 @@ describe("player-state-sync", () => {
         bossShopOffers: [
           { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false },
         ],
+        heroExclusiveShopOffers: [
+          { unitType: "assassin", unitId: "shion", cost: 3, rarity: 3, isRumorUnit: false },
+        ],
       };
 
       syncPlayerStateFromCommandResult(playerState, cmdResult, 1);
@@ -867,14 +857,15 @@ describe("player-state-sync", () => {
       expect(playerState.bossShopOffers[0]!.unitType).toBe("vanguard");
       expect(playerState.bossShopOffers[0]!.cost).toBe(5);
       expect(playerState.bossShopOffers[0]!.isRumorUnit).toBe(false);
+      expect((playerState as any).heroExclusiveShopOffers.length).toBe(1);
+      expect((playerState as any).heroExclusiveShopOffers[0]!.unitId).toBe("shion");
     });
 
     it("should sync selectedHeroId and isRumorEligible when provided", () => {
       const cmdResult = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -896,8 +887,7 @@ describe("player-state-sync", () => {
       const cmdResult: CommandResultPayload = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -929,8 +919,7 @@ describe("player-state-sync", () => {
       const cmdResult = {
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopLocked: false,
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         shopOffers: [],
@@ -963,8 +952,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 2,
         gold: 12,
-        xp: 3,
-        level: 2,
+        specialUnitLevel: 2,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -999,8 +987,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 1,
         gold: 12,
-        xp: 0,
-        level: 2,
+        specialUnitLevel: 2,
         shopOffers: [],
         shopLocked: false,
         benchUnits: ["vanguard"],
@@ -1034,8 +1021,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 2,
         gold: 10,
-        xp: 1,
-        level: 2,
+        specialUnitLevel: 2,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -1067,8 +1053,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],
@@ -1099,8 +1084,7 @@ describe("player-state-sync", () => {
         eliminated: false,
         boardUnitCount: 4,
         gold: 15,
-        xp: 0,
-        level: 1,
+        specialUnitLevel: 1,
         shopOffers: [],
         shopLocked: false,
         benchUnits: [],

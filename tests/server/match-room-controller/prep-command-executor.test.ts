@@ -12,10 +12,13 @@ describe("PrepCommandExecutor", () => {
     setBoardPlacements: vi.fn(),
     setShopLock: vi.fn(),
     addGold: vi.fn(),
-    addXp: vi.fn(),
+    getSpecialUnitLevel: vi.fn().mockReturnValue(1),
+    getSelectedSpecialUnitId: vi.fn().mockReturnValue("reimu"),
+    upgradeSpecialUnit: vi.fn(),
     getShopRefreshGoldCost: vi.fn().mockImplementation((_playerId: string, refreshCount: number) => 2 * refreshCount),
     refreshShop: vi.fn(),
     buyShopOffer: vi.fn(),
+    buyHeroExclusiveShopOffer: vi.fn(),
     deployBenchUnitToBoard: vi.fn(),
     returnBoardUnitToBench: vi.fn(),
     moveBoardUnit: vi.fn(),
@@ -32,6 +35,7 @@ describe("PrepCommandExecutor", () => {
     getBoardPlacements: vi.fn().mockReturnValue([]),
     getShopOffers: vi.fn().mockReturnValue([]),
     getBossShopOffers: vi.fn().mockReturnValue([]),
+    getHeroExclusiveShopOffers: vi.fn().mockReturnValue([]),
     getRosterFlags: vi.fn().mockReturnValue({
       enableHeroSystem: false,
       enableSharedPool: false,
@@ -78,13 +82,13 @@ describe("PrepCommandExecutor", () => {
 
       executePrepCommand("p1", 1, payload, deps);
 
-      // normalized placements have starLevel defaulted to 1 and sorted by cell
+      // normalized placements have unitLevel defaulted to 1 and sorted by cell
       expect(deps.setBoardPlacements).toHaveBeenCalledWith("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
       ]);
     });
 
-    test("normalizes board placements with default starLevel", () => {
+    test("normalizes board placements with default unitLevel", () => {
       const deps = createDependencies();
       const placements = [
         { cell: 3, unitType: "ranger" as const },
@@ -94,10 +98,10 @@ describe("PrepCommandExecutor", () => {
 
       executePrepCommand("p1", 1, payload, deps);
 
-      // Should be sorted by cell and have starLevel defaulted to 1
+      // Should be sorted by cell and have unitLevel defaulted to 1
       expect(deps.setBoardPlacements).toHaveBeenCalledWith("p1", [
-        { cell: 1, unitType: "mage", starLevel: 1 },
-        { cell: 3, unitType: "ranger", starLevel: 1 },
+        { cell: 1, unitType: "mage", unitLevel: 1 },
+        { cell: 3, unitType: "ranger", unitLevel: 1 },
       ]);
     });
 
@@ -140,25 +144,37 @@ describe("PrepCommandExecutor", () => {
     });
   });
 
-  describe("XP Purchase", () => {
-    test("spends gold and adds XP when xpPurchaseCount provided", () => {
+  describe("Special Unit Upgrade", () => {
+    test("spends gold and upgrades the special unit when specialUnitUpgradeCount provided", () => {
       const deps = createDependencies();
-      const payload: CommandPayload = { xpPurchaseCount: 2 };
+      const payload: CommandPayload = { specialUnitUpgradeCount: 2 };
 
       executePrepCommand("p1", 1, payload, deps);
 
-      expect(deps.addGold).toHaveBeenCalledWith("p1", -8); // 2 * 4 XP_PURCHASE_COST
-      expect(deps.addXp).toHaveBeenCalledWith("p1", 8); // 2 * 4 XP_PURCHASE_GAIN
+      expect(deps.addGold).toHaveBeenCalledWith("p1", -4); // 1->2:2, 2->3:2
+      expect(deps.upgradeSpecialUnit).toHaveBeenCalledWith("p1", 2);
     });
 
-    test("does not spend gold when xpPurchaseCount not provided", () => {
+    test("uses Jyoon-specific upgrade costs", () => {
+      const deps = createDependencies({
+        getSelectedSpecialUnitId: vi.fn().mockReturnValue("jyoon"),
+      });
+      const payload: CommandPayload = { specialUnitUpgradeCount: 2 };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.addGold).toHaveBeenCalledWith("p1", -6); // 1->2:3, 2->3:3
+      expect(deps.upgradeSpecialUnit).toHaveBeenCalledWith("p1", 2);
+    });
+
+    test("does not spend gold when specialUnitUpgradeCount not provided", () => {
       const deps = createDependencies();
       const payload: CommandPayload = {};
 
       executePrepCommand("p1", 1, payload, deps);
 
       expect(deps.addGold).not.toHaveBeenCalled();
-      expect(deps.addXp).not.toHaveBeenCalled();
+      expect(deps.upgradeSpecialUnit).not.toHaveBeenCalled();
     });
   });
 
@@ -293,6 +309,22 @@ describe("PrepCommandExecutor", () => {
     });
   });
 
+  describe("Hero-Exclusive Shop Buy", () => {
+    test("spends gold and buys hero-exclusive shop offer", () => {
+      const deps = createDependencies({
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
+      });
+      const payload: CommandPayload = { heroExclusiveShopBuySlotIndex: 0 };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.addGold).toHaveBeenCalledWith("p1", -3);
+      expect(deps.buyHeroExclusiveShopOffer).toHaveBeenCalledWith("p1", 0);
+    });
+  });
+
   describe("Bench to Board", () => {
     test("deploys bench unit to board when benchToBoardCell provided", () => {
       const deps = createDependencies();
@@ -321,7 +353,7 @@ describe("PrepCommandExecutor", () => {
     test("sells bench unit and adds gold when benchSellIndex provided", () => {
       const deps = createDependencies({
         getBenchUnits: vi.fn().mockReturnValue([
-          { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1 },
+          { unitType: "vanguard", cost: 1, unitLevel: 1, unitCount: 1 },
         ]),
       });
       const payload: CommandPayload = { benchSellIndex: 0 };
@@ -360,19 +392,24 @@ describe("PrepCommandExecutor", () => {
         getShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", rarity: 1, cost: 1 },
         ]),
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
       });
       const payload: CommandPayload = {
-        xpPurchaseCount: 1, // 4 gold
+        specialUnitUpgradeCount: 1, // 2 gold
         shopBuySlotIndex: 0, // 1 gold
+        heroExclusiveShopBuySlotIndex: 0, // 3 gold
         benchToBoardCell: { benchIndex: 0, cell: 3 },
         shopLock: true,
       };
 
       executePrepCommand("p1", 1, payload, deps);
 
-      expect(deps.addGold).toHaveBeenCalledWith("p1", -5); // 4 + 1
-      expect(deps.addXp).toHaveBeenCalledWith("p1", 4);
+      expect(deps.addGold).toHaveBeenCalledWith("p1", -6); // 2 + 1 + 3
+      expect(deps.upgradeSpecialUnit).toHaveBeenCalledWith("p1", 1);
       expect(deps.buyShopOffer).toHaveBeenCalledWith("p1", 0);
+      expect(deps.buyHeroExclusiveShopOffer).toHaveBeenCalledWith("p1", 0);
       expect(deps.deployBenchUnitToBoard).toHaveBeenCalledWith("p1", 0, 3);
       expect(deps.setShopLock).toHaveBeenCalledWith("p1", true);
     });
@@ -384,14 +421,21 @@ describe("PrepCommandExecutor", () => {
           executionOrder.push("getShopOffers");
           return [{ unitType: "vanguard", rarity: 1, cost: 1 }];
         }),
+        getHeroExclusiveShopOffers: vi.fn().mockImplementation(() => {
+          executionOrder.push("getHeroExclusiveShopOffers");
+          return [{ unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 }];
+        }),
         addGold: vi.fn().mockImplementation(() => {
           executionOrder.push("addGold");
         }),
-        addXp: vi.fn().mockImplementation(() => {
-          executionOrder.push("addXp");
+        upgradeSpecialUnit: vi.fn().mockImplementation(() => {
+          executionOrder.push("upgradeSpecialUnit");
         }),
         buyShopOffer: vi.fn().mockImplementation(() => {
           executionOrder.push("buyShopOffer");
+        }),
+        buyHeroExclusiveShopOffer: vi.fn().mockImplementation(() => {
+          executionOrder.push("buyHeroExclusiveShopOffer");
         }),
         setLastCmdSeq: vi.fn().mockImplementation(() => {
           executionOrder.push("setLastCmdSeq");
@@ -399,15 +443,17 @@ describe("PrepCommandExecutor", () => {
       });
 
       const payload: CommandPayload = {
-        xpPurchaseCount: 1,
+        specialUnitUpgradeCount: 1,
         shopBuySlotIndex: 0,
+        heroExclusiveShopBuySlotIndex: 0,
       };
 
       executePrepCommand("p1", 1, payload, deps);
 
       // Gold operations happen before state mutations
-      expect(executionOrder.indexOf("addGold")).toBeLessThan(executionOrder.indexOf("addXp"));
+      expect(executionOrder.indexOf("addGold")).toBeLessThan(executionOrder.indexOf("upgradeSpecialUnit"));
       expect(executionOrder.indexOf("addGold")).toBeLessThan(executionOrder.indexOf("buyShopOffer"));
+      expect(executionOrder.indexOf("addGold")).toBeLessThan(executionOrder.indexOf("buyHeroExclusiveShopOffer"));
       // Last command sequence is always last
       expect(executionOrder[executionOrder.length - 1]).toBe("setLastCmdSeq");
     });

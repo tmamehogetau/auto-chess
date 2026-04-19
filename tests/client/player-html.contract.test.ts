@@ -292,7 +292,7 @@ describe("player.html contract", () => {
     expect(prepSection.includes(">主人公強化<")).toBe(true);
     expect(prepSection.includes(">Buy XP<")).toBe(false);
     expect(prepSection.includes("data-player-buy-xp-button")).toBe(true);
-    expect(prepSection.includes(">強化 +1 (4G)<")).toBe(true);
+    expect(prepSection.includes(">強化 +1<")).toBe(true);
     expect(prepSection.includes(">リロード<")).toBe(true);
   });
 

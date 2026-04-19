@@ -42,6 +42,7 @@ function createHarness(options?: {
   isBossPlayer?: boolean;
   initialOffers?: ShopManagerShopOffer[];
   bossOffers?: ShopManagerShopOffer[];
+  heroExclusiveOffers?: ShopManagerShopOffer[];
   replacementOffer?: ShopManagerShopOffer;
   boardPlacements?: BoardUnitPlacement[];
   benchUnits?: ShopManagerBenchUnit[];
@@ -71,6 +72,7 @@ function createHarness(options?: {
     rumorInfluenceEligibleByPlayer: new Map([["p1", false]]),
     shopOffersByPlayer: new Map([["p1", options?.initialOffers ?? []]]),
     bossShopOffersByPlayer: new Map([["p1", options?.bossOffers ?? []]]),
+    heroExclusiveShopOffersByPlayer: new Map([["p1", options?.heroExclusiveOffers ?? []]]),
     battleResultsByPlayer: new Map(),
     benchUnitsByPlayer: new Map([["p1", options?.benchUnits ?? []]]),
     boardPlacementsByPlayer: new Map([["p1", options?.boardPlacements ?? []]]),
@@ -130,7 +132,7 @@ describe("ShopManager", () => {
       { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
     ]);
     expect(deps.benchUnitsByPlayer.get("p1")).toEqual([
-      { unitType: "ranger", unitId: "nazrin", cost: 1, starLevel: 1, unitCount: 1 },
+      { unitType: "ranger", unitId: "nazrin", cost: 1, unitLevel: 1, unitCount: 1 },
     ]);
     expect(deps.ownedUnitsByPlayer.get("p1")).toEqual({
       vanguard: 0,
@@ -144,17 +146,30 @@ describe("ShopManager", () => {
   it("marks boss shop offers as purchased and does not duplicate bench units on repeat buys", () => {
     const { manager, deps } = createHarness({
       enableBossExclusiveShop: true,
-      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 }],
+      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2 }],
     });
 
     manager.buyBossShopOffer("p1", 0);
     manager.buyBossShopOffer("p1", 0);
 
     expect(deps.benchUnitsByPlayer.get("p1")).toEqual([
-      { unitType: "assassin", unitId: "murasa", cost: 3, starLevel: 2, unitCount: 1 },
+      { unitType: "assassin", unitId: "murasa", cost: 3, unitLevel: 2, unitCount: 1 },
     ]);
     expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
-      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2, purchased: true },
+      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2, purchased: true },
+    ]);
+  });
+
+  it("normalizes legacy boss shop unitLevel input to unitLevel after purchase", () => {
+    const { manager, deps } = createHarness({
+      enableBossExclusiveShop: true,
+      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2 }] as unknown as ShopManagerShopOffer[],
+    });
+
+    manager.buyBossShopOffer("p1", 0);
+
+    expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2, purchased: true },
     ]);
   });
 
@@ -168,7 +183,7 @@ describe("ShopManager", () => {
       rosterFlags: touhouPoolFlags,
       enableSharedPool: true,
       boardPlacements: [{ cell: 0, unitType: "ranger", unitId: "nazrin", sellValue: 1, unitCount: 1 }],
-      benchUnits: [{ unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 }],
+      benchUnits: [{ unitType: "vanguard", unitId: "rin", cost: 1, unitLevel: 1, unitCount: 1 }],
     });
 
     if (!sharedPool) {
@@ -191,7 +206,7 @@ describe("ShopManager", () => {
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
-      starLevel: 1,
+      unitLevel: 1,
       unitCount: 1,
     }));
     const { manager, deps } = createHarness({
@@ -219,12 +234,12 @@ describe("ShopManager", () => {
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
-      starLevel: 1,
+      unitLevel: 1,
       unitCount: 1,
     }));
     const { manager, deps } = createHarness({
       enableBossExclusiveShop: true,
-      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 }],
+      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2 }],
       benchUnits: fullBench,
     });
 
@@ -232,7 +247,87 @@ describe("ShopManager", () => {
 
     expect(deps.benchUnitsByPlayer.get("p1")).toEqual(fullBench);
     expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
-      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 },
+      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2 },
+    ]);
+  });
+
+  it("marks hero-exclusive shop offers as purchased and does not duplicate bench units on repeat buys", () => {
+    const { manager, deps } = createHarness({
+      heroExclusiveOffers: [{ unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 }],
+    });
+
+    manager.buyHeroExclusiveShopOffer("p1", 0);
+    manager.buyHeroExclusiveShopOffer("p1", 0);
+
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual([
+      { unitType: "vanguard", unitId: "mayumi", cost: 3, unitLevel: 1, unitCount: 1 },
+    ]);
+    expect(deps.heroExclusiveShopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3, unitLevel: 1, purchased: true },
+    ]);
+  });
+
+  it("does not mutate hero-exclusive shop state when a buy would overflow a full bench", () => {
+    const fullBench = Array.from({ length: 8 }, (_, index) => ({
+      unitType: "vanguard" as const,
+      unitId: `bench-${index}`,
+      cost: 1,
+      unitLevel: 1,
+      unitCount: 1,
+    }));
+    const { manager, deps } = createHarness({
+      heroExclusiveOffers: [{ unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 }],
+      benchUnits: fullBench,
+    });
+
+    manager.buyHeroExclusiveShopOffer("p1", 0);
+
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual(fullBench);
+    expect(deps.heroExclusiveShopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+    ]);
+  });
+
+  it("merges a hero-exclusive shop purchase into an existing board unit even when the bench is full", () => {
+    const fullBench = Array.from({ length: 8 }, (_, index) => ({
+      unitType: "vanguard" as const,
+      unitId: `bench-${index}`,
+      cost: 1,
+      unitLevel: 1,
+      unitCount: 1,
+    }));
+    const { manager, deps } = createHarness({
+      heroExclusiveOffers: [{ unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 }],
+      benchUnits: fullBench,
+      boardPlacements: [{
+        cell: 1,
+        unitType: "vanguard",
+        unitId: "mayumi",
+        sellValue: 3,
+        unitLevel: 2,
+        unitCount: 4,
+      }],
+      ownedUnits: {
+        vanguard: 4,
+        ranger: 0,
+        mage: 0,
+        assassin: 0,
+      },
+    });
+
+    manager.buyHeroExclusiveShopOffer("p1", 0);
+
+    expect(deps.benchUnitsByPlayer.get("p1")).toHaveLength(8);
+    expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([{
+      cell: 1,
+      unitType: "vanguard",
+      unitId: "mayumi",
+      sellValue: 6,
+      unitLevel: 5,
+      unitCount: 5,
+    }]);
+    expect(deps.heroExclusiveShopOffersByPlayer.get("p1")).toEqual([
+      { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3, unitLevel: 1, purchased: true },
     ]);
   });
 
@@ -241,7 +336,7 @@ describe("ShopManager", () => {
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
-      starLevel: 1,
+      unitLevel: 1,
       unitCount: 1,
     }));
     const { manager, deps } = createHarness({
@@ -255,7 +350,7 @@ describe("ShopManager", () => {
           unitType: "mage",
           unitId: "patchouli",
           sellValue: 2,
-          starLevel: 1,
+          unitLevel: 1,
           unitCount: 1,
         },
       }],
@@ -279,7 +374,7 @@ describe("ShopManager", () => {
         unitType: "mage",
         unitId: "patchouli",
         sellValue: 4,
-        starLevel: 1,
+        unitLevel: 2,
         unitCount: 2,
       },
     }]);
@@ -290,19 +385,19 @@ describe("ShopManager", () => {
       unitType: "vanguard" as const,
       unitId: `bench-${index}`,
       cost: 1,
-      starLevel: 1,
+      unitLevel: 1,
       unitCount: 1,
     }));
     const { manager, deps } = createHarness({
       enableBossExclusiveShop: true,
-      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2 }],
+      bossOffers: [{ unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2 }],
       benchUnits: fullBench,
       boardPlacements: [{
         cell: 1,
         unitType: "assassin",
         unitId: "murasa",
         sellValue: 3,
-        starLevel: 2,
+        unitLevel: 2,
         unitCount: 4,
       }],
       ownedUnits: {
@@ -321,11 +416,11 @@ describe("ShopManager", () => {
       unitType: "assassin",
       unitId: "murasa",
       sellValue: 6,
-      starLevel: 2,
+      unitLevel: 5,
       unitCount: 5,
     }]);
     expect(deps.bossShopOffersByPlayer.get("p1")).toEqual([
-      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, starLevel: 2, purchased: true },
+      { unitType: "assassin", unitId: "murasa", rarity: 3, cost: 3, unitLevel: 2, purchased: true },
     ]);
   });
 
@@ -337,7 +432,7 @@ describe("ShopManager", () => {
         { cell: 19, unitType: "mage", sellValue: 2, unitCount: 1 },
       ],
       benchUnits: [
-        { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "ranger", cost: 1, unitLevel: 1, unitCount: 1 },
       ],
     });
 
@@ -359,7 +454,7 @@ describe("ShopManager", () => {
         { cell: 5, unitType: "mage", sellValue: 2, unitCount: 1 },
       ],
       benchUnits: [
-        { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "ranger", cost: 1, unitLevel: 1, unitCount: 1 },
       ],
     });
 
@@ -383,13 +478,13 @@ describe("ShopManager", () => {
         unitType: "vanguard",
         unitId: "meiling",
         sellValue: 1,
-        starLevel: 1,
+        unitLevel: 1,
         unitCount: 1,
         subUnit: {
           unitType: "mage",
           unitId: "patchouli",
           sellValue: 2,
-          starLevel: 1,
+          unitLevel: 1,
           unitCount: 1,
         },
       }],

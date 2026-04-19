@@ -20,7 +20,7 @@ import type {
  */
 export interface UnitSignature {
   unitType: string;
-  starLevel: number;
+  unitLevel: number;
 }
 
 /**
@@ -71,20 +71,20 @@ export function calculateR8CompletionRate(
  * アイテム情報と配置セルを除外し、構成そのものが同じなら同一順序になるよう正規化
  *
  * @param units - ボードユニットスナップショット配列
- * @returns ユニットシグネチャ配列（unitType → starLevel 順）
+ * @returns ユニットシグネチャ配列（unitType → unitLevel 順）
  */
 function buildUnitSignatures(units: BoardUnitSnapshot[]): UnitSignature[] {
   return units
     .map((unit) => ({
       unitType: unit.unitType,
-      starLevel: unit.starLevel,
+      unitLevel: unit.unitLevel ?? 1,
     }))
     .sort((left, right) => {
       const unitTypeCompare = left.unitType.localeCompare(right.unitType);
       if (unitTypeCompare !== 0) {
         return unitTypeCompare;
       }
-      return left.starLevel - right.starLevel;
+      return left.unitLevel - right.unitLevel;
     });
 }
 
@@ -139,7 +139,7 @@ function calculateAllR8CompletionRates(
 
 /**
  * 構成シグネチャを集計用文字列にフォーマット
- * 例: [{unitType: "vanguard", starLevel: 2}, {unitType: "ranger", starLevel: 1}] → "vanguard:2,ranger:1"
+ * 例: [{unitType: "vanguard", unitLevel: 2}, {unitType: "ranger", unitLevel: 1}] → "vanguard:2,ranger:1"
  *
  * @param signature - ユニットシグネチャ配列
  * @returns フォーマットされた文字列（空配列の場合は空文字列）
@@ -148,7 +148,7 @@ export function formatCompositionSignature(signature: UnitSignature[]): string {
   if (signature.length === 0) {
     return "";
   }
-  return signature.map((unit) => `${unit.unitType}:${unit.starLevel}`).join(",");
+  return signature.map((unit) => `${unit.unitType}:${unit.unitLevel}`).join(",");
 }
 
 /**

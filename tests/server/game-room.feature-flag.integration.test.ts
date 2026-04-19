@@ -816,9 +816,9 @@ describe("GameRoom Integration with Feature Flags", () => {
           }).controller;
 
           controller.boardPlacementsByPlayer.set(sessionId, [
-            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+            { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
             { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -864,9 +864,9 @@ describe("GameRoom Integration with Feature Flags", () => {
           }).controller;
 
           controller.boardPlacementsByPlayer.set(sessionId, [
-            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+            { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
             { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -920,9 +920,9 @@ describe("GameRoom Integration with Feature Flags", () => {
           }).controller;
 
           controller.boardPlacementsByPlayer.set(sessionId, [
-            { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+            { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
             { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -980,9 +980,9 @@ describe("GameRoom Integration with Feature Flags", () => {
           }).controller;
 
           controller.boardPlacementsByPlayer.set(sessionId, [
-            { cell: 0, unitType: "vanguard", starLevel: 1 },
-            { cell: 1, unitType: "mage", starLevel: 1 },
-            { cell: 2, unitType: "assassin", starLevel: 1 },
+            { cell: 0, unitType: "vanguard", unitLevel: 1 },
+            { cell: 1, unitType: "mage", unitLevel: 1 },
+            { cell: 2, unitType: "assassin", unitLevel: 1 },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
             { unitType: "mage", rarity: 2, cost: 2 },

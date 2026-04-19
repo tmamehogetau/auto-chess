@@ -293,14 +293,14 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
       boardPlacementsByPlayer: Map<string, Array<{
         cell: number;
         unitType: string;
-        starLevel: number;
+        unitLevel: number;
         sellValue: number;
         unitCount: number;
       }>>;
       benchUnitsByPlayer: Map<string, Array<{
         unitType: string;
         cost: number;
-        starLevel: number;
+        unitLevel: number;
         unitCount: number;
       }>>;
     };
@@ -327,10 +327,10 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     survivingRaidB.eliminated = false;
 
     controllerInternals.boardPlacementsByPlayer.set(revivedRaidPlayerId, [
-      { cell: 30, unitType: "mage", starLevel: 1, sellValue: 2, unitCount: 1 },
+      { cell: 30, unitType: "mage", unitLevel: 1, sellValue: 2, unitCount: 1 },
     ]);
     controllerInternals.benchUnitsByPlayer.set(revivedRaidPlayerId, [
-      { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1 },
+      { unitType: "vanguard", cost: 1, unitLevel: 1, unitCount: 1 },
     ]);
 
     roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);

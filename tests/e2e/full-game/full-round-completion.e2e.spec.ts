@@ -165,8 +165,8 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
               client.send("prep_command", {
                 cmdSeq: round,
                 boardPlacements: [
-                  { cell: 0, unitType: "vanguard", starLevel: 1 },
-                  { cell: 1, unitType: "ranger", starLevel: 1 },
+                  { cell: 0, unitType: "vanguard", unitLevel: 1 },
+                  { cell: 1, unitType: "ranger", unitLevel: 1 },
                 ],
               });
             }
@@ -216,14 +216,14 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
       const clients = await setupGameWith4Players(gameRoom);
       const targetLoserSessionId = clients[0]!.sessionId;
       const STRONG_PLACEMENTS = [
-        { cell: 0, unitType: "vanguard", starLevel: 3 },
-        { cell: 1, unitType: "vanguard", starLevel: 3 },
-        { cell: 2, unitType: "ranger", starLevel: 3 },
-        { cell: 3, unitType: "ranger", starLevel: 3 },
-        { cell: 4, unitType: "mage", starLevel: 3 },
-        { cell: 5, unitType: "mage", starLevel: 3 },
-        { cell: 6, unitType: "assassin", starLevel: 3 },
-        { cell: 7, unitType: "assassin", starLevel: 3 },
+        { cell: 0, unitType: "vanguard", unitLevel: 3 },
+        { cell: 1, unitType: "vanguard", unitLevel: 3 },
+        { cell: 2, unitType: "ranger", unitLevel: 3 },
+        { cell: 3, unitType: "ranger", unitLevel: 3 },
+        { cell: 4, unitType: "mage", unitLevel: 3 },
+        { cell: 5, unitType: "mage", unitLevel: 3 },
+        { cell: 6, unitType: "assassin", unitLevel: 3 },
+        { cell: 7, unitType: "assassin", unitLevel: 3 },
       ];
 
       // 各プレイヤーのHP推移を記録
@@ -348,14 +348,14 @@ describe("E2E: Full Round Completion (R1-R8)", () => {
 
       // 強力な配置: player-elimination.e2e.spec.tsと同じ8体構成
       const STRONG_PLACEMENTS = [
-        { cell: 0, unitType: "vanguard", starLevel: 3 },
-        { cell: 1, unitType: "vanguard", starLevel: 3 },
-        { cell: 2, unitType: "ranger", starLevel: 3 },
-        { cell: 3, unitType: "ranger", starLevel: 3 },
-        { cell: 4, unitType: "mage", starLevel: 3 },
-        { cell: 5, unitType: "mage", starLevel: 3 },
-        { cell: 6, unitType: "assassin", starLevel: 3 },
-        { cell: 7, unitType: "assassin", starLevel: 3 },
+        { cell: 0, unitType: "vanguard", unitLevel: 3 },
+        { cell: 1, unitType: "vanguard", unitLevel: 3 },
+        { cell: 2, unitType: "ranger", unitLevel: 3 },
+        { cell: 3, unitType: "ranger", unitLevel: 3 },
+        { cell: 4, unitType: "mage", unitLevel: 3 },
+        { cell: 5, unitType: "mage", unitLevel: 3 },
+        { cell: 6, unitType: "assassin", unitLevel: 3 },
+        { cell: 7, unitType: "assassin", unitLevel: 3 },
       ];
 
       let eliminatedCount = 0;

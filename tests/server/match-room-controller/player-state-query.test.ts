@@ -58,11 +58,7 @@ function createDeps(): PlayerStateQueryServiceDeps {
       ["p1", 18],
       ["p2", 23],
     ]),
-    xpByPlayer: new Map([
-      ["p1", 4],
-      ["p2", 0],
-    ]),
-    levelByPlayer: new Map([
+    specialUnitLevelByPlayer: new Map([
       ["p1", 2],
       ["p2", 3],
     ]),
@@ -75,7 +71,7 @@ function createDeps(): PlayerStateQueryServiceDeps {
       ["p2", false],
     ]),
     benchUnitsByPlayer: new Map([
-      ["p1", [{ unitType: "mage", cost: 2, starLevel: 2, unitCount: 1, unitId: "mage_a" }]],
+      ["p1", [{ unitType: "mage", cost: 2, unitLevel: 2, unitCount: 1, unitId: "mage_a" }]],
       ["p2", []],
     ]),
     ownedUnitsByPlayer: new Map([
@@ -85,6 +81,10 @@ function createDeps(): PlayerStateQueryServiceDeps {
     bossShopOffersByPlayer: new Map([
       ["p1", []],
       ["p2", [{ unitType: "assassin", cost: 3, rarity: 3, unitId: "boss_offer" }]],
+    ]),
+    heroExclusiveShopOffersByPlayer: new Map([
+      ["p1", [{ unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi" }]],
+      ["p2", []],
     ]),
     battleResultsByPlayer: new Map([
       ["p1", {
@@ -134,7 +134,7 @@ function createDeps(): PlayerStateQueryServiceDeps {
     boardPlacementsByPlayer: new Map([
       ["p1", [
         { cell: 0, unitType: "vanguard" },
-        { cell: 1, unitType: "mage", starLevel: 2 },
+        { cell: 1, unitType: "mage", unitLevel: 2 },
       ]],
       ["p2", [{ cell: 5, unitType: "assassin" }]],
     ]),
@@ -156,17 +156,16 @@ function createDeps(): PlayerStateQueryServiceDeps {
       getAllInventory: () => new Map([[1, 20]]),
     },
     initialGold: 15,
-    initialXp: 0,
-    initialLevel: 1,
+    initialSpecialUnitLevel: 1,
     buildActiveSynergies: () => [{ unitType: "vanguard", count: 2, tier: 1 }],
     resolveBenchUnitDisplayName: (benchUnit) => benchUnit.unitId ?? "",
     formatBoardUnitToken: (_playerId, placement) =>
-      placement.starLevel && placement.starLevel > 1
-        ? `${placement.cell}:${placement.unitType}:${placement.starLevel}`
+      placement.unitLevel && placement.unitLevel > 1
+        ? `${placement.cell}:${placement.unitType}:${placement.unitLevel}`
         : `${placement.cell}:${placement.unitType}`,
     formatBoardSubUnitToken: (cell, placement) =>
-      placement.starLevel && placement.starLevel > 1
-        ? `${cell}:${placement.unitType}:${placement.starLevel}`
+      placement.unitLevel && placement.unitLevel > 1
+        ? `${cell}:${placement.unitType}:${placement.unitLevel}`
         : `${cell}:${placement.unitType}`,
   };
 }
@@ -187,8 +186,7 @@ describe("PlayerStateQueryService", () => {
       eliminated: false,
       boardUnitCount: 2,
       gold: 18,
-      xp: 4,
-      level: 2,
+      specialUnitLevel: 2,
       shopLocked: true,
       benchUnits: ["mage:2"],
       benchUnitIds: ["mage_a"],
@@ -206,6 +204,7 @@ describe("PlayerStateQueryService", () => {
       sharedPoolInventory: new Map([[1, 20]]),
     });
     expect(status.shopOffers).toEqual([{ unitType: "vanguard", cost: 1, rarity: 1, unitId: "warrior_a" }]);
+    expect(status.heroExclusiveShopOffers).toEqual([{ unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi" }]);
     expect(status.shopOffers).not.toBe(deps.shopOffersByPlayer.get("p1"));
     expect(status.lastBattleResult?.timeline?.[0]?.battleId).toBe("battle-1");
   });

@@ -1232,7 +1232,11 @@ function isMidgameHighCostPivotPhase(player, state, strategy = "upgrade") {
   }
 
   const roundIndex = getStateRoundIndex(state);
-  const level = Number.isFinite(player?.level) ? Number(player.level) : null;
+  const level = Number.isFinite(player?.specialUnitLevel)
+    ? Number(player.specialUnitLevel)
+    : Number.isFinite(player?.level)
+      ? Number(player.level)
+      : null;
   const pivotRound = strategy === "highCost"
     ? AUTO_FILL_HIGH_COST_PIVOT_ROUND
     : AUTO_FILL_UPGRADE_PIVOT_ROUND;

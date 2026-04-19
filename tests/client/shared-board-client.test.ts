@@ -3107,7 +3107,7 @@ describe("shared-board client", () => {
       boardWidth: 6,
       boardHeight: 6,
       cells: {
-        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴", unitLevel: 2 },
       },
       cursors: {},
       players: {
@@ -3178,7 +3178,7 @@ describe("shared-board client", () => {
       boardWidth: 6,
       boardHeight: 6,
       cells: {
-        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴", unitLevel: 2 },
       },
       cursors: {},
       players: {
@@ -3254,7 +3254,7 @@ describe("shared-board client", () => {
       boardWidth: 6,
       boardHeight: 6,
       cells: {
-        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
+        24: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴", unitLevel: 2 },
       },
       cursors: {},
       players: {
@@ -3268,6 +3268,7 @@ describe("shared-board client", () => {
       expect.objectContaining({
         title: "美鈴",
         lines: expect.arrayContaining([
+          "LV 2",
           "サブ効果: 隠岐奈",
           "他の自軍 unit の sub slot に入れます。",
         ]),

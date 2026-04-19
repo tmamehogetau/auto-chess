@@ -108,10 +108,10 @@ describe("E2E: Sub Unit System", () => {
             boardPlacements: [{
               cell: 0,
               unitType: "vanguard",
-              starLevel: 1,
+              unitLevel: 1,
               subUnit: {
                 unitType: "mage",
-                starLevel: 1,
+                unitLevel: 1,
                 sellValue: 1,
                 unitCount: 1,
               },
@@ -164,7 +164,7 @@ describe("E2E: Sub Unit System", () => {
 
           clients[0]!.send("prep_command", {
             cmdSeq: 1,
-            boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 }],
+            boardPlacements: [{ cell: 0, unitType: "vanguard", unitId: "warrior_b", unitLevel: 1 }],
           });
 
           await waitForCondition(() => {
@@ -210,7 +210,7 @@ describe("E2E: Sub Unit System", () => {
 
         clients[0]!.send("prep_command", {
           cmdSeq: 1,
-          boardPlacements: [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+          boardPlacements: [{ cell: 0, unitType: "vanguard", unitLevel: 1 }],
         });
 
         await waitForCondition(() => {

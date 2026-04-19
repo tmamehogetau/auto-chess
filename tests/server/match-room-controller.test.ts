@@ -187,8 +187,7 @@ describe("MatchRoomController", () => {
 
     expect(controller.getPlayerStatus("p1")).toMatchObject({
       gold: 15,
-      xp: 0,
-      level: 1,
+      specialUnitLevel: 1,
       benchUnits: [],
       ownedUnits: {
         vanguard: 0,
@@ -1339,7 +1338,7 @@ describe("MatchRoomController", () => {
     expect(controller.getPlayerStatus("p1").gold).toBe(20);
   });
 
-  test("xpPurchaseCountでゴールド消費とXP/レベル上昇が適用される", () => {
+  test("specialUnitUpgradeCountでゴールド消費とspecialUnitLevel上昇が適用される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1353,18 +1352,17 @@ describe("MatchRoomController", () => {
     controller.startIfReady(2_000);
 
     const result = controller.submitPrepCommand("p1", 1, 3_000, {
-      xpPurchaseCount: 2,
+      specialUnitUpgradeCount: 2,
     });
 
     expect(result).toEqual({ accepted: true });
     expect(controller.getPlayerStatus("p1")).toMatchObject({
-      gold: 7,
-      xp: 4,
-      level: 3,
+      gold: 11,
+      specialUnitLevel: 3,
     });
   });
 
-  test("ゴールド不足のxpPurchaseCountはINSUFFICIENT_GOLDで却下される", () => {
+  test("ゴールド不足のspecialUnitUpgradeCountはINSUFFICIENT_GOLDで却下される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1378,14 +1376,13 @@ describe("MatchRoomController", () => {
     controller.startIfReady(2_000);
 
     const result = controller.submitPrepCommand("p1", 1, 3_000, {
-      xpPurchaseCount: 4,
+      specialUnitUpgradeCount: 5,
     });
 
     expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
     expect(controller.getPlayerStatus("p1")).toMatchObject({
       gold: 15,
-      xp: 0,
-      level: 1,
+      specialUnitLevel: 1,
     });
   });
 
@@ -1455,7 +1452,7 @@ describe("MatchRoomController", () => {
     expect(afterOffers).not.toEqual(beforeOffers);
   });
 
-  test("xpPurchaseCountとshopRefreshCountの合計コスト不足はINSUFFICIENT_GOLDで却下される", () => {
+  test("specialUnitUpgradeCountとshopRefreshCountの合計コスト不足はINSUFFICIENT_GOLDで却下される", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -1469,7 +1466,7 @@ describe("MatchRoomController", () => {
     controller.startIfReady(2_000);
 
     const result = controller.submitPrepCommand("p1", 1, 3_000, {
-      xpPurchaseCount: 2,
+      specialUnitUpgradeCount: 5,
       shopRefreshCount: 5,
     });
 
@@ -1529,9 +1526,9 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
-        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
-        { cell: 2, unitType: "assassin", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1568,8 +1565,8 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
-        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitLevel: 1, unitId: "toramaru", factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1606,8 +1603,8 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "vanguard", unitId: "kisume", rarity: 1, cost: 1 },
@@ -1644,8 +1641,8 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1682,9 +1679,9 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
-        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
-        { cell: 2, unitType: "assassin", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", rarity: 2, cost: 2 },
@@ -1721,9 +1718,9 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
-        { cell: 1, unitType: "mage", starLevel: 1, unitId: "toramaru", factionId: "myourenji" },
-        { cell: 2, unitType: "assassin", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitLevel: 1, unitId: "toramaru", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1759,10 +1756,10 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "ranger", starLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
-        { cell: 2, unitType: "mage", starLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
-        { cell: 3, unitType: "assassin", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "assassin", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
       ]);
       const beforeGold = controller.getPlayerStatus("p1").gold;
 
@@ -1795,10 +1792,10 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "ranger", starLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
-        { cell: 2, unitType: "mage", starLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
-        { cell: 3, unitType: "assassin", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "assassin", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
       ]);
       const beforeGold = controller.getPlayerStatus("p1").gold;
 
@@ -1835,10 +1832,10 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "ranger", starLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
-        { cell: 2, unitType: "mage", starLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
-        { cell: 3, unitType: "assassin", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "assassin", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
       ]);
       const beforeGold = controller.getPlayerStatus("p1").gold;
 
@@ -1876,9 +1873,9 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
-        { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
-        { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+        { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+        { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1983,13 +1980,13 @@ describe("MatchRoomController", () => {
       benchUnitsByPlayer: Map<string, Array<{
         unitType: "vanguard" | "ranger" | "mage" | "assassin";
         cost: number;
-        starLevel: number;
+        unitLevel: number;
         unitCount: number;
       }>>;
       boardPlacementsByPlayer: Map<string, Array<{
         cell: number;
         unitType: "vanguard" | "ranger" | "mage" | "assassin";
-        starLevel?: number;
+        unitLevel?: number;
         sellValue?: number;
         unitCount?: number;
       }>>;
@@ -1997,10 +1994,10 @@ describe("MatchRoomController", () => {
     };
 
     internals.benchUnitsByPlayer.set("p1", [
-      { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+      { unitType: "ranger", cost: 1, unitLevel: 1, unitCount: 1 },
     ]);
     internals.boardPlacementsByPlayer.set("p1", [
-      { cell: 3, unitType: "vanguard", starLevel: 1, sellValue: 1, unitCount: 1 },
+      { cell: 3, unitType: "vanguard", unitLevel: 1, sellValue: 1, unitCount: 1 },
     ]);
     internals.boardUnitCountByPlayer.set("p1", 1);
 
@@ -2037,12 +2034,12 @@ describe("MatchRoomController", () => {
       benchUnitsByPlayer: Map<string, Array<{
         unitType: "vanguard" | "ranger" | "mage" | "assassin";
         cost: number;
-        starLevel: number;
+        unitLevel: number;
         unitCount: number;
       }>>;
     };
     internals.benchUnitsByPlayer.set("p1", [
-      { unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 },
+      { unitType: "mage", cost: 2, unitLevel: 1, unitCount: 1 },
     ]);
 
     const beforeSellGold = controller.getPlayerStatus("p1").gold;
@@ -2073,12 +2070,12 @@ describe("MatchRoomController", () => {
       benchUnitsByPlayer: Map<string, Array<{
         unitType: "vanguard" | "ranger" | "mage" | "assassin";
         cost: number;
-        starLevel: number;
+        unitLevel: number;
         unitCount: number;
       }>>;
     };
     internals.benchUnitsByPlayer.set("p1", [
-      { unitType: "mage", cost: 8, starLevel: 2, unitCount: 4 },
+      { unitType: "mage", cost: 8, unitLevel: 2, unitCount: 4 },
     ]);
 
     const beforeSellGold = controller.getPlayerStatus("p1").gold;
@@ -2117,8 +2114,8 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
       ]);
 
       for (const cmdSeq of [1, 2, 3, 4]) {
@@ -2376,11 +2373,11 @@ describe("MatchRoomController", () => {
           getAvailableByUnitId: (unitId: string, cost: number) => number;
           decreaseByUnitId: (unitId: string, cost: number) => boolean;
         };
-        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; starLevel: number; unitCount: number }>>;
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; unitLevel: number; unitCount: number }>>;
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "vanguard", unitId: "rin", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
 
       const before = internals.sharedPool.getAvailableByUnitId("rin", 1);
@@ -2410,12 +2407,12 @@ describe("MatchRoomController", () => {
           getAvailableByUnitId: (unitId: string, cost: number) => number;
           decreaseByUnitId: (unitId: string, cost: number) => boolean;
         };
-        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; starLevel: number; unitCount: number }>>;
+        benchUnitsByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; cost: number; unitLevel: number; unitCount: number }>>;
         boardPlacementsByPlayer: Map<string, Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; sellValue?: number; unitCount?: number }>>;
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "vanguard", unitId: "rin", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "vanguard", unitId: "rin", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
       internals.boardPlacementsByPlayer.set("p1", [
         { cell: 0, unitType: "ranger", unitId: "nazrin", sellValue: 1, unitCount: 1 },
@@ -2434,7 +2431,7 @@ describe("MatchRoomController", () => {
     });
   });
 
-  test("同種4回購入で購入回数進行のtier 2になる", () => {
+  test("同種4回購入で購入回数進行のLv4になる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -2472,11 +2469,11 @@ describe("MatchRoomController", () => {
 
     const status = controller.getPlayerStatus("p1");
 
-    expect(status.benchUnits).toEqual(["vanguard:2"]);
+    expect(status.benchUnits).toEqual(["vanguard:4"]);
     expect(status.ownedUnits.vanguard).toBe(4);
   });
 
-  test("同種7回購入で購入回数進行のtier 3になる", () => {
+  test("同種7回購入で購入回数進行のLv7になる", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -2514,7 +2511,7 @@ describe("MatchRoomController", () => {
 
     const status = controller.getPlayerStatus("p1");
 
-    expect(status.benchUnits).toEqual(["vanguard:3"]);
+    expect(status.benchUnits).toEqual(["vanguard:7"]);
     expect(status.ownedUnits.vanguard).toBe(7);
   });
 
@@ -2577,7 +2574,7 @@ describe("MatchRoomController", () => {
     expect(deployResult).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
   });
 
-  test("boardSellIndex は tier 3 の sell formula 4C - 2 を使う", () => {
+  test("boardSellIndex は Lv7 でも旧 tier 3 の sell formula 4C - 2 を使う", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -2594,14 +2591,14 @@ describe("MatchRoomController", () => {
       boardPlacementsByPlayer: Map<string, Array<{
         cell: number;
         unitType: "vanguard" | "ranger" | "mage" | "assassin";
-        starLevel?: number;
+        unitLevel?: number;
         sellValue?: number;
         unitCount?: number;
       }>>;
       boardUnitCountByPlayer: Map<string, number>;
     };
     internals.boardPlacementsByPlayer.set("p1", [
-      { cell: 2, unitType: "mage", starLevel: 3, sellValue: 14, unitCount: 7 },
+      { cell: 2, unitType: "mage", unitLevel: 7, sellValue: 14, unitCount: 7 },
     ]);
     internals.boardUnitCountByPlayer.set("p1", 1);
 
@@ -3008,7 +3005,7 @@ describe("MatchRoomController", () => {
           benchUnitsByPlayer: Map<string, Array<{
             unitType: "vanguard" | "ranger" | "mage" | "assassin";
             cost: number;
-            starLevel: number;
+            unitLevel: number;
             unitCount: number;
           }>>;
         };
@@ -3030,10 +3027,10 @@ describe("MatchRoomController", () => {
         raidC.eliminated = false;
 
         internals.boardPlacementsByPlayer.set("p3", [
-          { cell: 30, unitType: "mage", starLevel: 1, sellValue: 2, unitCount: 1 },
+          { cell: 30, unitType: "mage", unitLevel: 1, sellValue: 2, unitCount: 1 },
         ]);
         internals.benchUnitsByPlayer.set("p3", [
-          { unitType: "vanguard", cost: 1, starLevel: 1, unitCount: 1 },
+          { unitType: "vanguard", cost: 1, unitLevel: 1, unitCount: 1 },
         ]);
 
         let nowMs = 0;

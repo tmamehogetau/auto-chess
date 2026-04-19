@@ -141,9 +141,7 @@ export class PlayerPresenceState extends Schema {
 
   declare public gold: number;
 
-  declare public xp: number;
-
-  declare public level: number;
+  declare public specialUnitLevel: number;
 
   declare public benchUnits: ArraySchema<string>;
 
@@ -166,6 +164,8 @@ export class PlayerPresenceState extends Schema {
   declare public lastCmdSeq: number;
 
   declare public bossShopOffers: ArraySchema<ShopOfferState>;
+
+  declare public heroExclusiveShopOffers: ArraySchema<ShopOfferState>;
 
   declare public lastBattleResult: BattleResultSchema;
 
@@ -191,8 +191,7 @@ export class PlayerPresenceState extends Schema {
     this.shopOffers = new ArraySchema<ShopOfferState>();
     this.shopLocked = false;
     this.gold = 15;
-    this.xp = 0;
-    this.level = 1;
+    this.specialUnitLevel = 1;
     this.benchUnits = new ArraySchema<string>();
     this.benchUnitIds = new ArraySchema<string>();
     this.benchDisplayNames = new ArraySchema<string>();
@@ -204,6 +203,7 @@ export class PlayerPresenceState extends Schema {
     this.ownedAssassin = 0;
     this.lastCmdSeq = 0;
     this.bossShopOffers = new ArraySchema<ShopOfferState>();
+    this.heroExclusiveShopOffers = new ArraySchema<ShopOfferState>();
     this.lastBattleResult = new BattleResultSchema();
     this.activeSynergies = new ArraySchema<SynergySchema>();
     this.selectedHeroId = "";
@@ -366,8 +366,7 @@ defineTypes(PlayerPresenceState, {
   shopOffers: [ShopOfferState],
   shopLocked: "boolean",
   gold: "number",
-  xp: "number",
-  level: "number",
+  specialUnitLevel: "number",
   benchUnits: ["string"],
   benchUnitIds: ["string"],
   benchDisplayNames: ["string"],
@@ -379,6 +378,7 @@ defineTypes(PlayerPresenceState, {
   ownedAssassin: "number",
   lastCmdSeq: "number",
   bossShopOffers: [ShopOfferState],
+  heroExclusiveShopOffers: [ShopOfferState],
   lastBattleResult: BattleResultSchema,
   activeSynergies: [SynergySchema],
   selectedHeroId: "string",

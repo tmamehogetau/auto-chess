@@ -65,6 +65,7 @@ import {
   SERVER_MESSAGE_TYPES,
 } from "./game-room-session.js";
 import { resolveFrontPortraitUrl, resolveShopPortraitUrl } from "./portrait-resolver.js";
+import { getClientSpecialUnitLevel, getClientSpecialUnitUpgradeCost } from "./special-unit-progression.js";
 
 const VALID_SET_IDS = new Set(["set1", "set2"]);
 
@@ -264,6 +265,8 @@ const phaseHpHelp = document.querySelector("[data-phase-hp-help]");
 const readyBtn = document.querySelector("[data-ready-btn]");
 const readyHint = document.querySelector("[data-ready-hint]");
 const unitShopGrid = document.querySelector("[data-unit-shop]");
+const heroExclusiveShopGrid = document.querySelector("[data-hero-exclusive-shop]");
+const heroExclusiveShopSection = document.querySelector("[data-hero-exclusive-shop-section]");
 const bossShopGrid = document.querySelector("[data-boss-shop]");
 const bossShopSection = document.querySelector("[data-boss-shop-section]");
 const benchGrid = document.querySelector("[data-bench]");
@@ -507,6 +510,13 @@ bossShopGrid?.querySelectorAll("[data-boss-shop-slot]").forEach((card) => {
   card.addEventListener("click", () => {
     const slot = Number.parseInt(card.dataset.bossShopSlot, 10);
     handleBuyBossShopUnit(slot);
+  });
+});
+
+heroExclusiveShopGrid?.querySelectorAll("[data-hero-exclusive-shop-slot]").forEach((card) => {
+  card.addEventListener("click", () => {
+    const slot = Number.parseInt(card.dataset.heroExclusiveShopSlot, 10);
+    handleBuyHeroExclusiveUnit(slot);
   });
 });
 
@@ -934,6 +944,23 @@ function handleBuyBossShopUnit(shopSlot) {
   showMessage(`Buying unit from boss shop slot ${shopSlot}...`, "success");
 }
 
+function handleBuyHeroExclusiveUnit(shopSlot) {
+  if (currentPhase !== "Prep") {
+    showMessage("Can only buy during prep phase", "error");
+    return;
+  }
+
+  const shopCard = heroExclusiveShopGrid?.querySelector(`[data-hero-exclusive-shop-slot="${shopSlot}"]`);
+  if (shopCard) {
+    shopCard.classList.add("purchased");
+    setTimeout(() => shopCard.classList.remove("purchased"), 500);
+  }
+
+  sendPrepCommand({ heroExclusiveShopBuySlotIndex: shopSlot });
+  playUiCue("purchase");
+  showMessage(`Buying unit from hero-exclusive shop slot ${shopSlot}...`, "success");
+}
+
 function handleRefreshShop() {
   if (currentPhase !== "Prep") {
     showMessage("Can only refresh during prep phase", "error");
@@ -952,13 +979,13 @@ function handleRefreshShop() {
 
 function handleBuyXp() {
   if (currentPhase !== "Prep") {
-    showMessage("Can only buy XP during prep phase", "error");
+    showMessage("Can only upgrade the special unit during prep phase", "error");
     return;
   }
 
-  sendPrepCommand({ xpPurchaseCount: 1 });
+  sendPrepCommand({ specialUnitUpgradeCount: 1 });
   playUiCue("purchase");
-  showMessage("Buying XP...", "success");
+  showMessage("Upgrading special unit...", "success");
 }
 
 // Spell card declaration handler
@@ -1351,8 +1378,10 @@ function updateGameUI(state) {
     }
   }
   
-  levelDisplay.textContent = Number(player.level) || 1;
-  xpDisplay.textContent = Number(player.xp) || 0;
+  const specialUnitLevel = getClientSpecialUnitLevel(player);
+  const nextSpecialUnitUpgradeCost = getClientSpecialUnitUpgradeCost(player);
+  levelDisplay.textContent = String(specialUnitLevel);
+  xpDisplay.textContent = nextSpecialUnitUpgradeCost === null ? "MAX" : String(nextSpecialUnitUpgradeCost);
 
   // Update phase display
   updatePhaseDisplay(readPhase(state.phase));
@@ -1411,6 +1440,11 @@ function updateGameUI(state) {
   updateBossShop(
     player.bossShopOffers,
     state.featureFlagsEnableBossExclusiveShop === true && state.bossPlayerId === sessionId,
+  );
+
+  updateHeroExclusiveShop(
+    player.heroExclusiveShopOffers,
+    player.role === "raid" && typeof player.selectedHeroId === "string" && player.selectedHeroId.length > 0,
   );
 
   // Update bench
@@ -2122,6 +2156,61 @@ function updateBossShop(offers, visible) {
   }
 }
 
+function updateHeroExclusiveShop(offers, visible) {
+  if (!heroExclusiveShopSection || !heroExclusiveShopGrid) {
+    return;
+  }
+
+  heroExclusiveShopSection.style.display = visible ? "block" : "none";
+  if (!visible) {
+    offers = [];
+  }
+
+  for (let index = 0; index < 1; index += 1) {
+    const card = heroExclusiveShopGrid.querySelector(`[data-hero-exclusive-shop-slot="${index}"]`);
+    if (!card) {
+      continue;
+    }
+
+    const offer = Array.isArray(offers) ? offers[index] : offers?.[index];
+    const hasOffer = Boolean(offer) && visible;
+    const isPurchased = offer?.purchased === true;
+    const badgeText = hasOffer ? "EXCLUSIVE" : "";
+    const soldText = isPurchased ? "SOLD" : "";
+
+    card.classList.toggle("boss-exclusive", hasOffer);
+    card.classList.toggle("is-purchased", isPurchased);
+
+    if (!hasOffer) {
+      card.innerHTML = `
+        <span class="boss-shop-badge">${badgeText}</span>
+        <div class="icon">❓</div>
+        <div class="name">-</div>
+        <div class="cost">-</div>
+        <span class="boss-shop-sold" aria-hidden="true">${soldText}</span>
+      `;
+      card.classList.add("disabled");
+      continue;
+    }
+
+    const cost = offer.cost || 0;
+    const canAfford = currentGold >= cost && !isPurchased;
+    const displayName = HEROES.find((hero) => hero.id === currentPlayer?.selectedHeroId)?.name || "Hero";
+    const portraitUrl = resolveShopPortraitUrl(offer, displayName);
+
+    card.innerHTML = `
+      <span class="boss-shop-badge">${badgeText}</span>
+      <div class="shop-card-media">
+        <img class="shop-portrait" src="${portraitUrl}" alt="${escapeHtml(offer.displayName || offer.unitType || "Unknown unit")}" loading="lazy" />
+      </div>
+      <div class="name">${escapeHtml(offer.displayName || offer.unitType || "Unknown")}</div>
+      <div class="cost">${escapeHtml(String(cost))}G</div>
+      <span class="boss-shop-sold" aria-hidden="true">${soldText}</span>
+    `;
+    card.classList.toggle("disabled", !canAfford);
+  }
+}
+
 function updateBench(benchUnits) {
   // Clear all slots
   benchGrid?.querySelectorAll("[data-bench-slot]").forEach((slot) => {
@@ -2141,24 +2230,24 @@ function updateBench(benchUnits) {
     const slot = benchGrid?.querySelector(`[data-bench-slot="${index}"]`);
     if (!slot) return;
 
-    // Parse unit type and star level (format: "unitType:starLevel" or "unitType")
+    // Parse unit type and unit level (format: "unitType:unitLevel" or "unitType")
     const unitStr = String(unit);
     let unitType = unitStr;
-    let starLevel = 1;
+    let unitLevel = 1;
 
-    const starMatch = unitStr.match(/(.+?):(\d+)$/);
-    if (starMatch) {
-      unitType = starMatch[1];
-      starLevel = Number.parseInt(starMatch[2], 10);
+    const levelMatch = unitStr.match(/(.+?):(\d+)$/);
+    if (levelMatch) {
+      unitType = levelMatch[1];
+      unitLevel = Number.parseInt(levelMatch[2], 10);
     }
 
     const icon = UNIT_ICONS[unitType] || "❓";
-    const starClass = `stars-${Math.min(starLevel, 3)}`;
+    const levelClass = `level-tier-${Math.min(unitLevel, 3)}`;
 
     slot.innerHTML = `
       <span class="slot-number">${index}</span>
       <div class="unit-icon">${icon}</div>
-      <div class="unit-stars ${starClass}">${"★".repeat(starLevel)}</div>
+      <div class="unit-level-badge ${levelClass}">Lv${unitLevel}</div>
     `;
     slot.classList.remove("empty");
   });
@@ -2617,6 +2706,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       boardUnits: Array.from(player.boardUnits ?? []),
       boardSubUnits: Array.from(player.boardSubUnits ?? []),
       shopOffers: Array.from(player.shopOffers ?? []),
+      heroExclusiveShopOffers: Array.from(player.heroExclusiveShopOffers ?? []),
       bossShopOffers: Array.from(player.bossShopOffers ?? []),
     };
   };
@@ -2666,6 +2756,31 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
           purchased: true,
         };
         nextPlayer.bossShopOffers = bossShopOffers;
+        const benchUnits = toUnknownArray(nextPlayer.benchUnits);
+        benchUnits.push(
+          typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
+        );
+        nextPlayer.benchUnits = benchUnits;
+        nextPlayer.benchUnitIds = [
+          ...(nextPlayer.benchUnitIds ?? []),
+          typeof offer.unitId === "string" ? offer.unitId : "",
+        ];
+        if (typeof offer.cost === "number" && Number.isFinite(offer.cost) && typeof nextPlayer.gold === "number") {
+          nextPlayer.gold = Math.max(0, nextPlayer.gold - offer.cost);
+        }
+      }
+      return nextPlayer;
+    }
+
+    if (typeof payload.heroExclusiveShopBuySlotIndex === "number") {
+      const heroExclusiveShopOffers = toUnknownArray(nextPlayer.heroExclusiveShopOffers);
+      const offer = heroExclusiveShopOffers[payload.heroExclusiveShopBuySlotIndex];
+      if (offer) {
+        heroExclusiveShopOffers[payload.heroExclusiveShopBuySlotIndex] = {
+          ...offer,
+          purchased: true,
+        };
+        nextPlayer.heroExclusiveShopOffers = heroExclusiveShopOffers;
         const benchUnits = toUnknownArray(nextPlayer.benchUnits);
         benchUnits.push(
           typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
@@ -2752,6 +2867,9 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     bossOffers: Array.isArray(helperPlayer?.bossShopOffers)
       ? helperPlayer.bossShopOffers.map((offer) => serializeHelperOffer(offer))
       : Array.from(helperPlayer?.bossShopOffers ?? [], (offer) => serializeHelperOffer(offer)),
+    heroExclusiveOffers: Array.isArray(helperPlayer?.heroExclusiveShopOffers)
+      ? helperPlayer.heroExclusiveShopOffers.map((offer) => serializeHelperOffer(offer))
+      : Array.from(helperPlayer?.heroExclusiveShopOffers ?? [], (offer) => serializeHelperOffer(offer)),
     boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
     boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
     benchUnits: Array.from(helperPlayer?.benchUnits ?? []),

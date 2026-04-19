@@ -2797,6 +2797,18 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       return nextPlayer;
     }
 
+    if (typeof payload.specialUnitUpgradeCount === "number" && payload.specialUnitUpgradeCount > 0) {
+      const upgradeCount = payload.specialUnitUpgradeCount;
+      for (let index = 0; index < upgradeCount; index += 1) {
+        const upgradeCost = getClientSpecialUnitUpgradeCost(nextPlayer);
+        if (typeof upgradeCost === "number" && Number.isFinite(upgradeCost) && typeof nextPlayer.gold === "number") {
+          nextPlayer.gold = Math.max(0, nextPlayer.gold - upgradeCost);
+        }
+        nextPlayer.specialUnitLevel = getClientSpecialUnitLevel(nextPlayer) + 1;
+      }
+      return nextPlayer;
+    }
+
     const benchToBoardCell = payload.benchToBoardCell;
     if (!benchToBoardCell || !Number.isInteger(benchToBoardCell.benchIndex) || !Number.isInteger(benchToBoardCell.cell)) {
       return nextPlayer;
@@ -2874,6 +2886,9 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
     benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
     boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
+    gold: typeof helperPlayer?.gold === "number" && Number.isFinite(helperPlayer.gold)
+      ? helperPlayer.gold
+      : null,
     lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
     lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
     phase: typeof state?.phase === "string" ? state.phase : "",
@@ -2882,6 +2897,10 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       typeof state?.playerPhaseDeadlineAtMs === "number" ? state.playerPhaseDeadlineAtMs : null,
     ready: helperPlayer?.ready === true,
     role: helperPlayer?.role ?? "",
+    specialUnitLevel:
+      typeof helperPlayer?.specialUnitLevel === "number" && Number.isFinite(helperPlayer.specialUnitLevel)
+        ? helperPlayer.specialUnitLevel
+        : null,
     selectedBossId: helperPlayer?.selectedBossId ?? null,
     selectedHeroId: helperPlayer?.selectedHeroId ?? null,
     shopOffers: Array.isArray(helperPlayer?.shopOffers)

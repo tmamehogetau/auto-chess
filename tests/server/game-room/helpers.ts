@@ -13,6 +13,10 @@ import {
   buildAutoFillHelperActions,
   resolveAutoFillHelperPlayerPhase,
 } from "../../../src/client/autofill-helper-automation.js";
+import {
+  getClientSpecialUnitLevel,
+  getClientSpecialUnitUpgradeCost,
+} from "../../../src/client/special-unit-progression.js";
 import { GameRoom } from "../../../src/server/rooms/game-room";
 import { SharedBoardRoom } from "../../../src/server/rooms/shared-board-room";
 import { resolveSharedBoardUnitPresentation } from "../../../src/server/shared-board-unit-presentation";
@@ -352,6 +356,7 @@ const cloneAutoFillHelperPlayer = (player: AutoFillHelperPlayer | null): AutoFil
     benchUnitIds: Array.from(player.benchUnitIds ?? []),
     boardUnits: Array.from(player.boardUnits ?? []),
     boardSubUnits: Array.from((player as { boardSubUnits?: unknown[] } | null)?.boardSubUnits ?? []),
+    heroExclusiveShopOffers: Array.from((player as { heroExclusiveShopOffers?: unknown[] } | null)?.heroExclusiveShopOffers ?? []),
     shopOffers: Array.from(player.shopOffers ?? []),
     bossShopOffers: Array.from(player.bossShopOffers ?? []),
   };
@@ -413,6 +418,44 @@ const applyOptimisticPrepCommandToPlayer = (
       if (typeof offer.cost === "number" && Number.isFinite(offer.cost) && typeof nextPlayer.gold === "number") {
         nextPlayer.gold = Math.max(0, nextPlayer.gold - offer.cost);
       }
+    }
+    return nextPlayer;
+  }
+
+  if (typeof payload.heroExclusiveShopBuySlotIndex === "number") {
+    const heroExclusiveShopOffers = toUnknownArray(
+      (nextPlayer as { heroExclusiveShopOffers?: unknown[] }).heroExclusiveShopOffers,
+    ) as Array<{ unitType?: unknown; unitId?: unknown; cost?: unknown; purchased?: boolean }>;
+    const offer = heroExclusiveShopOffers[payload.heroExclusiveShopBuySlotIndex] as
+      | { unitType?: unknown; unitId?: unknown; cost?: unknown; purchased?: boolean }
+      | undefined;
+    if (offer) {
+      heroExclusiveShopOffers[payload.heroExclusiveShopBuySlotIndex] = {
+        ...offer,
+        purchased: true,
+      };
+      (nextPlayer as { heroExclusiveShopOffers?: unknown[] }).heroExclusiveShopOffers = heroExclusiveShopOffers;
+      const benchUnits = toUnknownArray(nextPlayer.benchUnits) as string[];
+      benchUnits.push(
+        typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
+      );
+      nextPlayer.benchUnits = benchUnits;
+      nextPlayer.benchUnitIds = [...(nextPlayer.benchUnitIds ?? []), typeof offer.unitId === "string" ? offer.unitId : ""];
+      if (typeof offer.cost === "number" && Number.isFinite(offer.cost) && typeof nextPlayer.gold === "number") {
+        nextPlayer.gold = Math.max(0, nextPlayer.gold - offer.cost);
+      }
+    }
+    return nextPlayer;
+  }
+
+  if (typeof payload.specialUnitUpgradeCount === "number" && payload.specialUnitUpgradeCount > 0) {
+    const upgradeCount = payload.specialUnitUpgradeCount;
+    for (let index = 0; index < upgradeCount; index += 1) {
+      const upgradeCost = getClientSpecialUnitUpgradeCost(nextPlayer);
+      if (typeof upgradeCost === "number" && Number.isFinite(upgradeCost) && typeof nextPlayer.gold === "number") {
+        nextPlayer.gold = Math.max(0, nextPlayer.gold - upgradeCost);
+      }
+      nextPlayer.specialUnitLevel = getClientSpecialUnitLevel(nextPlayer) + 1;
     }
     return nextPlayer;
   }
@@ -517,9 +560,14 @@ export const attachAutoFillHelperAutomationForTest = (
     helperPlayer: AutoFillHelperPlayer | null,
   ) => {
     const helperGold = typeof helperPlayer?.gold === "number" ? helperPlayer.gold : null;
+    const helperSpecialUnitLevel =
+      typeof helperPlayer?.specialUnitLevel === "number" && Number.isFinite(helperPlayer.specialUnitLevel)
+        ? helperPlayer.specialUnitLevel
+        : null;
 
     return JSON.stringify({
       bossOffers: mapOfferUnitTypes(helperPlayer?.bossShopOffers),
+      heroExclusiveOffers: mapOfferUnitTypes((helperPlayer as { heroExclusiveShopOffers?: unknown[] } | null)?.heroExclusiveShopOffers),
       boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
       benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
       boardSubUnits: Array.from((helperPlayer as { boardSubUnits?: unknown[] } | null)?.boardSubUnits ?? []),
@@ -533,6 +581,7 @@ export const attachAutoFillHelperAutomationForTest = (
         typeof state?.playerPhaseDeadlineAtMs === "number" ? state.playerPhaseDeadlineAtMs : null,
       ready: helperPlayer?.ready === true,
       role: helperPlayer?.role ?? "",
+      specialUnitLevel: helperSpecialUnitLevel,
       wantsBoss: helperPlayer?.wantsBoss === true,
       selectedBossId: helperPlayer?.selectedBossId ?? null,
       selectedHeroId: helperPlayer?.selectedHeroId ?? null,

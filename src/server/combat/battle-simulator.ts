@@ -2091,7 +2091,7 @@ export class BattleSimulator {
         );
       }
 
-      if (flags.enableHeroSystem) {
+      if (flags.enableHeroSystem && flags.enableTouhouRoster) {
         applyPairSkillBindings(leftUnits, leftPlacements, combatLog);
         applyPairSkillBindings(rightUnits, rightPlacements, combatLog);
       }

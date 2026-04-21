@@ -32,6 +32,7 @@ export function buildPrepCommandPayload(
     message.benchSellIndex === undefined &&
     message.boardSellIndex === undefined &&
     message.mergeUnits === undefined &&
+    message.heroExclusiveShopBuySlotIndex === undefined &&
     message.bossShopBuySlotIndex === undefined
   ) {
     return undefined;
@@ -56,6 +57,9 @@ export function buildPrepCommandPayload(
     ...(message.benchSellIndex !== undefined && { benchSellIndex: message.benchSellIndex }),
     ...(message.boardSellIndex !== undefined && { boardSellIndex: message.boardSellIndex }),
     ...(message.mergeUnits !== undefined && { mergeUnits: message.mergeUnits }),
+    ...(message.heroExclusiveShopBuySlotIndex !== undefined && {
+      heroExclusiveShopBuySlotIndex: message.heroExclusiveShopBuySlotIndex,
+    }),
     ...(message.bossShopBuySlotIndex !== undefined && { bossShopBuySlotIndex: message.bossShopBuySlotIndex }),
   };
 }

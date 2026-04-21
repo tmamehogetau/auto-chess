@@ -58,6 +58,7 @@ export interface ShopOfferView {
   cost: number;
   rarity: number;
   isRumorUnit?: boolean;
+  purchased?: boolean;
   unitLevel?: number;
 }
 

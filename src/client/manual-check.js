@@ -77,6 +77,15 @@ const UNIT_ICONS = {
   assassin: "🗡️",
 };
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 // Hero definitions (client-side copy)
 const HEROES = [
   {
@@ -1444,7 +1453,11 @@ function updateGameUI(state) {
 
   updateHeroExclusiveShop(
     player.heroExclusiveShopOffers,
-    player.role === "raid" && typeof player.selectedHeroId === "string" && player.selectedHeroId.length > 0,
+    state.featureFlagsEnableHeroSystem === true
+      && player.role === "raid"
+      && typeof player.selectedHeroId === "string"
+      && player.selectedHeroId.length > 0,
+    typeof player.selectedHeroId === "string" ? player.selectedHeroId : "",
   );
 
   // Update bench
@@ -2156,7 +2169,7 @@ function updateBossShop(offers, visible) {
   }
 }
 
-function updateHeroExclusiveShop(offers, visible) {
+function updateHeroExclusiveShop(offers, visible, selectedHeroId = "") {
   if (!heroExclusiveShopSection || !heroExclusiveShopGrid) {
     return;
   }
@@ -2195,19 +2208,20 @@ function updateHeroExclusiveShop(offers, visible) {
 
     const cost = offer.cost || 0;
     const canAfford = currentGold >= cost && !isPurchased;
-    const displayName = HEROES.find((hero) => hero.id === currentPlayer?.selectedHeroId)?.name || "Hero";
+    const displayName = HEROES.find((hero) => hero.id === selectedHeroId)?.name || "Hero";
     const portraitUrl = resolveShopPortraitUrl(offer, displayName);
+    const safeDisplayName = escapeHtml(offer.displayName || offer.unitType || "Unknown");
 
     card.innerHTML = `
       <span class="boss-shop-badge">${badgeText}</span>
       <div class="shop-card-media">
-        <img class="shop-portrait" src="${portraitUrl}" alt="${escapeHtml(offer.displayName || offer.unitType || "Unknown unit")}" loading="lazy" />
+        <img class="shop-portrait" src="${portraitUrl}" alt="${safeDisplayName}" loading="lazy" />
       </div>
-      <div class="name">${escapeHtml(offer.displayName || offer.unitType || "Unknown")}</div>
+      <div class="name">${safeDisplayName}</div>
       <div class="cost">${escapeHtml(String(cost))}G</div>
       <span class="boss-shop-sold" aria-hidden="true">${soldText}</span>
     `;
-    card.classList.toggle("disabled", !canAfford);
+    card.classList.toggle("disabled", !canAfford || currentPhase !== "Prep");
   }
 }
 

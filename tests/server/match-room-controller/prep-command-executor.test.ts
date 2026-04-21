@@ -176,6 +176,18 @@ describe("PrepCommandExecutor", () => {
       expect(deps.addGold).not.toHaveBeenCalled();
       expect(deps.upgradeSpecialUnit).not.toHaveBeenCalled();
     });
+
+    test("does not upgrade the special unit when the requested upgrade would exceed the level cap", () => {
+      const deps = createDependencies({
+        getSpecialUnitLevel: vi.fn().mockReturnValue(7),
+      });
+      const payload: CommandPayload = { specialUnitUpgradeCount: 1 };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.addGold).not.toHaveBeenCalled();
+      expect(deps.upgradeSpecialUnit).not.toHaveBeenCalled();
+    });
   });
 
   describe("Shop Refresh", () => {

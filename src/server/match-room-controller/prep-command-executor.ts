@@ -96,6 +96,7 @@ export function executePrepCommand(
 
   // 3. Calculate and apply gold changes for all purchase operations
   let totalGoldCost = 0;
+  let canApplySpecialUnitUpgrade = false;
 
   // Special unit upgrade cost
   if (payload.specialUnitUpgradeCount !== undefined && payload.specialUnitUpgradeCount > 0) {
@@ -106,6 +107,7 @@ export function executePrepCommand(
     );
     if (upgradeCost !== null) {
       totalGoldCost += upgradeCost;
+      canApplySpecialUnitUpgrade = true;
     }
   }
 
@@ -150,7 +152,11 @@ export function executePrepCommand(
   }
 
   // 4. Execute special unit upgrade (after gold deduction)
-  if (payload.specialUnitUpgradeCount !== undefined && payload.specialUnitUpgradeCount > 0) {
+  if (
+    canApplySpecialUnitUpgrade
+    && payload.specialUnitUpgradeCount !== undefined
+    && payload.specialUnitUpgradeCount > 0
+  ) {
     deps.upgradeSpecialUnit(playerId, payload.specialUnitUpgradeCount);
   }
 

@@ -75,10 +75,10 @@ describe("player-state-sync", () => {
           assassin: 0,
         },
         bossShopOffers: [
-          { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false },
+          { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false, purchased: true, unitLevel: 2 },
         ],
         heroExclusiveShopOffers: [
-          { unitType: "vanguard", unitId: "mayumi", cost: 3, rarity: 3, isRumorUnit: false },
+          { unitType: "vanguard", unitId: "mayumi", cost: 3, rarity: 3, isRumorUnit: false, purchased: true, unitLevel: 4 },
         ],
         lastBattleResult: {
           opponentId: "player-2",
@@ -478,10 +478,10 @@ describe("player-state-sync", () => {
         boardUnits: [],
         ownedUnits: { vanguard: 0, ranger: 0, mage: 0, assassin: 0 },
         bossShopOffers: [
-          { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false },
+          { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false, purchased: true, unitLevel: 2 },
         ],
         heroExclusiveShopOffers: [
-          { unitType: "vanguard", unitId: "mayumi", cost: 3, rarity: 3, isRumorUnit: false },
+          { unitType: "vanguard", unitId: "mayumi", cost: 3, rarity: 3, isRumorUnit: false, purchased: true, unitLevel: 4 },
         ],
         lastBattleResult: undefined,
         activeSynergies: [],
@@ -499,8 +499,12 @@ describe("player-state-sync", () => {
       expect(playerState.bossShopOffers.length).toBe(1);
       expect(playerState.bossShopOffers[0]!.unitType).toBe("vanguard");
       expect(playerState.bossShopOffers[0]!.cost).toBe(5);
+      expect(playerState.bossShopOffers[0]!.purchased).toBe(true);
+      expect(playerState.bossShopOffers[0]!.unitLevel).toBe(2);
       expect((playerState as any).heroExclusiveShopOffers.length).toBe(1);
       expect((playerState as any).heroExclusiveShopOffers[0]!.unitId).toBe("mayumi");
+      expect((playerState as any).heroExclusiveShopOffers[0]!.purchased).toBe(true);
+      expect((playerState as any).heroExclusiveShopOffers[0]!.unitLevel).toBe(4);
     });
 
     it("should sync boss preference fields from controller status", () => {
@@ -844,10 +848,10 @@ describe("player-state-sync", () => {
         lastBattleResult: undefined,
         activeSynergies: [],
         bossShopOffers: [
-          { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false },
+          { unitType: "vanguard", unitId: "shop:vanguard", cost: 5, rarity: 4, isRumorUnit: false, purchased: true, unitLevel: 2 },
         ],
         heroExclusiveShopOffers: [
-          { unitType: "assassin", unitId: "shion", cost: 3, rarity: 3, isRumorUnit: false },
+          { unitType: "assassin", unitId: "shion", cost: 3, rarity: 3, isRumorUnit: false, purchased: true, unitLevel: 5 },
         ],
       };
 
@@ -857,8 +861,12 @@ describe("player-state-sync", () => {
       expect(playerState.bossShopOffers[0]!.unitType).toBe("vanguard");
       expect(playerState.bossShopOffers[0]!.cost).toBe(5);
       expect(playerState.bossShopOffers[0]!.isRumorUnit).toBe(false);
+      expect(playerState.bossShopOffers[0]!.purchased).toBe(true);
+      expect(playerState.bossShopOffers[0]!.unitLevel).toBe(2);
       expect((playerState as any).heroExclusiveShopOffers.length).toBe(1);
       expect((playerState as any).heroExclusiveShopOffers[0]!.unitId).toBe("shion");
+      expect((playerState as any).heroExclusiveShopOffers[0]!.purchased).toBe(true);
+      expect((playerState as any).heroExclusiveShopOffers[0]!.unitLevel).toBe(5);
     });
 
     it("should sync selectedHeroId and isRumorEligible when provided", () => {

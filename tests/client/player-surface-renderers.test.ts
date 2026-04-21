@@ -353,6 +353,9 @@ describe("player surface renderers", () => {
       heroExclusiveShopElement: heroExclusiveShopElement as unknown as HTMLElement,
       heroExclusiveShopCopyElement: heroExclusiveShopCopyElement as unknown as HTMLElement,
       heroExclusiveShopSlotElements: heroExclusiveShopSlotElements as unknown as HTMLButtonElement[],
+      state: {
+        featureFlagsEnableHeroSystem: true,
+      },
       player,
       currentPhase: "Prep",
       playerFacingPhase: "purchase",
@@ -381,6 +384,9 @@ describe("player surface renderers", () => {
     renderPlayerPrepSummary({
       heroExclusiveShopElement: heroExclusiveShopElement as unknown as HTMLElement,
       heroExclusiveShopCopyElement: heroExclusiveShopCopyElement as unknown as HTMLElement,
+      state: {
+        featureFlagsEnableHeroSystem: true,
+      },
       player,
       currentPhase: "Prep",
       playerFacingPhase: "purchase",
@@ -389,6 +395,34 @@ describe("player surface renderers", () => {
 
     expect(heroExclusiveShopElement.hidden).toBe(true);
     expect(heroExclusiveShopCopyElement.textContent).toContain("主人公選択後");
+  });
+
+  test("prep summary hides raid hero-exclusive shop when the hero system flag is disabled", () => {
+    const heroExclusiveShopElement = new FakeElement();
+    const heroExclusiveShopCopyElement = new FakeElement();
+    const player: Parameters<typeof renderPlayerPrepSummary>[0]["player"] = {
+      role: "raid",
+      gold: 9,
+      selectedHeroId: "keiki",
+      heroExclusiveShopOffers: [
+        { unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi", displayName: "杖刀偶磨弓" },
+      ],
+    };
+
+    renderPlayerPrepSummary({
+      heroExclusiveShopElement: heroExclusiveShopElement as unknown as HTMLElement,
+      heroExclusiveShopCopyElement: heroExclusiveShopCopyElement as unknown as HTMLElement,
+      state: {
+        featureFlagsEnableHeroSystem: false,
+      },
+      player,
+      currentPhase: "Prep",
+      playerFacingPhase: "purchase",
+      selectedBenchIndex: null,
+    });
+
+    expect(heroExclusiveShopElement.hidden).toBe(true);
+    expect(heroExclusiveShopCopyElement.textContent).toContain("このルールセットでは無効");
   });
 
   test("prep summary renders purchase shop entries with icons for the four-section shop surface", () => {

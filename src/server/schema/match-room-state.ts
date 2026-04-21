@@ -18,6 +18,10 @@ export class ShopOfferState extends Schema {
 
   declare public isRumorUnit: boolean;
 
+  declare public purchased: boolean;
+
+  declare public unitLevel: number;
+
   public constructor() {
     super();
     this.unitType = "vanguard";
@@ -27,6 +31,8 @@ export class ShopOfferState extends Schema {
     this.cost = 1;
     this.rarity = 1;
     this.isRumorUnit = false;
+    this.purchased = false;
+    this.unitLevel = 1;
   }
 }
 
@@ -321,6 +327,8 @@ defineTypes(ShopOfferState, {
   cost: "number",
   rarity: "number",
   isRumorUnit: "boolean",
+  purchased: "boolean",
+  unitLevel: "number",
 });
 
 defineTypes(BattleResultSchema, {

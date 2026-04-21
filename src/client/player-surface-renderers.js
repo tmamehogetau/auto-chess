@@ -693,6 +693,7 @@ export function renderPlayerPrepSummary({
 
   const isBossPlayer = state?.bossPlayerId === sessionId || player?.role === "boss";
   const bossRoleSelectionEnabled = state?.featureFlagsEnableBossExclusiveShop === true;
+  const heroSystemEnabled = state?.featureFlagsEnableHeroSystem === true;
 
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
     if (selectedBenchIndex === null) {
@@ -864,12 +865,14 @@ export function renderPlayerPrepSummary({
 
   const bossShopOffers = toRenderableArray(player?.bossShopOffers);
   const heroExclusiveShopOffers = toRenderableArray(player?.heroExclusiveShopOffers);
-  const heroExclusiveShopVisible = !isBossPlayer && selectedHeroId.length > 0;
+  const heroExclusiveShopVisible = heroSystemEnabled && !isBossPlayer && selectedHeroId.length > 0;
   if (heroExclusiveShopElement instanceof HTMLElement) {
     heroExclusiveShopElement.hidden = !heroExclusiveShopVisible;
   }
   if (heroExclusiveShopCopyElement instanceof HTMLElement) {
-    if (isBossPlayer) {
+    if (!heroSystemEnabled) {
+      heroExclusiveShopCopyElement.textContent = "EXCLUSIVE / 主人公専用 shop はこのルールセットでは無効です。";
+    } else if (isBossPlayer) {
       heroExclusiveShopCopyElement.textContent = "EXCLUSIVE / 主人公専用 shop は raid role のみ利用できます。";
     } else if (selectedHeroId.length === 0) {
       heroExclusiveShopCopyElement.textContent = "主人公選択後に EXCLUSIVE shop が表示されます。";
@@ -890,10 +893,12 @@ export function renderPlayerPrepSummary({
     const offer = heroExclusiveShopOffers[index];
     const unitType = offer?.unitType ?? null;
     const cost = Number(offer?.cost ?? 0);
+    const isPurchased = offer?.purchased === true;
     const displayName = typeof offer?.displayName === "string" && offer.displayName.length > 0
       ? offer.displayName
       : unitType;
-    button.disabled = !offer || !shopActionsEnabled || !heroExclusiveShopVisible;
+    const canAfford = gold >= cost;
+    button.disabled = !offer || !shopActionsEnabled || !heroExclusiveShopVisible || isPurchased || !canAfford;
     button.classList.toggle("selected", false);
     button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "🧩"} EXCLUSIVE ${displayName} / ${cost}G` : `Exclusive ${index + 1}`;
   });

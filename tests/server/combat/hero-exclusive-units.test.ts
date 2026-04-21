@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { getHeroExclusiveUnitById } from "../../../src/data/hero-exclusive-units";
+import { DEFAULT_FLAGS } from "../../../src/shared/feature-flags";
 import { BattleSimulator, type BattleUnit } from "../../../src/server/combat/battle-simulator";
 import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import {
@@ -212,5 +213,59 @@ describe("hero-exclusive unit skills", () => {
 
     expect(host.buffModifiers.defenseMultiplier).toBe(1.25);
     expect(result.combatLog.some((entry) => entry.includes("mayumi-pair"))).toBe(true);
+  });
+
+  test("pair skills do not bind when the hero system flag is disabled", () => {
+    const simulator = new BattleSimulator();
+    const host = createBattleUnit({
+      id: "left-host",
+      sourceUnitId: "host-1",
+      type: "vanguard",
+      hp: 100,
+      maxHp: 100,
+      attackPower: 0,
+      attackSpeed: 0,
+      attackRange: 1,
+      movementSpeed: 0,
+      cell: 0,
+    });
+    const enemy = createBattleUnit({
+      id: "right-attacker",
+      sourceUnitId: "enemy-1",
+      battleSide: "right",
+      hp: 500,
+      maxHp: 500,
+      attackPower: 40,
+      attackSpeed: 2,
+      attackRange: 4,
+      movementSpeed: 0,
+      cell: 3,
+    });
+    const leftPlacements: BoardUnitPlacement[] = [{
+      cell: 0,
+      unitType: "vanguard",
+      unitLevel: 1,
+      unitId: "host-1",
+      subUnit: {
+        unitType: "vanguard",
+        unitLevel: 1,
+        unitId: "mayumi",
+      },
+    }];
+
+    const result = simulator.simulateBattle(
+      [host],
+      [enemy],
+      leftPlacements,
+      [],
+      1200,
+      null,
+      null,
+      null,
+      { ...DEFAULT_FLAGS, enableHeroSystem: false },
+    );
+
+    expect(host.buffModifiers.defenseMultiplier).toBe(1);
+    expect(result.combatLog.some((entry) => entry.includes("mayumi-pair"))).toBe(false);
   });
 });

@@ -885,6 +885,10 @@ function validatePreconditions(
   }
 
   if (payload.heroExclusiveShopBuySlotIndex !== undefined) {
+    if (!deps.getRosterFlags().enableHeroSystem) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
     if (deps.isBossPlayer(playerId)) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }

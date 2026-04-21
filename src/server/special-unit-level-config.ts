@@ -91,7 +91,7 @@ export function upgradeSpecialUnitLevel(
   currentLevel: number,
   upgradeCount: number,
 ): number | null {
-  if (!Number.isInteger(currentLevel) || !Number.isInteger(upgradeCount)) {
+  if (!Number.isInteger(currentLevel) || !Number.isInteger(upgradeCount) || upgradeCount < 1) {
     return null;
   }
 

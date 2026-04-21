@@ -53,6 +53,21 @@ describe("PrepCommandValidator", () => {
     ...overrides,
   });
 
+  const heroEnabledFlags = {
+    enableHeroSystem: true,
+    enableSharedPool: false,
+    enablePhaseExpansion: false,
+    enableSubUnitSystem: false,
+    enableEmblemCells: false,
+    enableSpellCard: false,
+    enableRumorInfluence: false,
+    enableBossExclusiveShop: false,
+    enableSharedBoardShadow: false,
+    enableTouhouRoster: false,
+    enableTouhouFactions: false,
+    enablePerUnitSharedPool: false,
+  } as const;
+
   describe("Basic Validation", () => {
     test("unknown player returns UNKNOWN_PLAYER", () => {
       const deps = createDependencies({
@@ -653,6 +668,7 @@ describe("PrepCommandValidator", () => {
     test("heroExclusiveShopBuySlotIndex for boss player returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
         isBossPlayer: vi.fn().mockReturnValue(true),
+        getRosterFlags: vi.fn().mockReturnValue(heroEnabledFlags),
       });
 
       const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
@@ -662,6 +678,7 @@ describe("PrepCommandValidator", () => {
 
     test("heroExclusiveShopBuySlotIndex with already purchased offer returns INVALID_PAYLOAD", () => {
       const deps = createDependencies({
+        getRosterFlags: vi.fn().mockReturnValue(heroEnabledFlags),
         getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3, purchased: true },
         ]),
@@ -674,6 +691,7 @@ describe("PrepCommandValidator", () => {
 
     test("heroExclusiveShopBuySlotIndex with full bench returns BENCH_FULL", () => {
       const deps = createDependencies({
+        getRosterFlags: vi.fn().mockReturnValue(heroEnabledFlags),
         getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
         ]),
@@ -687,6 +705,7 @@ describe("PrepCommandValidator", () => {
 
     test("heroExclusiveShopBuySlotIndex allows a full-bench buy when a matching attached sub unit can merge", () => {
       const deps = createDependencies({
+        getRosterFlags: vi.fn().mockReturnValue(heroEnabledFlags),
         getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
         ]),
@@ -723,6 +742,7 @@ describe("PrepCommandValidator", () => {
     test("heroExclusiveShopBuySlotIndex with insufficient gold returns INSUFFICIENT_GOLD", () => {
       const deps = createDependencies({
         getGold: vi.fn().mockReturnValue(2),
+        getRosterFlags: vi.fn().mockReturnValue(heroEnabledFlags),
         getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
         ]),
@@ -912,6 +932,7 @@ describe("PrepCommandValidator", () => {
     test("valid hero-exclusive shop buy returns null with correct context", () => {
       const deps = createDependencies({
         getGold: vi.fn().mockReturnValue(10),
+        getRosterFlags: vi.fn().mockReturnValue(heroEnabledFlags),
         getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
           { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
         ]),
@@ -920,6 +941,18 @@ describe("PrepCommandValidator", () => {
       const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
 
       expect(result).toBeNull();
+    });
+
+    test("heroExclusiveShopBuySlotIndex is rejected when the hero system flag is disabled", () => {
+      const deps = createDependencies({
+        getHeroExclusiveShopOffers: vi.fn().mockReturnValue([
+          { unitType: "vanguard", unitId: "mayumi", rarity: 3, cost: 3 },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, { heroExclusiveShopBuySlotIndex: 0 }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
     });
 
     test("valid benchToBoardCell returns null with correct context", () => {

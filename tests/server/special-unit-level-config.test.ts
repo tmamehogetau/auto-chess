@@ -68,5 +68,7 @@ describe("special-unit-level-config", () => {
     expect(upgradeSpecialUnitLevel(4, 3)).toBe(7);
     expect(upgradeSpecialUnitLevel(6, 2)).toBeNull();
     expect(upgradeSpecialUnitLevel(0, 1)).toBeNull();
+    expect(upgradeSpecialUnitLevel(3, 0)).toBeNull();
+    expect(upgradeSpecialUnitLevel(3, -1)).toBeNull();
   });
 });

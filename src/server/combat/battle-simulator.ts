@@ -2091,8 +2091,10 @@ export class BattleSimulator {
         );
       }
 
-      applyPairSkillBindings(leftUnits, leftPlacements, combatLog);
-      applyPairSkillBindings(rightUnits, rightPlacements, combatLog);
+      if (flags.enableHeroSystem) {
+        applyPairSkillBindings(leftUnits, leftPlacements, combatLog);
+        applyPairSkillBindings(rightUnits, rightPlacements, combatLog);
+      }
 
       const allUnits = [...leftUnits, ...rightUnits];
       const actionQueue: Action[] = [];

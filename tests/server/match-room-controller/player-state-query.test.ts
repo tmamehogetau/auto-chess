@@ -83,7 +83,7 @@ function createDeps(): PlayerStateQueryServiceDeps {
       ["p2", [{ unitType: "assassin", cost: 3, rarity: 3, unitId: "boss_offer" }]],
     ]),
     heroExclusiveShopOffersByPlayer: new Map([
-      ["p1", [{ unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi" }]],
+      ["p1", [{ unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi", unitLevel: 4, purchased: true }]],
       ["p2", []],
     ]),
     battleResultsByPlayer: new Map([
@@ -204,7 +204,14 @@ describe("PlayerStateQueryService", () => {
       sharedPoolInventory: new Map([[1, 20]]),
     });
     expect(status.shopOffers).toEqual([{ unitType: "vanguard", cost: 1, rarity: 1, unitId: "warrior_a" }]);
-    expect(status.heroExclusiveShopOffers).toEqual([{ unitType: "vanguard", cost: 3, rarity: 3, unitId: "mayumi" }]);
+    expect(status.heroExclusiveShopOffers).toEqual([{
+      unitType: "vanguard",
+      cost: 3,
+      rarity: 3,
+      unitId: "mayumi",
+      unitLevel: 4,
+      purchased: true,
+    }]);
     expect(status.shopOffers).not.toBe(deps.shopOffersByPlayer.get("p1"));
     expect(status.lastBattleResult?.timeline?.[0]?.battleId).toBe("battle-1");
   });

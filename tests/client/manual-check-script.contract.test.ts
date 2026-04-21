@@ -325,6 +325,8 @@ describe("manual-check script contract", () => {
     expect(source.includes("sendPrepCommand({ heroExclusiveShopBuySlotIndex: shopSlot });")).toBe(true);
     expect(source.includes("heroExclusiveShopOffers[payload.heroExclusiveShopBuySlotIndex] = {")).toBe(true);
     expect(source.includes("nextPlayer.heroExclusiveShopOffers = heroExclusiveShopOffers;")).toBe(true);
+    expect(source.includes("state.featureFlagsEnableHeroSystem === true")).toBe(true);
+    expect(source.includes("currentPlayer?.selectedHeroId")).toBe(false);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

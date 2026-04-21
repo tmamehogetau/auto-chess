@@ -100,4 +100,15 @@ describe("prep-command-payload", () => {
       },
     });
   });
+
+  it("preserves hero-exclusive shop buys so dedicated prep commands are forwarded", () => {
+    const message: PrepCommandMessage = {
+      cmdSeq: 8,
+      heroExclusiveShopBuySlotIndex: 0,
+    };
+
+    expect(buildPrepCommandPayload(message)).toEqual({
+      heroExclusiveShopBuySlotIndex: 0,
+    });
+  });
 });

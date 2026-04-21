@@ -1844,10 +1844,12 @@ export class MatchRoomController {
 
   private resolveSelectedSpecialUnitId(playerId: string): string | undefined {
     if (this.isBossPlayer(playerId)) {
-      return this.selectedBossByPlayer.get(playerId) ?? undefined;
+      const selectedBossId = (this.selectedBossByPlayer.get(playerId) ?? "").trim();
+      return selectedBossId.length > 0 ? selectedBossId : undefined;
     }
 
-    return this.selectedHeroByPlayer.get(playerId) ?? undefined;
+    const selectedHeroId = (this.selectedHeroByPlayer.get(playerId) ?? "").trim();
+    return selectedHeroId.length > 0 ? selectedHeroId : undefined;
   }
 
   private upgradeSpecialUnit(playerId: string, upgradeCount: number): void {
@@ -1876,12 +1878,17 @@ export class MatchRoomController {
 
   private refreshHeroExclusiveShopOffersForPrep(): void {
     for (const playerId of this.playerIds) {
-      if (this.isBossPlayer(playerId)) {
+      if (!this.enableHeroSystem || this.isBossPlayer(playerId)) {
         this.heroExclusiveShopOffersByPlayer.set(playerId, []);
         continue;
       }
 
-      const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+      const selectedHeroId = (this.selectedHeroByPlayer.get(playerId) ?? "").trim();
+      if (selectedHeroId.length === 0) {
+        this.heroExclusiveShopOffersByPlayer.set(playerId, []);
+        continue;
+      }
+
       this.heroExclusiveShopOffersByPlayer.set(
         playerId,
         this.shopOfferBuilder.buildHeroExclusiveShopOffers(selectedHeroId),

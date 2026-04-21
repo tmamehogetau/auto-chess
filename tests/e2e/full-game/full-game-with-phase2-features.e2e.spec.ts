@@ -380,9 +380,9 @@ describe("E2E: Full Game with Phase 2 Features", () => {
         }).controller;
 
         controller.boardPlacementsByPlayer.set(sessionId, [
-          { cell: 0, unitType: "ranger", unitId: "nazrin", starLevel: 1, factionId: "myourenji" },
-          { cell: 1, unitType: "mage", unitId: "murasa", starLevel: 1, factionId: "myourenji" },
-          { cell: 2, unitType: "mage", unitId: "shou", starLevel: 1, factionId: "myourenji" },
+          { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
+          { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+          { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
         ]);
         controller.shopOffersByPlayer.set(sessionId, [
           { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },

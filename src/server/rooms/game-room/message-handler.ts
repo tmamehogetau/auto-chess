@@ -26,14 +26,14 @@ type ShopOfferSnapshot = Array<{ unitType: string; cost: number; isRumorUnit?: b
 type BenchUnitSnapshot = Array<{
   unitType: "vanguard" | "ranger" | "mage" | "assassin";
   cost: number;
-  starLevel: number;
+  unitLevel: number;
   unitCount: number;
 }>;
 type BoardPlacementSnapshot = Array<{
   cell: number;
   unitType: "vanguard" | "ranger" | "mage" | "assassin";
   sellValue?: number;
-  starLevel?: number;
+  unitLevel?: number;
   unitCount?: number;
 }>;
 

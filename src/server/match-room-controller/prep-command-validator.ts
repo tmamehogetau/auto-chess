@@ -3,17 +3,19 @@ import { normalizeBoardPlacements } from "../combat/unit-effects";
 import { DEFAULT_SHARED_BOARD_CONFIG } from "../../shared/shared-board-config";
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
+import { calculateSpecialUnitUpgradeCost } from "../special-unit-level-config";
 import {
   MAX_BENCH_SIZE,
 } from "../player-slot-limits";
 
 // Constants from the controller
-const XP_PURCHASE_COST = 4;
-const MAX_XP_PURCHASE_COUNT = 10;
+const MAX_SPECIAL_UNIT_UPGRADE_COUNT = 10;
 const SHOP_REFRESH_COST = 2;
 const MAX_SHOP_REFRESH_COUNT = 5;
 const SHOP_SIZE = 5;
 const MAX_SHOP_BUY_SLOT_INDEX = SHOP_SIZE - 1;
+const HERO_EXCLUSIVE_SHOP_SIZE = 1;
+const MAX_HERO_EXCLUSIVE_SHOP_BUY_SLOT_INDEX = HERO_EXCLUSIVE_SHOP_SIZE - 1;
 const TOUHOU_COST_TIERS: readonly [1, 2, 3, 4, 5] = [1, 2, 3, 4, 5];
 const SHARED_BOARD_MIN_INDEX = 0;
 const SHARED_BOARD_MAX_INDEX = DEFAULT_SHARED_BOARD_CONFIG.width * DEFAULT_SHARED_BOARD_CONFIG.height - 1;
@@ -25,14 +27,14 @@ export interface ShopOffer {
   cost: number;
   isRumorUnit?: boolean;
   purchased?: boolean;
-  starLevel?: number;
+  unitLevel?: number;
 }
 
 export interface BenchUnit {
   unitType: string;
   unitId?: string;
   cost: number;
-  starLevel: number;
+  unitLevel?: number;
   unitCount: number;
 }
 
@@ -40,9 +42,10 @@ export interface CommandPayload {
   boardUnitCount?: number;
   boardPlacements?: BoardUnitPlacement[];
   heroPlacementCell?: number;
-  xpPurchaseCount?: number;
+  specialUnitUpgradeCount?: number;
   shopRefreshCount?: number;
   shopBuySlotIndex?: number;
+  heroExclusiveShopBuySlotIndex?: number;
   shopLock?: boolean;
   benchToBoardCell?: {
     benchIndex: number;
@@ -73,7 +76,7 @@ export interface CommandPayload {
   boardSellIndex?: number;
   mergeUnits?: {
     unitType: string;
-    starLevel: number;
+    unitLevel?: number;
     benchIndices?: number[];
     boardCells?: number[];
   };
@@ -92,6 +95,7 @@ export interface ValidationDependencies {
   getBoardUnitCount: (playerId: string) => number;
   getMaxBoardUnitCount: (playerId: string) => number;
   getBossShopOffers: (playerId: string) => ShopOffer[];
+  getHeroExclusiveShopOffers: (playerId: string) => ShopOffer[];
   getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   isBossPlayer: (playerId: string) => boolean;
   isSubUnitSystemEnabled: () => boolean;
@@ -99,6 +103,8 @@ export interface ValidationDependencies {
   isPoolDepleted: (cost: number, unitId?: string) => boolean;
   getPrepDeadlineAtMs: () => number | null;
   getRosterFlags: () => FeatureFlags;
+  getSpecialUnitLevel: (playerId: string) => number;
+  getSelectedSpecialUnitId: (playerId: string) => string | undefined;
   getReservedBoardCells?: (playerId: string) => number[];
   getSelectedHeroIdForPlayer?: (playerId: string) => string;
   getHeroPlacementForPlayer?: (playerId: string) => number | null;
@@ -113,6 +119,7 @@ export interface ValidationContext {
   payload: CommandPayload;
   // Computed values that can be used by executor
   shopBuyCost?: number;
+  heroExclusiveShopBuyCost?: number;
   bossShopBuyCost?: number;
   requiredGold?: number;
 }
@@ -269,13 +276,22 @@ function validatePayload(
     }
   }
 
-  // xpPurchaseCount validation
-  if (payload.xpPurchaseCount !== undefined) {
+  // specialUnitUpgradeCount validation
+  if (payload.specialUnitUpgradeCount !== undefined) {
     if (
-      !Number.isInteger(payload.xpPurchaseCount) ||
-      payload.xpPurchaseCount < 1 ||
-      payload.xpPurchaseCount > MAX_XP_PURCHASE_COUNT
+      !Number.isInteger(payload.specialUnitUpgradeCount) ||
+      payload.specialUnitUpgradeCount < 1 ||
+      payload.specialUnitUpgradeCount > MAX_SPECIAL_UNIT_UPGRADE_COUNT
     ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    const upgradeCost = calculateSpecialUnitUpgradeCost(
+      deps.getSpecialUnitLevel(playerId),
+      payload.specialUnitUpgradeCount,
+      deps.getSelectedSpecialUnitId(playerId),
+    );
+    if (upgradeCost === null) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
@@ -297,6 +313,16 @@ function validatePayload(
       !Number.isInteger(payload.shopBuySlotIndex) ||
       payload.shopBuySlotIndex < 0 ||
       payload.shopBuySlotIndex > MAX_SHOP_BUY_SLOT_INDEX
+    ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+  }
+
+  if (payload.heroExclusiveShopBuySlotIndex !== undefined) {
+    if (
+      !Number.isInteger(payload.heroExclusiveShopBuySlotIndex) ||
+      payload.heroExclusiveShopBuySlotIndex < 0 ||
+      payload.heroExclusiveShopBuySlotIndex > MAX_HERO_EXCLUSIVE_SHOP_BUY_SLOT_INDEX
     ) {
       return { accepted: false, code: "INVALID_PAYLOAD" };
     }
@@ -442,8 +468,9 @@ function validateCommandConflicts(
       || payload.boardSellIndex !== undefined
       || payload.boardUnitCount !== undefined
       || payload.boardPlacements !== undefined
+      || payload.heroExclusiveShopBuySlotIndex !== undefined
       || payload.bossShopBuySlotIndex !== undefined
-      || payload.xpPurchaseCount !== undefined
+      || payload.specialUnitUpgradeCount !== undefined
       || payload.shopLock !== undefined
     )
   ) {
@@ -857,6 +884,40 @@ function validatePreconditions(
     }
   }
 
+  if (payload.heroExclusiveShopBuySlotIndex !== undefined) {
+    if (!deps.getRosterFlags().enableHeroSystem) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    if (deps.isBossPlayer(playerId)) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    const heroExclusiveOffers = deps.getHeroExclusiveShopOffers(playerId);
+    if (!heroExclusiveOffers || payload.heroExclusiveShopBuySlotIndex >= heroExclusiveOffers.length) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    const heroExclusiveOffer = heroExclusiveOffers[payload.heroExclusiveShopBuySlotIndex];
+    if (!heroExclusiveOffer || heroExclusiveOffer.purchased) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+
+    const benchUnits = deps.getBenchUnits(playerId);
+    const boardPlacements = deps.getBoardPlacements(playerId);
+    const canStackIntoExistingUnit =
+      benchUnits.some((unit) =>
+        matchesUpgradeTrack(heroExclusiveOffer.unitType, heroExclusiveOffer.unitId, unit)
+      ) ||
+      boardPlacements.some((placement) =>
+        placementContainsUpgradeTrack(heroExclusiveOffer.unitType, heroExclusiveOffer.unitId, placement)
+      );
+
+    if (benchUnits.length >= MAX_BENCH_SIZE && !canStackIntoExistingUnit) {
+      return { accepted: false, code: "BENCH_FULL" };
+    }
+  }
+
   // bossShopBuySlotIndex preconditions
   if (payload.bossShopBuySlotIndex !== undefined) {
     if (!deps.isBossPlayer(playerId)) {
@@ -892,9 +953,10 @@ function validateGold(
   payload: CommandPayload,
   deps: ValidationDependencies,
 ): import("../../shared/room-messages").CommandResult | null {
-  const xpPurchaseCount = payload.xpPurchaseCount ?? 0;
+  const specialUnitUpgradeCount = payload.specialUnitUpgradeCount ?? 0;
   const shopRefreshCount = payload.shopRefreshCount ?? 0;
   let shopBuyCost = 0;
+  let heroExclusiveShopBuyCost = 0;
   let bossShopBuyCost = 0;
 
   // Calculate shop buy cost
@@ -911,6 +973,14 @@ function validateGold(
     }
   }
 
+  if (payload.heroExclusiveShopBuySlotIndex !== undefined) {
+    const heroExclusiveOffers = deps.getHeroExclusiveShopOffers(playerId);
+    const heroExclusiveOffer = heroExclusiveOffers[payload.heroExclusiveShopBuySlotIndex];
+    if (heroExclusiveOffer) {
+      heroExclusiveShopBuyCost = heroExclusiveOffer.cost;
+    }
+  }
+
   // Calculate boss shop buy cost
   if (payload.bossShopBuySlotIndex !== undefined) {
     const bossOffers = deps.getBossShopOffers(playerId);
@@ -920,11 +990,23 @@ function validateGold(
     }
   }
 
+  const specialUnitUpgradeCost = specialUnitUpgradeCount > 0
+    ? calculateSpecialUnitUpgradeCost(
+      deps.getSpecialUnitLevel(playerId),
+      specialUnitUpgradeCount,
+      deps.getSelectedSpecialUnitId(playerId),
+    )
+    : 0;
+  if (specialUnitUpgradeCost === null) {
+    return { accepted: false, code: "INVALID_PAYLOAD" };
+  }
+
   const currentGold = deps.getGold(playerId);
   const requiredGold =
-    XP_PURCHASE_COST * xpPurchaseCount +
+    specialUnitUpgradeCost +
     deps.getShopRefreshGoldCost(playerId, shopRefreshCount) +
     shopBuyCost +
+    heroExclusiveShopBuyCost +
     bossShopBuyCost;
 
   if (currentGold < requiredGold) {

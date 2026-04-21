@@ -1,4 +1,5 @@
 import type { BoardUnitType } from "../../shared/room-messages";
+import { getHeroExclusiveUnitById } from "../../data/hero-exclusive-units";
 import {
   sharedBoardIndexToCoordinate,
   sharedBoardManhattanDistance,
@@ -17,6 +18,22 @@ export interface HeroSkillEffect {
   name: string;
   triggerType: 'on_mana_full';      // マナ100到達でトリガー
   execute: (caster: BattleUnit, allies: BattleUnit[], enemies: BattleUnit[], log: string[]) => void;
+}
+
+export interface UnitSkillEffect extends SkillEffect {}
+
+export interface PairSkillEffect {
+  name: string;
+  executeOnBeforeTakeDamage?: (
+    target: BattleUnit,
+    attacker: BattleUnit,
+    log: string[],
+  ) => void;
+  executeOnAfterAttackHit?: (
+    attacker: BattleUnit,
+    target: BattleUnit,
+    log: string[],
+  ) => void;
 }
 
 function isDebuffedTarget(unit: BattleUnit): boolean {
@@ -218,6 +235,107 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     }
   }
 };
+
+export const HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEffect> = {
+  "mayumi-basic": {
+    name: "埴輪防衛線",
+    triggerType: "on_attack_count",
+    triggerCount: 3,
+    execute: (caster, _allies, _enemies, log) => {
+      caster.buffModifiers.defenseMultiplier *= 1.4;
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 埴輪防衛線! Gains +40% defense`);
+    },
+  },
+  "shion-basic": {
+    name: "貧困の気配",
+    triggerType: "on_attack_count",
+    triggerCount: 3,
+    execute: (caster, _allies, enemies, log) => {
+      const target = selectLowestHpTarget(caster, enemies);
+      if (!target) {
+        return;
+      }
+
+      target.buffModifiers.attackMultiplier *= 0.75;
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 貧困の気配! ${target.type} loses 25% attack`);
+    },
+  },
+  "ariya-basic": {
+    name: "破城の踏み込み",
+    triggerType: "on_attack_count",
+    triggerCount: 3,
+    execute: (caster, _allies, _enemies, log) => {
+      caster.buffModifiers.attackMultiplier *= 1.4;
+      caster.buffModifiers.attackSpeedMultiplier *= 1.2;
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 破城の踏み込み! Gains +40% attack and +20% attack speed`);
+    },
+  },
+};
+
+export const PAIR_SKILL_DEFINITIONS: Record<string, PairSkillEffect> = {
+  "mayumi-pair": {
+    name: "埴輪の護り",
+    executeOnBeforeTakeDamage: (target, _attacker, log) => {
+      if (target.maxHp <= 0) {
+        return;
+      }
+
+      if (target.hp / target.maxHp > 0.5) {
+        return;
+      }
+
+      if (target.pairSkillState?.["mayumi-pair-active"] === true) {
+        return;
+      }
+
+      target.buffModifiers.defenseMultiplier *= 1.25;
+      target.pairSkillState = {
+        ...(target.pairSkillState ?? {}),
+        "mayumi-pair-active": true,
+      };
+      log.push(`${target.sourceUnitId ?? target.type} activates mayumi-pair! Gains emergency defense`);
+    },
+  },
+  "shion-pair": {
+    name: "疫病の縁",
+    executeOnAfterAttackHit: (attacker, target, log) => {
+      if (attacker.pairSkillState?.["shion-pair-consumed"] === true) {
+        return;
+      }
+
+      target.buffModifiers.attackMultiplier *= 0.8;
+      attacker.pairSkillState = {
+        ...(attacker.pairSkillState ?? {}),
+        "shion-pair-consumed": true,
+      };
+      log.push(`${attacker.sourceUnitId ?? attacker.type} activates shion-pair! ${target.sourceUnitId ?? target.type} loses 20% attack`);
+    },
+  },
+};
+
+export function resolveUnitSkillDefinition(unit: BattleUnit): UnitSkillEffect | null {
+  const sourceUnitId = typeof unit.sourceUnitId === "string" ? unit.sourceUnitId : "";
+  const heroExclusiveUnit = getHeroExclusiveUnitById(sourceUnitId);
+  if (heroExclusiveUnit) {
+    return HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS[heroExclusiveUnit.skillId] ?? null;
+  }
+
+  return SKILL_DEFINITIONS[unit.type] ?? null;
+}
+
+export function resolvePairSkillDefinition(pairSkillId: string): PairSkillEffect | null {
+  if (typeof pairSkillId !== "string" || pairSkillId.length === 0) {
+    return null;
+  }
+
+  return PAIR_SKILL_DEFINITIONS[pairSkillId] ?? null;
+}
+
+export function resolvePairSkillDefinitions(unit: BattleUnit): PairSkillEffect[] {
+  return (unit.pairSkillIds ?? [])
+    .map((pairSkillId) => resolvePairSkillDefinition(pairSkillId))
+    .filter((definition): definition is PairSkillEffect => definition !== null);
+}
 
 // ヒーロースキル定義
 export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {

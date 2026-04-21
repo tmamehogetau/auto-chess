@@ -1,17 +1,31 @@
 import type { MatchLogger } from "../../match-logger";
 import type { LoggedPrepCommandPayload } from "./prep-command-payload";
-import { calculateSellValue } from "../../star-level-config";
+import { calculateSellValue } from "../../unit-level-config";
+import { calculateSpecialUnitUpgradeCost } from "../../special-unit-level-config";
 
 export interface PrepCommandLoggingDeps {
   logger: MatchLogger | null;
   getShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
   getBossShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
+  getSpecialUnitLevel?: (sessionId: string) => number | undefined;
+  getSelectedSpecialUnitId?: (sessionId: string) => string | undefined;
   getBenchUnits?: (
     sessionId: string,
-  ) => Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; starLevel: number; unitCount: number }> | undefined;
+  ) => Array<{
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    cost: number;
+    unitLevel?: number;
+    unitCount: number;
+  }> | undefined;
   getBoardPlacements?: (
     sessionId: string,
-  ) => Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; starLevel?: number; unitCount?: number }> | undefined;
+  ) => Array<{
+    cell: number;
+    unitType: "vanguard" | "ranger" | "mage" | "assassin";
+    sellValue?: number;
+    unitLevel?: number;
+    unitCount?: number;
+  }> | undefined;
   getRoundIndex: () => number;
   getPlayerGold: (sessionId: string) => number;
 }
@@ -21,14 +35,14 @@ export interface LogPrepCommandActionsOptions {
   benchUnitsSnapshot?: Array<{
     unitType: "vanguard" | "ranger" | "mage" | "assassin";
     cost: number;
-    starLevel: number;
+    unitLevel?: number;
     unitCount: number;
   }> | undefined;
   boardPlacementsSnapshot?: Array<{
     cell: number;
     unitType: "vanguard" | "ranger" | "mage" | "assassin";
     sellValue?: number;
-    starLevel?: number;
+    unitLevel?: number;
     unitCount?: number;
   }> | undefined;
 }
@@ -71,7 +85,12 @@ export function logPrepCommandActions(
     const benchUnit = options?.benchUnitsSnapshot?.[commandPayload.benchSellIndex]
       ?? deps.getBenchUnits?.(sessionId)?.[commandPayload.benchSellIndex];
     const sellValue = benchUnit
-      ? calculateSellValue(benchUnit.cost, benchUnit.unitType, benchUnit.starLevel, benchUnit.unitCount)
+      ? calculateSellValue(
+        benchUnit.cost,
+        benchUnit.unitType,
+        benchUnit.unitLevel ?? 1,
+        benchUnit.unitCount,
+      )
       : 1;
     deps.logger.logAction(sessionId, roundIndex, "sell_unit", {
       benchIndex: commandPayload.benchSellIndex,
@@ -105,11 +124,16 @@ export function logPrepCommandActions(
     });
   }
 
-  if (commandPayload.xpPurchaseCount !== undefined) {
-    deps.logger.logAction(sessionId, roundIndex, "buy_xp", {
-      itemCount: commandPayload.xpPurchaseCount,
+  if (commandPayload.specialUnitUpgradeCount !== undefined) {
+    const specialUnitUpgradeCost = calculateSpecialUnitUpgradeCost(
+      deps.getSpecialUnitLevel?.(sessionId) ?? 1,
+      commandPayload.specialUnitUpgradeCount,
+      deps.getSelectedSpecialUnitId?.(sessionId),
+    ) ?? 0;
+    deps.logger.logAction(sessionId, roundIndex, "upgrade_special_unit", {
+      itemCount: commandPayload.specialUnitUpgradeCount,
       goldBefore,
-      goldAfter: goldBefore - 4,
+      goldAfter: goldBefore - specialUnitUpgradeCost,
     });
   }
 
@@ -121,7 +145,7 @@ export function logPrepCommandActions(
       ? calculateSellValue(
         soldPlacement.sellValue ?? 0,
         soldPlacement.unitType,
-        soldPlacement.starLevel ?? 1,
+        soldPlacement.unitLevel ?? 1,
         soldPlacement.unitCount,
       )
       : 1;
@@ -156,7 +180,7 @@ export function logPrepCommandActions(
   if (commandPayload.mergeUnits !== undefined) {
     deps.logger.logAction(sessionId, roundIndex, "merge", {
       unitType: commandPayload.mergeUnits.unitType,
-      starLevel: commandPayload.mergeUnits.starLevel,
+      ...(commandPayload.mergeUnits.unitLevel !== undefined && { unitLevel: commandPayload.mergeUnits.unitLevel }),
       ...(commandPayload.mergeUnits.benchIndices !== undefined && {
         benchIndices: commandPayload.mergeUnits.benchIndices,
       }),

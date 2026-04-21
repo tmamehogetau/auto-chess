@@ -15,7 +15,7 @@ import { sharedBoardCoordinateToIndex } from "../../../src/shared/board-geometry
  * Tests to measure win rates between boss (Remilia) and 3-player raid teams.
  * Target balance: Boss wins around 50% across representative raid compositions
  * Current baseline: Boss (HP: 580, ATK: 47, AS: 0.57, Reduction: 0/0%)
- * This keeps ★1 raid comps boss-favored while allowing stronger ★3 comps to win more often
+ * This keeps Lv1 raid comps boss-favored while allowing fully upgraded Lv7 comps to win more often
  */
 
 describe("Boss Raid Simulation", () => {
@@ -56,7 +56,7 @@ describe("Boss Raid Simulation", () => {
       {
         cell: legacySlotToSharedIndex(0, "right"),
         unitType: "vanguard",
-        starLevel: 1,
+        unitLevel: 1,
         archetype: "remilia",
       },
       "right",
@@ -69,15 +69,15 @@ describe("Boss Raid Simulation", () => {
   }
 
   /**
-   * Create raid unit with specified type and star level
+   * Create raid unit with specified type and unit level
    */
   function createRaidUnit(
     unitType: "vanguard" | "ranger" | "mage" | "assassin",
-    starLevel: number,
+    unitLevel: number,
     cell: number,
   ): BattleUnit {
     return createBattleUnit(
-      { cell: legacySlotToSharedIndex(cell, "left"), unitType, starLevel },
+      { cell: legacySlotToSharedIndex(cell, "left"), unitType, unitLevel },
       "left",
       cell,
       false,
@@ -90,13 +90,13 @@ describe("Boss Raid Simulation", () => {
    * Returns result: "boss" | "raid" | "draw"
    */
   function simulateBossRaid(
-    raidComposition: Array<{ type: "vanguard" | "ranger" | "mage" | "assassin"; starLevel: number }>,
+    raidComposition: Array<{ type: "vanguard" | "ranger" | "mage" | "assassin"; unitLevel: number }>,
     options: { debug?: boolean; seed?: number } = {},
   ): { result: "boss" | "raid" | "draw"; durationMs: number } {
     const { debug = false, seed } = options;
     const boss = createBossUnit();
     const raidUnits = raidComposition.map((unit, index) =>
-      createRaidUnit(unit.type, unit.starLevel, index),
+      createRaidUnit(unit.type, unit.unitLevel, index),
     );
     const simulatorForRun = seed === undefined
       ? new BattleSimulator()
@@ -137,11 +137,11 @@ describe("Boss Raid Simulation", () => {
   }
 
   describe("Single Battle Tests", () => {
-    test("レミリア vs ★3戦士3体の戦闘が実行可能である", () => {
+    test("レミリア vs Lv7戦士3体の戦闘が実行可能である", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
       ];
 
       const { result, durationMs } = simulateBossRaid(composition, { debug: true }); // Debug mode
@@ -150,11 +150,11 @@ describe("Boss Raid Simulation", () => {
       expect(durationMs).toBeGreaterThan(0);
     });
 
-    test("レミリア vs ★3戦士2体+射手1体の戦闘が実行可能である", () => {
+    test("レミリア vs Lv7戦士2体+射手1体の戦闘が実行可能である", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "ranger" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "ranger" as const, unitLevel: 7 },
       ];
 
       const { result, durationMs } = simulateBossRaid(composition);
@@ -163,11 +163,11 @@ describe("Boss Raid Simulation", () => {
       expect(durationMs).toBeGreaterThan(0);
     });
 
-    test("レミリア vs ★3戦士1体+射手1体+魔法1体の戦闘が実行可能である", () => {
+    test("レミリア vs Lv7戦士1体+射手1体+魔法1体の戦闘が実行可能である", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "ranger" as const, starLevel: 3 },
-        { type: "mage" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "ranger" as const, unitLevel: 7 },
+        { type: "mage" as const, unitLevel: 7 },
       ];
 
       const { result, durationMs } = simulateBossRaid(composition);
@@ -178,9 +178,9 @@ describe("Boss Raid Simulation", () => {
 
     test("same seed reproduces the same boss raid result", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "ranger" as const, starLevel: 3 },
-        { type: "mage" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "ranger" as const, unitLevel: 7 },
+        { type: "mage" as const, unitLevel: 7 },
       ];
 
       const first = simulateBossRaid(composition, { seed: 77 });
@@ -196,7 +196,7 @@ describe("Boss Raid Simulation", () => {
           {
             cell: legacySlotToSharedIndex(7, "right"),
             unitType: "vanguard",
-            starLevel: 1,
+            unitLevel: 1,
             archetype: "remilia",
           },
           "right",
@@ -212,8 +212,8 @@ describe("Boss Raid Simulation", () => {
       const vanguardResult = simulator.simulateBattle(
         [createRaidUnit("vanguard", 1, 0)],
         [createStationaryBoss()],
-        [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
-        [{ cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
+        [{ cell: 0, unitType: "vanguard", unitLevel: 1 }],
+        [{ cell: 7, unitType: "vanguard", unitLevel: 1, archetype: "remilia" }],
         5_000,
         null,
         null,
@@ -224,8 +224,8 @@ describe("Boss Raid Simulation", () => {
       const assassinResult = simulator.simulateBattle(
         [createRaidUnit("assassin", 1, 0)],
         [createStationaryBoss()],
-        [{ cell: 0, unitType: "assassin", starLevel: 1 }],
-        [{ cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
+        [{ cell: 0, unitType: "assassin", unitLevel: 1 }],
+        [{ cell: 7, unitType: "vanguard", unitLevel: 1, archetype: "remilia" }],
         5_000,
         null,
         null,
@@ -245,7 +245,7 @@ describe("Boss Raid Simulation", () => {
       const simulator = new BattleSimulator();
       const leftUnits = [
         createBattleUnit(
-          { cell: legacySlotToSharedIndex(0, "left"), unitType: "vanguard", starLevel: 1 },
+          { cell: legacySlotToSharedIndex(0, "left"), unitType: "vanguard", unitLevel: 1 },
           "left",
           0,
           false,
@@ -254,7 +254,7 @@ describe("Boss Raid Simulation", () => {
       ];
       const rightUnits = [
         createBattleUnit(
-          { cell: legacySlotToSharedIndex(7, "right"), unitType: "ranger", starLevel: 1 },
+          { cell: legacySlotToSharedIndex(7, "right"), unitType: "ranger", unitLevel: 1 },
           "right",
           0,
           false,
@@ -265,8 +265,8 @@ describe("Boss Raid Simulation", () => {
       const battleResult = simulator.simulateBattle(
         leftUnits,
         rightUnits,
-        [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
-        [{ cell: 7, unitType: "ranger", starLevel: 1 }],
+        [{ cell: 0, unitType: "vanguard", unitLevel: 1 }],
+        [{ cell: 7, unitType: "ranger", unitLevel: 1 }],
         5_000,
         null,
         null,
@@ -281,11 +281,11 @@ describe("Boss Raid Simulation", () => {
   });
 
   describe("Win Rate Measurement", () => {
-    test("★3戦士3体 vs レミリアの勝率測定（100試行）", () => {
+    test("Lv7戦士3体 vs レミリアの勝率測定（100試行）", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
       ];
 
       const iterations = 100;
@@ -309,7 +309,7 @@ describe("Boss Raid Simulation", () => {
       const drawRate = (draws / iterations) * 100;
 
       // Log results for analysis
-      console.log("=== ★3戦士3体 vs レミリア ===");
+      console.log("=== Lv7戦士3体 vs レミリア ===");
       console.log(`Boss win rate: ${bossWinRate.toFixed(1)}%`);
       console.log(`Raid win rate: ${raidWinRate.toFixed(1)}%`);
       console.log(`Draw rate: ${drawRate.toFixed(1)}%`);
@@ -320,11 +320,11 @@ describe("Boss Raid Simulation", () => {
       expect(bossWinRate).toBeLessThanOrEqual(100);
     });
 
-    test("★3戦士2体+射手1体 vs レミリアの勝率測定（100試行）", () => {
+    test("Lv7戦士2体+射手1体 vs レミリアの勝率測定（100試行）", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "ranger" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "ranger" as const, unitLevel: 7 },
       ];
 
       const iterations = 100;
@@ -343,7 +343,7 @@ describe("Boss Raid Simulation", () => {
       const bossWinRate = (bossWins / iterations) * 100;
       const raidWinRate = (raidWins / iterations) * 100;
 
-      console.log("=== ★3戦士2体+射手1体 vs レミリア ===");
+      console.log("=== Lv7戦士2体+射手1体 vs レミリア ===");
       console.log(`Boss win rate: ${bossWinRate.toFixed(1)}%`);
       console.log(`Raid win rate: ${raidWinRate.toFixed(1)}%`);
 
@@ -354,9 +354,9 @@ describe("Boss Raid Simulation", () => {
 
     test("★4ユニット3体 vs レミリアの勝率測定（100試行）", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 4 },
-        { type: "ranger" as const, starLevel: 4 },
-        { type: "mage" as const, starLevel: 4 },
+        { type: "vanguard" as const, unitLevel: 4 },
+        { type: "ranger" as const, unitLevel: 4 },
+        { type: "mage" as const, unitLevel: 4 },
       ];
 
       const iterations = 100;
@@ -388,79 +388,79 @@ describe("Boss Raid Simulation", () => {
         expectedAdvantage: "boss" | "raid";
         units: Array<{
           type: "vanguard" | "ranger" | "mage" | "assassin";
-          starLevel: number;
+          unitLevel: number;
         }>;
       }> = [
         {
           name: "boss-favored: ★1戦士3",
           expectedAdvantage: "boss",
           units: [
-            { type: "vanguard", starLevel: 1 },
-            { type: "vanguard", starLevel: 1 },
-            { type: "vanguard", starLevel: 1 },
+            { type: "vanguard", unitLevel: 1 },
+            { type: "vanguard", unitLevel: 1 },
+            { type: "vanguard", unitLevel: 1 },
           ],
         },
         {
           name: "boss-favored: ★1射手3",
           expectedAdvantage: "boss",
           units: [
-            { type: "ranger", starLevel: 1 },
-            { type: "ranger", starLevel: 1 },
-            { type: "ranger", starLevel: 1 },
+            { type: "ranger", unitLevel: 1 },
+            { type: "ranger", unitLevel: 1 },
+            { type: "ranger", unitLevel: 1 },
           ],
         },
         {
           name: "boss-favored: ★1魔法3",
           expectedAdvantage: "boss",
           units: [
-            { type: "mage", starLevel: 1 },
-            { type: "mage", starLevel: 1 },
-            { type: "mage", starLevel: 1 },
+            { type: "mage", unitLevel: 1 },
+            { type: "mage", unitLevel: 1 },
+            { type: "mage", unitLevel: 1 },
           ],
         },
         {
           name: "boss-favored: ★1暗殺3",
           expectedAdvantage: "boss",
           units: [
-            { type: "assassin", starLevel: 1 },
-            { type: "assassin", starLevel: 1 },
-            { type: "assassin", starLevel: 1 },
+            { type: "assassin", unitLevel: 1 },
+            { type: "assassin", unitLevel: 1 },
+            { type: "assassin", unitLevel: 1 },
           ],
         },
         {
-          name: "boss-dominant: ★3戦士2+射手1",
+          name: "contestable: Lv7戦士2+射手1",
           expectedAdvantage: "boss",
           units: [
-            { type: "vanguard", starLevel: 3 },
-            { type: "vanguard", starLevel: 3 },
-            { type: "ranger", starLevel: 3 },
+            { type: "vanguard", unitLevel: 7 },
+            { type: "vanguard", unitLevel: 7 },
+            { type: "ranger", unitLevel: 7 },
           ],
         },
         {
-          name: "boss-dominant: ★3戦士2+魔法1",
+          name: "contestable: Lv7戦士2+魔法1",
           expectedAdvantage: "boss",
           units: [
-            { type: "vanguard", starLevel: 3 },
-            { type: "vanguard", starLevel: 3 },
-            { type: "mage", starLevel: 3 },
+            { type: "vanguard", unitLevel: 7 },
+            { type: "vanguard", unitLevel: 7 },
+            { type: "mage", unitLevel: 7 },
           ],
         },
         {
-          name: "boss-dominant: ★3射手3",
+          name: "contestable: Lv7射手3",
           expectedAdvantage: "boss",
           units: [
-            { type: "ranger", starLevel: 3 },
-            { type: "ranger", starLevel: 3 },
-            { type: "ranger", starLevel: 3 },
+            { type: "ranger", unitLevel: 7 },
+            { type: "ranger", unitLevel: 7 },
+            { type: "ranger", unitLevel: 7 },
           ],
         },
         {
-          name: "boss-dominant: ★3暗殺2+射手1",
+          name: "contestable: Lv7暗殺2+射手1",
           expectedAdvantage: "boss",
           units: [
-            { type: "assassin", starLevel: 3 },
-            { type: "assassin", starLevel: 3 },
-            { type: "ranger", starLevel: 3 },
+            { type: "assassin", unitLevel: 7 },
+            { type: "assassin", unitLevel: 7 },
+            { type: "ranger", unitLevel: 7 },
           ],
         },
       ];
@@ -509,13 +509,13 @@ describe("Boss Raid Simulation", () => {
 
     test("レイドチームの総ステータス検証", () => {
       const composition = [
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "vanguard" as const, starLevel: 3 },
-        { type: "ranger" as const, starLevel: 3 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "vanguard" as const, unitLevel: 7 },
+        { type: "ranger" as const, unitLevel: 7 },
       ];
 
       const raidUnits = composition.map((unit, index) =>
-        createRaidUnit(unit.type, unit.starLevel, index),
+        createRaidUnit(unit.type, unit.unitLevel, index),
       );
 
       const totalHp = raidUnits.reduce((sum, unit) => sum + unit.hp, 0);
@@ -523,7 +523,7 @@ describe("Boss Raid Simulation", () => {
         return sum + unit.attackPower / (1 / unit.attackSpeed);
       }, 0);
 
-      console.log("=== レイドチーム総合ステータス（★3戦士2+射手1） ===");
+      console.log("=== レイドチーム総合ステータス（Lv7戦士2+射手1） ===");
       console.log(`Total HP: ${totalHp}`);
       console.log(`Total DPS: ${totalDps.toFixed(1)}`);
       console.log(`Time to kill boss: ${(2000 / totalDps).toFixed(1)}s`);

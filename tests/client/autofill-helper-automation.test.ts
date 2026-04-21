@@ -282,6 +282,32 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase boss helper upgrades its special unit when reserve shops are empty", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 4,
+        specialUnitLevel: 3,
+        benchUnits: [],
+        boardUnits: [],
+        bossShopOffers: [],
+        shopOffers: [],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase boss helper prefers patchouli over other affordable boss offers", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -383,6 +409,63 @@ describe("autofill helper automation", () => {
     })).toEqual([
       {
         payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper buys an affordable hero-exclusive offer before a weak normal offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 2,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["30:keiki"],
+        selectedHeroId: "keiki",
+        heroExclusiveShopOffers: [
+          { unitId: "mayumi", unitType: "vanguard", cost: 3 },
+        ],
+        shopOffers: [
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { heroExclusiveShopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper upgrades its hero after reserve shops are exhausted", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 4,
+        benchUnits: [],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -1254,7 +1337,7 @@ describe("autofill helper automation", () => {
       player: {
         ready: false,
         role: "raid",
-        level: 5,
+        specialUnitLevel: 5,
         gold: 5,
         benchUnits: ["vanguard", "vanguard", "ranger", "ranger", "mage", "vanguard", "ranger", "assassin"],
         benchUnitIds: ["yoshika", "rin", "wakasagihime", "momoyo", "tojiko", "kagerou", "megumu", "miko"],
@@ -1277,6 +1360,36 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("midgame bench-full raid helper sells a weak bench unit for a hero-exclusive offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 5,
+        gold: 5,
+        benchUnits: ["vanguard", "vanguard", "ranger", "ranger", "mage", "vanguard", "ranger", "assassin"],
+        benchUnitIds: ["yoshika", "rin", "wakasagihime", "momoyo", "tojiko", "kagerou", "megumu", "miko"],
+        boardUnits: ["30:keiki"],
+        selectedHeroId: "keiki",
+        heroExclusiveShopOffers: [
+          { unitType: "vanguard", unitId: "mayumi", cost: 3 },
+        ],
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 6 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame strength raid helper pivots into a 4-cost offer over a cheap duplicate", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -1284,7 +1397,7 @@ describe("autofill helper automation", () => {
         ready: false,
         role: "raid",
         gold: 6,
-        level: 5,
+        specialUnitLevel: 5,
         benchUnits: ["vanguard", "ranger"],
         benchUnitIds: ["rin", "nazrin"],
         boardUnits: ["30:reimu", "31:yoshika"],
@@ -1314,7 +1427,7 @@ describe("autofill helper automation", () => {
         ready: false,
         role: "raid",
         gold: 8,
-        level: 5,
+        specialUnitLevel: 5,
         benchUnits: ["vanguard", "ranger"],
         benchUnitIds: ["rin", "nazrin"],
         boardUnits: ["30:reimu", "31:yoshika"],
@@ -1343,7 +1456,7 @@ describe("autofill helper automation", () => {
         ready: false,
         role: "raid",
         gold: 8,
-        level: 5,
+        specialUnitLevel: 5,
         benchUnits: ["vanguard", "ranger", "mage"],
         benchUnitIds: ["rin", "nazrin", "megumu"],
         boardUnits: ["30:reimu", "31:yoshika", "25:tojiko"],

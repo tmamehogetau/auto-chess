@@ -9,7 +9,7 @@ export interface ManualPlayBoardUnit {
   unitName: string;
   unitType: string;
   unitId: string;
-  starLevel: number;
+  unitLevel?: number;
   subUnitName: string;
 }
 
@@ -42,7 +42,7 @@ export interface ManualPlayUnitBattleOutcome {
   phaseContributionDamage: number;
   finalHp: number;
   alive: boolean;
-  starLevel: number;
+  unitLevel?: number;
   subUnitName: string;
   isSpecialUnit: boolean;
 }
@@ -168,7 +168,7 @@ export function toManualPlayBoardUnit(placement: BoardUnitPlacement): ManualPlay
       ?? placement.unitType,
     unitType: placement.unitType,
     unitId: placement.unitId ?? "",
-    starLevel: placement.starLevel ?? 1,
+    unitLevel: placement.unitLevel ?? 1,
     subUnitName:
       (placement.subUnit?.unitType == null
         ? undefined
@@ -481,7 +481,7 @@ export function buildManualPlayUnitBattleOutcomes(
         phaseContributionDamage: phaseContributionByBattleUnitId.get(unit.battleUnitId) ?? 0,
         finalHp,
         alive,
-        starLevel: metadata?.starLevel ?? 1,
+        unitLevel: metadata?.unitLevel ?? 1,
         subUnitName: metadata?.subUnitName ?? "",
         isSpecialUnit: metadata == null,
       };
@@ -651,9 +651,10 @@ export function buildManualPlayHumanReportText(report: ManualPlayHumanReport): s
         lines.push(`バトル時間 ${Math.max(0, Math.round(round.battleDurationMs))}ms`);
       }
       for (const unit of bossUnits) {
+        const resolvedUnitLevel = unit.unitLevel ?? 1;
         const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
         lines.push(
-          `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
+          `${unit.unitName} Lv${resolvedUnitLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
         );
       }
 
@@ -663,9 +664,10 @@ export function buildManualPlayHumanReportText(report: ManualPlayHumanReport): s
         const unitOutcomes = raidUnitsByPlayer.get(playerConsequence.playerId) ?? [];
         lines.push(`${playerConsequence.label} ${formatPlayerOutcomeLabel(playerConsequence, unitOutcomes)}`);
         for (const unit of unitOutcomes) {
+          const resolvedUnitLevel = unit.unitLevel ?? 1;
           const subUnitSuffix = unit.subUnitName ? ` サブユニット${unit.subUnitName}` : "";
           lines.push(
-            `${unit.unitName} Lv${unit.starLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
+            `${unit.unitName} Lv${resolvedUnitLevel}${subUnitSuffix} 与ダメージ${unit.totalDamage} フェーズ貢献ダメージ${unit.phaseContributionDamage} 最終HP${unit.finalHp}`,
           );
         }
       }

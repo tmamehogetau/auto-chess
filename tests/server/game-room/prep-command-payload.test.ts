@@ -81,13 +81,13 @@ describe("prep-command-payload", () => {
       cmdSeq: 7,
       mergeUnits: {
         unitType: "vanguard",
-        starLevel: 2,
+        unitLevel: 2,
         benchIndices: [0, 1, 2],
       },
     } as PrepCommandMessage & {
       mergeUnits: {
         unitType: string;
-        starLevel: number;
+        unitLevel: number;
         benchIndices: number[];
       };
     };
@@ -95,9 +95,20 @@ describe("prep-command-payload", () => {
     expect(buildPrepCommandPayload(message)).toEqual({
       mergeUnits: {
         unitType: "vanguard",
-        starLevel: 2,
+        unitLevel: 2,
         benchIndices: [0, 1, 2],
       },
+    });
+  });
+
+  it("preserves hero-exclusive shop buys so dedicated prep commands are forwarded", () => {
+    const message: PrepCommandMessage = {
+      cmdSeq: 8,
+      heroExclusiveShopBuySlotIndex: 0,
+    };
+
+    expect(buildPrepCommandPayload(message)).toEqual({
+      heroExclusiveShopBuySlotIndex: 0,
     });
   });
 });

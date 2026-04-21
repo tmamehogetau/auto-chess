@@ -43,6 +43,7 @@ interface QueuedSharedBoardCellSnapshot {
   ownerId: string;
   displayName?: string;
   portraitKey?: string;
+  unitLevel?: number;
 }
 
 /**
@@ -562,7 +563,7 @@ export class SharedBoardBridge {
         cell: cell.index,
         unitType,
         ...(portraitKey ? { unitId: portraitKey } : {}),
-        starLevel: 1,
+        unitLevel: cell.unitLevel ?? 1,
       });
     }
 
@@ -727,6 +728,7 @@ export class SharedBoardBridge {
       ownerId: cell.ownerId,
       displayName: cell.displayName,
       portraitKey: cell.portraitKey,
+      unitLevel: cell.unitLevel,
     }));
   }
 

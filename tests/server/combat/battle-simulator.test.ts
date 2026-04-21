@@ -97,7 +97,7 @@ describe("battle-simulator", () => {
 
     test("HP70%以上のレミリアにシナジーバフが適用される", () => {
       const boss = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
@@ -111,7 +111,7 @@ describe("battle-simulator", () => {
 
     test("HP70%未満のレミリアにはシナジーバフが適用されない", () => {
       const boss = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
@@ -126,12 +126,12 @@ describe("battle-simulator", () => {
     test("HP70%以上かつシナジー有効時はレミリアが吸血する", () => {
       const simulator = new BattleSimulator();
       const raidUnit = createTestBattleUnit(
-        { cell: 3, unitType: "vanguard", starLevel: 1 },
+        { cell: 3, unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const boss = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
@@ -141,9 +141,9 @@ describe("battle-simulator", () => {
       const result = simulator.simulateBattle(
         [raidUnit],
         [boss],
-        [{ cell: 3, unitType: "vanguard", starLevel: 1 }],
+        [{ cell: 3, unitType: "vanguard", unitLevel: 1 }],
         [
-          { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+          { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
           { cell: 1, unitType: "vanguard", archetype: "meiling" },
           { cell: 2, unitType: "assassin", archetype: "sakuya" },
         ],
@@ -160,7 +160,7 @@ describe("battle-simulator", () => {
     test("isBoss=true かつ remilia は boss data baseline を使う", () => {
       const bossBaseline = getMvpPhase1Boss();
       const boss = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
@@ -177,13 +177,13 @@ describe("battle-simulator", () => {
     test("HP70%以上のレミリアは紅き夜の王でHP70%未満時より高いダメージを出す", () => {
       const simulator = new BattleSimulator();
       const bossWithPassive = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "left",
         0,
         true,
       );
       const bossWithoutPassive = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "left",
         0,
         true,
@@ -191,12 +191,12 @@ describe("battle-simulator", () => {
       bossWithoutPassive.hp = Math.floor(bossWithoutPassive.maxHp * 0.6);
 
       const raidUnitForPassive = createTestBattleUnit(
-        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        { cell: 2, unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       const raidUnitWithoutPassive = createTestBattleUnit(
-        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        { cell: 2, unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -204,16 +204,16 @@ describe("battle-simulator", () => {
       const passiveResult = simulator.simulateBattle(
         [bossWithPassive],
         [raidUnitForPassive],
-        [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
-        [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
+        [{ cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" }],
+        [{ cell: 2, unitType: "vanguard", unitLevel: 1 }],
         5_000,
       );
 
       const nonPassiveResult = simulator.simulateBattle(
         [bossWithoutPassive],
         [raidUnitWithoutPassive],
-        [{ cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" }],
-        [{ cell: 2, unitType: "vanguard", starLevel: 1 }],
+        [{ cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" }],
+        [{ cell: 2, unitType: "vanguard", unitLevel: 1 }],
         5_000,
       );
 
@@ -224,9 +224,9 @@ describe("battle-simulator", () => {
   describe("kanjuden debuff immunity", () => {
     test("kanjuden tier1 は crowd_control の攻撃速度低下を無効化する", () => {
       const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
-      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", starLevel: 1 }, "left", 0);
+      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", unitLevel: 1 }, "left", 0);
       const immuneTarget = createTestBattleUnit(
-        { cell: 2, unitType: "vanguard", starLevel: 1, factionId: "kanjuden" },
+        { cell: 2, unitType: "vanguard", unitLevel: 1, factionId: "kanjuden" },
         "right",
         0,
         false,
@@ -246,9 +246,9 @@ describe("battle-simulator", () => {
 
     test("kanjuden でないユニットには咲夜の攻撃速度低下が適用される", () => {
       const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
-      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", starLevel: 1 }, "left", 0);
+      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", unitLevel: 1 }, "left", 0);
       const normalTarget = createTestBattleUnit(
-        { cell: 2, unitType: "vanguard", starLevel: 1 },
+        { cell: 2, unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -262,17 +262,17 @@ describe("battle-simulator", () => {
     test("咲夜の範囲デバフは 6x6 の縦距離も半径計算に含める", () => {
       const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
       const caster = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", unitLevel: 1 },
         "left",
         0,
       );
       const centerTarget = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       const verticalTarget = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "ranger", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "ranger", unitLevel: 1 },
         "right",
         1,
       );
@@ -287,22 +287,22 @@ describe("battle-simulator", () => {
     test("咲夜は最も多く巻き込める中心を選ぶ", () => {
       const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
       const caster = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "assassin", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "assassin", unitLevel: 1 },
         "left",
         0,
       );
       const isolatedEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 0 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 0 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       const clusteredEnemyA = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", unitLevel: 1 },
         "right",
         1,
       );
       const clusteredEnemyB = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "mage", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "mage", unitLevel: 1 },
         "right",
         2,
       );
@@ -320,17 +320,17 @@ describe("battle-simulator", () => {
     test("Backstab は同HPなら caster に近い敵を優先する", () => {
       const assassinSkill = SKILL_DEFINITIONS.assassin!;
       const caster = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", unitLevel: 1 },
         "left",
         0,
       );
       const nearerEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 30 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1, hp: 30 },
         "right",
         0,
       );
       const fartherEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 1 }), unitType: "vanguard", starLevel: 1, hp: 30 },
+        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 1 }), unitType: "vanguard", unitLevel: 1, hp: 30 },
         "right",
         1,
       );
@@ -352,11 +352,11 @@ describe("battle-simulator", () => {
       };
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", unitLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitId: "yoshika", unitLevel: 1, factionId: "shinreibyou" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", unitLevel: 1, factionId: "kanjuden" },
       ];
 
       const result = simulator.simulateBattle(
@@ -382,12 +382,12 @@ describe("battle-simulator", () => {
       };
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitId: "yoshika", starLevel: 1, factionId: "shinreibyou" },
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 3 }), unitType: "ranger", unitId: "tojiko", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", unitLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitId: "yoshika", unitLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 3 }), unitType: "ranger", unitId: "tojiko", unitLevel: 1, factionId: "shinreibyou" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", unitLevel: 1, factionId: "kanjuden" },
       ];
       const leftUnits = leftPlacements.map((placement, index) =>
         createTestBattleUnit(placement, "left", index, false, flags),
@@ -420,10 +420,10 @@ describe("battle-simulator", () => {
       };
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", starLevel: 1, factionId: "shinreibyou" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "assassin", unitId: "seiga", unitLevel: 1, factionId: "shinreibyou" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", starLevel: 1, factionId: "kanjuden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitId: "junko", unitLevel: 1, factionId: "kanjuden" },
       ];
 
       const result = simulator.simulateBattle(
@@ -447,12 +447,13 @@ describe("battle-simulator", () => {
       const placement: BoardUnitPlacement = {
         cell: 0,
         unitType: "vanguard",
-        starLevel: 1,
+        unitLevel: 1,
       };
       const unit = createTestBattleUnit(placement, "left", 0);
       expect(unit.id).toBe("left-vanguard-0");
       expect(unit.type).toBe("vanguard");
-      expect(unit.starLevel).toBe(1);
+      expect(unit.unitLevel).toBe(1);
+      expect(unit).not.toHaveProperty("starLevel");
       expect(unit.cell).toBe(combatCellToRaidBoardIndex(0));
       expect(unit.hp).toBeGreaterThan(0);
       expect(unit.maxHp).toBeGreaterThan(0);
@@ -461,9 +462,9 @@ describe("battle-simulator", () => {
     });
 
     test("スターレベルに応じてステータスが変化する", () => {
-      const placement1: BoardUnitPlacement = { cell: 0, unitType: "vanguard", starLevel: 1 };
-      const placement2: BoardUnitPlacement = { cell: 1, unitType: "vanguard", starLevel: 2 };
-      const placement3: BoardUnitPlacement = { cell: 2, unitType: "vanguard", starLevel: 3 };
+      const placement1: BoardUnitPlacement = { cell: 0, unitType: "vanguard", unitLevel: 1 };
+      const placement2: BoardUnitPlacement = { cell: 1, unitType: "vanguard", unitLevel: 2 };
+      const placement3: BoardUnitPlacement = { cell: 2, unitType: "vanguard", unitLevel: 3 };
 
       const unit1 = createTestBattleUnit(placement1, "left", 0);
       const unit2 = createTestBattleUnit(placement2, "left", 1);
@@ -476,7 +477,7 @@ describe("battle-simulator", () => {
     });
 
     test("現在のunitType入力は正確な基礎ステータスを返す", () => {
-      expect(createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0)).toMatchObject({
         id: "left-vanguard-0",
         type: "vanguard",
         cell: combatCellToRaidBoardIndex(0),
@@ -488,7 +489,7 @@ describe("battle-simulator", () => {
         attackRange: 1,
         damageReduction: 0,
       });
-      expect(createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 1, unitType: "ranger", unitLevel: 1 }, "left", 1)).toMatchObject({
         id: "left-ranger-1",
         type: "ranger",
         cell: combatCellToRaidBoardIndex(1),
@@ -500,7 +501,7 @@ describe("battle-simulator", () => {
         attackRange: 3,
         damageReduction: 0,
       });
-      expect(createTestBattleUnit({ cell: 2, unitType: "mage", starLevel: 1 }, "right", 0)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 2, unitType: "mage", unitLevel: 1 }, "right", 0)).toMatchObject({
         id: "right-mage-0",
         type: "mage",
         cell: combatCellToBossBoardIndex(2),
@@ -512,7 +513,7 @@ describe("battle-simulator", () => {
         attackRange: 2,
         damageReduction: 0,
       });
-      expect(createTestBattleUnit({ cell: 3, unitType: "assassin", starLevel: 1 }, "right", 1)).toMatchObject({
+      expect(createTestBattleUnit({ cell: 3, unitType: "assassin", unitLevel: 1 }, "right", 1)).toMatchObject({
         id: "right-assassin-1",
         type: "assassin",
         cell: combatCellToBossBoardIndex(3),
@@ -530,14 +531,14 @@ describe("battle-simulator", () => {
       // Both paths use flags-aware roster provider resolution
       // Compare: unitId resolution vs direct unitType (both with flags)
       const unitWithUnitId = createTestBattleUnit(
-        { cell: 0, unitType: "mage", unitId: "meiling", starLevel: 1 },
+        { cell: 0, unitType: "mage", unitId: "meiling", unitLevel: 1 },
         "left",
         0,
         false,
         DEFAULT_FLAGS,
       );
       const unitWithDirectType = createTestBattleUnit(
-        { cell: 1, unitType: "vanguard", starLevel: 1 },
+        { cell: 1, unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
         false,
@@ -560,7 +561,7 @@ describe("battle-simulator", () => {
       };
 
       const unit = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", unitId: "rin", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitId: "rin", unitLevel: 1 },
         "left",
         0,
         false,
@@ -584,14 +585,14 @@ describe("battle-simulator", () => {
 
     test("Scarlet Mansion と boss の追加 combat stats を使う", () => {
       const scarletUnit = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", unitId: "patchouli", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitId: "patchouli", unitLevel: 1 },
         "left",
         0,
         false,
         DEFAULT_FLAGS,
       );
       const bossUnit = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", archetype: "remilia", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", archetype: "remilia", unitLevel: 1 },
         "right",
         0,
         true,
@@ -705,7 +706,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
         type: "vanguard",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 80,
         maxHp: 80,
         attackPower: 4,
@@ -731,7 +732,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
         type: "vanguard",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 80,
         maxHp: 80,
         attackPower: 4,
@@ -757,7 +758,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
         type: "vanguard",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 80,
         maxHp: 80,
         attackPower: 4,
@@ -779,7 +780,7 @@ describe("battle-simulator", () => {
         {
           id: "right-ranger-0",
           type: "ranger",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 50,
           maxHp: 50,
           attackPower: 5,
@@ -805,7 +806,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
         type: "ranger",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 50,
         maxHp: 50,
         attackPower: 5,
@@ -827,7 +828,7 @@ describe("battle-simulator", () => {
         {
           id: "right-ranger-0",
           type: "ranger",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 50,
           maxHp: 50,
           attackPower: 5,
@@ -848,7 +849,7 @@ describe("battle-simulator", () => {
         {
           id: "right-mage-0",
           type: "mage",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 40,
           maxHp: 40,
           attackPower: 6,
@@ -869,7 +870,7 @@ describe("battle-simulator", () => {
         {
           id: "right-vanguard-0",
           type: "vanguard",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 80,
           maxHp: 80,
           attackPower: 4,
@@ -897,7 +898,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-ranger-0",
         type: "ranger",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 50,
         maxHp: 50,
         attackPower: 5,
@@ -916,12 +917,12 @@ describe("battle-simulator", () => {
         },
       };
       const sturdierEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 80 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", unitLevel: 1, hp: 80 },
         "right",
         0,
       );
       const weakerEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "mage", starLevel: 1, hp: 20 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "mage", unitLevel: 1, hp: 20 },
         "right",
         1,
       );
@@ -934,7 +935,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-ranger-0",
         type: "ranger",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 50,
         maxHp: 50,
         attackPower: 5,
@@ -953,12 +954,12 @@ describe("battle-simulator", () => {
         },
       };
       const lowerCellEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", unitLevel: 1, hp: 40 },
         "right",
         0,
       );
       const higherCellEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", unitLevel: 1, hp: 40 },
         "right",
         1,
       );
@@ -971,7 +972,7 @@ describe("battle-simulator", () => {
       const attacker: BattleUnit = {
         id: "left-vanguard-0",
         type: "vanguard",
-        starLevel: 1,
+        unitLevel: 1,
         hp: 80,
         maxHp: 80,
         attackPower: 4,
@@ -993,7 +994,7 @@ describe("battle-simulator", () => {
         {
           id: "right-ranger-0",
           type: "ranger",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 50,
           maxHp: 50,
           attackPower: 5,
@@ -1017,37 +1018,37 @@ describe("battle-simulator", () => {
 
     test("接敵最短対象は最寄り敵と異なる場合がある", () => {
       const attacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const blockerA = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const blockerB = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const blockerC = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         3,
       );
       const blockerD = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         4,
       );
       const nearEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       const farEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 5, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         1,
       );
@@ -1063,42 +1064,42 @@ describe("battle-simulator", () => {
 
     test("味方近接が集中しすぎる敵よりも受け口に余裕がある敵を優先する", () => {
       const attacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const competitorA = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const competitorB = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const closeFrontBlocker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         3,
       );
       const closeLeftBlocker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         4,
       );
       const closeTopBlocker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         5,
       );
       const closeEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       const roomyEnemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         1,
       );
@@ -1114,22 +1115,22 @@ describe("battle-simulator", () => {
 
     test("接敵マス競合が強い場合は空いている攻撃可能マスを優先する", () => {
       const attacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const blockerAhead = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const blockerLeft = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const enemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -1146,22 +1147,22 @@ describe("battle-simulator", () => {
 
     test("予約済みの接敵マスは避けて次善の攻撃可能マスを選ぶ", () => {
       const attacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const blockerAhead = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const blockerLeft = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const enemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -1179,22 +1180,22 @@ describe("battle-simulator", () => {
 
     test("接敵マスごとの入口数を数えられる", () => {
       const attacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const blockerNearFront = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const blockerNearRightEntrance = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const enemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -1221,27 +1222,27 @@ describe("battle-simulator", () => {
 
     test("同歩数なら入口が広い接敵マスを優先する", () => {
       const attacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const blockerNearFront = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const blockerNearRightEntrance = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const remoteCompetitor = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 1 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         3,
       );
       const enemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -1258,27 +1259,27 @@ describe("battle-simulator", () => {
 
     test("同じ敵を追う近接は入力順ではなく別々の接敵マスへ割り当てる", () => {
       const flexibleAttacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
       const constrainedAttacker = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
       const blockerAhead = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         2,
       );
       const blockerLeft = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         3,
       );
       const enemy = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -1310,10 +1311,10 @@ describe("BattleSimulator", () => {
   test("6x6 shared-board cells では move event が board coordinate の1歩移動になる", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 24, unitType: "vanguard", starLevel: 1 },
+        { cell: 24, unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 11, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 11, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       ];
       const result = simulator.simulateBattle(
         leftPlacements.map((placement, index) => createTestBattleUnit(placement, "left", index)),
@@ -1338,11 +1339,11 @@ describe("BattleSimulator", () => {
     test("6x6 shared-board cells では occupied cell を避けて detour する", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 4 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 4 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       ];
 
       const result = simulator.simulateBattle(
@@ -1370,13 +1371,13 @@ describe("BattleSimulator", () => {
     test("6x6 shared-board cells では一度離れる遠回りでも有効な path を選ぶ", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 5 }), unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       ];
 
       const result = simulator.simulateBattle(
@@ -1404,18 +1405,18 @@ describe("BattleSimulator", () => {
     test("6x6 shared-board cells では到達経路がなくても詰まりを避ける1歩迂回を選ぶ", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 0 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 0 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 4 }), unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 3 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 3 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       ];
 
       const result = simulator.simulateBattle(
@@ -1443,12 +1444,12 @@ describe("BattleSimulator", () => {
     test("6x6 shared-board cells では接敵マスが競合する場合に空いている側へ回り込む", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       ];
 
       const result = simulator.simulateBattle(
@@ -1479,10 +1480,10 @@ describe("BattleSimulator", () => {
     test("射程1ユニットは移動後の初撃待ちを短縮する", () => {
       const simulator = new BattleSimulator();
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "ranger", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "ranger", unitLevel: 1 },
       ];
 
       const result = simulator.simulateBattle(
@@ -1513,7 +1514,7 @@ describe("BattleSimulator", () => {
     test("movementSpeed に応じて攻撃速度と独立して連続移動する", () => {
       const simulator = new BattleSimulator();
       const leftUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
@@ -1521,7 +1522,7 @@ describe("BattleSimulator", () => {
       leftUnit.movementSpeed = 2;
 
       const rightUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "ranger", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 4, y: 4 }), unitType: "ranger", unitLevel: 1 },
         "right",
         0,
       );
@@ -1552,39 +1553,39 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
       const leftUnits = [
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", unitLevel: 1 },
           "left",
           0,
         ),
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 1, y: 2 }), unitType: "vanguard", unitLevel: 1 },
           "left",
           1,
         ),
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1 },
           "left",
           2,
         ),
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
           "left",
           3,
         ),
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", unitLevel: 1 },
           "left",
           4,
         ),
       ];
       const rightUnits = [
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
           "right",
           0,
         ),
         createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 5, y: 2 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 5, y: 2 }), unitType: "vanguard", unitLevel: 1 },
           "right",
           1,
         ),
@@ -1612,10 +1613,10 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 5000);
@@ -1630,7 +1631,7 @@ describe("BattleSimulator", () => {
     test("hero unit は left side として敵ユニットを攻撃する", () => {
       const simulator = new BattleSimulator();
       const heroUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "vanguard", unitLevel: 1 },
         "left",
         0,
       );
@@ -1638,7 +1639,7 @@ describe("BattleSimulator", () => {
       heroUnit.sourceUnitId = "hero-reimu";
 
       const rightUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
@@ -1667,20 +1668,20 @@ describe("BattleSimulator", () => {
     test("right side の hero unit は自分や味方ではなく left side の敵を攻撃する", () => {
       const simulator = new BattleSimulator();
       const leftBossUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "left",
         0,
         true,
       );
       const rightHeroUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       rightHeroUnit.id = "hero-reimu";
       rightHeroUnit.sourceUnitId = "hero-reimu";
       const rightAllyUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", unitLevel: 1 },
         "right",
         1,
       );
@@ -1729,7 +1730,7 @@ describe("BattleSimulator", () => {
     test("hero skill で与えたダメージも timeline と damageDealt に記録される", () => {
       const simulator = new BattleSimulator();
       const heroUnit = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", unitLevel: 1 },
         "left",
         0,
       );
@@ -1738,12 +1739,12 @@ describe("BattleSimulator", () => {
       heroUnit.attackPower = 120;
 
       const rightUnitA = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 1 }), unitType: "vanguard", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 1 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
       const rightUnitB = createTestBattleUnit(
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "ranger", starLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "ranger", unitLevel: 1 },
         "right",
         1,
       );
@@ -1764,7 +1765,7 @@ describe("BattleSimulator", () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
         const heroUnit = createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", unitLevel: 1 },
           "left",
           0,
         );
@@ -1773,12 +1774,12 @@ describe("BattleSimulator", () => {
         heroUnit.attackPower = 120;
 
         const rightUnitA = createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 1, y: 1 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 1, y: 1 }), unitType: "vanguard", unitLevel: 1 },
           "right",
           0,
         );
         const rightUnitB = createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "ranger", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 3, y: 1 }), unitType: "ranger", unitLevel: 1 },
           "right",
           1,
         );
@@ -1804,7 +1805,7 @@ describe("BattleSimulator", () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
         const heroUnit = createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "mage", unitLevel: 1 },
           "left",
           0,
         );
@@ -1812,7 +1813,7 @@ describe("BattleSimulator", () => {
         heroUnit.sourceUnitId = "okina";
 
         const rightUnit = createTestBattleUnit(
-          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", starLevel: 1 },
+          { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1 },
           "right",
           0,
         );
@@ -1833,12 +1834,12 @@ describe("BattleSimulator", () => {
       const simulator2 = new BattleSimulator({ rng: createSeededBattleRng(12345) });
 
       const createLeftUnits = (): BattleUnit[] => [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
-        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", unitLevel: 1 }, "left", 1),
       ];
       const createRightUnits = (): BattleUnit[] => [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
-        createTestBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 6, unitType: "ranger", unitLevel: 1 }, "right", 1),
       ];
 
       const result1 = simulator1.simulateBattle(createLeftUnits(), createRightUnits(), [], [], 10000);
@@ -1853,7 +1854,7 @@ describe("BattleSimulator", () => {
     test("異なる seed は crit-sensitive な戦闘結果を変えうる", () => {
       const createLeftUnits = (): BattleUnit[] => {
         const attacker = createTestBattleUnit(
-          { cell: 0, unitType: "ranger", starLevel: 1, attack: 20, critRate: 0.2366 },
+          { cell: 0, unitType: "ranger", unitLevel: 1, attack: 20, critRate: 0.2366 },
           "left",
           0,
         );
@@ -1863,7 +1864,7 @@ describe("BattleSimulator", () => {
       };
       const createRightUnits = (): BattleUnit[] => {
         const defender = createTestBattleUnit(
-          { cell: 0, unitType: "vanguard", starLevel: 1, hp: 100 },
+          { cell: 0, unitType: "vanguard", unitLevel: 1, hp: 100 },
           "right",
           0,
         );
@@ -1893,12 +1894,12 @@ describe("BattleSimulator", () => {
 
     test("現在のMVP戦闘ベースラインは同じ入力で正確に再現される", () => {
       const createLeftUnits = (): BattleUnit[] => [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
-        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "left", 1),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", unitLevel: 1 }, "left", 1),
       ];
       const createRightUnits = (): BattleUnit[] => [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
-        createTestBattleUnit({ cell: 6, unitType: "ranger", starLevel: 1 }, "right", 1),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 6, unitType: "ranger", unitLevel: 1 }, "right", 1),
       ];
 
       const summarize = (result: ReturnType<BattleSimulator["simulateBattle"]>) => ({
@@ -1947,19 +1948,19 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 4, unitType: "ranger", starLevel: 1 },
-        { cell: 5, unitType: "ranger", starLevel: 1 },
+        { cell: 4, unitType: "ranger", unitLevel: 1 },
+        { cell: 5, unitType: "ranger", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 4, unitType: "ranger", starLevel: 1 },
-        { cell: 5, unitType: "ranger", starLevel: 1 },
+        { cell: 4, unitType: "ranger", unitLevel: 1 },
+        { cell: 5, unitType: "ranger", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 4, unitType: "ranger", unitLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 4, unitType: "ranger", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 4, unitType: "ranger", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(
@@ -1979,12 +1980,12 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
-        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
-        { cell: 2, unitType: "vanguard", starLevel: 1, unitId: "zanmu", factionId: null },
+        { cell: 0, unitType: "ranger", unitLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
+        { cell: 2, unitType: "vanguard", unitLevel: 1, unitId: "zanmu", factionId: null },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 7, unitType: "vanguard", starLevel: 1 },
+        { cell: 7, unitType: "vanguard", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -1994,7 +1995,7 @@ describe("BattleSimulator", () => {
         createTestBattleUnit({ ...placement, factionId: null }, "left", index, false, TOUHOU_FACTION_FLAGS),
       );
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0, false, TOUHOU_FACTION_FLAGS),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0, false, TOUHOU_FACTION_FLAGS),
       ];
 
       const result = simulator.simulateBattle(
@@ -2018,13 +2019,13 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "nazrin", factionId: "myourenji" },
-        { cell: 1, unitType: "vanguard", starLevel: 1, unitId: "ichirin", factionId: "myourenji" },
-        { cell: 2, unitType: "mage", starLevel: 1, unitId: "murasa", factionId: "myourenji" },
-        { cell: 3, unitType: "mage", starLevel: 1, unitId: "zanmu", factionId: null },
+        { cell: 0, unitType: "ranger", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "vanguard", unitLevel: 1, unitId: "ichirin", factionId: "myourenji" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 3, unitType: "mage", unitLevel: 1, unitId: "zanmu", factionId: null },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 7, unitType: "vanguard", starLevel: 1 },
+        { cell: 7, unitType: "vanguard", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -2034,7 +2035,7 @@ describe("BattleSimulator", () => {
         createTestBattleUnit({ ...placement, factionId: null }, "left", index, false, TOUHOU_FACTION_FLAGS),
       );
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0, false, TOUHOU_FACTION_FLAGS),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0, false, TOUHOU_FACTION_FLAGS),
       ];
 
       const result = simulator.simulateBattle(
@@ -2063,11 +2064,11 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "ranger", starLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
-        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
+        { cell: 0, unitType: "ranger", unitLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "sekibanki", factionId: "grassroot_network" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 7, unitType: "vanguard", starLevel: 1 },
+        { cell: 7, unitType: "vanguard", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -2078,7 +2079,7 @@ describe("BattleSimulator", () => {
         }),
       );
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(
@@ -2105,11 +2106,11 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "ranger", unitLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "mage", unitLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", unitLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -2142,12 +2143,12 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "ranger", starLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3, factionId: "chireiden" },
-        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "ranger", unitLevel: 1, hp: 50, attack: 20, attackSpeed: 0.8, range: 3, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 1, y: 3 }), unitType: "vanguard", unitLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "mage", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
-        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", starLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "mage", unitLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
+        { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "vanguard", unitLevel: 1, hp: 40, attack: 1, attackSpeed: 0.1, range: 1, factionId: "chireiden" },
       ];
 
       const leftUnits: BattleUnit[] = leftPlacements.map((placement, index) =>
@@ -2182,19 +2183,19 @@ describe("BattleSimulator", () => {
 
       const leftUnits: BattleUnit[] = [
         createTestBattleUnit(
-          { cell: 1, unitType: "ranger", starLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
+          { cell: 1, unitType: "ranger", unitLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
           "left",
           0,
         ),
         createTestBattleUnit(
-          { cell: 3, unitType: "ranger", starLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
+          { cell: 3, unitType: "ranger", unitLevel: 1, attack: 20, attackSpeed: 1, range: 4, critRate: 0 },
           "left",
           1,
         ),
       ];
       const rightUnits: BattleUnit[] = [
         createTestBattleUnit(
-          { cell: 2, unitType: "vanguard", starLevel: 1, hp: 80, attack: 1, attackSpeed: 0.1, range: 1, critRate: 0 },
+          { cell: 2, unitType: "vanguard", unitLevel: 1, hp: 80, attack: 1, attackSpeed: 0.1, range: 1, critRate: 0 },
           "right",
           0,
         ),
@@ -2217,7 +2218,7 @@ describe("BattleSimulator", () => {
         {
           cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }),
           unitType: "vanguard",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 10,
           attack: 20,
           attackSpeed: 1,
@@ -2232,7 +2233,7 @@ describe("BattleSimulator", () => {
         {
           cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
           unitType: "vanguard",
-          starLevel: 1,
+          unitLevel: 1,
           hp: 100,
           attack: 1,
           attackSpeed: 0.1,
@@ -2255,10 +2256,10 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 2, unitType: "ranger", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 2, unitType: "ranger", unitLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 4, unitType: "vanguard", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 5000);
@@ -2272,17 +2273,17 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "vanguard", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 1, unitType: "ranger", starLevel: 1 },
+        { cell: 1, unitType: "ranger", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", unitLevel: 1 }, "right", 0),
       ];
 
       const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map<
@@ -2322,17 +2323,17 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitId: "warrior_a", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 1, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 },
+        { cell: 1, unitType: "vanguard", unitId: "warrior_b", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitId: "warrior_a", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitId: "warrior_a", unitLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 1, unitType: "vanguard", unitId: "warrior_b", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 1, unitType: "vanguard", unitId: "warrior_b", unitLevel: 1 }, "right", 0),
       ];
 
       const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map([
@@ -2367,17 +2368,17 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "vanguard", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 1, unitType: "ranger", starLevel: 1 },
+        { cell: 1, unitType: "ranger", unitLevel: 1 },
       ];
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 1, unitType: "ranger", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 1, unitType: "ranger", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, leftPlacements, rightPlacements, 5_000);
@@ -2392,18 +2393,18 @@ describe("BattleSimulator", () => {
 
       // 左: vanguard (sub-unitなし)
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0),
       ];
       const leftPlacements: BoardUnitPlacement[] = [
-        { cell: 0, unitType: "vanguard", starLevel: 1 },
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
       ];
 
       // 右: vanguard (sub-unitあり)
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 4, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 4, unitType: "vanguard", unitLevel: 1 }, "right", 0),
       ];
       const rightPlacements: BoardUnitPlacement[] = [
-        { cell: 4, unitType: "vanguard", starLevel: 1 },
+        { cell: 4, unitType: "vanguard", unitLevel: 1 },
       ];
 
       const subUnitAssistConfigByType: ReadonlyMap<BoardUnitType, SubUnitConfig> = new Map([
@@ -2452,10 +2453,10 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 3 }, "left", 0),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 100);
@@ -2467,7 +2468,7 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const raidAttacker = createTestBattleUnit(
-        { cell: 3, unitType: "mage", starLevel: 3 },
+        { cell: 3, unitType: "mage", unitLevel: 3 },
         "left",
         0,
       );
@@ -2475,7 +2476,7 @@ describe("BattleSimulator", () => {
       raidAttacker.attackRange = 3;
 
       const boss = createTestBattleUnit(
-        { cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 7, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
@@ -2484,7 +2485,7 @@ describe("BattleSimulator", () => {
       boss.maxHp = 50;
 
       const escort = createTestBattleUnit(
-        { cell: 4, unitType: "vanguard", starLevel: 1 },
+        { cell: 4, unitType: "vanguard", unitLevel: 1 },
         "right",
         1,
       );
@@ -2492,10 +2493,10 @@ describe("BattleSimulator", () => {
       const result = simulator.simulateBattle(
         [raidAttacker],
         [boss, escort],
-        [{ cell: 3, unitType: "mage", starLevel: 3 }],
+        [{ cell: 3, unitType: "mage", unitLevel: 3 }],
         [
-          { cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
-          { cell: 4, unitType: "vanguard", starLevel: 1 },
+          { cell: 7, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+          { cell: 4, unitType: "vanguard", unitLevel: 1 },
         ],
         5_000,
       );
@@ -2509,7 +2510,7 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const raidAttacker = createTestBattleUnit(
-        { cell: 3, unitType: "mage", starLevel: 3 },
+        { cell: 3, unitType: "mage", unitLevel: 3 },
         "left",
         0,
       );
@@ -2517,7 +2518,7 @@ describe("BattleSimulator", () => {
       raidAttacker.attackRange = 3;
 
       const boss = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "right",
         0,
         true,
@@ -2526,7 +2527,7 @@ describe("BattleSimulator", () => {
       boss.maxHp = 5_000;
 
       const escort = createTestBattleUnit(
-        { cell: 7, unitType: "vanguard", starLevel: 1 },
+        { cell: 7, unitType: "vanguard", unitLevel: 1 },
         "right",
         1,
       );
@@ -2534,10 +2535,10 @@ describe("BattleSimulator", () => {
       const result = simulator.simulateBattle(
         [raidAttacker],
         [boss, escort],
-        [{ cell: 3, unitType: "mage", starLevel: 3 }],
+        [{ cell: 3, unitType: "mage", unitLevel: 3 }],
         [
-          { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
-          { cell: 7, unitType: "vanguard", starLevel: 1 },
+          { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+          { cell: 7, unitType: "vanguard", unitLevel: 1 },
         ],
         100,
       );
@@ -2552,7 +2553,7 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const boss = createTestBattleUnit(
-        { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
         "left",
         0,
         true,
@@ -2561,13 +2562,13 @@ describe("BattleSimulator", () => {
       boss.maxHp = 5_000;
 
       const escort = createTestBattleUnit(
-        { cell: 1, unitType: "vanguard", starLevel: 1 },
+        { cell: 1, unitType: "vanguard", unitLevel: 1 },
         "left",
         1,
       );
 
       const raidAttacker = createTestBattleUnit(
-        { cell: 7, unitType: "mage", starLevel: 3 },
+        { cell: 7, unitType: "mage", unitLevel: 3 },
         "right",
         0,
       );
@@ -2578,10 +2579,10 @@ describe("BattleSimulator", () => {
         [boss, escort],
         [raidAttacker],
         [
-          { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
-          { cell: 1, unitType: "vanguard", starLevel: 1 },
+          { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+          { cell: 1, unitType: "vanguard", unitLevel: 1 },
         ],
-        [{ cell: 7, unitType: "mage", starLevel: 3 }],
+        [{ cell: 7, unitType: "mage", unitLevel: 3 }],
         100,
       );
 
@@ -2595,11 +2596,11 @@ describe("BattleSimulator", () => {
       const simulator = new BattleSimulator();
 
       const leftUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0),
-        createTestBattleUnit({ cell: 1, unitType: "vanguard", starLevel: 3 }, "left", 1),
+        createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 3 }, "left", 0),
+        createTestBattleUnit({ cell: 1, unitType: "vanguard", unitLevel: 3 }, "left", 1),
       ];
       const rightUnits: BattleUnit[] = [
-        createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 1 }, "right", 0),
+        createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 1 }, "right", 0),
       ];
 
       const result = simulator.simulateBattle(leftUnits, rightUnits, [], [], 10000);
@@ -2623,12 +2624,12 @@ describe("BattleSimulator", () => {
       it('vanguard activates Shield Wall every 3 attacks', () => {
         const vanguard = createTestBattleUnit({
           unitType: 'vanguard',
-          starLevel: 1,
+          unitLevel: 1,
           cell: 3
         }, "left", 0);
         const enemy = createTestBattleUnit({
           unitType: 'ranger',
-          starLevel: 1,
+          unitLevel: 1,
           cell: 4
         }, "right", 0);
 
@@ -2660,12 +2661,12 @@ describe("BattleSimulator", () => {
 
       const createResolvedPlacements = () => ({
         left: resolveBattlePlacements([
-          { cell: 0, unitType: "mage", unitId: "warrior_a", starLevel: 1 },
-          { cell: 1, unitType: "assassin", unitId: "archer_a", starLevel: 1 },
+          { cell: 0, unitType: "mage", unitId: "warrior_a", unitLevel: 1 },
+          { cell: 1, unitType: "assassin", unitId: "archer_a", unitLevel: 1 },
         ], mvpFlags),
         right: resolveBattlePlacements([
-          { cell: 7, unitType: "mage", unitId: "warrior_b", starLevel: 1 },
-          { cell: 6, unitType: "assassin", unitId: "archer_b", starLevel: 1 },
+          { cell: 7, unitType: "mage", unitId: "warrior_b", unitLevel: 1 },
+          { cell: 6, unitType: "assassin", unitId: "archer_b", unitLevel: 1 },
         ], mvpFlags),
       });
 

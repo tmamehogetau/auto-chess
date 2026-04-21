@@ -65,8 +65,8 @@ function createTestBattleUnit(
 
 describe("battle contracts", () => {
   test("damage helper applies damageReduction as percentage and keeps a minimum of 1", () => {
-    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", starLevel: 1, attack: 20 }, "left", 0);
-    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", unitLevel: 1, attack: 20 }, "left", 0);
+    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
     target.damageReduction = 50;
 
     expect(calculateAttackDamage(attacker, target, false, false)).toBe(10);
@@ -76,8 +76,8 @@ describe("battle contracts", () => {
   });
 
   test("damage helper still honors defenseMultiplier buffs", () => {
-    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", starLevel: 1, attack: 20 }, "left", 0);
-    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", unitLevel: 1, attack: 20 }, "left", 0);
+    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
     target.damageReduction = 20;
 
     expect(calculateAttackDamage(attacker, target, false, false)).toBe(16);
@@ -93,14 +93,14 @@ describe("battle contracts", () => {
   });
 
   test("phase damage helper adds half max HP only for boss-side escort defeats", () => {
-    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
     escort.maxHp = 80;
 
     expect(calculatePhaseDamageOnUnitDefeat(escort, "right")).toBe(40);
     expect(calculatePhaseDamageOnUnitDefeat(escort, "left")).toBe(0);
 
     const boss = createTestBattleUnit(
-      { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       "right",
       1,
       true,
@@ -110,7 +110,7 @@ describe("battle contracts", () => {
 
   test("applied damage helper reports boss break and boss-side damage increments", () => {
     const boss = createTestBattleUnit(
-      { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       "right",
       0,
       true,
@@ -129,7 +129,7 @@ describe("battle contracts", () => {
   });
 
   test("defeat consequence helper awards escort bonus without boss break", () => {
-    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
     escort.hp = 0;
     escort.maxHp = 80;
 
@@ -142,8 +142,8 @@ describe("battle contracts", () => {
 
   test("normal-round timeout chooses the side with more surviving HP", () => {
     const simulator = new BattleSimulator();
-    const leftUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0);
-    const rightUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const leftUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 3 }, "left", 0);
+    const rightUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
 
     const result = simulator.simulateBattle([leftUnit], [rightUnit], [], [], 100);
 
@@ -153,8 +153,8 @@ describe("battle contracts", () => {
 
   test("R12 no-timeout battle continues until resolution even past the normal timeout ceiling", () => {
     const simulator = new BattleSimulator();
-    const leftUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 3 }, "left", 0);
-    const rightUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const leftUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 3 }, "left", 0);
+    const rightUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
 
     const result = simulator.simulateBattle([leftUnit], [rightUnit], [], [], 100, null, null, null, DEFAULT_FLAGS, 12);
 
@@ -167,7 +167,7 @@ describe("battle contracts", () => {
   test("boss defeat ends the battle immediately even if escorts survive", () => {
     const simulator = new BattleSimulator();
     const raidAttacker = createTestBattleUnit(
-      { cell: 0, unitType: "ranger", starLevel: 3, attack: 999 },
+      { cell: 0, unitType: "ranger", unitLevel: 3, attack: 999 },
       "left",
       0,
     );
@@ -176,7 +176,7 @@ describe("battle contracts", () => {
     raidAttacker.attackSpeed = 99;
 
     const boss = createTestBattleUnit(
-      { cell: 0, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       "right",
       0,
       true,
@@ -184,7 +184,7 @@ describe("battle contracts", () => {
     boss.hp = 1;
     boss.maxHp = 1;
 
-    const escort = createTestBattleUnit({ cell: 7, unitType: "vanguard", starLevel: 3 }, "right", 1);
+    const escort = createTestBattleUnit({ cell: 7, unitType: "vanguard", unitLevel: 3 }, "right", 1);
 
     const result = simulator.simulateBattle([raidAttacker], [boss, escort], [], [], 5_000);
 
@@ -196,7 +196,7 @@ describe("battle contracts", () => {
   test("escort defeat adds half of the escort max HP to phaseDamageToBossSide", () => {
     const simulator = new BattleSimulator();
     const raidAttacker = createTestBattleUnit(
-      { cell: 0, unitType: "ranger", starLevel: 3, attack: 999 },
+      { cell: 0, unitType: "ranger", unitLevel: 3, attack: 999 },
       "left",
       0,
     );
@@ -205,7 +205,7 @@ describe("battle contracts", () => {
     raidAttacker.attackSpeed = 99;
 
     const boss = createTestBattleUnit(
-      { cell: 7, unitType: "vanguard", starLevel: 1, archetype: "remilia" },
+      { cell: 7, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
       "right",
       0,
       true,
@@ -213,7 +213,7 @@ describe("battle contracts", () => {
     boss.attackRange = 0;
     boss.attackSpeed = 0;
 
-    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 1);
+    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 1);
     escort.hp = 1;
     escort.maxHp = 80;
 
@@ -225,8 +225,8 @@ describe("battle contracts", () => {
 
   test("same-timestamp lethal attacks resolve as a draw when both units should die", () => {
     const simulator = new BattleSimulator();
-    const leftUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "left", 0);
-    const rightUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", starLevel: 1 }, "right", 0);
+    const leftUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "left", 0);
+    const rightUnit = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
 
     leftUnit.attackPower = 999;
     leftUnit.attackSpeed = 1;

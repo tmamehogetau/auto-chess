@@ -25,14 +25,14 @@ describe("E2E: Player Elimination Scenario", () => {
   const originalEnv = { ...process.env };
 
   const STRONG_PLACEMENTS: BoardUnitPlacement[] = [
-    { cell: 0, unitType: "vanguard", starLevel: 3 },
-    { cell: 1, unitType: "vanguard", starLevel: 3 },
-    { cell: 2, unitType: "ranger", starLevel: 3 },
-    { cell: 3, unitType: "ranger", starLevel: 3 },
-    { cell: 4, unitType: "mage", starLevel: 3 },
-    { cell: 5, unitType: "mage", starLevel: 3 },
-    { cell: 6, unitType: "assassin", starLevel: 3 },
-    { cell: 7, unitType: "assassin", starLevel: 3 },
+    { cell: 0, unitType: "vanguard", unitLevel: 3 },
+    { cell: 1, unitType: "vanguard", unitLevel: 3 },
+    { cell: 2, unitType: "ranger", unitLevel: 3 },
+    { cell: 3, unitType: "ranger", unitLevel: 3 },
+    { cell: 4, unitType: "mage", unitLevel: 3 },
+    { cell: 5, unitType: "mage", unitLevel: 3 },
+    { cell: 6, unitType: "assassin", unitLevel: 3 },
+    { cell: 7, unitType: "assassin", unitLevel: 3 },
   ];
 
   beforeAll(async () => {

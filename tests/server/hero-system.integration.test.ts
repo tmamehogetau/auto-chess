@@ -121,6 +121,53 @@ describe("Hero System Integration Tests", () => {
       expect(scarletSynergy?.tier).toBe(1);
     });
 
+    it("special unit upgrades raise selected hero battle units through level-based progression", () => {
+      controller.selectHero("player1", "reimu");
+      expect(controller.startIfReady(createdAtMs, playerIds)).toBe(true);
+
+      const goldByPlayer = Reflect.get(controller, "goldByPlayer") as Map<string, number>;
+      goldByPlayer.set("player1", 80);
+
+      expect(controller.submitPrepCommand("player1", 1, createdAtMs + 1_000, {
+        specialUnitUpgradeCount: 3,
+      })).toEqual({ accepted: true });
+      expect(controller.getPlayerStatus("player1")).toMatchObject({
+        gold: 73,
+        specialUnitLevel: 4,
+      });
+
+      const appendHeroBattleUnits = Reflect.get(controller, "appendHeroBattleUnits") as (
+        nextPlayerIds: string[],
+        battleUnits: Array<{ id: string; unitLevel: number }>,
+        side: "left" | "right",
+      ) => string[];
+      const level4BattleUnits: Array<{ id: string; unitLevel: number }> = [];
+      appendHeroBattleUnits.call(controller, ["player1"], level4BattleUnits, "left");
+      expect(level4BattleUnits).toEqual([
+        expect.objectContaining({
+          id: "hero-player1",
+          unitLevel: 4,
+        }),
+      ]);
+
+      expect(controller.submitPrepCommand("player1", 2, createdAtMs + 2_000, {
+        specialUnitUpgradeCount: 3,
+      })).toEqual({ accepted: true });
+      expect(controller.getPlayerStatus("player1")).toMatchObject({
+        gold: 54,
+        specialUnitLevel: 7,
+      });
+
+      const level7BattleUnits: Array<{ id: string; unitLevel: number }> = [];
+      appendHeroBattleUnits.call(controller, ["player1"], level7BattleUnits, "left");
+      expect(level7BattleUnits).toEqual([
+        expect.objectContaining({
+          id: "hero-player1",
+          unitLevel: 7,
+        }),
+      ]);
+    });
+
     it("raid role start auto-places selected heroes onto fixed bottom-row cells", async () => {
       await withFlags({
         ...FLAG_CONFIGURATIONS.ALL_DISABLED,

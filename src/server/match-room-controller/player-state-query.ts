@@ -24,7 +24,7 @@ export interface PlayerStateQueryShopOffer {
   cost: number;
   isRumorUnit?: boolean;
   purchased?: boolean;
-  starLevel?: number;
+  unitLevel?: number;
 }
 
 function normalizeShopOfferUnitId(offer: PlayerStateQueryShopOffer): string {
@@ -50,7 +50,7 @@ export interface PlayerStateQueryBenchUnit {
   unitType: BoardUnitType;
   unitId?: string;
   cost: number;
-  starLevel: number;
+  unitLevel?: number;
   unitCount: number;
 }
 
@@ -103,13 +103,13 @@ export interface PlayerStateQueryServiceDeps {
   roleByPlayer: ReadonlyMap<string, "unassigned" | "raid" | "boss">;
   getFinalRoundShield(playerId: string): number;
   goldByPlayer: ReadonlyMap<string, number>;
-  xpByPlayer: ReadonlyMap<string, number>;
-  levelByPlayer: ReadonlyMap<string, number>;
+  specialUnitLevelByPlayer: ReadonlyMap<string, number>;
   shopOffersByPlayer: ReadonlyMap<string, PlayerStateQueryShopOffer[]>;
   shopLockedByPlayer: ReadonlyMap<string, boolean>;
   benchUnitsByPlayer: ReadonlyMap<string, PlayerStateQueryBenchUnit[]>;
   ownedUnitsByPlayer: ReadonlyMap<string, PlayerStateQueryOwnedUnits>;
   bossShopOffersByPlayer: ReadonlyMap<string, PlayerStateQueryShopOffer[]>;
+  heroExclusiveShopOffersByPlayer?: ReadonlyMap<string, PlayerStateQueryShopOffer[]>;
   battleResultsByPlayer: ReadonlyMap<string, PlayerStateQueryBattleResult>;
   selectedHeroByPlayer: ReadonlyMap<string, string>;
   rumorInfluenceEligibleByPlayer: ReadonlyMap<string, boolean>;
@@ -123,8 +123,7 @@ export interface PlayerStateQueryServiceDeps {
   enableSharedPool: boolean;
   sharedPool: { getAllInventory(): ReadonlyMap<number, number> } | null;
   initialGold: number;
-  initialXp: number;
-  initialLevel: number;
+  initialSpecialUnitLevel: number;
   buildActiveSynergies(playerId: string, boardPlacements: BoardUnitPlacement[]): ActiveSynergy[];
   resolveBenchUnitDisplayName(benchUnit: PlayerStateQueryBenchUnit): string;
   formatBoardUnitToken(playerId: string, placement: BoardUnitPlacement): string;
@@ -268,12 +267,12 @@ export class PlayerStateQueryService {
     return [...(this.deps.boardPlacementsByPlayer.get(playerId) ?? [])];
   }
 
-  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; starLevel: number }> {
+  public getBenchUnitsForPlayer(playerId: string): Array<{ unitType: string; unitLevel: number }> {
     this.deps.ensureKnownPlayer(playerId);
     const benchUnits = this.deps.benchUnitsByPlayer.get(playerId) ?? [];
     return benchUnits.map((unit) => ({
       unitType: unit.unitType,
-      starLevel: unit.starLevel,
+      unitLevel: unit.unitLevel ?? 1,
     }));
   }
 
@@ -285,6 +284,7 @@ export class PlayerStateQueryService {
     const benchUnits = this.deps.benchUnitsByPlayer.get(playerId) ?? [];
     const boardPlacements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
     const bossShopOffers = this.deps.bossShopOffersByPlayer.get(playerId) ?? [];
+    const heroExclusiveShopOffers = this.deps.heroExclusiveShopOffersByPlayer?.get(playerId) ?? [];
     const isRumorEligible = this.deps.rumorInfluenceEligibleByPlayer.get(playerId) ?? false;
 
     const shopOffers = (this.deps.shopOffersByPlayer.get(playerId) ?? []).map((offer) => toShopOfferView(offer));
@@ -328,13 +328,12 @@ export class PlayerStateQueryService {
       eliminated: isActivePlayer ? state.isPlayerEliminated(playerId) : false,
       boardUnitCount: this.deps.boardUnitCountByPlayer.get(playerId) ?? fallbackBoardUnitCount,
       gold: this.deps.goldByPlayer.get(playerId) ?? this.deps.initialGold,
-      xp: this.deps.xpByPlayer.get(playerId) ?? this.deps.initialXp,
-      level: this.deps.levelByPlayer.get(playerId) ?? this.deps.initialLevel,
+      specialUnitLevel: this.deps.specialUnitLevelByPlayer.get(playerId) ?? this.deps.initialSpecialUnitLevel,
       shopOffers,
       shopLocked: this.deps.shopLockedByPlayer.get(playerId) ?? false,
       benchUnits: benchUnits.map((benchUnit) =>
-        benchUnit.starLevel > 1
-          ? `${benchUnit.unitType}:${benchUnit.starLevel}`
+        (benchUnit.unitLevel ?? 1) > 1
+          ? `${benchUnit.unitType}:${benchUnit.unitLevel ?? 1}`
           : benchUnit.unitType,
       ),
       benchUnitIds: benchUnits.map((benchUnit) => benchUnit.unitId ?? ""),
@@ -348,6 +347,7 @@ export class PlayerStateQueryService {
         assassin: ownedUnits?.assassin ?? 0,
       },
       bossShopOffers: bossShopOffers.map((offer) => toShopOfferView(offer)),
+      heroExclusiveShopOffers: heroExclusiveShopOffers.map((offer) => toShopOfferView(offer)),
       lastBattleResult: this.deps.battleResultsByPlayer.get(playerId),
       activeSynergies,
       selectedHeroId,

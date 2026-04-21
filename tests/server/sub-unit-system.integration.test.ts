@@ -142,12 +142,12 @@ function createAttachedPlacement(
   return {
     cell,
     unitType: hostUnitType,
-    starLevel: 1,
+    unitLevel: 1,
     sellValue: 1,
     unitCount: 1,
     subUnit: {
       unitType: subUnitType,
-      starLevel: 1,
+      unitLevel: 1,
       sellValue: 1,
       unitCount: 1,
     },
@@ -265,10 +265,10 @@ describe("Sub Unit System Integration", () => {
         boardPlacements: [{
           cell: 24,
           unitType: "vanguard",
-          starLevel: 1,
+          unitLevel: 1,
           subUnit: {
             unitType: "mage",
-            starLevel: 1,
+            unitLevel: 1,
             unitId: "murasa",
             factionId: "myourenji",
             archetype: "remilia",
@@ -306,7 +306,7 @@ describe("Sub Unit System Integration", () => {
         benchUnitsByPlayer: Map<string, Array<{
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
         boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
@@ -314,10 +314,10 @@ describe("Sub Unit System Integration", () => {
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "mage", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "mage", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 24, unitType: "vanguard", starLevel: 1, sellValue: 1, unitCount: 1 },
+        { cell: 24, unitType: "vanguard", unitLevel: 1, sellValue: 1, unitCount: 1 },
       ]);
       internals.boardUnitCountByPlayer.set("p1", 1);
 
@@ -352,13 +352,13 @@ describe("Sub Unit System Integration", () => {
           cell: 24,
           unitType: "vanguard",
           unitId: "meiling",
-          starLevel: 1,
+          unitLevel: 1,
           sellValue: 1,
           unitCount: 1,
           subUnit: {
             unitType: "mage",
             unitId: "koakuma",
-            starLevel: 1,
+            unitLevel: 1,
             sellValue: 1,
             unitCount: 1,
           },
@@ -379,7 +379,7 @@ describe("Sub Unit System Integration", () => {
         benchUnitsByPlayer: Map<string, Array<{
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
         boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
@@ -387,7 +387,7 @@ describe("Sub Unit System Integration", () => {
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "ranger", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
       internals.boardPlacementsByPlayer.set("p1", [
         createAttachedPlacement(24, "vanguard", "mage"),
@@ -442,8 +442,8 @@ describe("Sub Unit System Integration", () => {
 
       const firstCommand = controller.submitPrepCommand("p1", 1, 3_000, {
         boardPlacements: [
-          { cell: 24, unitType: "vanguard", unitId: "meiling", starLevel: 1, sellValue: 1, unitCount: 1 },
-          { cell: 25, unitType: "ranger", unitId: "nazrin", starLevel: 1, sellValue: 1, unitCount: 1 },
+          { cell: 24, unitType: "vanguard", unitId: "meiling", unitLevel: 1, sellValue: 1, unitCount: 1 },
+          { cell: 25, unitType: "ranger", unitId: "nazrin", unitLevel: 1, sellValue: 1, unitCount: 1 },
         ],
       });
       expect(firstCommand).toEqual({ accepted: true });
@@ -489,7 +489,7 @@ describe("Sub Unit System Integration", () => {
 
       const firstCommand = controller.submitPrepCommand("p1", 1, 3_000, {
         boardPlacements: [
-          { cell: 24, unitType: "vanguard", unitId: "meiling", starLevel: 1, sellValue: 1, unitCount: 1 },
+          { cell: 24, unitType: "vanguard", unitId: "meiling", unitLevel: 1, sellValue: 1, unitCount: 1 },
         ],
       });
       expect(firstCommand).toEqual({ accepted: true });
@@ -510,7 +510,7 @@ describe("Sub Unit System Integration", () => {
       expect(controller.submitPrepCommand("p1", 1, 3_000, {
         boardPlacements: [
           createAttachedPlacement(24, "vanguard", "mage"),
-          { cell: 25, unitType: "ranger", unitId: "nazrin", starLevel: 1, sellValue: 1, unitCount: 1 },
+          { cell: 25, unitType: "ranger", unitId: "nazrin", unitLevel: 1, sellValue: 1, unitCount: 1 },
         ],
       })).toEqual({ accepted: true });
 
@@ -531,7 +531,7 @@ describe("Sub Unit System Integration", () => {
         benchUnitsByPlayer: Map<string, Array<{
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
         boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
@@ -539,7 +539,7 @@ describe("Sub Unit System Integration", () => {
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "ranger", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "ranger", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
       internals.boardPlacementsByPlayer.set("p1", [
         createAttachedPlacement(24, "vanguard", "mage"),
@@ -579,7 +579,7 @@ describe("Sub Unit System Integration", () => {
         benchUnitsByPlayer: Map<string, Array<{
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
         boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
@@ -587,10 +587,10 @@ describe("Sub Unit System Integration", () => {
       };
 
       internals.benchUnitsByPlayer.set("p4", [
-        { unitType: "mage", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "mage", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
       internals.boardPlacementsByPlayer.set("p4", [
-        { cell: 0, unitType: "vanguard", starLevel: 1, sellValue: 1, unitCount: 1 },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, sellValue: 1, unitCount: 1 },
       ]);
       internals.boardUnitCountByPlayer.set("p4", 1);
 
@@ -611,7 +611,7 @@ describe("Sub Unit System Integration", () => {
       const controller = createStartedController();
 
       const commandResult = controller.submitPrepCommand("p1", 1, 3_000, {
-        boardPlacements: [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+        boardPlacements: [{ cell: 0, unitType: "vanguard", unitLevel: 1 }],
       });
 
       expect(commandResult).toEqual({ accepted: true });
@@ -651,13 +651,13 @@ describe("Sub Unit System Integration", () => {
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           unitId?: string;
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "mage", unitId: "koakuma", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "mage", unitId: "koakuma", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
 
       const heroCell = controller.getHeroPlacementForPlayer("p1");
@@ -689,13 +689,13 @@ describe("Sub Unit System Integration", () => {
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           unitId?: string;
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
       };
 
       internals.benchUnitsByPlayer.set("p1", [
-        { unitType: "mage", unitId: "koakuma", cost: 1, starLevel: 1, unitCount: 1 },
+        { unitType: "mage", unitId: "koakuma", cost: 1, unitLevel: 1, unitCount: 1 },
       ]);
 
       const heroCell = controller.getHeroPlacementForPlayer("p1");

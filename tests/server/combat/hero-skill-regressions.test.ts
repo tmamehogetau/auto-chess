@@ -10,7 +10,7 @@ function createBattleUnit(overrides: Partial<BattleUnit>): BattleUnit {
     sourceUnitId: "unit-1",
     battleSide: "left",
     type: "mage",
-    starLevel: 1,
+    unitLevel: 1,
     hp: 100,
     maxHp: 100,
     attackPower: 60,

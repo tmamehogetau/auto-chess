@@ -1,7 +1,7 @@
 import { HEROES } from "../../../src/data/heroes";
 import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
-import { getStarCombatMultiplier } from "../../../src/server/star-level-config";
+import { getUnitLevelCombatMultiplier } from "../../../src/server/unit-level-config";
 import { getMvpPhase1Boss } from "../../../src/shared/types";
 
 export type BotOnlyReportMetadata = {
@@ -36,7 +36,7 @@ export type BotOnlyBaselineBattleUnitMetrics = {
   unitName: string;
   battleAppearances: number;
   matchesPresent: number;
-  averageStarLevel: number;
+  averageunitLevel: number;
   averageDamagePerBattle: number;
   averageDamagePerMatch: number;
   activeBattleRate: number;
@@ -268,7 +268,7 @@ export type BotOnlyBaselineFinalBoardUnit = {
   unitName: string;
   unitType: string;
   unitId: string;
-  starLevel: number;
+  unitLevel: number;
   subUnitName: string;
 };
 
@@ -311,7 +311,7 @@ export type BotOnlyBaselineBattleUnitOutcome = {
   phaseContributionDamage: number;
   finalHp: number;
   alive: boolean;
-  starLevel: number;
+  unitLevel: number;
   subUnitName: string;
   isSpecialUnit: boolean;
   attackCount?: number;
@@ -521,7 +521,7 @@ type BattleUnitAggregateAccumulator = {
   unitName: string;
   battleAppearances: number;
   matchesPresent: number;
-  totalStarLevel: number;
+  totalunitLevel: number;
   totalDamage: number;
   activeBattles: number;
   totalAttackCount: number;
@@ -743,7 +743,7 @@ function createBattleUnitAggregateAccumulator(
     unitName,
     battleAppearances: 0,
     matchesPresent: 0,
-    totalStarLevel: 0,
+    totalunitLevel: 0,
     totalDamage: 0,
     activeBattles: 0,
     totalAttackCount: 0,
@@ -1283,7 +1283,7 @@ function buildBattleUnitMetrics(
     unitName: entry.unitName,
     battleAppearances: entry.battleAppearances,
     matchesPresent: entry.matchesPresent,
-    averageStarLevel: entry.totalStarLevel / entry.battleAppearances,
+    averageunitLevel: entry.totalunitLevel / entry.battleAppearances,
     averageDamagePerBattle: entry.totalDamage / entry.battleAppearances,
     averageDamagePerMatch: entry.totalDamage / completedMatches,
     activeBattleRate: entry.activeBattles / entry.battleAppearances,
@@ -1585,7 +1585,7 @@ export function buildBotOnlyBaselineAggregateReport(
             ?? createRangeFormationDiagnosticsAccumulator(outcome.side, rangeBand);
           const lifetimeMs = Math.max(0, outcome.lifetimeMs ?? outcome.battleDurationMs ?? 0);
           const attackMultiplier = combatProfile.usesStarMultiplier
-            ? getStarCombatMultiplier(outcome.starLevel)
+            ? getUnitLevelCombatMultiplier(outcome.unitLevel)
             : 1;
           const theoreticalAttackCount = combatProfile.attackSpeed * (lifetimeMs / 1000);
           const theoreticalBaseDamage = combatProfile.attack * attackMultiplier * theoreticalAttackCount;
@@ -1851,7 +1851,7 @@ export function buildBotOnlyBaselineAggregateReport(
               outcome.unitName,
             );
           existing.battleAppearances += 1;
-          existing.totalStarLevel += outcome.starLevel;
+          existing.totalunitLevel += outcome.unitLevel;
           existing.totalDamage += outcome.totalDamage;
           existing.totalAttackCount += outcome.attackCount ?? 0;
           existing.totalHitCount += outcome.hitCount ?? 0;
@@ -1889,7 +1889,7 @@ export function buildBotOnlyBaselineAggregateReport(
             true,
           );
         existing.battleAppearances += 1;
-        existing.totalStarLevel += outcome.starLevel;
+        existing.totalunitLevel += outcome.unitLevel;
         existing.totalDamage += outcome.totalDamage;
         existing.totalAttackCount += outcome.attackCount ?? 0;
         existing.totalHitCount += outcome.hitCount ?? 0;
@@ -2284,7 +2284,7 @@ export function mergeBotOnlyBaselineAggregateReports(
         );
       existing.battleAppearances += entry.battleAppearances;
       existing.matchesPresent += entry.matchesPresent;
-      existing.totalStarLevel += entry.averageStarLevel * entry.battleAppearances;
+      existing.totalunitLevel += entry.averageunitLevel * entry.battleAppearances;
       existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
       existing.activeBattles += entry.activeBattleRate * entry.battleAppearances;
       existing.totalAttackCount += entry.averageAttackCountPerBattle * entry.battleAppearances;
@@ -2312,7 +2312,7 @@ export function mergeBotOnlyBaselineAggregateReports(
         );
       existing.battleAppearances += entry.battleAppearances;
       existing.matchesPresent += entry.matchesPresent;
-      existing.totalStarLevel += entry.averageStarLevel * entry.battleAppearances;
+      existing.totalunitLevel += entry.averageunitLevel * entry.battleAppearances;
       existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
       existing.activeBattles += entry.activeBattleRate * entry.battleAppearances;
       existing.totalAttackCount += entry.averageAttackCountPerBattle * entry.battleAppearances;

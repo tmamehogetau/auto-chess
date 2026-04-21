@@ -9,6 +9,7 @@ import {
 } from "./ui/player-facing-copy.js";
 import { canUseBenchAction, canUseBoardAction, canUseShopAction } from "./player-prep-phase.js";
 import { resolveFrontPortraitUrl, resolvePortraitKeyByUnitId, resolveShopPortraitUrl } from "./portrait-resolver.js";
+import { getClientSpecialUnitLevel, getClientSpecialUnitUpgradeCost } from "./special-unit-progression.js";
 import { mapEntries, readPhase, shortPlayerId } from "./utils/pure-utils.js";
 
 const UNIT_ICONS = {
@@ -359,16 +360,19 @@ function buildBenchHoverDetail(unit, displayName, kicker = "Ally Bench") {
     return null;
   }
 
-  const unitType = typeof unit === "string"
-    ? unit.split("-")[0] || unit
-    : typeof unit?.unitType === "string" && unit.unitType.length > 0
-      ? unit.unitType
-      : title;
+  const unitType = resolveBenchUnitType(unit) || title;
+  const unitLevel = resolveBenchUnitLevel(unit);
+  const lines = [];
+
+  if (unitLevel > 1) {
+    lines.push(`LV ${unitLevel}`);
+  }
+  lines.push("bench unit", `${unitType}`);
 
   return {
     kicker,
     title,
-    lines: [`bench unit`, `${unitType}`],
+    lines,
   };
 }
 
@@ -637,6 +641,7 @@ export function renderPlayerPrepSummary({
   allyRailElement,
   boardCopyElement,
   shopCopyElement,
+  heroExclusiveShopCopyElement,
   bossShopCopyElement,
   heroUpgradeCopyElement,
   refreshCopyElement,
@@ -650,6 +655,8 @@ export function renderPlayerPrepSummary({
   boardElement,
   shopElement,
   shopSlotElements = [],
+  heroExclusiveShopElement,
+  heroExclusiveShopSlotElements = [],
   bossShopElement,
   bossShopSlotElements = [],
   benchElement,
@@ -686,6 +693,7 @@ export function renderPlayerPrepSummary({
 
   const isBossPlayer = state?.bossPlayerId === sessionId || player?.role === "boss";
   const bossRoleSelectionEnabled = state?.featureFlagsEnableBossExclusiveShop === true;
+  const heroSystemEnabled = state?.featureFlagsEnableHeroSystem === true;
 
   if (boardCopyElement instanceof HTMLElement && !sharedBoardConnected) {
     if (selectedBenchIndex === null) {
@@ -704,8 +712,8 @@ export function renderPlayerPrepSummary({
   const heroDetail = HERO_DETAILS[selectedHeroId] ?? null;
   const bossDetail = BOSS_DETAILS[selectedBossId] ?? null;
   const gold = Number(player?.gold ?? 0);
-  const level = Math.max(1, Math.round(Number(player?.level ?? 1) || 1));
-  const xp = Math.max(0, Math.round(Number(player?.xp ?? 0) || 0));
+  const specialUnitLevel = getClientSpecialUnitLevel(player);
+  const nextSpecialUnitUpgradeCost = getClientSpecialUnitUpgradeCost(player);
   const hp = Math.max(0, Math.round(Number(player?.hp ?? 0) || 0));
   const remainingLives = Math.max(0, Math.round(Number(player?.remainingLives ?? 0) || 0));
   const boardUnitCount = Math.max(0, Math.round(Number(player?.boardUnitCount ?? 0) || 0));
@@ -729,7 +737,7 @@ export function renderPlayerPrepSummary({
     const livesCopy = remainingLives > 0 ? `${remainingLives}` : "0";
     if (isBossPlayer) {
       const summaryText = bossDetail
-        ? `${bossDetail.name} / boss / ${bossDetail.roleCopy}。hover で詳細を見ながら、共有ボード上で位置だけ調整できます。`
+        ? `${bossDetail.name} / boss / LV ${specialUnitLevel} / ${bossDetail.roleCopy}。hover で詳細を見ながら、共有ボード上で位置だけ調整できます。`
         : "Boss role は boss character の選択待ちです。";
       setElementMarkup(
         specialUnitCopyElement,
@@ -749,7 +757,7 @@ export function renderPlayerPrepSummary({
       );
     } else {
       const summaryText = heroDetail
-        ? `${heroDetail.name} / 主人公 / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。hover で詳細を見ながら、主人公は常設で bench には戻りません。${selectedHeroId === "okina" ? "隠岐奈だけは他の自軍 unit の sub slot に入れます。" : ""}`
+        ? `${heroDetail.name} / 主人公 / LV ${specialUnitLevel} / ${heroDetail.role} / HP ${heroDetail.hp} / ATK ${heroDetail.attack}。hover で詳細を見ながら、主人公は常設で bench には戻りません。${selectedHeroId === "okina" ? "隠岐奈だけは他の自軍 unit の sub slot に入れます。" : ""}`
         : "Raid role は hero selection の完了待ちです。";
       setElementMarkup(
         specialUnitCopyElement,
@@ -824,12 +832,15 @@ export function renderPlayerPrepSummary({
   }
   if (shopCopyElement instanceof HTMLElement) {
     shopCopyElement.textContent = offers.length > 0
-      ? `共通ユニット / 所持 ${gold}G / LV ${level} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
-      : `共通ユニット / 所持 ${gold}G / LV ${level} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
+      ? `共通ユニット / 所持 ${gold}G / 強化LV ${specialUnitLevel} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop を押して bench へ購入します。`
+      : `共通ユニット / 所持 ${gold}G / 強化LV ${specialUnitLevel} / HP ${hp}${remainingLives > 0 ? ` / Lives ${remainingLives}` : ""}。shop offer の更新待ちです。`;
   }
 
   if (heroUpgradeCopyElement instanceof HTMLElement) {
-    heroUpgradeCopyElement.textContent = `主人公強化 / LV ${level}。4G で強化を 1 段進めます。現在の進行度 ${xp}。`;
+    const upgradeLabel = isBossPlayer ? "ボス強化" : "主人公強化";
+    heroUpgradeCopyElement.textContent = nextSpecialUnitUpgradeCost === null
+      ? `${upgradeLabel} / LV ${specialUnitLevel}。最大まで強化済みです。`
+      : `${upgradeLabel} / LV ${specialUnitLevel}。次の強化は ${nextSpecialUnitUpgradeCost}G です。`;
   }
 
   if (refreshCopyElement instanceof HTMLElement) {
@@ -853,6 +864,45 @@ export function renderPlayerPrepSummary({
   });
 
   const bossShopOffers = toRenderableArray(player?.bossShopOffers);
+  const heroExclusiveShopOffers = toRenderableArray(player?.heroExclusiveShopOffers);
+  const heroExclusiveShopVisible = heroSystemEnabled && !isBossPlayer && selectedHeroId.length > 0;
+  if (heroExclusiveShopElement instanceof HTMLElement) {
+    heroExclusiveShopElement.hidden = !heroExclusiveShopVisible;
+  }
+  if (heroExclusiveShopCopyElement instanceof HTMLElement) {
+    if (!heroSystemEnabled) {
+      heroExclusiveShopCopyElement.textContent = "EXCLUSIVE / 主人公専用 shop はこのルールセットでは無効です。";
+    } else if (isBossPlayer) {
+      heroExclusiveShopCopyElement.textContent = "EXCLUSIVE / 主人公専用 shop は raid role のみ利用できます。";
+    } else if (selectedHeroId.length === 0) {
+      heroExclusiveShopCopyElement.textContent = "主人公選択後に EXCLUSIVE shop が表示されます。";
+    } else if (heroExclusiveShopOffers.length === 0) {
+      heroExclusiveShopCopyElement.textContent = "EXCLUSIVE / 通常配置可能 / main/sub どちらでも運用できます。offer の更新待ちです。";
+    } else {
+      const firstOffer = heroExclusiveShopOffers[0];
+      const firstCost = Math.max(0, Math.round(Number(firstOffer?.cost) || 0));
+      heroExclusiveShopCopyElement.textContent = `EXCLUSIVE / 通常配置可能 / main/sub どちらでも運用できます。所持 ${gold}G / 先頭 ${firstCost}G。`;
+    }
+  }
+
+  heroExclusiveShopSlotElements.forEach((button, index) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const offer = heroExclusiveShopOffers[index];
+    const unitType = offer?.unitType ?? null;
+    const cost = Number(offer?.cost ?? 0);
+    const isPurchased = offer?.purchased === true;
+    const displayName = typeof offer?.displayName === "string" && offer.displayName.length > 0
+      ? offer.displayName
+      : unitType;
+    const canAfford = gold >= cost;
+    button.disabled = !offer || !shopActionsEnabled || !heroExclusiveShopVisible || isPurchased || !canAfford;
+    button.classList.toggle("selected", false);
+    button.textContent = offer ? `${UNIT_ICONS[unitType] ?? "🧩"} EXCLUSIVE ${displayName} / ${cost}G` : `Exclusive ${index + 1}`;
+  });
+
   if (bossShopElement instanceof HTMLElement) {
     bossShopElement.hidden = !bossRoleSelectionEnabled;
   }
@@ -1077,24 +1127,27 @@ function formatBenchUnitLabel(unit, displayName) {
     return null;
   }
 
+  const unitLevel = resolveBenchUnitLevel(unit);
+  const levelSuffix = unitLevel > 1 ? ` Lv${unitLevel}` : "";
+
   if (typeof displayName === "string" && displayName.length > 0) {
-    return displayName;
+    return `${displayName}${levelSuffix}`;
   }
 
   if (typeof unit === "string") {
-    const [unitType] = unit.split("-");
-    return unitType || unit;
+    const unitType = resolveBenchUnitType(unit);
+    return `${unitType || unit}${levelSuffix}`;
   }
 
   if (typeof unit?.displayName === "string" && unit.displayName.length > 0) {
-    return unit.displayName;
+    return `${unit.displayName}${levelSuffix}`;
   }
 
   if (typeof unit?.unitType === "string" && unit.unitType.length > 0) {
-    return unit.unitType;
+    return `${unit.unitType}${levelSuffix}`;
   }
 
-  return String(unit);
+  return `${String(unit)}${levelSuffix}`;
 }
 
 function resolveBenchUnitType(unit) {
@@ -1103,7 +1156,8 @@ function resolveBenchUnitType(unit) {
   }
 
   if (typeof unit === "string") {
-    return unit.split("-")[0] || unit;
+    const [rawUnitType] = unit.split(":");
+    return rawUnitType.split("-")[0] || rawUnitType;
   }
 
   if (typeof unit?.unitType === "string" && unit.unitType.length > 0) {
@@ -1115,6 +1169,21 @@ function resolveBenchUnitType(unit) {
   }
 
   return "";
+}
+
+function resolveBenchUnitLevel(unit) {
+  if (!unit) {
+    return 1;
+  }
+
+  if (typeof unit === "string") {
+    const [, rawLevel] = unit.split(":");
+    const parsedLevel = Number.parseInt(rawLevel ?? "", 10);
+    return Number.isInteger(parsedLevel) && parsedLevel > 1 ? parsedLevel : 1;
+  }
+
+  const parsedLevel = Number.parseInt(String(unit?.unitLevel ?? ""), 10);
+  return Number.isInteger(parsedLevel) && parsedLevel > 1 ? parsedLevel : 1;
 }
 
 function resolveBenchUnitIcon(unit) {

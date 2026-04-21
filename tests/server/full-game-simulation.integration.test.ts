@@ -51,7 +51,7 @@ type BenchUnitView = {
   unitType: string;
   unitId?: string;
   cost: number;
-  starLevel: number;
+  unitLevel: number;
   unitCount: number;
 };
 

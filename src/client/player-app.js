@@ -65,6 +65,9 @@ const refreshCopyElement = document.querySelector("[data-player-refresh-copy]");
 const shopSlotElements = Array.from(document.querySelectorAll("[data-player-shop-slot]"));
 const shopRefreshButton = document.querySelector("[data-player-shop-refresh-button]");
 const buyXpButton = document.querySelector("[data-player-buy-xp-button]");
+const heroExclusiveShopElement = document.querySelector("[data-player-hero-exclusive-shop]");
+const heroExclusiveShopCopyElement = document.querySelector("[data-player-hero-exclusive-shop-copy]");
+const heroExclusiveShopSlotElements = Array.from(document.querySelectorAll("[data-player-hero-exclusive-shop-slot]"));
 const bossShopElement = document.querySelector("[data-player-boss-shop]");
 const bossShopCopyElement = document.querySelector("[data-player-boss-shop-copy]");
 const bossShopSlotElements = Array.from(document.querySelectorAll("[data-player-boss-shop-slot]"));
@@ -377,6 +380,12 @@ readyButtons.forEach((button) => {
 shopSlotElements.forEach((button, index) => {
   button.addEventListener("click", () => {
     handlePlayerShopBuy(index);
+  });
+});
+
+heroExclusiveShopSlotElements.forEach((button, index) => {
+  button.addEventListener("click", () => {
+    handlePlayerHeroExclusiveShopBuy(index);
   });
 });
 
@@ -863,6 +872,21 @@ function handlePlayerBossShopBuy(slotIndex) {
   });
 }
 
+function handlePlayerHeroExclusiveShopBuy(slotIndex) {
+  if (!canUseShopAction({
+    currentPhase: latestState?.phase,
+    playerFacingPhase: latestPlayerFacingPhase,
+    isReady: latestPlayer?.ready === true,
+  })) {
+    return;
+  }
+
+  gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
+    cmdSeq: nextCmdSeq(),
+    heroExclusiveShopBuySlotIndex: slotIndex,
+  });
+}
+
 function handlePlayerShopRefresh() {
   if (!canUseShopAction({
     currentPhase: latestState?.phase,
@@ -889,7 +913,7 @@ function handlePlayerBuyXp() {
 
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
-    xpPurchaseCount: 1,
+    specialUnitUpgradeCount: 1,
   });
 }
 
@@ -1279,6 +1303,7 @@ function renderPlayerPrepSurface() {
     allyRailElement,
     boardCopyElement,
     shopCopyElement,
+    heroExclusiveShopCopyElement,
     bossShopCopyElement,
     heroUpgradeCopyElement,
     refreshCopyElement,
@@ -1292,6 +1317,8 @@ function renderPlayerPrepSurface() {
     boardElement,
     shopElement,
     shopSlotElements,
+    heroExclusiveShopElement,
+    heroExclusiveShopSlotElements,
     bossShopElement,
     bossShopSlotElements,
     benchElement,

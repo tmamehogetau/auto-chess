@@ -58,7 +58,8 @@ export interface ShopOfferView {
   cost: number;
   rarity: number;
   isRumorUnit?: boolean;
-  starLevel?: number;
+  purchased?: boolean;
+  unitLevel?: number;
 }
 
 /**
@@ -98,8 +99,7 @@ export interface ControllerPlayerStatus {
   eliminated: boolean;
   boardUnitCount: number;
   gold: number;
-  xp: number;
-  level: number;
+  specialUnitLevel: number;
   shopOffers: ShopOfferView[];
   shopLocked: boolean;
   benchUnits: string[];
@@ -109,6 +109,7 @@ export interface ControllerPlayerStatus {
   boardSubUnits?: string[];
   ownedUnits: OwnedUnitsView;
   bossShopOffers: ShopOfferView[];
+  heroExclusiveShopOffers?: ShopOfferView[];
   lastBattleResult: PlayerStatusBattleResult | undefined;
   activeSynergies?: ActiveSynergyView[];
   selectedHeroId: string;
@@ -132,8 +133,7 @@ export interface CommandResultPayload {
   finalRoundShield?: number;
   boardUnitCount: number;
   gold: number;
-  xp: number;
-  level: number;
+  specialUnitLevel: number;
   shopLocked: boolean;
   ownedUnits: OwnedUnitsView;
   shopOffers: ShopOfferView[];
@@ -145,6 +145,7 @@ export interface CommandResultPayload {
   lastBattleResult: PlayerStatusBattleResult | undefined;
   activeSynergies?: ActiveSynergyView[];
   bossShopOffers?: ShopOfferView[];
+  heroExclusiveShopOffers?: ShopOfferView[];
   selectedHeroId?: string;
   isRumorEligible?: boolean;
 }

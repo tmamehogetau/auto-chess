@@ -183,7 +183,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
-  test("xpPurchaseCountでgold/xp/levelがstateへ同期される", async () => {
+  test("specialUnitUpgradeCountでgold/specialUnitLevelがstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -202,24 +202,23 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     const targetClient = clients[0];
 
     const result = await sendPrepCommandAndWaitForResult(targetClient, 1, {
-      xpPurchaseCount: 2,
+      specialUnitUpgradeCount: 2,
     });
     expect(result).toEqual({ accepted: true });
 
     await waitForCondition(() => {
       const player = serverRoom.state.players.get(targetClient.sessionId);
-      return player?.gold === 7 && player?.xp === 4 && player?.level === 3;
+      return player?.gold === 11 && player?.specialUnitLevel === 3;
     }, 1_000);
 
     const player = serverRoom.state.players.get(targetClient.sessionId);
 
-    expect(player?.gold).toBe(7);
-    expect(player?.xp).toBe(4);
-    expect(player?.level).toBe(3);
+    expect(player?.gold).toBe(11);
+    expect(player?.specialUnitLevel).toBe(3);
   });
 
 
-  test("xpPurchaseCountが所持goldを超えるとINSUFFICIENT_GOLDで却下される", async () => {
+  test("specialUnitUpgradeCountが所持goldを超えるとINSUFFICIENT_GOLDで却下される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -238,15 +237,14 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     const targetClient = clients[0];
 
     const result = await sendPrepCommandAndWaitForResult(targetClient, 1, {
-      xpPurchaseCount: 4,
+      specialUnitUpgradeCount: 5,
     });
     expect(result).toEqual({ accepted: false, code: "INSUFFICIENT_GOLD" });
 
     const player = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(player?.gold).toBe(15);
-    expect(player?.xp).toBe(0);
-    expect(player?.level).toBe(1);
+    expect(player?.specialUnitLevel).toBe(1);
   });
 
 
@@ -590,7 +588,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
         benchUnitsByPlayer: Map<string, Array<{
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }>>;
       };
@@ -601,7 +599,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     }
 
     internalController.benchUnitsByPlayer.set(targetClient.sessionId, [
-      { unitType: "mage", cost: 2, starLevel: 1, unitCount: 1 },
+      { unitType: "mage", cost: 2, unitLevel: 1, unitCount: 1 },
     ]);
 
     const beforeSellPlayer = serverRoom.state.players.get(targetClient.sessionId);
@@ -624,7 +622,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
-  test("boardSellIndexでtier 3 sell formula 4C - 2 がstateへ同期される", async () => {
+  test("boardSellIndexでLv7でも旧 tier 3 sell formula 4C - 2 がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -646,7 +644,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
         boardPlacementsByPlayer: Map<string, Array<{
           cell: number;
           unitType: "vanguard" | "ranger" | "mage" | "assassin";
-          starLevel?: number;
+          unitLevel?: number;
           sellValue?: number;
           unitCount?: number;
         }>>;
@@ -659,7 +657,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     }
 
     internalController.boardPlacementsByPlayer.set(targetClient.sessionId, [
-      { cell: 3, unitType: "mage", starLevel: 3, sellValue: 14, unitCount: 7 },
+      { cell: 3, unitType: "mage", unitLevel: 7, sellValue: 14, unitCount: 7 },
     ]);
     internalController.boardUnitCountByPlayer.set(targetClient.sessionId, 1);
 
@@ -717,8 +715,8 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       }
 
       internalController.boardPlacementsByPlayer.set(targetClient.sessionId, [
-        { cell: 0, unitType: "vanguard", starLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", starLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
       ]);
 
       for (const cmdSeq of [1, 2, 3, 4]) {
@@ -843,7 +841,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
   });
 
 
-  test("同種4回購入で購入回数進行のtier 2がstateへ同期される", async () => {
+  test("同種4回購入で購入回数進行のLv4がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -898,12 +896,12 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(1);
-    expect(afterPlayer?.benchUnits[0]).toBe("vanguard:2");
+    expect(afterPlayer?.benchUnits[0]).toBe("vanguard:4");
     expect(afterPlayer?.ownedVanguard).toBe(4);
   });
 
 
-  test("同種7回購入で購入回数進行のtier 3がstateへ同期される", async () => {
+  test("同種7回購入で購入回数進行のLv7がstateへ同期される", async () => {
     const serverRoom = await getTestServer().createRoom<GameRoom>("game");
     const clients = await Promise.all([
       getTestServer().connectTo(serverRoom),
@@ -958,7 +956,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
     const afterPlayer = serverRoom.state.players.get(targetClient.sessionId);
 
     expect(afterPlayer?.benchUnits.length).toBe(1);
-    expect(afterPlayer?.benchUnits[0]).toBe("vanguard:3");
+    expect(afterPlayer?.benchUnits[0]).toBe("vanguard:7");
     expect(afterPlayer?.ownedVanguard).toBe(7);
   });
 
@@ -987,7 +985,7 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       cmdSeq: 1,
       mergeUnits: {
         unitType: "vanguard",
-        starLevel: 2,
+        unitLevel: 2,
         benchIndices: [0, 1, 2],
       },
     });

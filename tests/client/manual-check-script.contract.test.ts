@@ -91,6 +91,14 @@ describe("manual-check script contract", () => {
     expect(source.includes('class="shop-card-media"')).toBe(true);
   });
 
+  test("bench presentation uses level badges instead of legacy star badges", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes('class="unit-level-badge')).toBe(true);
+    expect(source.includes('class="unit-stars')).toBe(false);
+    expect(source.includes("Parse unit type and star level")).toBe(false);
+  });
+
   test("legacy local board presentation helpers are removed from the operator client", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
@@ -245,6 +253,14 @@ describe("manual-check script contract", () => {
     expect(initializeDefaultsBlock.includes("autoFillInput.value = String(autoConfig.autoFillBots);")).toBe(true);
   });
 
+  test("optimistic reserve buys preserve unitLevel in bench tokens and do not duplicate boardSubUnits keys", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const buildOptimisticBenchToken = (offer) => {")).toBe(true);
+    expect(source.includes("`${offerUnitType}:${offerUnitLevel}`")).toBe(true);
+    expect(source.includes("boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),\n    benchUnits: Array.from(helperPlayer?.benchUnits ?? []),\n    boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),")).toBe(false);
+  });
+
   test("autofill helper prep commands carry helper-local cmdSeq and skip duplicate snapshots", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 
@@ -306,6 +322,19 @@ describe("manual-check script contract", () => {
     expect(source.includes("bossShopOffers[payload.bossShopBuySlotIndex] = {")).toBe(true);
     expect(source.includes("purchased: true,")).toBe(true);
     expect(source.includes("bossShopOffers.splice(payload.bossShopBuySlotIndex, 1);")).toBe(false);
+  });
+
+  test("hero-exclusive shop wiring sends dedicated prep command and keeps optimistic slots", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("data-hero-exclusive-shop")).toBe(true);
+    expect(source.includes("data-hero-exclusive-shop-slot")).toBe(true);
+    expect(source.includes("handleBuyHeroExclusiveUnit(")).toBe(true);
+    expect(source.includes("sendPrepCommand({ heroExclusiveShopBuySlotIndex: shopSlot });")).toBe(true);
+    expect(source.includes("heroExclusiveShopOffers[payload.heroExclusiveShopBuySlotIndex] = {")).toBe(true);
+    expect(source.includes("nextPlayer.heroExclusiveShopOffers = heroExclusiveShopOffers;")).toBe(true);
+    expect(source.includes("state.featureFlagsEnableHeroSystem === true")).toBe(true);
+    expect(source.includes("currentPlayer?.selectedHeroId")).toBe(false);
   });
 
   test("presentation audio helper is used for confirm, purchase, battle start, and result cues", () => {

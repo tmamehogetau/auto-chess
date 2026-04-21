@@ -1,4 +1,8 @@
 import { getTouhouUnitById } from "../data/touhou-units";
+import {
+  getClientSpecialUnitLevel,
+  getClientSpecialUnitUpgradeCost,
+} from "./special-unit-progression.js";
 
 export const AUTO_FILL_BOSS_ID = "remilia";
 export const AUTO_FILL_HERO_IDS = [
@@ -98,6 +102,13 @@ const BACKLINE_WITHOUT_BACKLINE_PENALTY = 40;
 const RAID_HIGH_COST_STRATEGY_COST_WEIGHT = 100;
 const RAID_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT = 0.45;
 const RAID_HIGH_COST_STRATEGY_DUPLICATE_WEIGHT = 0.25;
+const HERO_EXCLUSIVE_OFFER_PRIORITY_BY_UNIT_ID = {
+  mayumi: 250,
+  shion: 240,
+  ariya: 230,
+};
+const HERO_EXCLUSIVE_FIRST_COPY_BONUS = 80;
+const HERO_EXCLUSIVE_DUPLICATE_BONUS = 120;
 const AUTO_FILL_BENCH_CAPACITY = 8;
 const AUTO_FILL_SHOP_REFRESH_GOLD_COST = 2;
 const AUTO_FILL_UPGRADE_REFRESH_GOLD_FLOOR = 2;
@@ -1091,6 +1102,135 @@ function buildBossNormalReserveBuyAction(player) {
   };
 }
 
+function getHeroExclusiveOfferPriorityScore(offer, player, strategy = "upgrade", state = null) {
+  const unitId = normalizeOfferUnitId(offer);
+  const basePriority = HERO_EXCLUSIVE_OFFER_PRIORITY_BY_UNIT_ID[unitId] ?? 200;
+  const formationBalanceBonus = getFormationBalanceBonus(
+    offer,
+    player?.boardUnits,
+    player?.benchUnits,
+    player?.selectedHeroId,
+    player?.selectedBossId,
+  );
+  const duplicateBonus = canReserveOfferStackIntoOwnedUnit(player, offer)
+    ? HERO_EXCLUSIVE_DUPLICATE_BONUS
+    : HERO_EXCLUSIVE_FIRST_COPY_BONUS;
+
+  return basePriority
+    + formationBalanceBonus
+    + duplicateBonus
+    + getMidgamePivotOfferAdjustment(offer, player, state, strategy);
+}
+
+function isHeroExclusiveOffer(offer) {
+  const unitId = normalizeOfferUnitId(offer);
+  return unitId.length > 0
+    && HERO_EXCLUSIVE_OFFER_PRIORITY_BY_UNIT_ID[unitId] !== undefined;
+}
+
+function getReserveTargetOfferScore(targetOffer, player, strategy = "upgrade", state = null) {
+  if (isHeroExclusiveOffer(targetOffer)) {
+    return getHeroExclusiveOfferPriorityScore(
+      targetOffer,
+      player,
+      strategy,
+      state,
+    );
+  }
+
+  return getOfferPriorityScore(
+    player?.role,
+    targetOffer,
+    player?.boardUnits,
+    player?.benchUnitIds,
+    strategy,
+    player?.benchUnits,
+  ) + getMidgamePivotOfferAdjustment(
+    targetOffer,
+    player,
+    state,
+    strategy,
+  );
+}
+
+function buildRaidNormalReserveBuyAction(player, strategy, state = null) {
+  const affordableShopSlotIndex = pickAffordableOfferIndex(
+    player?.shopOffers,
+    player?.gold,
+    player?.role,
+    player?.boardUnits,
+    player?.benchUnitIds,
+    strategy,
+    player?.benchUnits,
+    state,
+    player,
+  );
+  if (affordableShopSlotIndex === null) {
+    return null;
+  }
+
+  const offer = toArray(player?.shopOffers)[affordableShopSlotIndex];
+  return {
+    action: {
+      type: "prep_command",
+      payload: { shopBuySlotIndex: affordableShopSlotIndex },
+    },
+    score: getRaidOfferPriorityScore(
+      offer,
+      player?.boardUnits,
+      player?.benchUnitIds,
+      strategy,
+      player?.benchUnits,
+    ) + getMidgamePivotOfferAdjustment(
+      offer,
+      player,
+      state,
+      strategy,
+    ),
+  };
+}
+
+function buildRaidHeroExclusiveReserveBuyAction(player, strategy, state = null) {
+  const offers = toArray(player?.heroExclusiveShopOffers);
+  if (offers.length === 0 || !Number.isFinite(player?.gold)) {
+    return null;
+  }
+
+  let bestOfferIndex = null;
+  let bestOfferScore = Number.NEGATIVE_INFINITY;
+
+  for (let index = 0; index < offers.length; index += 1) {
+    const offer = offers[index];
+    const cost = getOfferCost(offer);
+    if (offer?.purchased === true || cost === null || cost > player.gold) {
+      continue;
+    }
+
+    const offerScore = getHeroExclusiveOfferPriorityScore(
+      offer,
+      player,
+      strategy,
+      state,
+    );
+    if (bestOfferIndex === null || offerScore > bestOfferScore) {
+      bestOfferIndex = index;
+      bestOfferScore = offerScore;
+    }
+  }
+
+  if (bestOfferIndex === null) {
+    return null;
+  }
+
+  return {
+    action: {
+      type: "prep_command",
+      payload: { heroExclusiveShopBuySlotIndex: bestOfferIndex },
+    },
+    score: bestOfferScore,
+  };
+}
+
 function buildReserveBuyAction(player, strategy, state = null) {
   if (player?.role === "boss") {
     const bossShopBuy = buildBossShopReserveBuyAction(player);
@@ -1105,24 +1245,17 @@ function buildReserveBuyAction(player, strategy, state = null) {
     return bossShopBuy?.action ?? normalShopBuy?.action ?? null;
   }
 
-  if (player?.role === "raid" && hasOffers(player.shopOffers)) {
-    const affordableShopSlotIndex = pickAffordableOfferIndex(
-      player.shopOffers,
-      player.gold,
-      player.role,
-      player.boardUnits,
-      player.benchUnitIds,
-      strategy,
-      player.benchUnits,
-      state,
-      player,
-    );
-    if (affordableShopSlotIndex !== null) {
-      return {
-        type: "prep_command",
-        payload: { shopBuySlotIndex: affordableShopSlotIndex },
-      };
+  if (player?.role === "raid") {
+    const heroExclusiveBuy = buildRaidHeroExclusiveReserveBuyAction(player, strategy, state);
+    const normalShopBuy = buildRaidNormalReserveBuyAction(player, strategy, state);
+
+    if (heroExclusiveBuy && normalShopBuy) {
+      return heroExclusiveBuy.score >= normalShopBuy.score
+        ? heroExclusiveBuy.action
+        : normalShopBuy.action;
     }
+
+    return heroExclusiveBuy?.action ?? normalShopBuy?.action ?? null;
   }
 
   return null;
@@ -1174,7 +1307,10 @@ function getReserveOffers(player) {
   }
 
   if (player?.role === "raid") {
-    return player.shopOffers;
+    return [
+      ...toArray(player.heroExclusiveShopOffers),
+      ...toArray(player.shopOffers),
+    ];
   }
 
   return [];
@@ -1219,7 +1355,40 @@ function getOfferFromReserveBuyAction(player, reserveBuyAction) {
     return toArray(player?.bossShopOffers)[bossShopBuySlotIndex] ?? null;
   }
 
+  const heroExclusiveShopBuySlotIndex = reserveBuyAction?.payload?.heroExclusiveShopBuySlotIndex;
+  if (Number.isInteger(heroExclusiveShopBuySlotIndex)) {
+    return toArray(player?.heroExclusiveShopOffers)[heroExclusiveShopBuySlotIndex] ?? null;
+  }
+
   return null;
+}
+
+function buildSpecialUnitUpgradeAction(player, playerPhase) {
+  if (
+    playerPhase !== "purchase"
+    || (player?.role !== "boss" && player?.role !== "raid")
+    || hasUnits(player?.benchUnits)
+  ) {
+    return null;
+  }
+
+  const currentLevel = getClientSpecialUnitLevel(player);
+  const nextUpgradeCost = getClientSpecialUnitUpgradeCost({
+    ...player,
+    specialUnitLevel: currentLevel,
+  });
+  if (
+    nextUpgradeCost === null
+    || !Number.isFinite(player?.gold)
+    || player.gold < nextUpgradeCost
+  ) {
+    return null;
+  }
+
+  return {
+    type: "prep_command",
+    payload: { specialUnitUpgradeCount: 1 },
+  };
 }
 
 function getStateRoundIndex(state) {
@@ -1232,7 +1401,11 @@ function isMidgameHighCostPivotPhase(player, state, strategy = "upgrade") {
   }
 
   const roundIndex = getStateRoundIndex(state);
-  const level = Number.isFinite(player?.level) ? Number(player.level) : null;
+  const level = Number.isFinite(player?.specialUnitLevel)
+    ? Number(player.specialUnitLevel)
+    : Number.isFinite(player?.level)
+      ? Number(player.level)
+      : null;
   const pivotRound = strategy === "highCost"
     ? AUTO_FILL_HIGH_COST_PIVOT_ROUND
     : AUTO_FILL_UPGRADE_PIVOT_ROUND;
@@ -1396,18 +1569,11 @@ function getBenchSellCandidate(player, targetOffer, strategy = "upgrade", state 
     return null;
   }
 
-  const targetScore = getOfferPriorityScore(
-    player?.role,
-    targetOffer,
-    player?.boardUnits,
-    player?.benchUnitIds,
-    strategy,
-    player?.benchUnits,
-  ) + getMidgamePivotOfferAdjustment(
+  const targetScore = getReserveTargetOfferScore(
     targetOffer,
     player,
-    state,
     strategy,
+    state,
   );
   const benchUnitIds = toArray(player?.benchUnitIds);
   let weakestBenchIndex = null;
@@ -1485,10 +1651,13 @@ function shouldPrioritizeReserveBuyBeforeDeploy(player, reserveBuyAction, player
 
   const shopBuySlotIndex = reserveBuyAction.payload?.shopBuySlotIndex;
   const bossShopBuySlotIndex = reserveBuyAction.payload?.bossShopBuySlotIndex;
+  const heroExclusiveShopBuySlotIndex = reserveBuyAction.payload?.heroExclusiveShopBuySlotIndex;
   const targetOffer = Number.isInteger(shopBuySlotIndex)
     ? toArray(player.shopOffers)[shopBuySlotIndex]
     : Number.isInteger(bossShopBuySlotIndex)
       ? toArray(player.bossShopOffers)[bossShopBuySlotIndex]
+      : Number.isInteger(heroExclusiveShopBuySlotIndex)
+        ? toArray(player.heroExclusiveShopOffers)[heroExclusiveShopBuySlotIndex]
       : null;
   if (!targetOffer) {
     return false;
@@ -1676,6 +1845,14 @@ export function buildAutoFillHelperActions({
         return [reserveBuyAction];
       }
 
+      const specialUnitUpgradeAction = buildSpecialUnitUpgradeAction(
+        helperPlayer,
+        playerPhase,
+      );
+      if (specialUnitUpgradeAction) {
+        return [specialUnitUpgradeAction];
+      }
+
       if (
         placedPurchasedUnitCount === 0
         && !Number.isFinite(helperPlayer.gold)
@@ -1762,6 +1939,14 @@ export function buildAutoFillHelperActions({
 
     if (reserveBuyAction) {
       return [reserveBuyAction];
+    }
+
+    const specialUnitUpgradeAction = buildSpecialUnitUpgradeAction(
+      helperPlayer,
+      playerPhase,
+    );
+    if (specialUnitUpgradeAction) {
+      return [specialUnitUpgradeAction];
     }
 
     if (

@@ -83,21 +83,21 @@ export function parseBoardUnitToken(token) {
     return null;
   }
 
-  const parsedStarLevel = match[3] ? Number.parseInt(match[3], 10) : 1;
+  const parsedUnitLevel = match[3] ? Number.parseInt(match[3], 10) : 1;
   const subUnitMarker = match[4];
 
   if (subUnitMarker && !match[3]) {
     return null;
   }
 
-  if (!Number.isInteger(parsedStarLevel) || parsedStarLevel < 1) {
+  if (!Number.isInteger(parsedUnitLevel) || parsedUnitLevel < 1) {
     return null;
   }
 
   const parsed = {
     cell,
     unitType,
-    starLevel: parsedStarLevel,
+    unitLevel: parsedUnitLevel,
   };
 
   if (subUnitMarker) {

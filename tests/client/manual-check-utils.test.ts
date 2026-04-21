@@ -50,27 +50,27 @@ describe("parsePlacementsSpec", () => {
 });
 
 describe("parseBoardUnitToken", () => {
-  test("cell:unitTypeはstarLevel=1として解析する", () => {
+  test("cell:unitTypeはunitLevel=1として解析する", () => {
     expect(parseBoardUnitToken("0:vanguard")).toEqual({
       cell: 0,
       unitType: "vanguard",
-      starLevel: 1,
+      unitLevel: 1,
     });
   });
 
-  test("cell:unitType:starLevelを正しく解析する", () => {
+  test("cell:unitType:unitLevelを正しく解析する", () => {
     expect(parseBoardUnitToken("7:assassin:3")).toEqual({
       cell: 7,
       unitType: "assassin",
-      starLevel: 3,
+      unitLevel: 3,
     });
   });
 
-  test("cell:unitType:starLevel:subを正しく解析する", () => {
+  test("cell:unitType:unitLevel:subを正しく解析する", () => {
     expect(parseBoardUnitToken("0:vanguard:1:sub")).toEqual({
       cell: 0,
       unitType: "vanguard",
-      starLevel: 1,
+      unitLevel: 1,
       subUnitActive: true,
     });
   });

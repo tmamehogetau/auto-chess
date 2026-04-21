@@ -11,6 +11,7 @@ import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
 import type { MatchLogger } from "../../../src/server/match-logger";
 import { createBattleStartEvent } from "../../../src/server/combat/battle-timeline";
 import { HEROES } from "../../../src/data/heroes";
+import { getSpecialUnitCombatMultiplier } from "../../../src/server/special-unit-level-config";
 
 // Mock BattleSimulator
 const createMockBattleSimulator = () => ({
@@ -56,10 +57,10 @@ describe("BattleResolutionService", () => {
   let dependencies: BattleResolutionDependencies;
 
   const mockLeftPlacements: BoardUnitPlacement[] = [
-    { unitType: "vanguard", starLevel: 1, cell: 0 },
+    { unitType: "vanguard", unitLevel: 1, cell: 0 },
   ];
   const mockRightPlacements: BoardUnitPlacement[] = [
-    { unitType: "ranger", starLevel: 1, cell: 4 },
+    { unitType: "ranger", unitLevel: 1, cell: 4 },
   ];
   const mockTimeline = [
     createBattleStartEvent({
@@ -74,7 +75,7 @@ describe("BattleResolutionService", () => {
     id,
     sourceUnitId: id,
     type: "vanguard",
-    starLevel: 1,
+    unitLevel: 1,
     hp: 100,
     maxHp: 100,
     attackPower: 10,
@@ -752,6 +753,50 @@ describe("BattleResolutionService", () => {
       expect(marisa?.attackRange ?? 0).toBeGreaterThan(reimu?.attackRange ?? 0);
       expect(jyoon?.attackSpeed ?? 0).toBeGreaterThan(reimu?.attackSpeed ?? 0);
       expect(okina?.attackRange ?? 0).toBeGreaterThan(jyoon?.attackRange ?? 0);
+    });
+
+    it("should scale hero hp and attack with the provided special unit level", () => {
+      const reimu = HEROES.find((candidate) => candidate.id === "reimu");
+      expect(reimu).toBeDefined();
+
+      const heroUnit = service.createHeroBattleUnit("reimu", "player1", 10, "left", 3);
+      const levelMultiplier = getSpecialUnitCombatMultiplier(3, "reimu");
+
+      expect(heroUnit).toMatchObject({
+        id: "hero-player1",
+        sourceUnitId: "reimu",
+        unitLevel: 3,
+        hp: reimu!.hp * levelMultiplier,
+        maxHp: reimu!.hp * levelMultiplier,
+        attackPower: reimu!.attack * levelMultiplier,
+        attackSpeed: reimu!.attackSpeed,
+        movementSpeed: reimu!.movementSpeed,
+        attackRange: reimu!.range,
+        damageReduction: reimu!.damageReduction,
+        cell: 10,
+      });
+    });
+
+    it("should apply Jyoon-specific scaling at high special unit levels", () => {
+      const jyoon = HEROES.find((candidate) => candidate.id === "jyoon");
+      expect(jyoon).toBeDefined();
+
+      const heroUnit = service.createHeroBattleUnit("jyoon", "player1", 14, "left", 7);
+      const levelMultiplier = getSpecialUnitCombatMultiplier(7, "jyoon");
+
+      expect(heroUnit).toMatchObject({
+        id: "hero-player1",
+        sourceUnitId: "jyoon",
+        unitLevel: 7,
+        hp: jyoon!.hp * levelMultiplier,
+        maxHp: jyoon!.hp * levelMultiplier,
+        attackPower: jyoon!.attack * levelMultiplier,
+        attackSpeed: jyoon!.attackSpeed,
+        movementSpeed: jyoon!.movementSpeed,
+        attackRange: jyoon!.range,
+        damageReduction: jyoon!.damageReduction,
+        cell: 14,
+      });
     });
   });
 });

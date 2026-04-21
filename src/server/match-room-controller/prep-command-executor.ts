@@ -2,17 +2,16 @@ import type { CommandResult, BoardUnitPlacement } from "../../shared/room-messag
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { normalizeBoardPlacements } from "../combat/unit-effects";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
+import { calculateSpecialUnitUpgradeCost } from "../special-unit-level-config";
 import type {
   CommandPayload,
   ShopOffer,
 } from "./prep-command-validator";
 
 // Constants from the controller
-const XP_PURCHASE_COST = 4;
-const XP_PURCHASE_GAIN = 4;
 const SHOP_REFRESH_COST = 2;
 const INITIAL_GOLD = 15;
-const STAR_LEVEL_MIN = 1;
+const UNIT_LEVEL_MIN = 1;
 
 export interface ExecutionDependencies {
   // State setters
@@ -21,14 +20,17 @@ export interface ExecutionDependencies {
   setShopLock: (playerId: string, locked: boolean) => void;
   setLastCmdSeq: (playerId: string, cmdSeq: number) => void;
 
-  // Gold and XP operations
+  // Gold and special unit operations
   addGold: (playerId: string, amount: number) => void;
-  addXp: (playerId: string, amount: number) => void;
+  getSpecialUnitLevel: (playerId: string) => number;
+  getSelectedSpecialUnitId: (playerId: string) => string | undefined;
+  upgradeSpecialUnit: (playerId: string, count: number) => void;
 
   // Shop operations
   getShopRefreshGoldCost: (playerId: string, refreshCount: number) => number;
   refreshShop: (playerId: string, count: number) => void;
   buyShopOffer: (playerId: string, slotIndex: number) => void;
+  buyHeroExclusiveShopOffer: (playerId: string, slotIndex: number) => void;
 
   // Unit operations
   deployBenchUnitToBoard: (playerId: string, benchIndex: number, cell: number, slot?: "main" | "sub") => void;
@@ -48,12 +50,13 @@ export interface ExecutionDependencies {
   getBenchUnits: (playerId: string) => Array<{
     unitType: string;
     cost: number;
-    starLevel: number;
+    unitLevel: number;
     unitCount: number;
   }>;
   getOwnedUnits: (playerId: string) => { vanguard: number; ranger: number; mage: number; assassin: number };
   getBoardPlacements: (playerId: string) => BoardUnitPlacement[];
   getShopOffers: (playerId: string) => ShopOffer[];
+  getHeroExclusiveShopOffers: (playerId: string) => ShopOffer[];
   getBossShopOffers: (playerId: string) => ShopOffer[];
   getRosterFlags: () => FeatureFlags;
 
@@ -93,10 +96,19 @@ export function executePrepCommand(
 
   // 3. Calculate and apply gold changes for all purchase operations
   let totalGoldCost = 0;
+  let canApplySpecialUnitUpgrade = false;
 
-  // XP purchase cost
-  if (payload.xpPurchaseCount !== undefined && payload.xpPurchaseCount > 0) {
-    totalGoldCost += XP_PURCHASE_COST * payload.xpPurchaseCount;
+  // Special unit upgrade cost
+  if (payload.specialUnitUpgradeCount !== undefined && payload.specialUnitUpgradeCount > 0) {
+    const upgradeCost = calculateSpecialUnitUpgradeCost(
+      deps.getSpecialUnitLevel(playerId),
+      payload.specialUnitUpgradeCount,
+      deps.getSelectedSpecialUnitId(playerId),
+    );
+    if (upgradeCost !== null) {
+      totalGoldCost += upgradeCost;
+      canApplySpecialUnitUpgrade = true;
+    }
   }
 
   // Shop refresh cost
@@ -117,6 +129,14 @@ export function executePrepCommand(
     }
   }
 
+  if (payload.heroExclusiveShopBuySlotIndex !== undefined) {
+    const heroExclusiveOffers = deps.getHeroExclusiveShopOffers(playerId);
+    const heroExclusiveOffer = heroExclusiveOffers[payload.heroExclusiveShopBuySlotIndex];
+    if (heroExclusiveOffer) {
+      totalGoldCost += heroExclusiveOffer.cost;
+    }
+  }
+
   // Boss shop buy cost
   if (payload.bossShopBuySlotIndex !== undefined) {
     const bossOffers = deps.getBossShopOffers(playerId);
@@ -131,9 +151,13 @@ export function executePrepCommand(
     deps.addGold(playerId, -totalGoldCost);
   }
 
-  // 4. Execute XP purchase (after gold deduction)
-  if (payload.xpPurchaseCount !== undefined && payload.xpPurchaseCount > 0) {
-    deps.addXp(playerId, XP_PURCHASE_GAIN * payload.xpPurchaseCount);
+  // 4. Execute special unit upgrade (after gold deduction)
+  if (
+    canApplySpecialUnitUpgrade
+    && payload.specialUnitUpgradeCount !== undefined
+    && payload.specialUnitUpgradeCount > 0
+  ) {
+    deps.upgradeSpecialUnit(playerId, payload.specialUnitUpgradeCount);
   }
 
   // 5. Execute shop refresh
@@ -144,6 +168,10 @@ export function executePrepCommand(
   // 6. Execute shop buy
   if (payload.shopBuySlotIndex !== undefined) {
     deps.buyShopOffer(playerId, payload.shopBuySlotIndex);
+  }
+
+  if (payload.heroExclusiveShopBuySlotIndex !== undefined) {
+    deps.buyHeroExclusiveShopOffer(playerId, payload.heroExclusiveShopBuySlotIndex);
   }
 
   // 7. Execute boss shop buy

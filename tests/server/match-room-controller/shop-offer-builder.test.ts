@@ -42,7 +42,7 @@ describe("ShopOfferBuilder", () => {
         if (roll < one + two) return 2;
         return 3;
       }) as ShopOfferBuilderDependencies['pickRarity'],
-      getPlayerLevel: vi.fn(() => 1),
+      getSpecialUnitLevel: vi.fn(() => 1),
       isSharedPoolEnabled: vi.fn(() => false),
       isPoolDepleted: vi.fn(() => false),
       isPerUnitPoolEnabled: vi.fn(() => false),
@@ -100,12 +100,12 @@ describe("ShopOfferBuilder", () => {
     });
 
     test("respects different player levels for rarity distribution", () => {
-      mockDeps.getPlayerLevel = vi.fn(() => 5);
+      mockDeps.getSpecialUnitLevel = vi.fn(() => 5);
 
       const offers = builder.buildShopOffers("player1", 1, 0, 0, false);
 
       expect(offers).toHaveLength(5);
-      expect(mockDeps.getPlayerLevel).toHaveBeenCalledWith("player1");
+      expect(mockDeps.getSpecialUnitLevel).toHaveBeenCalledWith("player1");
     });
 
     test("includes rumor unit for eligible players when feature is enabled", () => {
@@ -237,6 +237,34 @@ describe("ShopOfferBuilder", () => {
     });
   });
 
+  describe("buildHeroExclusiveShopOffers", () => {
+    test("returns a fixed 1-slot offer for supported heroes", () => {
+      expect(builder.buildHeroExclusiveShopOffers("keiki")).toEqual([
+        expect.objectContaining({
+          unitId: "mayumi",
+          unitType: "vanguard",
+        }),
+      ]);
+      expect(builder.buildHeroExclusiveShopOffers("jyoon")).toEqual([
+        expect.objectContaining({
+          unitId: "shion",
+          unitType: "assassin",
+        }),
+      ]);
+      expect(builder.buildHeroExclusiveShopOffers("yuiman")).toEqual([
+        expect.objectContaining({
+          unitId: "ariya",
+          unitType: "vanguard",
+        }),
+      ]);
+    });
+
+    test("returns empty offers for unsupported heroes", () => {
+      expect(builder.buildHeroExclusiveShopOffers("reimu")).toEqual([]);
+      expect(builder.buildHeroExclusiveShopOffers("")).toEqual([]);
+    });
+  });
+
   describe("shared pool integration", () => {
     test("filters depleted units when shared pool is enabled", () => {
       mockDeps.isSharedPoolEnabled = vi.fn(() => true);
@@ -251,7 +279,7 @@ describe("ShopOfferBuilder", () => {
 
   describe("deterministic behavior", () => {
     test("produces same offers with same inputs", () => {
-      mockDeps.getPlayerLevel = vi.fn(() => 1);
+      mockDeps.getSpecialUnitLevel = vi.fn(() => 1);
       mockDeps.hashToUint32 = vi.fn((text) => {
         // Deterministic hash
         let hash = 0;

@@ -48,7 +48,9 @@ export type AutoFillHelperAction =
       type: "prep_command";
       payload:
         | { bossShopBuySlotIndex: number }
+        | { heroExclusiveShopBuySlotIndex: number }
         | { shopBuySlotIndex: number }
+        | { specialUnitUpgradeCount: number }
         | { shopRefreshCount: number }
         | { benchSellIndex: number }
         | { boardSellIndex: number }
@@ -80,8 +82,8 @@ export function buildAutoFillHelperActions(input: {
     benchUnits?: unknown[] | Iterable<unknown> | null;
     benchUnitIds?: unknown[] | Iterable<unknown> | null;
     boardSubUnits?: unknown[] | Iterable<unknown> | null;
+    specialUnitLevel?: number | null;
     level?: number | null;
-    xp?: number | null;
     ownedUnits?: Record<string, number> | null;
     activeSynergies?:
       | Array<{ unitType?: string | null; count?: number | null; tier?: number | null } | unknown>
@@ -108,6 +110,22 @@ export function buildAutoFillHelperActions(input: {
     bossShopOffers?:
       | Array<{ cost?: number | null; unitType?: string | null; unitId?: string | null; factionId?: string | null } | unknown>
       | Iterable<{ cost?: number | null; unitType?: string | null; unitId?: string | null; factionId?: string | null } | unknown>
+      | null;
+    heroExclusiveShopOffers?:
+      | Array<{
+          cost?: number | null;
+          unitType?: string | null;
+          unitId?: string | null;
+          factionId?: string | null;
+          purchased?: boolean | null;
+        } | unknown>
+      | Iterable<{
+          cost?: number | null;
+          unitType?: string | null;
+          unitId?: string | null;
+          factionId?: string | null;
+          purchased?: boolean | null;
+        } | unknown>
       | null;
   } | null;
   state?: {

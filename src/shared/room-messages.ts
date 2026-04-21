@@ -52,9 +52,10 @@ export interface PrepCommandMessage {
   boardUnitCount?: number;
   boardPlacements?: BoardUnitPlacement[];
   heroPlacementCell?: number;
-  xpPurchaseCount?: number;
+  specialUnitUpgradeCount?: number;
   shopRefreshCount?: number;
   shopBuySlotIndex?: number;
+  heroExclusiveShopBuySlotIndex?: number;
   shopLock?: boolean;
   benchToBoardCell?: {
     benchIndex: number;
@@ -85,7 +86,7 @@ export interface PrepCommandMessage {
   boardSellIndex?: number;
   mergeUnits?: {
     unitType: string;
-    starLevel: number;
+    unitLevel: number;
     benchIndices?: number[];
     boardCells?: number[];
   };
@@ -100,7 +101,7 @@ export interface AttachedSubUnitPlacement {
   unitType: BoardUnitType;
   unitId?: UnitId;
   factionId?: TouhouFactionId | null;
-  starLevel?: number;
+  unitLevel?: number;
   sellValue?: number;
   unitCount?: number;
   archetype?: string;
@@ -120,7 +121,7 @@ export interface BoardUnitPlacement {
   damageReduction?: number;
   critRate?: number;
   critDamageMultiplier?: number;
-  starLevel?: number;
+  unitLevel?: number;
   sellValue?: number;
   unitCount?: number;
   archetype?: string;  // 特殊ユニットのアーキタイプ（例: meiling, sakuya, patchouli）
@@ -141,7 +142,7 @@ export type CommandRejectCode =
   | "INVALID_PLACEMENT"
   | "INVALID_CELL"
   | "INVALID_UNIT_TYPE"
-  | "INVALID_STAR_LEVEL"
+  | "INVALID_UNIT_LEVEL"
   | "INVALID_SELL_VALUE"
   | "INVALID_UNIT_COUNT"
   | "DUPLICATE_CELL"
@@ -205,7 +206,7 @@ export interface ShopOfferMessage {
   isRumorUnit?: boolean;
   purchased?: boolean;
   rarity: number;
-  starLevel?: number;
+  unitLevel?: number;
   unitId?: string;
   unitType: string;
 }
@@ -223,8 +224,7 @@ export interface PlayerMatchStatus {
   eliminated: boolean;
   boardUnitCount: number;
   gold: number;
-  xp: number;
-  level: number;
+  specialUnitLevel: number;
   shopOffers: ShopOfferMessage[];
   shopLocked: boolean;
   benchUnits: string[];

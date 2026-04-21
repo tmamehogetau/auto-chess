@@ -10,7 +10,11 @@ import {
   type UnitEffectSetId,
   type UnitSkillRule,
 } from "./unit-effect-definitions";
-import { getStarCombatMultiplier } from "../star-level-config";
+import {
+  getUnitLevelCombatMultiplier,
+  UNIT_LEVEL_MAX,
+  UNIT_LEVEL_MIN,
+} from "../unit-level-config";
 
 const MAX_BOARD_UNITS = 8;
 const SHARED_BOARD_MIN_INDEX = 0;
@@ -25,7 +29,7 @@ export type PlacementValidationErrorCode =
   | "INVALID_PLACEMENT"
   | "INVALID_CELL"
   | "INVALID_UNIT_TYPE"
-  | "INVALID_STAR_LEVEL"
+  | "INVALID_UNIT_LEVEL"
   | "INVALID_SELL_VALUE"
   | "INVALID_UNIT_COUNT"
   | "DUPLICATE_CELL";
@@ -46,9 +50,9 @@ function normalizeAttachedSubUnit(
     return { normalized: null, errorCode: "INVALID_UNIT_TYPE" };
   }
 
-  const starLevel = subUnit.starLevel ?? 1;
-  if (!Number.isInteger(starLevel) || starLevel < 1 || starLevel > 3) {
-    return { normalized: null, errorCode: "INVALID_STAR_LEVEL" };
+  const unitLevel = subUnit.unitLevel ?? UNIT_LEVEL_MIN;
+  if (!Number.isInteger(unitLevel) || unitLevel < UNIT_LEVEL_MIN || unitLevel > UNIT_LEVEL_MAX) {
+    return { normalized: null, errorCode: "INVALID_UNIT_LEVEL" };
   }
 
   if (
@@ -67,7 +71,7 @@ function normalizeAttachedSubUnit(
 
   const normalizedSubUnit: NonNullable<BoardUnitPlacement["subUnit"]> = {
     unitType: subUnit.unitType,
-    starLevel,
+    unitLevel,
   };
 
   if (subUnit.unitId !== undefined) {
@@ -124,10 +128,10 @@ export function normalizeBoardPlacements(
       return { normalized: null, errorCode: "INVALID_UNIT_TYPE" };
     }
 
-    const starLevel = placement.starLevel ?? 1;
+    const unitLevel = placement.unitLevel ?? UNIT_LEVEL_MIN;
 
-    if (!Number.isInteger(starLevel) || starLevel < 1 || starLevel > 3) {
-      return { normalized: null, errorCode: "INVALID_STAR_LEVEL" };
+    if (!Number.isInteger(unitLevel) || unitLevel < UNIT_LEVEL_MIN || unitLevel > UNIT_LEVEL_MAX) {
+      return { normalized: null, errorCode: "INVALID_UNIT_LEVEL" };
     }
 
     if (
@@ -152,7 +156,7 @@ export function normalizeBoardPlacements(
     const normalizedPlacement: BoardUnitPlacement = {
       cell: placement.cell,
       unitType: placement.unitType,
-      starLevel,
+      unitLevel,
     };
 
     if (placement.unitId !== undefined) {
@@ -239,7 +243,7 @@ function calculatePlacementPower(
 
   return (
     (effectRule.basePower + (inFrontRow ? effectRule.frontRowBonus : effectRule.backRowBonus)) *
-    getStarCombatMultiplier(placement.starLevel)
+    getUnitLevelCombatMultiplier(placement.unitLevel ?? 1)
   );
 }
 

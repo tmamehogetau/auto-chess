@@ -273,6 +273,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       cell.ownerId = "";
       cell.displayName = "";
       cell.portraitKey = "";
+      cell.unitLevel = 1;
       cell.lockedBy = "";
       cell.lockUntilMs = 0;
       this.state.cells.set(String(index), cell);
@@ -471,16 +472,19 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       const targetOwnerId = targetCell.ownerId;
       const targetDisplayName = targetCell.displayName;
       const targetPortraitKey = targetCell.portraitKey;
+      const targetUnitLevel = targetCell.unitLevel;
 
       targetCell.unitId = sourceCell.unitId;
       targetCell.ownerId = sourceCell.ownerId;
       targetCell.displayName = sourceCell.displayName;
       targetCell.portraitKey = sourceCell.portraitKey;
+      targetCell.unitLevel = sourceCell.unitLevel;
 
       sourceCell.unitId = targetUnitId;
       sourceCell.ownerId = targetOwnerId;
       sourceCell.displayName = targetDisplayName;
       sourceCell.portraitKey = targetPortraitKey;
+      sourceCell.unitLevel = targetUnitLevel;
     }
 
     const cursor = this.state.cursors.get(client.sessionId);
@@ -600,6 +604,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
           cell.ownerId = "";
           cell.displayName = "";
           cell.portraitKey = "";
+          cell.unitLevel = 1;
         }
       }
     }
@@ -614,6 +619,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
         cell.ownerId = "";
         cell.displayName = "";
         cell.portraitKey = "";
+        cell.unitLevel = 1;
       }
       cell.lockedBy = "";
       cell.lockUntilMs = 0;
@@ -843,6 +849,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       targetCell.ownerId = playerId;
       targetCell.displayName = presentation?.displayName ?? "";
       targetCell.portraitKey = presentation?.portraitKey ?? "";
+      targetCell.unitLevel = placement.unitLevel ?? 1;
       targetCell.lockedBy = "";
       targetCell.lockUntilMs = 0;
       applied += 1;
@@ -857,6 +864,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     playerId: string;
     heroId: string;
     cellIndex: number | null;
+    unitLevel?: number;
   }): { applied: number; skipped: number } {
     if (this.state.mode !== "prep") {
       return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
@@ -892,6 +900,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     targetCell.ownerId = input.playerId;
     targetCell.displayName = presentation?.displayName ?? input.heroId;
     targetCell.portraitKey = presentation?.portraitKey ?? "";
+    targetCell.unitLevel = input.unitLevel ?? 1;
     targetCell.lockedBy = "";
     targetCell.lockUntilMs = 0;
 
@@ -904,6 +913,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     playerId: string;
     bossId: string;
     cellIndex: number | null;
+    unitLevel?: number;
   }): { applied: number; skipped: number } {
     if (this.state.mode !== "prep") {
       return { applied: 0, skipped: input.cellIndex === null ? 0 : 1 };
@@ -941,6 +951,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     targetCell.ownerId = input.playerId;
     targetCell.displayName = presentation?.displayName ?? input.bossId;
     targetCell.portraitKey = presentation?.portraitKey ?? "";
+    targetCell.unitLevel = input.unitLevel ?? 1;
     targetCell.lockedBy = "";
     targetCell.lockUntilMs = 0;
 
@@ -1023,6 +1034,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
       targetCell.ownerId = unit.side;
       targetCell.displayName = unit.displayName ?? this.buildBattleReplayDisplayName(unit.battleUnitId);
       targetCell.portraitKey = unit.portraitKey ?? "";
+      targetCell.unitLevel = 1;
       targetCell.lockedBy = "";
       targetCell.lockUntilMs = 0;
       applied += 1;
@@ -1133,6 +1145,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
     cell.ownerId = "";
     cell.displayName = "";
     cell.portraitKey = "";
+    cell.unitLevel = 1;
     cell.lockedBy = "";
     cell.lockUntilMs = 0;
   }
@@ -1169,6 +1182,7 @@ export class SharedBoardRoom extends Room<{ state: SharedBoardState }> {
 
     bossCell.unitId = "dummy-boss";
     bossCell.ownerId = "boss";
+    bossCell.unitLevel = 1;
   }
 
   private appendEvent(message: string): void {

@@ -1056,11 +1056,11 @@ function parseBoardUnitToken(token) {
     return null;
   }
 
-  const starLevel = /^\d+$/.test(third) ? Number.parseInt(third, 10) : 1;
+  const unitLevel = /^\d+$/.test(third) ? Number.parseInt(third, 10) : 1;
   return {
     cellIndex,
     unitType,
-    starLevel,
+    unitLevel,
     hasSubMarker: third === "sub" || fourth === "sub",
   };
 }
@@ -1076,14 +1076,14 @@ function parseBoardSubUnitToken(token) {
     return null;
   }
 
-  const hasExplicitStarLevel = /^\d+$/.test(third) && fourth.length > 0;
-  const starLevel = /^\d+$/.test(third) ? Number.parseInt(third, 10) : 1;
-  const detail = hasExplicitStarLevel ? fourth : third;
+  const hasExplicitUnitLevel = /^\d+$/.test(third) && fourth.length > 0;
+  const unitLevel = /^\d+$/.test(third) ? Number.parseInt(third, 10) : 1;
+  const detail = hasExplicitUnitLevel ? fourth : third;
 
   return {
     cellIndex,
     unitType,
-    starLevel,
+    unitLevel,
     detail: typeof detail === "string" ? detail : "",
     rawToken: token,
   };
@@ -1158,9 +1158,14 @@ function buildSharedBoardHoverDetail(cell, subUnitToken = null) {
     : resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
   const lines = [];
   const unitTypeName = resolveSharedBoardUnitTypeName(resolveSharedBoardUnitType(cell?.unitId));
+  const unitLevel = resolveSharedBoardCellUnitLevel(cell);
 
   if (unitTypeName !== "Unknown") {
     lines.push(`タイプ: ${unitTypeName}`);
+  }
+
+  if (unitLevel >= 1) {
+    lines.push(`LV ${unitLevel}`);
   }
 
   if (subUnitToken?.unitType) {
@@ -1215,10 +1220,16 @@ function buildSharedBoardSubHoverDetail(subUnitToken, hostCell = null) {
     title: resolveSubUnitHoverTitle(subUnitToken),
     portraitKey: resolveSharedBoardSubUnitPortraitKey(subUnitToken),
     lines: [
+      ...(Number.isInteger(subUnitToken.unitLevel) && subUnitToken.unitLevel >= 1 ? [`LV ${subUnitToken.unitLevel}`] : []),
       ...(hostTitle && hostTitle !== "Unknown" ? [`装着先: ${hostTitle}`] : []),
       ...buildSubUnitRuleLines(subUnitToken),
     ],
   };
+}
+
+function resolveSharedBoardCellUnitLevel(cell) {
+  const parsedLevel = Number.parseInt(String(cell?.unitLevel ?? ""), 10);
+  return Number.isInteger(parsedLevel) && parsedLevel >= 1 ? parsedLevel : 1;
 }
 
 function resolveSharedBoardSubUnitPortraitKey(subUnitToken) {

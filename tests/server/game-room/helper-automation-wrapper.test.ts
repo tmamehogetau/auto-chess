@@ -8,12 +8,14 @@ type FakeHelperPlayer = {
   ready: boolean;
   wantsBoss?: boolean;
   gold: number;
+  specialUnitLevel?: number;
   benchUnits: string[];
   benchUnitIds?: string[];
   boardUnits: string[];
   boardSubUnits?: string[];
   shopOffers: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
   bossShopOffers: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string }>;
+  heroExclusiveShopOffers?: Array<{ unitType: string; cost: number; unitId?: string; factionId?: string; purchased?: boolean }>;
   selectedHeroId: string;
   selectedBossId: string;
   lastCmdSeq: number;
@@ -59,6 +61,8 @@ class FakeHelperRoom {
       cmdSeq?: number;
       shopBuySlotIndex?: number;
       bossShopBuySlotIndex?: number;
+      heroExclusiveShopBuySlotIndex?: number;
+      specialUnitUpgradeCount?: number;
       shopRefreshCount?: number;
       benchSellIndex?: number;
       benchToBoardCell?: { benchIndex: number; cell: number; slot?: "main" | "sub" };
@@ -113,6 +117,39 @@ class FakeHelperRoom {
         offer?.unitId ?? "",
       ];
       player.gold = Math.max(0, player.gold - (offer?.cost ?? 0));
+      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (typeof payload.heroExclusiveShopBuySlotIndex === "number") {
+      const heroExclusiveShopBuySlotIndex = payload.heroExclusiveShopBuySlotIndex;
+      const heroExclusiveShopOffers = [...(player.heroExclusiveShopOffers ?? [])];
+      const offer = heroExclusiveShopOffers[heroExclusiveShopBuySlotIndex];
+      if (offer) {
+        heroExclusiveShopOffers[heroExclusiveShopBuySlotIndex] = {
+          ...offer,
+          purchased: true,
+        };
+        player.heroExclusiveShopOffers = heroExclusiveShopOffers;
+        player.benchUnits = [
+          ...player.benchUnits,
+          offer.unitType ?? "vanguard",
+        ];
+        player.benchUnitIds = [
+          ...(player.benchUnitIds ?? []),
+          offer.unitId ?? "",
+        ];
+        player.gold = Math.max(0, player.gold - (offer.cost ?? 0));
+      }
+      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (typeof payload.specialUnitUpgradeCount === "number") {
+      player.specialUnitLevel = (player.specialUnitLevel ?? 1) + payload.specialUnitUpgradeCount;
+      player.gold = Math.max(0, player.gold - 2 * payload.specialUnitUpgradeCount);
       player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
       this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
       return;
@@ -639,6 +676,81 @@ describe("helper automation wrapper", () => {
       message: expect.objectContaining({
         cmdSeq: 1,
         bossShopBuySlotIndex: 1,
+      }),
+    });
+  });
+
+  test("wrapper can drive a raid helper that buys its hero-exclusive unit", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 4,
+          specialUnitLevel: 2,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:keiki"],
+          shopOffers: [{ unitType: "vanguard", unitId: "kagerou", cost: 1 }],
+          bossShopOffers: [],
+          heroExclusiveShopOffers: [{ unitType: "vanguard", unitId: "mayumi", cost: 3 }],
+          selectedHeroId: "keiki",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        heroExclusiveShopBuySlotIndex: 0,
+      }),
+    });
+  });
+
+  test("wrapper can drive a boss helper that upgrades its special unit when reserve shops are empty", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 4,
+          specialUnitLevel: 3,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["2:remilia"],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        specialUnitUpgradeCount: 1,
       }),
     });
   });

@@ -37,6 +37,10 @@ function clearArraySchema<T>(array: { length: number; pop: () => T | undefined }
   }
 }
 
+function normalizeShopOfferUnitLevel(unitLevel: number | undefined): number {
+  return Number.isInteger(unitLevel) ? Number(unitLevel) : 1;
+}
+
 function syncBattleResultSurvivorSnapshots(
   target: { survivorSnapshots: { length: number; pop: () => unknown; push: (value: BattleResultSurvivorSchema) => void } },
   snapshots: BattleResultSurvivorSnapshot[] | undefined,
@@ -243,8 +247,7 @@ export function syncPlayerStateFromController(
   playerState.eliminated = controllerStatus.eliminated;
   playerState.boardUnitCount = controllerStatus.boardUnitCount;
   playerState.gold = controllerStatus.gold;
-  playerState.xp = controllerStatus.xp;
-  playerState.level = controllerStatus.level;
+  playerState.specialUnitLevel = controllerStatus.specialUnitLevel;
   playerState.shopLocked = controllerStatus.shopLocked;
 
   // Owned units breakdown
@@ -281,6 +284,8 @@ export function syncPlayerStateFromController(
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    nextOffer.purchased = offer.purchased === true;
+    nextOffer.unitLevel = normalizeShopOfferUnitLevel(offer.unitLevel);
     playerState.shopOffers.push(nextOffer);
   }
 
@@ -322,7 +327,24 @@ export function syncPlayerStateFromController(
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    nextOffer.purchased = offer.purchased === true;
+    nextOffer.unitLevel = normalizeShopOfferUnitLevel(offer.unitLevel);
     playerState.bossShopOffers.push(nextOffer);
+  }
+
+  clearArraySchema(playerState.heroExclusiveShopOffers);
+  for (const offer of controllerStatus.heroExclusiveShopOffers || []) {
+    const nextOffer = new ShopOfferState();
+    nextOffer.unitType = toBoardUnitType(offer.unitType);
+    nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
+    nextOffer.cost = offer.cost;
+    nextOffer.rarity = offer.rarity;
+    nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    nextOffer.purchased = offer.purchased === true;
+    nextOffer.unitLevel = normalizeShopOfferUnitLevel(offer.unitLevel);
+    playerState.heroExclusiveShopOffers.push(nextOffer);
   }
 
   // Last battle result
@@ -382,8 +404,7 @@ export function syncPlayerStateFromCommandResult(
 
   playerState.boardUnitCount = cmdResult.boardUnitCount;
   playerState.gold = cmdResult.gold;
-  playerState.xp = cmdResult.xp;
-  playerState.level = cmdResult.level;
+  playerState.specialUnitLevel = cmdResult.specialUnitLevel;
   playerState.shopLocked = cmdResult.shopLocked;
 
   playerState.ownedVanguard = cmdResult.ownedUnits.vanguard;
@@ -422,6 +443,8 @@ export function syncPlayerStateFromCommandResult(
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    nextOffer.purchased = offer.purchased === true;
+    nextOffer.unitLevel = normalizeShopOfferUnitLevel(offer.unitLevel);
     playerState.shopOffers.push(nextOffer);
   }
 
@@ -463,7 +486,24 @@ export function syncPlayerStateFromCommandResult(
     nextOffer.cost = offer.cost;
     nextOffer.rarity = offer.rarity;
     nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    nextOffer.purchased = offer.purchased === true;
+    nextOffer.unitLevel = normalizeShopOfferUnitLevel(offer.unitLevel);
     playerState.bossShopOffers.push(nextOffer);
+  }
+
+  clearArraySchema(playerState.heroExclusiveShopOffers);
+  for (const offer of cmdResult.heroExclusiveShopOffers || []) {
+    const nextOffer = new ShopOfferState();
+    nextOffer.unitType = toBoardUnitType(offer.unitType);
+    nextOffer.unitId = offer.unitId ?? "";
+    nextOffer.displayName = offer.displayName ?? "";
+    nextOffer.factionId = offer.factionId ?? "";
+    nextOffer.cost = offer.cost;
+    nextOffer.rarity = offer.rarity;
+    nextOffer.isRumorUnit = offer.isRumorUnit === true;
+    nextOffer.purchased = offer.purchased === true;
+    nextOffer.unitLevel = normalizeShopOfferUnitLevel(offer.unitLevel);
+    playerState.heroExclusiveShopOffers.push(nextOffer);
   }
 
   // Last battle result

@@ -168,7 +168,7 @@ export function buildBotBalanceBaselineJapaneseJson(
       "ユニット名": unit.unitName,
       "戦闘登場回数": unit.battleAppearances,
       "登場試合数": unit.matchesPresent,
-      "平均星レベル": unit.averageStarLevel,
+      "平均星レベル": unit.averageunitLevel,
       "戦闘ごとの平均ダメージ": unit.averageDamagePerBattle,
       "試合ごとの平均ダメージ": unit.averageDamagePerMatch,
       "生存率": unit.survivalRate,
@@ -181,7 +181,7 @@ export function buildBotBalanceBaselineJapaneseJson(
       "ユニット名": unit.unitName,
       "戦闘登場回数": unit.battleAppearances,
       "登場試合数": unit.matchesPresent,
-      "平均星レベル": unit.averageStarLevel,
+      "平均星レベル": unit.averageunitLevel,
       "戦闘ごとの平均ダメージ": unit.averageDamagePerBattle,
       "試合ごとの平均ダメージ": unit.averageDamagePerMatch,
       "生存率": unit.survivalRate,
@@ -507,7 +507,7 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   );
   for (const unit of aggregate.bossBattleUnitMetrics) {
     lines.push(
-      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageStarLevel)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} |`,
+      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageunitLevel)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} |`,
     );
   }
 
@@ -520,7 +520,7 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   );
   for (const unit of aggregate.raidBattleUnitMetrics) {
     lines.push(
-      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageStarLevel)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} | ${unit.subUnitBattleAppearances ?? 0} | ${unit.subUnitMatchesPresent ?? 0} | ${formatPercent(unit.subUnitAdoptionRate ?? 0)} |`,
+      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageunitLevel)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} | ${unit.subUnitBattleAppearances ?? 0} | ${unit.subUnitMatchesPresent ?? 0} | ${formatPercent(unit.subUnitAdoptionRate ?? 0)} |`,
     );
   }
 

@@ -82,13 +82,13 @@ export interface PlayerMatchSummary {
 
 export interface BoardUnitSnapshot {
   unitType: string;
-  starLevel: number;
+  unitLevel?: number;
   cell: number;
 }
 
 export interface BenchUnitSnapshot {
   unitType: string;
-  starLevel: number;
+  unitLevel?: number;
   benchIndex: number;
 }
 
@@ -133,13 +133,13 @@ export interface PlayerActionLog {
     | "merge"
     | "hero_select"
     | "shop_refresh"
-    | "buy_xp"
+    | "upgrade_special_unit"
     | "buy_boss_unit"
     | "shop_lock";
   timestamp: number;
   details: {
     unitType?: string;
-    starLevel?: number;
+    unitLevel?: number;
     cost?: number;
     fromCell?: number;
     toCell?: number;

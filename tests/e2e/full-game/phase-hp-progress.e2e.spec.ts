@@ -96,7 +96,7 @@ describe("E2E: Phase HP Progress", () => {
         // Battle前に片側だけ盤面を置いてダメージを発生させやすくする
         clients[0]!.send("prep_command", {
           cmdSeq: 1,
-          boardPlacements: [{ cell: 0, unitType: "vanguard", starLevel: 1 }],
+          boardPlacements: [{ cell: 0, unitType: "vanguard", unitLevel: 1 }],
         });
 
         await new Promise((resolve) => setTimeout(resolve, 200));

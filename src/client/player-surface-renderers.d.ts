@@ -39,6 +39,7 @@ export function renderPlayerPrepSummary(input: {
   allyRailElement?: HTMLElement | null;
   boardCopyElement?: HTMLElement | null;
   shopCopyElement?: HTMLElement | null;
+  heroExclusiveShopCopyElement?: HTMLElement | null;
   bossShopCopyElement?: HTMLElement | null;
   heroUpgradeCopyElement?: HTMLElement | null;
   refreshCopyElement?: HTMLElement | null;
@@ -52,6 +53,8 @@ export function renderPlayerPrepSummary(input: {
   boardElement?: HTMLElement | null;
   shopElement?: HTMLElement | null;
   shopSlotElements?: HTMLButtonElement[];
+  heroExclusiveShopElement?: HTMLElement | null;
+  heroExclusiveShopSlotElements?: HTMLButtonElement[];
   bossShopElement?: HTMLElement | null;
   bossShopSlotElements?: HTMLButtonElement[];
   benchElement?: HTMLElement | null;
@@ -81,7 +84,7 @@ export function renderPlayerPrepSummary(input: {
     gold?: number;
     hp?: number;
     remainingLives?: number;
-    xp?: number;
+    specialUnitLevel?: number;
     level?: number;
     selectedHeroId?: string;
     selectedBossId?: string;
@@ -98,10 +101,31 @@ export function renderPlayerPrepSummary(input: {
       unitType?: string;
       cost?: number;
       displayName?: string;
+      rarity?: number;
+      unitId?: string;
+      purchased?: boolean;
     }> | Iterable<{
       unitType?: string;
       cost?: number;
       displayName?: string;
+      rarity?: number;
+      unitId?: string;
+      purchased?: boolean;
+    }>;
+    heroExclusiveShopOffers?: Array<{
+      unitType?: string;
+      cost?: number;
+      displayName?: string;
+      rarity?: number;
+      unitId?: string;
+      purchased?: boolean;
+    }> | Iterable<{
+      unitType?: string;
+      cost?: number;
+      displayName?: string;
+      rarity?: number;
+      unitId?: string;
+      purchased?: boolean;
     }>;
     shopOffers?: Array<{
       unitType?: string;

@@ -42,6 +42,8 @@ describe("prep-command-logging", () => {
       getBossShopOffers: vi.fn(() => [
         { unitType: "boss_vanguard", cost: 10 },
       ]),
+      getSpecialUnitLevel: vi.fn(() => 1),
+      getSelectedSpecialUnitId: vi.fn(() => "reimu"),
       getRoundIndex: () => mockRoundIndex,
       getPlayerGold: () => 10,
     };
@@ -85,16 +87,16 @@ describe("prep-command-logging", () => {
         getBenchUnits: (sessionId: string) => Array<{
           unitType: BoardUnitType;
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }> | undefined;
       }).getBenchUnits = vi.fn((): Array<{
         unitType: BoardUnitType;
         cost: number;
-        starLevel: number;
+        unitLevel: number;
         unitCount: number;
       }> => [
-        { unitType: "mage", cost: 8, starLevel: 2, unitCount: 4 },
+        { unitType: "mage", cost: 8, unitLevel: 2, unitCount: 4 },
       ]);
 
       const payload = {
@@ -145,15 +147,15 @@ describe("prep-command-logging", () => {
       });
     });
 
-    it("should log buy_xp action when xpPurchaseCount is provided", () => {
+    it("should log upgrade_special_unit action when specialUnitUpgradeCount is provided", () => {
       const payload = {
-        xpPurchaseCount: 2,
+        specialUnitUpgradeCount: 2,
       };
 
       logPrepCommandActions("player1", payload, deps);
 
       expect(loggedActions).toHaveLength(1);
-      expect(loggedActions[0]!.action).toBe("buy_xp");
+      expect(loggedActions[0]!.action).toBe("upgrade_special_unit");
       expect(loggedActions[0]!.details).toMatchObject({
         itemCount: 2,
         goldBefore: 10,
@@ -167,17 +169,17 @@ describe("prep-command-logging", () => {
           cell: number;
           unitType: BoardUnitType;
           sellValue?: number;
-          starLevel?: number;
+          unitLevel?: number;
           unitCount?: number;
         }> | undefined;
       }).getBoardPlacements = vi.fn((): Array<{
         cell: number;
         unitType: BoardUnitType;
         sellValue?: number;
-        starLevel?: number;
+        unitLevel?: number;
         unitCount?: number;
       }> => [
-        { cell: 3, unitType: "mage", sellValue: 14, starLevel: 3, unitCount: 7 },
+        { cell: 3, unitType: "mage", sellValue: 14, unitLevel: 7, unitCount: 7 },
       ]);
 
       const payload = {
@@ -201,14 +203,14 @@ describe("prep-command-logging", () => {
           cell: number;
           unitType: BoardUnitType;
           sellValue?: number;
-          starLevel?: number;
+          unitLevel?: number;
           unitCount?: number;
         }> | undefined;
       }).getBoardPlacements = vi.fn(() => []);
 
       logPrepCommandActions("player1", { boardSellIndex: 7 }, deps, {
         boardPlacementsSnapshot: [
-          { cell: 7, unitType: "mage", sellValue: 14, starLevel: 3, unitCount: 7 },
+          { cell: 7, unitType: "mage", sellValue: 14, unitLevel: 7, unitCount: 7 },
         ],
       });
 
@@ -225,14 +227,14 @@ describe("prep-command-logging", () => {
         getBenchUnits: (sessionId: string) => Array<{
           unitType: BoardUnitType;
           cost: number;
-          starLevel: number;
+          unitLevel: number;
           unitCount: number;
         }> | undefined;
       }).getBenchUnits = vi.fn(() => []);
 
       logPrepCommandActions("player1", { benchSellIndex: 0 }, deps, {
         benchUnitsSnapshot: [
-          { unitType: "mage", cost: 8, starLevel: 2, unitCount: 4 },
+          { unitType: "mage", cost: 8, unitLevel: 2, unitCount: 4 },
         ],
       });
 
@@ -305,7 +307,7 @@ describe("prep-command-logging", () => {
 
     it("should log merge action when mergeUnits is provided", () => {
       const payload = {
-        mergeUnits: { unitType: "vanguard", starLevel: 2, benchIndices: [0, 1, 2] },
+        mergeUnits: { unitType: "vanguard", unitLevel: 2, benchIndices: [0, 1, 2] },
       };
 
       logPrepCommandActions("player1", payload, deps);
@@ -314,7 +316,7 @@ describe("prep-command-logging", () => {
       expect(loggedActions[0]!.action).toBe("merge");
       expect(loggedActions[0]!.details).toMatchObject({
         unitType: "vanguard",
-        starLevel: 2,
+        unitLevel: 2,
         benchIndices: [0, 1, 2],
         goldBefore: 10,
         goldAfter: 10,
@@ -323,7 +325,7 @@ describe("prep-command-logging", () => {
 
     it("should log merge action with boardCells when merging from board", () => {
       const payload = {
-        mergeUnits: { unitType: "ranger", starLevel: 3, boardCells: [5, 10, 15] },
+        mergeUnits: { unitType: "ranger", unitLevel: 3, boardCells: [5, 10, 15] },
       };
 
       logPrepCommandActions("player1", payload, deps);
@@ -332,7 +334,7 @@ describe("prep-command-logging", () => {
       expect(loggedActions[0]!.action).toBe("merge");
       expect(loggedActions[0]!.details).toMatchObject({
         unitType: "ranger",
-        starLevel: 3,
+        unitLevel: 3,
         boardCells: [5, 10, 15],
         goldBefore: 10,
         goldAfter: 10,
@@ -346,7 +348,7 @@ describe("prep-command-logging", () => {
 
     it("should log merge action without benchIndices when not provided", () => {
       const payload = {
-        mergeUnits: { unitType: "mage", starLevel: 2 },
+        mergeUnits: { unitType: "mage", unitLevel: 2 },
       };
 
       logPrepCommandActions("player1", payload, deps);
@@ -355,7 +357,7 @@ describe("prep-command-logging", () => {
       expect(loggedActions[0]!.action).toBe("merge");
       expect(loggedActions[0]!.details).toMatchObject({
         unitType: "mage",
-        starLevel: 2,
+        unitLevel: 2,
       });
       expect(loggedActions[0]!.details).not.toHaveProperty("benchIndices");
       expect(loggedActions[0]!.details).not.toHaveProperty("boardCells");
@@ -365,7 +367,7 @@ describe("prep-command-logging", () => {
       const payload = {
         shopBuySlotIndex: 0,
         shopRefreshCount: 1,
-        xpPurchaseCount: 1,
+        specialUnitUpgradeCount: 1,
       };
 
       logPrepCommandActions("player1", payload, deps);
@@ -374,7 +376,7 @@ describe("prep-command-logging", () => {
       const actions = loggedActions.map((a) => a.action);
       expect(actions).toContain("buy_unit");
       expect(actions).toContain("shop_refresh");
-      expect(actions).toContain("buy_xp");
+      expect(actions).toContain("upgrade_special_unit");
     });
 
     it("should return early when logger is null", () => {
@@ -513,11 +515,11 @@ describe("prep-command-logging", () => {
         benchSellIndex: 0,
         benchToBoardCell: { benchIndex: 0, cell: 0 },
         shopRefreshCount: 1,
-        xpPurchaseCount: 1,
+        specialUnitUpgradeCount: 1,
         boardSellIndex: 0,
         bossShopBuySlotIndex: 0,
         shopLock: true,
-        mergeUnits: { unitType: "vanguard", starLevel: 2, benchIndices: [0, 1, 2] },
+        mergeUnits: { unitType: "vanguard", unitLevel: 2, benchIndices: [0, 1, 2] },
       };
 
       logPrepCommandActions("player1", payload, deps);

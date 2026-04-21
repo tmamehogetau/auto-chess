@@ -1360,6 +1360,36 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("midgame bench-full raid helper sells a weak bench unit for a hero-exclusive offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 5,
+        gold: 5,
+        benchUnits: ["vanguard", "vanguard", "ranger", "ranger", "mage", "vanguard", "ranger", "assassin"],
+        benchUnitIds: ["yoshika", "rin", "wakasagihime", "momoyo", "tojiko", "kagerou", "megumu", "miko"],
+        boardUnits: ["30:keiki"],
+        selectedHeroId: "keiki",
+        heroExclusiveShopOffers: [
+          { unitType: "vanguard", unitId: "mayumi", cost: 3 },
+        ],
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 6 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame strength raid helper pivots into a 4-cost offer over a cheap duplicate", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

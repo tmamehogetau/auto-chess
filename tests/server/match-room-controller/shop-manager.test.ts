@@ -331,6 +331,63 @@ describe("ShopManager", () => {
     ]);
   });
 
+  it("does not return sold hero-exclusive bench units to the shared pool", () => {
+    const { manager, deps, sharedPool } = createHarness({
+      enableSharedPool: true,
+      benchUnits: [{ unitType: "vanguard", unitId: "mayumi", cost: 3, unitLevel: 1, unitCount: 1 }],
+      ownedUnits: {
+        vanguard: 1,
+        ranger: 0,
+        mage: 0,
+        assassin: 0,
+      },
+      gold: 5,
+    });
+
+    if (!sharedPool) {
+      throw new Error("expected shared pool");
+    }
+
+    const before = sharedPool.getAvailable(3);
+
+    manager.sellBenchUnit("p1", 0);
+
+    expect(deps.goldByPlayer.get("p1")).toBe(7);
+    expect(sharedPool.getAvailable(3)).toBe(before);
+  });
+
+  it("does not return hero-exclusive inventory to the shared pool on release", () => {
+    const { manager, sharedPool } = createHarness({
+      enableSharedPool: true,
+      boardPlacements: [{
+        cell: 0,
+        unitType: "vanguard",
+        unitId: "mayumi",
+        sellValue: 3,
+        unitLevel: 1,
+        unitCount: 1,
+        subUnit: {
+          unitType: "assassin",
+          unitId: "shion",
+          sellValue: 3,
+          unitLevel: 1,
+          unitCount: 1,
+        },
+      }],
+      benchUnits: [{ unitType: "vanguard", unitId: "ariya", cost: 3, unitLevel: 1, unitCount: 1 }],
+    });
+
+    if (!sharedPool) {
+      throw new Error("expected shared pool");
+    }
+
+    const before = sharedPool.getAvailable(3);
+
+    manager.releasePlayerInventoryToSharedPool("p1");
+
+    expect(sharedPool.getAvailable(3)).toBe(before);
+  });
+
   it("merges a purchased unit into an attached sub unit even when the bench is full", () => {
     const fullBench = Array.from({ length: 8 }, (_, index) => ({
       unitType: "vanguard" as const,

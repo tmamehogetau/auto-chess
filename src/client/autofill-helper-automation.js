@@ -1122,6 +1122,37 @@ function getHeroExclusiveOfferPriorityScore(offer, player, strategy = "upgrade",
     + getMidgamePivotOfferAdjustment(offer, player, state, strategy);
 }
 
+function isHeroExclusiveOffer(offer) {
+  const unitId = normalizeOfferUnitId(offer);
+  return unitId.length > 0
+    && HERO_EXCLUSIVE_OFFER_PRIORITY_BY_UNIT_ID[unitId] !== undefined;
+}
+
+function getReserveTargetOfferScore(targetOffer, player, strategy = "upgrade", state = null) {
+  if (isHeroExclusiveOffer(targetOffer)) {
+    return getHeroExclusiveOfferPriorityScore(
+      targetOffer,
+      player,
+      strategy,
+      state,
+    );
+  }
+
+  return getOfferPriorityScore(
+    player?.role,
+    targetOffer,
+    player?.boardUnits,
+    player?.benchUnitIds,
+    strategy,
+    player?.benchUnits,
+  ) + getMidgamePivotOfferAdjustment(
+    targetOffer,
+    player,
+    state,
+    strategy,
+  );
+}
+
 function buildRaidNormalReserveBuyAction(player, strategy, state = null) {
   const affordableShopSlotIndex = pickAffordableOfferIndex(
     player?.shopOffers,
@@ -1538,18 +1569,11 @@ function getBenchSellCandidate(player, targetOffer, strategy = "upgrade", state 
     return null;
   }
 
-  const targetScore = getOfferPriorityScore(
-    player?.role,
-    targetOffer,
-    player?.boardUnits,
-    player?.benchUnitIds,
-    strategy,
-    player?.benchUnits,
-  ) + getMidgamePivotOfferAdjustment(
+  const targetScore = getReserveTargetOfferScore(
     targetOffer,
     player,
-    state,
     strategy,
+    state,
   );
   const benchUnitIds = toArray(player?.benchUnitIds);
   let weakestBenchIndex = null;

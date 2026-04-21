@@ -11,6 +11,7 @@ import {
   refreshShopByCount,
   refreshShopsForPrep,
 } from "./prep-economy";
+import { isHeroExclusiveUnitId } from "../../data/hero-exclusive-units";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 import { resolveBattlePlacements, resolveSharedPoolCost } from "../unit-id-resolver";
 import { calculateSynergyDetails, getTouhouFactionTierEffect } from "../combat/synergy-definitions";
@@ -695,6 +696,10 @@ export class ShopManager<TBattleResult = unknown> {
       return;
     }
 
+    if (offer.unitId && isHeroExclusiveUnitId(offer.unitId)) {
+      return;
+    }
+
     if (this.deps.rosterFlags.enablePerUnitSharedPool && offer.unitId) {
       this.deps.sharedPool.decreaseByUnitId(offer.unitId, offer.cost);
       return;
@@ -705,6 +710,10 @@ export class ShopManager<TBattleResult = unknown> {
 
   private increaseSharedPoolForUnit(unitId: string | undefined, cost: number, count: number): void {
     if (!this.deps.enableSharedPool || !this.deps.sharedPool) {
+      return;
+    }
+
+    if (unitId && isHeroExclusiveUnitId(unitId)) {
       return;
     }
 

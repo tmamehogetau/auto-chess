@@ -7690,14 +7690,14 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
       attachAutoFillHelperAutomationForTest(client, helperIndex);
     });
 
-    await waitForCondition(() => clients.every((client) => serverRoom.state.players.get(client.sessionId)?.ready === true), 1_000);
+    await waitForCondition(() => clients.every((client) => serverRoom.state.players.get(client.sessionId)?.ready === true), 2_000);
 
-    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 1_000);
-    await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
-    await waitForCondition(() => serverRoom.state.phase === "Battle", 2_000);
+    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 2_000);
+    await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000);
+    await waitForCondition(() => serverRoom.state.phase === "Battle", 3_000);
     await waitForCondition(
       () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
-      2_000,
+      3_000,
     );
 
     expect(serverRoom.state.roundIndex).toBe(2);

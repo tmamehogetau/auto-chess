@@ -2731,6 +2731,16 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     ...(typeof unitId === "string" && unitId.length > 0 ? { unitId } : {}),
   });
 
+  const buildOptimisticBenchToken = (offer) => {
+    const offerUnitType = typeof offer?.unitType === "string" && offer.unitType.length > 0
+      ? offer.unitType
+      : "vanguard";
+    const offerUnitLevel = Number.parseInt(String(offer?.unitLevel ?? "1"), 10);
+    return Number.isInteger(offerUnitLevel) && offerUnitLevel > 1
+      ? `${offerUnitType}:${offerUnitLevel}`
+      : offerUnitType;
+  };
+
   const applyOptimisticPrepCommandToPlayer = (player, payload, cmdSeq) => {
     const nextPlayer = cloneAutoFillHelperPlayer(player);
     if (!nextPlayer) {
@@ -2746,9 +2756,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
         shopOffers.splice(payload.shopBuySlotIndex, 1);
         nextPlayer.shopOffers = shopOffers;
         const benchUnits = toUnknownArray(nextPlayer.benchUnits);
-        benchUnits.push(
-          typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
-        );
+        benchUnits.push(buildOptimisticBenchToken(offer));
         nextPlayer.benchUnits = benchUnits;
         nextPlayer.benchUnitIds = [
           ...(nextPlayer.benchUnitIds ?? []),
@@ -2771,9 +2779,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
         };
         nextPlayer.bossShopOffers = bossShopOffers;
         const benchUnits = toUnknownArray(nextPlayer.benchUnits);
-        benchUnits.push(
-          typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
-        );
+        benchUnits.push(buildOptimisticBenchToken(offer));
         nextPlayer.benchUnits = benchUnits;
         nextPlayer.benchUnitIds = [
           ...(nextPlayer.benchUnitIds ?? []),
@@ -2796,9 +2802,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
         };
         nextPlayer.heroExclusiveShopOffers = heroExclusiveShopOffers;
         const benchUnits = toUnknownArray(nextPlayer.benchUnits);
-        benchUnits.push(
-          typeof offer.unitType === "string" && offer.unitType.length > 0 ? offer.unitType : "vanguard",
-        );
+        benchUnits.push(buildOptimisticBenchToken(offer));
         nextPlayer.benchUnits = benchUnits;
         nextPlayer.benchUnitIds = [
           ...(nextPlayer.benchUnitIds ?? []),
@@ -2899,7 +2903,6 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     boardUnits: Array.from(helperPlayer?.boardUnits ?? []),
     boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
     benchUnits: Array.from(helperPlayer?.benchUnits ?? []),
-    boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),
     gold: typeof helperPlayer?.gold === "number" && Number.isFinite(helperPlayer.gold)
       ? helperPlayer.gold
       : null,

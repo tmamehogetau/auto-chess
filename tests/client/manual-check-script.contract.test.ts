@@ -253,6 +253,14 @@ describe("manual-check script contract", () => {
     expect(initializeDefaultsBlock.includes("autoFillInput.value = String(autoConfig.autoFillBots);")).toBe(true);
   });
 
+  test("optimistic reserve buys preserve unitLevel in bench tokens and do not duplicate boardSubUnits keys", () => {
+    const source = readFileSync(manualCheckScriptPath, "utf-8");
+
+    expect(source.includes("const buildOptimisticBenchToken = (offer) => {")).toBe(true);
+    expect(source.includes("`${offerUnitType}:${offerUnitLevel}`")).toBe(true);
+    expect(source.includes("boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),\n    benchUnits: Array.from(helperPlayer?.benchUnits ?? []),\n    boardSubUnits: Array.from(helperPlayer?.boardSubUnits ?? []),")).toBe(false);
+  });
+
   test("autofill helper prep commands carry helper-local cmdSeq and skip duplicate snapshots", () => {
     const source = readFileSync(manualCheckScriptPath, "utf-8");
 

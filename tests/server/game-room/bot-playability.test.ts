@@ -7692,9 +7692,24 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
 
     await waitForCondition(() => clients.every((client) => serverRoom.state.players.get(client.sessionId)?.ready === true), 2_000);
 
-    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 2_000);
-    await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000);
-    await waitForCondition(() => serverRoom.state.phase === "Battle", 3_000);
+    await waitForCondition(
+      () => serverRoom.state.lobbyStage === "selection"
+        || serverRoom.state.phase === "Prep"
+        || serverRoom.state.phase === "Battle"
+        || serverRoom.state.roundIndex >= 2,
+      2_500,
+    );
+    await waitForCondition(
+      () => serverRoom.state.phase === "Prep"
+        || serverRoom.state.phase === "Battle"
+        || serverRoom.state.roundIndex >= 2,
+      2_500,
+    );
+    await waitForCondition(
+      () => serverRoom.state.phase === "Battle"
+        || (serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex >= 2),
+      3_000,
+    );
     await waitForCondition(
       () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
       3_000,

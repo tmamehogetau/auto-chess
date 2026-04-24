@@ -29,9 +29,10 @@ export function calculateAttackDamage(
     * bossAtkMultiplier;
   const damageReduction = target.damageReduction ?? 0;
   const defenseMultiplier = Math.max(target.buffModifiers.defenseMultiplier ?? 1, 0.01);
+  const incomingDamageMultiplier = Math.max(target.damageTakenMultiplier ?? 1, 0.01);
   const actualDamage = Math.max(
     1,
-    Math.floor((baseDamage * (1 - damageReduction / 100)) / defenseMultiplier),
+    Math.floor(((baseDamage * (1 - damageReduction / 100)) / defenseMultiplier) * incomingDamageMultiplier),
   );
 
   return actualDamage;

@@ -147,7 +147,6 @@ export function createMatchupSideContext(
     side,
     playerIds,
     placements,
-    isBossSide,
     rosterFlags,
     buildSpellModifiers,
     applySpellModifiers,
@@ -167,7 +166,7 @@ export function createMatchupSideContext(
   }));
   const resolvedPlacements = resolveBattlePlacements(placementsWithOwner, rosterFlags);
   const battleUnits = resolvedPlacements.map((placement, index) =>
-    createBattleUnit(placement, side, index, isBossSide, rosterFlags),
+    createBattleUnit(placement, side, index, false, rosterFlags),
   );
 
   applySpellModifiers(battleUnits, buildSpellModifiers(playerIds));

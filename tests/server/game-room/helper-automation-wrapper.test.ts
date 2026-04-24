@@ -316,7 +316,7 @@ describe("helper automation wrapper", () => {
         ["player-1", {
           role: "raid",
           ready: false,
-          gold: 15,
+          gold: 1,
           benchUnits: [],
           boardUnits: [],
           shopOffers: [{ unitType: "vanguard", cost: 1 }],
@@ -364,7 +364,7 @@ describe("helper automation wrapper", () => {
         ["player-1", {
           role: "raid",
           ready: false,
-          gold: 15,
+          gold: 1,
           benchUnits: [],
           boardUnits: [],
           shopOffers: [{ unitType: "vanguard", cost: 1 }],
@@ -420,7 +420,7 @@ describe("helper automation wrapper", () => {
         ["player-1", {
           role: "raid",
           ready: false,
-          gold: 15,
+          gold: 1,
           benchUnits: [],
           boardUnits: [],
           shopOffers: [{ unitType: "vanguard", cost: 1 }],
@@ -519,7 +519,7 @@ describe("helper automation wrapper", () => {
         ["player-1", {
           role: "raid",
           ready: false,
-          gold: 15,
+          gold: 1,
           benchUnits: [],
           boardUnits: [],
           shopOffers: [{ unitType: "vanguard", cost: 1 }],
@@ -565,7 +565,7 @@ describe("helper automation wrapper", () => {
         ["player-1", {
           role: "raid",
           ready: false,
-          gold: 15,
+          gold: 1,
           benchUnits: [],
           boardUnits: [],
           shopOffers: [{ unitType: "vanguard", cost: 1 }],

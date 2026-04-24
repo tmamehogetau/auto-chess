@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-label="Remilia battle arcana overlay">
+  <defs>
+    <radialGradient id="goldPulse" cx="50%" cy="52%" r="48%">
+      <stop offset="0" stop-color="#f7d28d" stop-opacity=".34"/>
+      <stop offset=".36" stop-color="#d3a35d" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#d3a35d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="scarletLine" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ef5b72" stop-opacity=".02"/>
+      <stop offset=".48" stop-color="#f7d28d" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#8fd3ff" stop-opacity=".05"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="760" fill="none"/>
+  <ellipse cx="600" cy="410" rx="390" ry="248" fill="url(#goldPulse)"/>
+  <g fill="none" stroke="#d3a35d" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="600" cy="410" rx="380" ry="238" stroke-opacity=".24" stroke-width="1.4"/>
+    <ellipse cx="600" cy="410" rx="300" ry="188" stroke-opacity=".18" stroke-width="1"/>
+    <ellipse cx="600" cy="410" rx="208" ry="130" stroke-opacity=".18" stroke-width="1"/>
+    <path d="M226 410h748M600 176v468M334 246l532 328M866 246 334 574" stroke-opacity=".13"/>
+  </g>
+  <g filter="url(#softGlow)" stroke="url(#scarletLine)" stroke-width="10" stroke-linecap="round">
+    <path d="M232 290c132-92 244-112 368-58 128 55 240 37 366-58" fill="none" opacity=".42"/>
+    <path d="M236 558c132-70 246-82 366-34 122 49 244 37 364-32" fill="none" opacity=".24"/>
+  </g>
+  <g fill="#f7d28d" opacity=".44">
+    <circle cx="600" cy="410" r="3.2"/>
+    <circle cx="438" cy="250" r="2.4"/>
+    <circle cx="762" cy="250" r="2.4"/>
+    <circle cx="438" cy="570" r="2.4"/>
+    <circle cx="762" cy="570" r="2.4"/>
+    <circle cx="300" cy="410" r="2.1"/>
+    <circle cx="900" cy="410" r="2.1"/>
+  </g>
+</svg>

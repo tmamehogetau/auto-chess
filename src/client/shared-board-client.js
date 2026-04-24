@@ -1123,11 +1123,11 @@ function resolveSharedBoardUnitTypeName(unitType) {
 
 function resolveHeroDetailName(heroId) {
   return ({
-    reimu: "霊夢",
-    marisa: "魔理沙",
-    okina: "隠岐奈",
-    keiki: "袿姫",
-    jyoon: "女苑",
+    reimu: "博麗霊夢",
+    marisa: "霧雨魔理沙",
+    okina: "摩多羅隠岐奈",
+    keiki: "埴安神袿姫",
+    jyoon: "依神女苑",
     yuiman: "ユイマン・浅間",
   })[heroId] ?? "Hero";
 }

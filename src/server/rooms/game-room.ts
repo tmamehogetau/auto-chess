@@ -26,6 +26,10 @@ import {
 } from "./game-room/message-handler";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
+import {
+  resolveSharedBoardBossPresentation,
+  resolveSharedBoardHeroPresentation,
+} from "../shared-board-unit-presentation";
 import { MatchLogger } from "../match-logger";
 import { validateRosterAvailability } from "../roster/roster-provider";
 import { DEFAULT_GAME_ROOM_OPTIONS } from "./game-room-config";
@@ -59,6 +63,7 @@ import {
   writeManualPlayHumanReport,
   type ManualPlayFinalPlayer,
   type ManualPlayHumanReport,
+  type ManualPlayBoardUnit,
   type ManualPlayPlayerAtBattleStart,
   type ManualPlayPlayerConsequence,
   type ManualPlayRoundReport,
@@ -528,6 +533,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         }
 
         const battlePlacements = testAccess?.battleInputSnapshotByPlayer.get(playerId) ?? [];
+        const boardUnits: ManualPlayBoardUnit[] = battlePlacements.map(toManualPlayBoardUnit);
         const trackedBattleUnitIds = battlePlacements
           .flatMap((placement) => [
             placement.unitId?.trim() ?? "",
@@ -537,15 +543,35 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
         if (playerState.selectedHeroId.length > 0) {
           trackedBattleUnitIds.push(`hero-${playerId}`);
+          boardUnits.push({
+            cell: 8,
+            unitName:
+              resolveSharedBoardHeroPresentation(playerState.selectedHeroId)?.displayName
+              ?? playerState.selectedHeroId,
+            unitType: "hero",
+            unitId: playerState.selectedHeroId,
+            unitLevel: playerState.specialUnitLevel,
+            subUnitName: "",
+          });
         }
         if (playerState.role === "boss" && playerState.selectedBossId.length > 0) {
           trackedBattleUnitIds.push(`boss-${playerId}`);
+          boardUnits.push({
+            cell: 2,
+            unitName:
+              resolveSharedBoardBossPresentation(playerState.selectedBossId)?.displayName
+              ?? playerState.selectedBossId,
+            unitType: "boss",
+            unitId: playerState.selectedBossId,
+            unitLevel: playerState.specialUnitLevel,
+            subUnitName: "",
+          });
         }
 
         return {
           playerId,
           role: playerState.role,
-          boardUnits: battlePlacements.map(toManualPlayBoardUnit),
+          boardUnits,
           trackedBattleUnitIds,
         } satisfies ManualPlayPlayerAtBattleStart;
       })

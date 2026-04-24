@@ -1,4 +1,5 @@
 import { HEROES } from "../data/heroes";
+import { getHeroExclusiveUnitById } from "../data/hero-exclusive-units";
 import { resolveFrontPortraitAssetId } from "../shared/portrait-asset-manifest.js";
 import { getScarletMansionUnitById } from "../data/scarlet-mansion-units";
 import { getTouhouUnitById } from "../data/touhou-units";
@@ -35,6 +36,14 @@ export function resolveSharedBoardUnitPresentation(
   if (scarletUnit) {
     return {
       displayName: scarletUnit.displayName,
+      portraitKey: resolvePortraitKey(unitId),
+    };
+  }
+
+  const heroExclusiveUnit = getHeroExclusiveUnitById(unitId);
+  if (heroExclusiveUnit) {
+    return {
+      displayName: heroExclusiveUnit.displayName,
       portraitKey: resolvePortraitKey(unitId),
     };
   }

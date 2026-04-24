@@ -474,7 +474,7 @@ describe("player surface renderers", () => {
       selectedBenchIndex: 0,
     });
 
-    expect(specialUnitCopyElement.textContent).toContain("霊夢");
+    expect(specialUnitCopyElement.textContent).toContain("博麗霊夢");
     expect(spellCopyElement.textContent).toContain("スカーレットシュート");
     expect(spellCopyElement.textContent).toContain("used");
     expect(synergyCopyElement.textContent).toContain("mage x2");
@@ -540,14 +540,14 @@ describe("player surface renderers", () => {
       detailCardElement: detailCardElement as unknown as HTMLElement,
       hoverDetail: {
         kicker: "Your Hero",
-        title: "霊夢",
+        title: "博麗霊夢",
         lines: ["balance", "HP 120", "ATK 18"],
       },
       currentPhase: "Prep",
       selectedBenchIndex: null,
     });
 
-    expect(detailCardElement.innerHTML).toContain("霊夢");
+    expect(detailCardElement.innerHTML).toContain("博麗霊夢");
     expect(detailCardElement.innerHTML).toContain("<strong>HP</strong>");
     expect(detailCardElement.innerHTML).toContain(">120<");
     expect(detailCardElement.innerHTML).toContain("<strong>ATK</strong>");
@@ -596,7 +596,7 @@ describe("player surface renderers", () => {
 
     expect(hoverCalls).toEqual([
       expect.objectContaining({
-        title: "隠岐奈",
+        title: "摩多羅隠岐奈",
         lines: expect.arrayContaining(["他の自軍 unit の sub slot に入れます。"]),
       }),
     ]);
@@ -644,8 +644,8 @@ describe("player surface renderers", () => {
     expect(allyPanels.map((child) => child.children[0]?.textContent)).toEqual(["You", "Ally A"]);
     expect(firstChip?.dataset.hoverDetailTarget).toBe("self-hero");
     expect(secondChip?.dataset.hoverDetailTarget).toBe("ally-hero");
-    expect(firstChip?.textContent).toContain("霊夢");
-    expect(secondChip?.textContent).toContain("魔理沙");
+    expect(firstChip?.textContent).toContain("博麗霊夢");
+    expect(secondChip?.textContent).toContain("霧雨魔理沙");
     expect(firstChip?.className).toContain("player-ally-card");
     expect(firstChip?.className).toContain("player-ally-chip-self");
     expect(secondChip?.className).toContain("player-ally-card");
@@ -688,7 +688,7 @@ describe("player surface renderers", () => {
       selectedBenchIndex: null,
     });
 
-    expect(specialUnitCopyElement.textContent).toContain("霊夢");
+    expect(specialUnitCopyElement.textContent).toContain("博麗霊夢");
     expect(specialUnitCopyElement.textContent).toContain("主人公");
     expect(specialUnitCopyElement.textContent).toContain("hover で詳細");
     expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-panel");
@@ -976,7 +976,7 @@ describe("player surface renderers", () => {
     allyHeroChip?.onmouseleave?.();
 
     expect(hoverCalls).toEqual([
-      expect.objectContaining({ title: "魔理沙" }),
+      expect.objectContaining({ title: "霧雨魔理沙" }),
       null,
     ]);
   });
@@ -1013,7 +1013,7 @@ describe("player surface renderers", () => {
     allyHeroChip?.onblur?.();
 
     expect(hoverCalls).toEqual([
-      expect.objectContaining({ title: "魔理沙" }),
+      expect.objectContaining({ title: "霧雨魔理沙" }),
       null,
     ]);
   });
@@ -1057,7 +1057,7 @@ describe("player surface renderers", () => {
     expect(hoverCalls).toEqual([
       expect.objectContaining({
         kicker: "Ally Hero",
-        title: "魔理沙",
+        title: "霧雨魔理沙",
       }),
     ]);
   });

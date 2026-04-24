@@ -82,9 +82,67 @@ import {
   applyScarletMansionSynergyToBoss,
   calculateScarletMansionSynergy,
 } from "../../../src/server/combat/synergy-definitions";
-import { HERO_SKILL_DEFINITIONS, SKILL_DEFINITIONS } from "../../../src/server/combat/skill-definitions";
+import {
+  HERO_SKILL_DEFINITIONS,
+  resolveBossSkillDefinition,
+  SKILL_DEFINITIONS,
+} from "../../../src/server/combat/skill-definitions";
 
 describe("battle-simulator", () => {
+  test("all skill definitions expose explicit cooldown timing", () => {
+    for (const definition of Object.values(SKILL_DEFINITIONS)) {
+      expect(definition.initialSkillDelayMs).toBeGreaterThan(0);
+      expect(definition.skillCooldownMs).toBeGreaterThan(0);
+    }
+
+    for (const definition of Object.values(HERO_SKILL_DEFINITIONS)) {
+      expect(definition.initialSkillDelayMs).toBeGreaterThan(0);
+      expect(definition.skillCooldownMs).toBeGreaterThan(0);
+    }
+  });
+
+  test("boss active skill resolver returns null until a boss skill is defined", () => {
+    const boss = createTestBattleUnit(
+      { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+      "right",
+      0,
+      true,
+    );
+
+    expect(resolveBossSkillDefinition(boss)).toBeNull();
+  });
+
+  test("standard unit skills use cooldown timing instead of attack count", () => {
+    const simulator = new BattleSimulator();
+    const vanguard = createTestBattleUnit(
+      { cell: 3, unitType: "vanguard", unitLevel: 1 },
+      "left",
+      0,
+    );
+    vanguard.attackPower = 1;
+    vanguard.attackSpeed = 10;
+    vanguard.attackRange = 4;
+    vanguard.movementSpeed = 0;
+
+    const enemy = createTestBattleUnit(
+      { cell: 0, unitType: "vanguard", unitLevel: 1 },
+      "right",
+      0,
+    );
+    enemy.attackPower = 0;
+    enemy.attackSpeed = 0;
+    enemy.attackRange = 4;
+    enemy.movementSpeed = 0;
+    enemy.hp = 5000;
+    enemy.maxHp = 5000;
+
+    const beforeCooldown = simulator.simulateBattle([vanguard], [enemy], [], [], 2_900);
+    expect(beforeCooldown.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(false);
+
+    const afterCooldown = simulator.simulateBattle([vanguard], [enemy], [], [], 3_100);
+    expect(afterCooldown.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(true);
+  });
+
   describe("scarlet mansion synergy", () => {
     test("紅魔館ユニット2体でシナジーが有効になる", () => {
       const active = calculateScarletMansionSynergy([
@@ -223,10 +281,19 @@ describe("battle-simulator", () => {
 
   describe("kanjuden debuff immunity", () => {
     test("kanjuden tier1 は crowd_control の攻撃速度低下を無効化する", () => {
-      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
-      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", unitLevel: 1 }, "left", 0);
+      const yuimanSkill = HERO_SKILL_DEFINITIONS.yuiman!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", unitLevel: 1 },
+        "left",
+        0,
+      );
       const immuneTarget = createTestBattleUnit(
-        { cell: 2, unitType: "vanguard", unitLevel: 1, factionId: "kanjuden" },
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }),
+          unitType: "vanguard",
+          unitLevel: 1,
+          factionId: "kanjuden",
+        },
         "right",
         0,
         false,
@@ -239,28 +306,34 @@ describe("battle-simulator", () => {
       immuneTarget.debuffImmunityCategories = ["crowd_control"];
 
       const log: string[] = [];
-      sakuyaSkill.execute(caster, [caster], [immuneTarget], log);
+      yuimanSkill.execute(caster, [caster], [immuneTarget], log);
 
       expect(immuneTarget.buffModifiers.attackSpeedMultiplier).toBe(1);
+      expect(immuneTarget.buffModifiers.defenseMultiplier).toBe(1);
     });
 
-    test("kanjuden でないユニットには咲夜の攻撃速度低下が適用される", () => {
-      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
-      const caster = createTestBattleUnit({ cell: 0, unitType: "assassin", unitLevel: 1 }, "left", 0);
+    test("kanjuden でないユニットにはユイマンの範囲妨害が適用される", () => {
+      const yuimanSkill = HERO_SKILL_DEFINITIONS.yuiman!;
+      const caster = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", unitLevel: 1 },
+        "left",
+        0,
+      );
       const normalTarget = createTestBattleUnit(
-        { cell: 2, unitType: "vanguard", unitLevel: 1 },
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "vanguard", unitLevel: 1 },
         "right",
         0,
       );
 
       const log: string[] = [];
-      sakuyaSkill.execute(caster, [caster], [normalTarget], log);
+      yuimanSkill.execute(caster, [caster], [normalTarget], log);
 
       expect(normalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(normalTarget.buffModifiers.defenseMultiplier).toBe(0.9);
     });
 
-    test("咲夜の範囲デバフは 6x6 の縦距離も半径計算に含める", () => {
-      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+    test("ユイマンの範囲妨害は 6x6 の縦距離も半径計算に含める", () => {
+      const yuimanSkill = HERO_SKILL_DEFINITIONS.yuiman!;
       const caster = createTestBattleUnit(
         { cell: sharedBoardCoordinateToIndex({ x: 2, y: 4 }), unitType: "assassin", unitLevel: 1 },
         "left",
@@ -276,16 +349,22 @@ describe("battle-simulator", () => {
         "right",
         1,
       );
+      const outsideTarget = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "mage", unitLevel: 1 },
+        "right",
+        2,
+      );
 
       const log: string[] = [];
-      sakuyaSkill.execute(caster, [caster], [centerTarget, verticalTarget], log);
+      yuimanSkill.execute(caster, [caster], [centerTarget, verticalTarget, outsideTarget], log);
 
       expect(centerTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
       expect(verticalTarget.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(outsideTarget.buffModifiers.attackSpeedMultiplier).toBe(1);
     });
 
-    test("咲夜は最も多く巻き込める中心を選ぶ", () => {
-      const sakuyaSkill = HERO_SKILL_DEFINITIONS.sakuya!;
+    test("ユイマンの範囲妨害は術者中心で敵を巻き込む", () => {
+      const yuimanSkill = HERO_SKILL_DEFINITIONS.yuiman!;
       const caster = createTestBattleUnit(
         { cell: sharedBoardCoordinateToIndex({ x: 2, y: 5 }), unitType: "assassin", unitLevel: 1 },
         "left",
@@ -296,23 +375,34 @@ describe("battle-simulator", () => {
         "right",
         0,
       );
+      const nearEnemy = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }), unitType: "vanguard", unitLevel: 1 },
+        "right",
+        1,
+      );
       const clusteredEnemyA = createTestBattleUnit(
         { cell: sharedBoardCoordinateToIndex({ x: 3, y: 2 }), unitType: "ranger", unitLevel: 1 },
         "right",
-        1,
+        2,
       );
       const clusteredEnemyB = createTestBattleUnit(
         { cell: sharedBoardCoordinateToIndex({ x: 4, y: 2 }), unitType: "mage", unitLevel: 1 },
         "right",
-        2,
+        3,
       );
 
       const log: string[] = [];
-      sakuyaSkill.execute(caster, [caster], [isolatedEnemy, clusteredEnemyA, clusteredEnemyB], log);
+      yuimanSkill.execute(
+        caster,
+        [caster],
+        [isolatedEnemy, nearEnemy, clusteredEnemyA, clusteredEnemyB],
+        log,
+      );
 
       expect(isolatedEnemy.buffModifiers.attackSpeedMultiplier).toBe(1);
-      expect(clusteredEnemyA.buffModifiers.attackSpeedMultiplier).toBe(0.7);
-      expect(clusteredEnemyB.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(nearEnemy.buffModifiers.attackSpeedMultiplier).toBe(0.7);
+      expect(clusteredEnemyA.buffModifiers.attackSpeedMultiplier).toBe(1);
+      expect(clusteredEnemyB.buffModifiers.attackSpeedMultiplier).toBe(1);
     });
   });
 
@@ -602,7 +692,7 @@ describe("battle-simulator", () => {
       expect(scarletUnit).toMatchObject({
         critRate: 0,
         critDamageMultiplier: 1.5,
-        damageReduction: 36,
+        damageReduction: 20,
       });
       expect(bossUnit).toMatchObject({
         critRate: 0,
@@ -1749,7 +1839,7 @@ describe("BattleSimulator", () => {
         1,
       );
 
-      const result = simulator.simulateBattle([heroUnit], [rightUnitA, rightUnitB], [], [], 500);
+      const result = simulator.simulateBattle([heroUnit], [rightUnitA, rightUnitB], [], [], 3_600);
 
       const heroSkillDamageEvents = result.timeline.filter(
         (event) => event.type === "damageApplied" && event.sourceBattleUnitId === "hero-marisa",
@@ -1784,7 +1874,7 @@ describe("BattleSimulator", () => {
           1,
         );
 
-        const result = simulator.simulateBattle([heroUnit], [rightUnitA, rightUnitB], [], [], 500);
+        const result = simulator.simulateBattle([heroUnit], [rightUnitA, rightUnitB], [], [], 3_600);
 
         const heroSkillDamageEvents = result.timeline.filter(
           (event) => event.type === "damageApplied" && event.sourceBattleUnitId === "hero--session-123",
@@ -1924,22 +2014,22 @@ describe("BattleSimulator", () => {
         winner: "draw",
         durationMs: 10_000,
         damageDealt: {
-          left: 73,
-          right: 73,
+          left: 65,
+          right: 65,
         },
         leftSurvivors: [
-          { id: "left-vanguard-0", hp: 48, cell: 14 },
-          { id: "left-ranger-1", hp: 9, cell: combatCellToRaidBoardIndex(1) },
+          { id: "left-vanguard-0", hp: 52, cell: 14 },
+          { id: "left-ranger-1", hp: 13, cell: combatCellToRaidBoardIndex(1) },
         ],
         rightSurvivors: [
-          { id: "right-vanguard-0", hp: 48, cell: 21 },
-          { id: "right-ranger-1", hp: 9, cell: combatCellToBossBoardIndex(6) },
+          { id: "right-vanguard-0", hp: 52, cell: 21 },
+          { id: "right-ranger-1", hp: 13, cell: combatCellToBossBoardIndex(6) },
         ],
         combatLogStart: ["Battle started", "Left units: 2", "Right units: 2"],
         combatLogEnd: [
-          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 3 damage (48/80)",
-          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 3 damage (48/80)",
-          "Battle ended: Draw (HP: 57 vs 57)",
+          "Left Ranger (cell 20) attacks Right Vanguard (cell 21) for 3 damage (52/80)",
+          "Right Ranger (cell 15) attacks Left Vanguard (cell 14) for 3 damage (52/80)",
+          "Battle ended: Draw (HP: 65 vs 65)",
         ],
       });
     });
@@ -2250,6 +2340,50 @@ describe("BattleSimulator", () => {
       expect(leftBoss.isDead).toBe(true);
       expect(result.winner).toBe("right");
       expect(result.combatLog.some((log) => log.includes("reflects"))).toBe(true);
+    });
+
+    test("boss のフェーズHP切れは強制終了ではなく専用の終了理由で記録する", () => {
+      const simulator = new BattleSimulator();
+
+      const leftAttacker = createTestBattleUnit(
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 3 }),
+          unitType: "ranger",
+          unitLevel: 1,
+          attack: 50,
+          attackSpeed: 1,
+          range: 4,
+          critRate: 0,
+        },
+        "left",
+        0,
+      );
+      const rightBoss = createTestBattleUnit(
+        {
+          cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }),
+          unitType: "vanguard",
+          unitLevel: 1,
+          hp: 20,
+          attack: 1,
+          attackSpeed: 0.1,
+          range: 1,
+          critRate: 0,
+        },
+        "right",
+        0,
+        true,
+      );
+
+      const result = simulator.simulateBattle([leftAttacker], [rightBoss], [], [], 100);
+
+      expect(result.winner).toBe("left");
+      expect(result.endReason).toBe("phase_hp_depleted");
+      expect(result.timeline.at(-1)).toMatchObject({
+        type: "battleEnd",
+        endReason: "phase_hp_depleted",
+      });
+      expect(result.combatLog.some((log) => log.includes("phase HP depleted!"))).toBe(true);
+      expect(result.combatLog.some((log) => log.includes("has been defeated"))).toBe(false);
     });
 
     test("戦闘ログにダメージ情報が記録される", () => {
@@ -2621,7 +2755,7 @@ describe("BattleSimulator", () => {
     });
 
     describe('Skill activation', () => {
-      it('vanguard activates Shield Wall every 3 attacks', () => {
+      it('vanguard activates Shield Wall on its cooldown', () => {
         const vanguard = createTestBattleUnit({
           unitType: 'vanguard',
           unitLevel: 1,
@@ -2689,14 +2823,14 @@ describe("BattleSimulator", () => {
       );
 
       expect(result1.winner).toBe("draw");
-      expect(result1.damageDealt).toEqual({ left: 73, right: 73 });
+      expect(result1.damageDealt).toEqual({ left: 65, right: 65 });
       expect(result1.leftSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "left-vanguard-0", hp: 48, cell: 14 },
-        { id: "left-ranger-1", hp: 9, cell: combatCellToRaidBoardIndex(1) },
+        { id: "left-vanguard-0", hp: 52, cell: 14 },
+        { id: "left-ranger-1", hp: 13, cell: combatCellToRaidBoardIndex(1) },
       ]);
       expect(result1.rightSurvivors.map((unit) => ({ id: unit.id, hp: unit.hp, cell: unit.cell }))).toEqual([
-        { id: "right-vanguard-0", hp: 48, cell: 21 },
-        { id: "right-ranger-1", hp: 9, cell: combatCellToBossBoardIndex(6) },
+        { id: "right-vanguard-0", hp: 52, cell: 21 },
+        { id: "right-ranger-1", hp: 13, cell: combatCellToBossBoardIndex(6) },
       ]);
       expect(result1.combatLog).toEqual(result2.combatLog);
     });

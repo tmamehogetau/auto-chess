@@ -1,4 +1,5 @@
 import type { BoardUnitPlacement, BoardUnitType } from "../shared/room-messages";
+import { HERO_EXCLUSIVE_UNITS } from "../data/hero-exclusive-units";
 import { SCARLET_MANSION_UNITS } from "../data/scarlet-mansion-units";
 import type { TouhouFactionId } from "../data/touhou-units";
 import { RUMOR_UNITS_BY_ROUND } from "../data/rumor-units";
@@ -36,6 +37,21 @@ const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
   }]),
 );
 
+const heroExclusiveUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
+  HERO_EXCLUSIVE_UNITS.map((unit) => [unit.unitId, {
+    unitType: unit.unitType,
+    cost: unit.cost,
+    hp: unit.hp,
+    attack: unit.attack,
+    attackSpeed: unit.attackSpeed,
+    movementSpeed: unit.movementSpeed,
+    range: unit.range,
+    critRate: unit.critRate,
+    critDamageMultiplier: unit.critDamageMultiplier,
+    damageReduction: unit.damageReduction,
+  }]),
+);
+
 const rumorUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
   Object.values(RUMOR_UNITS_BY_ROUND).map((unit) => [unit.unitId, {
     unitType: unit.unitType,
@@ -57,9 +73,12 @@ function getResolvedUnitMetadata(
   flags: FeatureFlags
 ): ResolvedUnitMetadata | undefined {
   // Check scarlet and rumor units first (same behavior regardless of roster)
-  const scarletOrRumor = scarletUnitMetadataById.get(unitId) ?? rumorUnitMetadataById.get(unitId);
-  if (scarletOrRumor) {
-    return scarletOrRumor;
+  const nonRosterUnit =
+    scarletUnitMetadataById.get(unitId)
+    ?? heroExclusiveUnitMetadataById.get(unitId)
+    ?? rumorUnitMetadataById.get(unitId);
+  if (nonRosterUnit) {
+    return nonRosterUnit;
   }
 
   // For MVP units, ALWAYS use roster provider (flags is now required)

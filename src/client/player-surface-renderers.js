@@ -27,11 +27,11 @@ const UNIT_DETAIL_NAMES = {
 };
 
 const HERO_DETAILS = {
-  reimu: { name: "霊夢", role: "balance", hp: 680, attack: 45 },
-  marisa: { name: "魔理沙", role: "dps", hp: 400, attack: 60 },
-  okina: { name: "隠岐奈", role: "support", hp: 540, attack: 40 },
-  keiki: { name: "袿姫", role: "support", hp: 880, attack: 30 },
-  jyoon: { name: "女苑", role: "dps", hp: 500, attack: 35 },
+  reimu: { name: "博麗霊夢", role: "balance", hp: 680, attack: 45 },
+  marisa: { name: "霧雨魔理沙", role: "dps", hp: 400, attack: 60 },
+  okina: { name: "摩多羅隠岐奈", role: "support", hp: 540, attack: 40 },
+  keiki: { name: "埴安神袿姫", role: "support", hp: 880, attack: 30 },
+  jyoon: { name: "依神女苑", role: "dps", hp: 500, attack: 35 },
   yuiman: { name: "ユイマン・浅間", role: "support", hp: 520, attack: 38 },
 };
 
@@ -40,6 +40,11 @@ const BOSS_DETAILS = {
 };
 
 const PORTRAIT_KEY_BY_DISPLAY_NAME = {
+  "博麗霊夢": "reimu",
+  "霧雨魔理沙": "marisa",
+  "摩多羅隠岐奈": "okina",
+  "埴安神袿姫": "keiki",
+  "依神女苑": "jyoon",
   "霊夢": "reimu",
   "魔理沙": "marisa",
   "隠岐奈": "okina",

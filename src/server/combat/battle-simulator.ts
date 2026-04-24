@@ -19,11 +19,16 @@ import {
   sharedBoardIndexToCoordinate,
 } from "../../shared/board-geometry";
 import { getUnitLevelCombatMultiplier } from "../unit-level-config";
+import { getProgressionMilestoneStage } from "../progression-bonus-config";
 import {
   HERO_SKILL_DEFINITIONS,
+  resolveBossSkillDefinition,
   resolvePairSkillDefinition,
   resolvePairSkillDefinitions,
   resolveUnitSkillDefinition,
+  type SkillExecutionContext,
+  type SkillTiming,
+  type TimedCombatModifier,
 } from "./skill-definitions";
 import {
   SYNERGY_DEFINITIONS,
@@ -64,10 +69,16 @@ import {
  * アクションインターフェース
  * 戦闘中のユニットアクションを表現
  */
+interface ActiveTimedCombatModifier extends TimedCombatModifier {
+  effectInstanceId: string;
+}
+
 export interface Action {
   unit: BattleUnit;
   actionTime: number;
-  type: "attack" | "move" | "skill";
+  type: "timed-effect-expire" | "attack" | "move" | "skill" | "sub-unit-skill";
+  timedEffect?: ActiveTimedCombatModifier;
+  subUnitSkillId?: string;
 }
 
 /**
@@ -103,8 +114,15 @@ export interface BattleUnit {
   ultimateDamageMultiplier?: number;
   bonusDamageVsDebuffedTarget?: number;
   debuffImmunityCategories?: string[];
+  currentTargetId?: string;
+  shieldAmount?: number;
+  damageTakenMultiplier?: number;
   pairSkillIds?: string[];
+  pairSkillLevels?: Record<string, 1 | 2>;
   pairSkillState?: Record<string, boolean>;
+  subUnitSkillIds?: string[];
+  subUnitSkillLevels?: Record<string, 1 | 4 | 7>;
+  stackState?: Record<string, number>;
 }
 
 /**
@@ -147,8 +165,10 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
 
 const MELEE_POST_MOVE_ATTACK_DELAY_MS = 250;
 const ACTION_PRIORITY: Readonly<Record<Action["type"], number>> = {
+  "timed-effect-expire": -1,
   attack: 0,
   skill: 1,
+  "sub-unit-skill": 1,
   move: 2,
 };
 
@@ -233,16 +253,49 @@ function applyPairSkillBindings(
       continue;
     }
 
+    if (placement.subUnit.unitId === "okina") {
+      const okinaLevel = placement.subUnit.unitLevel ?? 1;
+      const okinaSkillLevel: 1 | 4 | 7 = okinaLevel >= 7 ? 7 : okinaLevel >= 4 ? 4 : 1;
+      unit.subUnitSkillIds = [...(unit.subUnitSkillIds ?? []), "okina-back"];
+      unit.subUnitSkillLevels = {
+        ...(unit.subUnitSkillLevels ?? {}),
+        "okina-back": okinaSkillLevel,
+      };
+      combatLog.push(`${generateUnitName(unit)} links sub skill 秘神「裏表の逆転:裏」 Lv${okinaSkillLevel}`);
+    }
+
     const heroExclusiveUnit = getHeroExclusiveUnitById(placement.subUnit.unitId);
     if (!heroExclusiveUnit || heroExclusiveUnit.pairSkillId.length === 0) {
       continue;
     }
 
+    const hostHeroId = resolveHeroId(unit) ?? unit.sourceUnitId ?? "";
+    if (hostHeroId !== heroExclusiveUnit.exclusiveHeroId) {
+      continue;
+    }
+
+    const subUnitLevel = placement.subUnit.unitLevel;
+    if (typeof subUnitLevel !== "number" || !Number.isFinite(subUnitLevel)) {
+      continue;
+    }
+
+    const pairSkillLevel = getProgressionMilestoneStage(
+      subUnitLevel,
+      heroExclusiveUnit.progressionBonus,
+    );
+    if (pairSkillLevel === 0) {
+      continue;
+    }
+
     unit.pairSkillIds = [...(unit.pairSkillIds ?? []), heroExclusiveUnit.pairSkillId];
+    unit.pairSkillLevels = {
+      ...(unit.pairSkillLevels ?? {}),
+      [heroExclusiveUnit.pairSkillId]: pairSkillLevel,
+    };
     unit.pairSkillState = { ...(unit.pairSkillState ?? {}) };
     const pairSkillDefinition = resolvePairSkillDefinition(heroExclusiveUnit.pairSkillId);
     combatLog.push(
-      `${generateUnitName(unit)} links pair skill (${heroExclusiveUnit.displayName}): ${pairSkillDefinition?.name ?? heroExclusiveUnit.pairSkillId}`,
+      `${generateUnitName(unit)} links pair skill Lv${pairSkillLevel} (${heroExclusiveUnit.displayName}): ${pairSkillDefinition?.name ?? heroExclusiveUnit.pairSkillId}`,
     );
   }
 }
@@ -2026,6 +2079,7 @@ export class BattleSimulator {
   ): BattleResult {
     try {
       const timeoutEnabled = round < 12;
+      const phaseObjectiveEnabled = round < 12;
       const effectiveMaxDurationMs = timeoutEnabled ? maxDurationMs : Number.POSITIVE_INFINITY;
 
       // Bug #3 fix: Validate input teams
@@ -2100,12 +2154,16 @@ export class BattleSimulator {
       const actionQueue: Action[] = [];
       const nextScheduledAttackAtByUnitId = new Map<string, number>();
       const nextScheduledMoveAtByUnitId = new Map<string, number>();
+      const nextScheduledSkillAtByUnitId = new Map<string, number>();
+      const nextScheduledSubUnitSkillAtByKey = new Map<string, number>();
       let currentTime = 0;
+      let timedEffectSequence = 0;
       const bossBattleSide: "left" | "right" | null = leftUnits.some((unit) => unit.isBoss)
         ? "left"
         : rightUnits.some((unit) => unit.isBoss)
           ? "right"
           : null;
+      const bossPhaseUnit = allUnits.find((unit) => unit.isBoss) ?? null;
 
       // ダメージ追跡用変数
       let damageDealtLeft = 0;  // 左チームが与えたダメージ
@@ -2113,7 +2171,8 @@ export class BattleSimulator {
       let bossDamage = 0;       // ボスが受けたダメージ
       let phaseDamageToBossSide = 0; // ボス本体ダメージ + boss側護衛撃破ボーナス
       let nextKeyframeAtMs = 250;
-      let forcedWinner: "left" | "right" | null = null;
+      let forcedBattleWinner: "left" | "right" | null = null;
+      let forcedBattleEndReason: BattleTimelineEndReason | null = null;
 
       const appendDueKeyframes = (atMs: number) => {
         while (atMs >= nextKeyframeAtMs) {
@@ -2129,10 +2188,15 @@ export class BattleSimulator {
       const resolveBossBreakWinner = (
         actingSide: "left" | "right",
         defeatedBoss: BattleUnit,
+        endReason: "phase_hp_depleted" | "boss_defeated" = "phase_hp_depleted",
       ): "left" | "right" => {
         if (!defeatedBoss.isDead) {
           defeatedBoss.isDead = true;
-          combatLog.push(`${generateUnitName(defeatedBoss)} has been defeated!`);
+          combatLog.push(
+            endReason === "boss_defeated"
+              ? `${generateUnitName(defeatedBoss)} has been defeated!`
+              : `${generateUnitName(defeatedBoss)} phase HP depleted!`,
+          );
           timeline.push(createUnitDeathEvent({
             type: "unitDeath",
             battleId,
@@ -2142,9 +2206,29 @@ export class BattleSimulator {
         }
 
         combatLog.push(
-          `Battle ended: ${actingSide === "left" ? "Left" : "Right"} wins (phase HP depleted)`,
+          endReason === "boss_defeated"
+            ? `Battle ended: ${actingSide === "left" ? "Left" : "Right"} wins (boss defeated)`
+            : `Battle ended: ${actingSide === "left" ? "Left" : "Right"} wins (phase HP depleted)`,
         );
+        forcedBattleEndReason = endReason;
         return actingSide;
+      };
+
+      const resolvePhaseObjectiveWinner = (): "left" | "right" | null => {
+        if (
+          !phaseObjectiveEnabled
+          || !bossBattleSide
+          || !bossPhaseUnit
+          || bossPhaseUnit.maxHp <= 0
+          || phaseDamageToBossSide < bossPhaseUnit.maxHp
+        ) {
+          return null;
+        }
+
+        return resolveBossBreakWinner(
+          bossBattleSide === "left" ? "right" : "left",
+          bossPhaseUnit,
+        );
       };
 
       const recordAppliedDamage = (
@@ -2158,6 +2242,7 @@ export class BattleSimulator {
           targetUnit,
           amount,
           bossBattleSide,
+          phaseObjectiveEnabled,
         );
 
         if (amount <= 0) {
@@ -2179,9 +2264,18 @@ export class BattleSimulator {
         bossDamage += appliedDamageSummary.bossDamageIncrement;
         phaseDamageToBossSide += appliedDamageSummary.phaseDamageIncrement;
 
+        const phaseObjectiveWinner = resolvePhaseObjectiveWinner();
+        if (phaseObjectiveWinner) {
+          return phaseObjectiveWinner;
+        }
+
         if (appliedDamageSummary.defeatedTarget && !targetUnit.isDead) {
           if (appliedDamageSummary.bossBreakTriggered) {
-            return resolveBossBreakWinner(sourceSide, targetUnit);
+            return resolveBossBreakWinner(
+              sourceSide,
+              targetUnit,
+              phaseObjectiveEnabled ? "phase_hp_depleted" : "boss_defeated",
+            );
           }
 
           targetUnit.isDead = true;
@@ -2230,20 +2324,188 @@ export class BattleSimulator {
         scarletBossLifestealActive: boolean;
       };
 
-      const scheduleTriggeredSkill = (unit: BattleUnit) => {
-        const skillDef = resolveUnitSkillDefinition(unit);
-        if (
-          skillDef
-          && skillDef.triggerType === "on_attack_count"
-          && skillDef.triggerCount !== undefined
-          && unit.attackCount % skillDef.triggerCount === 0
-        ) {
-          actionQueue.push({
-            unit,
-            actionTime: currentTime,
-            type: "skill",
-          });
+      const findCurrentOrNearestTarget = (
+        caster: BattleUnit,
+        enemies: BattleUnit[],
+      ): BattleUnit | null => {
+        const currentTarget = enemies.find(
+          (enemy) => enemy.id === caster.currentTargetId && !enemy.isDead,
+        );
+        return currentTarget ?? findClosestLivingEnemy(caster, enemies);
+      };
+
+      const applyTimedModifier = (target: BattleUnit, modifier: TimedCombatModifier): void => {
+        if (target.isDead || modifier.durationMs <= 0) {
+          return;
         }
+
+        const activeModifier: ActiveTimedCombatModifier = {
+          ...modifier,
+          effectInstanceId: `${target.id}:${modifier.id}:${timedEffectSequence++}`,
+        };
+
+        target.buffModifiers.attackMultiplier *= modifier.attackMultiplier ?? 1;
+        target.buffModifiers.defenseMultiplier *= modifier.defenseMultiplier ?? 1;
+        target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
+        target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
+          * (modifier.incomingDamageMultiplier ?? 1);
+
+        actionQueue.push({
+          unit: target,
+          actionTime: currentTime + modifier.durationMs,
+          type: "timed-effect-expire",
+          timedEffect: activeModifier,
+        });
+      };
+
+      const expireTimedModifier = (
+        target: BattleUnit,
+        modifier: ActiveTimedCombatModifier,
+      ): void => {
+        target.buffModifiers.attackMultiplier /= modifier.attackMultiplier ?? 1;
+        target.buffModifiers.defenseMultiplier /= modifier.defenseMultiplier ?? 1;
+        target.buffModifiers.attackSpeedMultiplier /= modifier.attackSpeedMultiplier ?? 1;
+        target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
+          / (modifier.incomingDamageMultiplier ?? 1);
+      };
+
+      const applyShield = (target: BattleUnit, amount: number, sourceId: string): void => {
+        if (amount <= 0 || target.isDead) {
+          return;
+        }
+
+        target.shieldAmount = (target.shieldAmount ?? 0) + amount;
+        combatLog.push(`${generateUnitName(target)} gains ${Math.floor(amount)} shield from ${sourceId}`);
+      };
+
+      const buildSkillExecutionContext = (): SkillExecutionContext => ({
+        currentTimeMs: currentTime,
+        applyTimedModifier,
+        applyShield,
+        findCurrentOrNearestTarget,
+        executePairSkillsOnMainSkillActivated,
+      });
+
+      function executePairSkillsOnMainSkillActivated(
+        main: BattleUnit,
+        allies: BattleUnit[],
+        enemies: BattleUnit[],
+      ): void {
+        for (const pairSkillId of main.pairSkillIds ?? []) {
+          const pairSkillDefinition = resolvePairSkillDefinition(pairSkillId);
+          const pairSkillLevel = main.pairSkillLevels?.[pairSkillId];
+          if (!pairSkillDefinition || (pairSkillLevel !== 1 && pairSkillLevel !== 2)) {
+            continue;
+          }
+          pairSkillDefinition.executeOnMainSkillActivated?.(
+            main,
+            allies,
+            enemies,
+            combatLog,
+            buildSkillExecutionContext(),
+            pairSkillLevel,
+          );
+        }
+      }
+
+      const executeOkinaBackSkill = (main: BattleUnit): void => {
+        const stage = main.subUnitSkillLevels?.["okina-back"] ?? 1;
+        const context = buildSkillExecutionContext();
+        context.applyTimedModifier(main, {
+          id: "okina-back-reversal",
+          durationMs: 6000,
+          attackMultiplier: stage >= 7 ? 1.85 : stage >= 4 ? 1.55 : 1.30,
+        });
+        combatLog.push(`${main.sourceUnitId ?? main.type} activates 秘神「裏表の逆転:裏」`);
+      };
+
+      const resolveSkillTiming = (unit: BattleUnit): SkillTiming | null => {
+        if (unit.isBoss) {
+          return resolveBossSkillDefinition(unit);
+        }
+
+        if (isHeroBattleUnit(unit)) {
+          return resolveHeroSkillDefinition(unit)?.skillDef ?? null;
+        }
+
+        return resolveUnitSkillDefinition(unit);
+      };
+
+      const resolveSubUnitSkillTiming = (unit: BattleUnit, subUnitSkillId: string): SkillTiming | null => {
+        if (subUnitSkillId === "okina-back") {
+          return {
+            initialSkillDelayMs: 7000,
+            skillCooldownMs: 13000,
+          };
+        }
+
+        return null;
+      };
+
+      const scheduleSkillAt = (unit: BattleUnit, actionTime: number) => {
+        nextScheduledSkillAtByUnitId.set(unit.id, actionTime);
+        actionQueue.push({
+          unit,
+          actionTime,
+          type: "skill",
+        });
+      };
+
+      const scheduleInitialSkill = (unit: BattleUnit) => {
+        const timing = resolveSkillTiming(unit);
+        if (!timing) {
+          return;
+        }
+
+        scheduleSkillAt(unit, timing.initialSkillDelayMs);
+      };
+
+      const scheduleNextSkill = (unit: BattleUnit) => {
+        const timing = resolveSkillTiming(unit);
+        if (!timing) {
+          nextScheduledSkillAtByUnitId.delete(unit.id);
+          return;
+        }
+
+        scheduleSkillAt(unit, currentTime + timing.skillCooldownMs);
+      };
+
+      const subUnitSkillScheduleKey = (unit: BattleUnit, subUnitSkillId: string): string =>
+        `${unit.id}:${subUnitSkillId}`;
+
+      const scheduleSubUnitSkillAt = (
+        unit: BattleUnit,
+        subUnitSkillId: string,
+        actionTime: number,
+      ) => {
+        nextScheduledSubUnitSkillAtByKey.set(subUnitSkillScheduleKey(unit, subUnitSkillId), actionTime);
+        actionQueue.push({
+          unit,
+          actionTime,
+          type: "sub-unit-skill",
+          subUnitSkillId,
+        });
+      };
+
+      const scheduleInitialSubUnitSkills = (unit: BattleUnit) => {
+        for (const subUnitSkillId of unit.subUnitSkillIds ?? []) {
+          const timing = resolveSubUnitSkillTiming(unit, subUnitSkillId);
+          if (!timing) {
+            continue;
+          }
+
+          scheduleSubUnitSkillAt(unit, subUnitSkillId, timing.initialSkillDelayMs);
+        }
+      };
+
+      const scheduleNextSubUnitSkill = (unit: BattleUnit, subUnitSkillId: string) => {
+        const timing = resolveSubUnitSkillTiming(unit, subUnitSkillId);
+        if (!timing) {
+          nextScheduledSubUnitSkillAtByKey.delete(subUnitSkillScheduleKey(unit, subUnitSkillId));
+          return;
+        }
+
+        scheduleSubUnitSkillAt(unit, subUnitSkillId, currentTime + timing.skillCooldownMs);
       };
 
       const scheduleAttackAt = (unit: BattleUnit, actionTime: number) => {
@@ -2383,6 +2645,10 @@ export class BattleSimulator {
           bossDamage += appliedDamageSummary.bossDamageIncrement;
           phaseDamageToBossSide += appliedDamageSummary.phaseDamageIncrement;
 
+          if (pendingWinner === null) {
+            pendingWinner = resolvePhaseObjectiveWinner();
+          }
+
           if (reflectedDamage > 0) {
             sourceUnit.hp -= reflectedDamage;
             combatLog.push(
@@ -2429,7 +2695,11 @@ export class BattleSimulator {
           if (unit.isBoss) {
             const bossFinisher = pendingAttacks.find((pendingAttack) => pendingAttack.targetUnit.id === unit.id);
             if (bossFinisher && pendingWinner === null) {
-              pendingWinner = resolveBossBreakWinner(bossFinisher.unitSide, unit);
+              pendingWinner = resolveBossBreakWinner(
+                bossFinisher.unitSide,
+                unit,
+                phaseObjectiveEnabled ? "phase_hp_depleted" : "boss_defeated",
+              );
               continue;
             }
 
@@ -2439,6 +2709,7 @@ export class BattleSimulator {
               pendingWinner = resolveBossBreakWinner(
                 resolveBattleSide(reflectedBossFinisher.targetUnit),
                 unit,
+                phaseObjectiveEnabled ? "phase_hp_depleted" : "boss_defeated",
               );
             }
             continue;
@@ -2453,7 +2724,10 @@ export class BattleSimulator {
             battleUnitId: unit.id,
           }));
 
-          phaseDamageToBossSide += defeatConsequences.phaseDamageIncrement;
+          phaseDamageToBossSide += phaseObjectiveEnabled ? defeatConsequences.phaseDamageIncrement : 0;
+          if (pendingWinner === null) {
+            pendingWinner = resolvePhaseObjectiveWinner();
+          }
         }
 
         return pendingWinner;
@@ -2465,19 +2739,8 @@ export class BattleSimulator {
         if (getMoveIntervalMs(unit) !== null) {
           scheduleMoveAt(unit, 0);
         }
-      }
-
-      // ヒーローのスキルを戦闘開始時に発動
-      for (const unit of allUnits) {
-        if (isHeroBattleUnit(unit)) {
-          if (resolveHeroSkillDefinition(unit)) {
-            actionQueue.push({
-              unit,
-              actionTime: 100, // 戦闘開始直後に発動（100ms後）
-              type: "skill",
-            });
-          }
-        }
+        scheduleInitialSkill(unit);
+        scheduleInitialSubUnitSkills(unit);
       }
 
       actionQueue.sort(compareActionOrder);
@@ -2511,7 +2774,11 @@ export class BattleSimulator {
       currentTime = action.actionTime;
       appendDueKeyframes(currentTime);
 
-      if (action.type === "attack") {
+      if (action.type === "timed-effect-expire") {
+        if (!action.unit.isDead && action.timedEffect) {
+          expireTimedModifier(action.unit, action.timedEffect);
+        }
+      } else if (action.type === "attack") {
         const pendingAttacks: PendingAttack[] = [];
         const attackBatch = collectAttackBatch(action);
 
@@ -2528,6 +2795,7 @@ export class BattleSimulator {
           const target = findTarget(attackAction.unit, enemies);
 
           if (target) {
+            attackAction.unit.currentTargetId = target.id;
             timeline.push(createAttackStartEvent({
               type: "attackStart",
               battleId,
@@ -2537,14 +2805,18 @@ export class BattleSimulator {
             }));
 
             const { actualDamage, isCrit, bossPassiveActive } = resolveAttackDamage(attackAction.unit, target);
-            target.hp -= actualDamage;
+            const shieldBeforeHit = target.shieldAmount ?? 0;
+            const shieldAbsorbed = Math.min(shieldBeforeHit, actualDamage);
+            const damageAfterShield = actualDamage - shieldAbsorbed;
+            target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+            target.hp -= damageAfterShield;
             pendingAttacks.push({
               sourceUnit: attackAction.unit,
               targetUnit: target,
               unitSide,
-              actualDamage,
+              actualDamage: damageAfterShield,
               remainingHpAfterHit: Math.max(0, target.hp),
-              reflectedDamage: calculateReflectedDamage(actualDamage, target.reflectRatio),
+              reflectedDamage: calculateReflectedDamage(damageAfterShield, target.reflectRatio),
               isCrit,
               bossPassiveActive,
               scarletBossLifestealActive: Boolean(
@@ -2556,8 +2828,8 @@ export class BattleSimulator {
             executePairSkillsAfterAttackHit(attackAction.unit, target, combatLog);
 
             attackAction.unit.attackCount++;
-            scheduleTriggeredSkill(attackAction.unit);
           } else {
+            delete attackAction.unit.currentTargetId;
             nextScheduledAttackAtByUnitId.delete(attackAction.unit.id);
           }
 
@@ -2566,7 +2838,7 @@ export class BattleSimulator {
 
         const forcedAttackWinner = resolvePendingDeaths(pendingAttacks);
         if (forcedAttackWinner) {
-          forcedWinner = forcedAttackWinner;
+          forcedBattleWinner = forcedAttackWinner;
           break;
         }
       } else if (action.type === "move") {
@@ -2773,11 +3045,41 @@ export class BattleSimulator {
           scheduleNextMove(moveAction.unit);
         }
       } else if (action.type === "skill") {
+        if (nextScheduledSkillAtByUnitId.get(action.unit.id) !== action.actionTime) {
+          continue;
+        }
+
+        nextScheduledSkillAtByUnitId.delete(action.unit.id);
+
         // ヒーローユニットかどうかを判定
         const isHero = isHeroBattleUnit(action.unit);
+        const bossSkillDef = action.unit.isBoss ? resolveBossSkillDefinition(action.unit) : null;
         let skillExecuted = false;
 
-        if (isHero) {
+        if (bossSkillDef) {
+          const isLeftSide = leftUnits.includes(action.unit);
+          const allies = isLeftSide ? leftUnits : rightUnits;
+          const enemies = isLeftSide ? rightUnits : leftUnits;
+          const enemyHpBefore = new Map(enemies.map((enemy) => [enemy.id, enemy.hp]));
+
+          try {
+            bossSkillDef.execute(action.unit, allies, enemies, combatLog, buildSkillExecutionContext());
+            skillExecuted = true;
+          } catch (error) {
+            console.error(`Error executing boss skill for ${action.unit.sourceUnitId ?? action.unit.id}:`, error);
+            combatLog.push(`Error executing boss skill for ${action.unit.sourceUnitId ?? action.unit.id}`);
+          }
+
+          const forcedSkillWinner = recordSkillDamageAgainstEnemies(
+            action.unit,
+            enemies,
+            enemyHpBefore,
+          );
+          if (forcedSkillWinner) {
+            forcedBattleWinner = forcedSkillWinner;
+            break;
+          }
+        } else if (isHero) {
           // ヒーロースキルを使用（sourceUnitId 優先でヒーロー定義を解決）
           const resolvedHeroSkill = resolveHeroSkillDefinition(action.unit);
           if (!resolvedHeroSkill) {
@@ -2794,7 +3096,7 @@ export class BattleSimulator {
             const enemyHpBefore = new Map(enemies.map((enemy) => [enemy.id, enemy.hp]));
 
             try {
-              heroSkillDef.execute(action.unit, allies, enemies, combatLog);
+              heroSkillDef.execute(action.unit, allies, enemies, combatLog, buildSkillExecutionContext());
               skillExecuted = true;
             } catch (error) {
               console.error(`Error executing hero skill for ${heroId}:`, error);
@@ -2807,7 +3109,7 @@ export class BattleSimulator {
               enemyHpBefore,
             );
             if (forcedSkillWinner) {
-              forcedWinner = forcedSkillWinner;
+              forcedBattleWinner = forcedSkillWinner;
               break;
             }
           }
@@ -2821,7 +3123,7 @@ export class BattleSimulator {
             const enemyHpBefore = new Map(enemies.map((enemy) => [enemy.id, enemy.hp]));
 
             try {
-              skillDef.execute(action.unit, allies, enemies, combatLog);
+              skillDef.execute(action.unit, allies, enemies, combatLog, buildSkillExecutionContext());
               skillExecuted = true;
             } catch (error) {
               console.error(`Error executing skill for ${action.unit.type}:`, error);
@@ -2834,10 +3136,27 @@ export class BattleSimulator {
               enemyHpBefore,
             );
             if (forcedSkillWinner) {
-              forcedWinner = forcedSkillWinner;
+              forcedBattleWinner = forcedSkillWinner;
               break;
             }
           }
+        }
+
+        if (!action.unit.isDead && (skillExecuted || resolveSkillTiming(action.unit))) {
+          scheduleNextSkill(action.unit);
+        }
+      } else if (action.type === "sub-unit-skill") {
+        const subUnitSkillId = action.subUnitSkillId ?? "";
+        const scheduleKey = subUnitSkillScheduleKey(action.unit, subUnitSkillId);
+        if (nextScheduledSubUnitSkillAtByKey.get(scheduleKey) !== action.actionTime) {
+          continue;
+        }
+
+        nextScheduledSubUnitSkillAtByKey.delete(scheduleKey);
+
+        if (subUnitSkillId === "okina-back") {
+          executeOkinaBackSkill(action.unit);
+          scheduleNextSubUnitSkill(action.unit, subUnitSkillId);
         }
       }
 
@@ -2856,7 +3175,8 @@ export class BattleSimulator {
         damageDealtRight,
         bossDamage,
         phaseDamageToBossSide,
-        forcedWinner,
+        forcedBattleWinner,
+        forcedBattleEndReason,
       );
 
     return result;
@@ -2905,7 +3225,8 @@ export class BattleSimulator {
     damageDealtRight: number,
     bossDamage: number = 0,
     phaseDamageToBossSide: number = 0,
-    forcedWinner: "left" | "right" | null = null,
+    forcedBattleWinner: "left" | "right" | null = null,
+    forcedBattleEndReason: BattleTimelineEndReason | null = null,
   ): BattleResult {
     // BattleResult の基本オブジェクトを作成（bossDamage は条件付きで追加）
     const createResult = (
@@ -2949,8 +3270,8 @@ export class BattleSimulator {
     const leftSurvivors = leftUnits.filter((unit) => !unit.isDead);
     const rightSurvivors = rightUnits.filter((unit) => !unit.isDead);
 
-    if (forcedWinner) {
-      return createResult(forcedWinner, "forced");
+    if (forcedBattleWinner && forcedBattleEndReason) {
+      return createResult(forcedBattleWinner, forcedBattleEndReason);
     }
 
     if (leftSurvivors.length === 0 && rightSurvivors.length === 0) {

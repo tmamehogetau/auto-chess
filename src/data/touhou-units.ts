@@ -1,3 +1,4 @@
+import type { UnitProgressionBonusConfig } from "../shared/progression-bonus-types";
 import { DEFAULT_MOVEMENT_SPEED, type BoardUnitType, type CombatStats, type UnitId } from "../shared/types";
 
 const DEFAULT_MELEE_MOVEMENT_SPEED = DEFAULT_MOVEMENT_SPEED * 2;
@@ -18,6 +19,15 @@ export interface TouhouUnit extends CombatStats {
   factionId: TouhouFactionId | null;
   skillRef?: string;
 }
+
+const DEFAULT_STANDARD_UNIT_PROGRESSION_BONUS: UnitProgressionBonusConfig = {
+  baseGrowthProfile: "standard",
+  level4Bonus: null,
+  level7Bonus: null,
+  skillImplementationState: "implemented",
+};
+
+const STANDARD_UNIT_PROGRESSION_BONUS_OVERRIDES: Readonly<Partial<Record<UnitId, UnitProgressionBonusConfig>>> = {};
 
 export const TOUHOU_UNITS: readonly TouhouUnit[] = [
   { unitId: "rin", displayName: "火焔猫燐", unitType: "vanguard", cost: 1, hp: 620, attack: 40, attackSpeed: 0.85, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 5, factionId: "chireiden" },
@@ -63,4 +73,18 @@ export function getTouhouUnitsByCost(cost: TouhouUnit["cost"]): TouhouUnit[] {
 
 export function getTouhouUnitsByFaction(factionId: TouhouFactionId): TouhouUnit[] {
   return TOUHOU_UNITS.filter((unit) => unit.factionId === factionId);
+}
+
+export function getStandardUnitProgressionBonusConfig(unitId: UnitId): UnitProgressionBonusConfig {
+  const override = STANDARD_UNIT_PROGRESSION_BONUS_OVERRIDES[unitId];
+  if (override) {
+    return override;
+  }
+
+  const touhouUnit = getTouhouUnitById(unitId);
+  if (touhouUnit) {
+    return DEFAULT_STANDARD_UNIT_PROGRESSION_BONUS;
+  }
+
+  return DEFAULT_STANDARD_UNIT_PROGRESSION_BONUS;
 }

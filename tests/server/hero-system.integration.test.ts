@@ -154,7 +154,7 @@ describe("Hero System Integration Tests", () => {
         specialUnitUpgradeCount: 3,
       })).toEqual({ accepted: true });
       expect(controller.getPlayerStatus("player1")).toMatchObject({
-        gold: 54,
+        gold: 57,
         specialUnitLevel: 7,
       });
 

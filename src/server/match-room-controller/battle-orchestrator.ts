@@ -265,7 +265,9 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
     }
 
     const survivingRaidPlayerIds = state.raidPlayerIds.filter((playerId) => !state.isPlayerEliminated(playerId));
-    if (survivingRaidPlayerIds.length === 0 || dominationTriggered) {
+    const finalRaidObjectiveComplete =
+      state.roundIndex >= maxRounds && this.deps.getPhaseResult() === "success";
+    if ((!finalRaidObjectiveComplete && survivingRaidPlayerIds.length === 0) || dominationTriggered) {
       this.deps.setFinalRankingOverride(this.buildRaidFinalRanking("boss"));
       return true;
     }
@@ -276,7 +278,7 @@ export class BattleOrchestrator<TBattleResult extends BattleResultLike> {
 
     this.deps.setFinalRankingOverride(
       this.buildRaidFinalRanking(
-        this.deps.getPhaseResult() === "success" && survivingRaidPlayerIds.length > 0 ? "raid" : "boss",
+        finalRaidObjectiveComplete ? "raid" : "boss",
       ),
     );
     return true;

@@ -605,7 +605,7 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     );
 
     expect(serverRoom.state.players.get(lowId)?.hp).toBe(100);
-    expect(serverRoom.state.players.get(highId)?.hp).toBe(87);
+    expect(serverRoom.state.players.get(highId)?.hp).toBe(89);
   });
 
 });

@@ -27,16 +27,31 @@ describe("shared board unit presentation", () => {
 
   test("uses canonical hero and boss ids for portrait keys", () => {
     expect(resolveSharedBoardHeroPresentation("okina")).toEqual({
-      displayName: "隠岐奈",
+      displayName: "摩多羅隠岐奈",
       portraitKey: "okina",
     });
     expect(resolveSharedBoardHeroPresentation("jyoon")).toEqual({
-      displayName: "女苑",
+      displayName: "依神女苑",
       portraitKey: "jyoon",
     });
     expect(resolveSharedBoardBossPresentation("remilia")).toEqual({
       displayName: "レミリア",
       portraitKey: "remilia",
+    });
+  });
+
+  test("uses hero-exclusive display names when those units appear on the shared board", () => {
+    expect(resolveSharedBoardUnitPresentation("mayumi", "vanguard")).toEqual({
+      displayName: "杖刀偶磨弓",
+      portraitKey: "",
+    });
+    expect(resolveSharedBoardUnitPresentation("shion", "assassin")).toEqual({
+      displayName: "依神紫苑",
+      portraitKey: "",
+    });
+    expect(resolveSharedBoardUnitPresentation("ariya", "vanguard")).toEqual({
+      displayName: "磐永阿梨夜",
+      portraitKey: "",
     });
   });
 });

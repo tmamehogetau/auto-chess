@@ -27,6 +27,9 @@ import { HEROES } from "../../data/heroes";
 import { BOSS_CHARACTERS } from "../../shared/boss-characters";
 import { buildLoserDamage } from "./damage-calculator";
 
+const STANDARD_BATTLE_SIMULATION_DURATION_MS = 40_000;
+const FINAL_BATTLE_SIMULATION_DURATION_MS = 600_000;
+
 /**
  * Battle resolution outcome
  */
@@ -52,6 +55,7 @@ export interface PlayerBattleResult {
   survivorSnapshots?: BattleResultSurvivorSnapshot[];
   timeline?: BattleTimelineEvent[];
   rawTimeline?: BattleTimelineEvent[];
+  combatLog?: string[];
 }
 
 /**
@@ -225,7 +229,7 @@ export class BattleResolutionService {
       rightBattleUnits,
       leftPlacements,
       rightPlacements,
-      roundIndex >= 12 ? 600_000 : 30000, // R12+は10分(事実上無制限), それ以外は30秒
+      roundIndex >= 12 ? FINAL_BATTLE_SIMULATION_DURATION_MS : STANDARD_BATTLE_SIMULATION_DURATION_MS,
       leftHeroSynergyBonusType,
       rightHeroSynergyBonusType,
       this.deps.enableSubUnitSystem ? this.deps.subUnitAssistConfigByType : null,
@@ -243,6 +247,9 @@ export class BattleResolutionService {
       : {};
     const rawTimelineField: Partial<Pick<PlayerBattleResult, "rawTimeline">> = battleResult.timeline.length > 0
       ? { rawTimeline: battleResult.timeline.map((event) => ({ ...event })) }
+      : {};
+    const combatLogField: Partial<Pick<PlayerBattleResult, "combatLog">> = battleResult.combatLog.length > 0
+      ? { combatLog: [...battleResult.combatLog] }
       : {};
 
     // Process results based on winner
@@ -266,6 +273,7 @@ export class BattleResolutionService {
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
         ...timelineField,
         ...rawTimelineField,
+        ...combatLogField,
       };
 
       rightBattleResult = {
@@ -278,6 +286,7 @@ export class BattleResolutionService {
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
         ...timelineField,
         ...rawTimelineField,
+        ...combatLogField,
       };
 
       outcome = {
@@ -316,6 +325,7 @@ export class BattleResolutionService {
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
         ...timelineField,
         ...rawTimelineField,
+        ...combatLogField,
       };
 
       rightBattleResult = {
@@ -328,6 +338,7 @@ export class BattleResolutionService {
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
         ...timelineField,
         ...rawTimelineField,
+        ...combatLogField,
       };
 
       outcome = {
@@ -362,6 +373,7 @@ export class BattleResolutionService {
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.leftSurvivors),
         ...timelineField,
         ...rawTimelineField,
+        ...combatLogField,
       };
 
       rightBattleResult = {
@@ -374,6 +386,7 @@ export class BattleResolutionService {
         survivorSnapshots: this.buildSurvivorSnapshots(battleResult.rightSurvivors),
         ...timelineField,
         ...rawTimelineField,
+        ...combatLogField,
       };
 
       outcome = {
@@ -546,7 +559,7 @@ export class BattleResolutionService {
     bossId: string | undefined,
     playerId: string,
     boardCellIndex?: number,
-    phaseHpTarget?: number,
+    bossHpOverride?: number,
     battleSide: "left" | "right" = "right",
     bossUnitLevel: number = 1,
   ): BattleUnit | null {
@@ -560,8 +573,8 @@ export class BattleResolutionService {
     ) ? boardCellIndex : 2;
     const bossStats = getMvpPhase1Boss();
     const unitMultiplier = getSpecialUnitCombatMultiplier(bossUnitLevel, boss.id);
-    const resolvedBossHp = typeof phaseHpTarget === "number" && phaseHpTarget > 0
-      ? phaseHpTarget
+    const resolvedBossHp = typeof bossHpOverride === "number" && bossHpOverride > 0
+      ? bossHpOverride
       : bossStats.hp * unitMultiplier;
 
     return {

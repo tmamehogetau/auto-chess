@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 704" preserveAspectRatio="none" role="img" aria-label="紅魔館の共有盤面床" data-koumakan-board-floor="true">
+  <defs>
+    <linearGradient id="bossTint" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#7f1730" stop-opacity=".68"/>
+      <stop offset=".45" stop-color="#45101f" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#20121d" stop-opacity=".18"/>
+    </linearGradient>
+    <linearGradient id="raidTint" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#1d2233" stop-opacity=".18"/>
+      <stop offset=".45" stop-color="#183f59" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#0b2638" stop-opacity=".62"/>
+    </linearGradient>
+    <linearGradient id="zoneSheen" x1="0" x2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset=".18" stop-color="#ffffff" stop-opacity=".11"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".06"/>
+      <stop offset=".82" stop-color="#ffffff" stop-opacity=".11"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#281a22"/>
+      <stop offset=".48" stop-color="#181821"/>
+      <stop offset="1" stop-color="#0b1722"/>
+    </linearGradient>
+    <linearGradient id="edgeGold" x1="0" x2="1">
+      <stop offset="0" stop-color="#6b4425" stop-opacity=".35"/>
+      <stop offset=".5" stop-color="#f2c77a" stop-opacity=".74"/>
+      <stop offset="1" stop-color="#6b4425" stop-opacity=".35"/>
+    </linearGradient>
+    <linearGradient id="reliefGold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f7d28d" stop-opacity=".32"/>
+      <stop offset=".52" stop-color="#8d5630" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#05070d" stop-opacity=".36"/>
+    </linearGradient>
+    <linearGradient id="sunkenRelief" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#05070d" stop-opacity=".42"/>
+      <stop offset=".56" stop-color="#22151d" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#f7d28d" stop-opacity=".1"/>
+    </linearGradient>
+    <linearGradient id="topBevel" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#f1c878" stop-opacity=".5"/>
+      <stop offset=".45" stop-color="#5f2432" stop-opacity=".44"/>
+      <stop offset="1" stop-color="#080b12" stop-opacity=".28"/>
+    </linearGradient>
+    <linearGradient id="bottomBevel" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#151923" stop-opacity=".48"/>
+      <stop offset=".52" stop-color="#0a1620" stop-opacity=".86"/>
+      <stop offset="1" stop-color="#02050a" stop-opacity=".92"/>
+    </linearGradient>
+    <radialGradient id="ritualGlow" cx="50%" cy="22%" r="64%">
+      <stop offset="0" stop-color="#ef5b72" stop-opacity=".24"/>
+      <stop offset=".38" stop-color="#d3a35d" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="stoneMottle" width="82" height="70" patternUnits="userSpaceOnUse">
+      <rect width="82" height="70" fill="#000000" opacity="0"/>
+      <path d="M8 16h18v1H8ZM48 42h16v1H48ZM22 58h10v1H22Z" fill="#ffffff" opacity=".026"/>
+      <path d="M34 8h14v1H34ZM10 40h12v1H10ZM58 20h8v1H58Z" fill="#000000" opacity=".08"/>
+    </pattern>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#02040a" flood-opacity=".42"/>
+    </filter>
+  </defs>
+
+  <path d="M52 20h716l34 34v598l-34 34H52l-34-34V54Z" fill="#05070d" opacity=".55" filter="url(#softShadow)"/>
+  <path d="M66 34h688l24 24v570l-24 24H66l-24-24V58Z" fill="url(#stone)" stroke="url(#edgeGold)" stroke-width="5"/>
+  <path d="M66 34h688l-30 46H96Z" fill="url(#topBevel)" opacity=".72"/>
+  <path d="M66 652h688l-54 36H120Z" fill="url(#bottomBevel)" opacity=".86"/>
+  <path d="M42 58 66 34v618l-24-24Z" fill="#050912" opacity=".74"/>
+  <path d="M754 34 778 58v570l-24 24Z" fill="#101827" opacity=".68"/>
+  <path d="M64 92h692v506H64Z" fill="url(#ritualGlow)" opacity=".75"/>
+  <path d="M92 62h636v286H92Z" fill="url(#bossTint)" data-koumakan-board-boss-field="true"/>
+  <path d="M92 348h636v280H92Z" fill="url(#raidTint)" data-koumakan-board-raid-field="true"/>
+  <path d="M92 62h636v566H92Z" fill="url(#stoneMottle)" opacity=".9"/>
+
+  <g opacity=".25">
+    <path d="M112 84h152l20 18v54l-20 18H112l-20-18v-54Z" fill="url(#sunkenRelief)"/>
+    <path d="M556 84h152l20 18v54l-20 18H556l-20-18v-54Z" fill="url(#sunkenRelief)"/>
+    <path d="M112 536h152l20 18v54l-20 18H112l-20-18v-54Z" fill="url(#sunkenRelief)"/>
+    <path d="M556 536h152l20 18v54l-20 18H556l-20-18v-54Z" fill="url(#sunkenRelief)"/>
+  </g>
+
+  <g opacity=".16" data-koumakan-board-stone-veins="true" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M142 126 214 146 282 138 352 154" stroke="#ffffff" stroke-opacity=".026" stroke-width="1.4"/>
+    <path d="M536 128 482 144 426 138 360 150" stroke="#000000" stroke-opacity=".09" stroke-width="1.6"/>
+    <path d="M154 468 240 482 326 474 412 486" stroke="#ffffff" stroke-opacity=".024" stroke-width="1.4"/>
+    <path d="M514 520 574 508 650 520" stroke="#000000" stroke-opacity=".08" stroke-width="1.6"/>
+    <path d="M244 264 278 292 320 284M584 402l-30 22-48-8" stroke="#f7d28d" stroke-opacity=".03" stroke-width="1.2"/>
+  </g>
+
+  <g opacity=".5" stroke="#070a10" stroke-width="4.4" stroke-linecap="round" stroke-dasharray="116 10 78 7" data-koumakan-board-grid-groove="true" data-koumakan-board-broken-grooves="true">
+    <path d="M92 62v566"/>
+    <path d="M198 62v566"/>
+    <path d="M304 62v566"/>
+    <path d="M410 62v566"/>
+    <path d="M516 62v566"/>
+    <path d="M622 62v566"/>
+    <path d="M728 62v566"/>
+    <path d="M92 62h636"/>
+    <path d="M92 157h636"/>
+    <path d="M92 252h636"/>
+    <path d="M92 348h636"/>
+    <path d="M92 443h636"/>
+    <path d="M92 538h636"/>
+    <path d="M92 628h636"/>
+  </g>
+  <g opacity=".13" stroke="#c9aa72" stroke-width="1.15" stroke-linecap="round" stroke-dasharray="92 18" data-koumakan-board-grid-gold="true">
+    <path d="M92 62v566"/>
+    <path d="M198 62v566"/>
+    <path d="M304 62v566"/>
+    <path d="M410 62v566"/>
+    <path d="M516 62v566"/>
+    <path d="M622 62v566"/>
+    <path d="M728 62v566"/>
+    <path d="M92 62h636"/>
+    <path d="M92 157h636"/>
+    <path d="M92 252h636"/>
+    <path d="M92 348h636"/>
+    <path d="M92 443h636"/>
+    <path d="M92 538h636"/>
+    <path d="M92 628h636"/>
+  </g>
+
+  <g opacity=".22">
+    <path d="M66 34h688l24 24v570l-24 24H66l-24-24V58Z" fill="none" stroke="#fff0c4" stroke-width="1.2"/>
+    <path d="M78 76h664v526H78Z" fill="none" stroke="#7b542e" stroke-width="10" stroke-opacity=".22"/>
+    <path d="M88 86h644v506H88Z" fill="none" stroke="#f6d08b" stroke-width="2" stroke-opacity=".28"/>
+  </g>
+
+  <g opacity=".34">
+    <path d="M126 104h88l18 18-18 18h-88l-18-18Z" fill="url(#reliefGold)"/>
+    <path d="M606 104h88l18 18-18 18h-88l-18-18Z" fill="url(#reliefGold)"/>
+    <path d="M126 562h88l18 18-18 18h-88l-18-18Z" fill="url(#reliefGold)"/>
+    <path d="M606 562h88l18 18-18 18h-88l-18-18Z" fill="url(#reliefGold)"/>
+    <path d="M152 116h36l10 6-10 6h-36l-10-6Z" fill="#070a10" opacity=".34"/>
+    <path d="M632 116h36l10 6-10 6h-36l-10-6Z" fill="#070a10" opacity=".34"/>
+    <path d="M152 574h36l10 6-10 6h-36l-10-6Z" fill="#070a10" opacity=".34"/>
+    <path d="M632 574h36l10 6-10 6h-36l-10-6Z" fill="#070a10" opacity=".34"/>
+    <path d="M106 170 82 194 106 218 98 194Z" fill="url(#reliefGold)"/>
+    <path d="M714 170 738 194 714 218 722 194Z" fill="url(#reliefGold)"/>
+    <path d="M106 486 82 510 106 534 98 510Z" fill="url(#reliefGold)"/>
+    <path d="M714 486 738 510 714 534 722 510Z" fill="url(#reliefGold)"/>
+  </g>
+
+  <g opacity=".3">
+    <path d="M410 300 468 348 410 396 352 348Z" fill="url(#sunkenRelief)"/>
+    <path d="M410 318 452 348 410 378 368 348Z" fill="url(#reliefGold)"/>
+    <path d="M410 330 434 348 410 366 386 348Z" fill="#060910" opacity=".42"/>
+    <path d="M324 340h48l12 8-12 8h-48l-12-8Z" fill="url(#reliefGold)"/>
+    <path d="M448 340h48l12 8-12 8h-48l-12-8Z" fill="url(#reliefGold)"/>
+    <path d="M396 318 410 296 424 318Z" fill="url(#reliefGold)"/>
+    <path d="M396 378 410 400 424 378Z" fill="url(#reliefGold)"/>
+  </g>
+
+  <path d="M92 348h636" stroke="#f7d28d" stroke-width="5" stroke-opacity=".42"/>
+  <path d="M92 348h636" stroke="#e1415f" stroke-width="14" stroke-opacity=".12"/>
+  <path d="M92 348h636" stroke="#64d8ff" stroke-width="14" stroke-opacity=".12"/>
+
+  <g opacity=".86">
+    <path d="M116 86h588v206H116Z" fill="url(#zoneSheen)"/>
+    <path d="M116 398h588v190H116Z" fill="url(#zoneSheen)"/>
+  </g>
+</svg>

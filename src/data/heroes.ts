@@ -4,6 +4,7 @@ import {
   sharedBoardIndexToCoordinate,
   sharedBoardManhattanDistance,
 } from "../shared/board-geometry";
+import type { UnitProgressionBonusConfig } from "../shared/progression-bonus-types";
 import { DEFAULT_MOVEMENT_SPEED, type BoardUnitType, type CombatStats } from "../shared/types";
 
 const DEFAULT_MELEE_MOVEMENT_SPEED = DEFAULT_MOVEMENT_SPEED * 2;
@@ -59,6 +60,7 @@ export interface Hero extends CombatStats {
   role: 'tank' | 'dps' | 'support' | 'control' | 'balance' | 'economy';
   unitType: BoardUnitType;
   synergyBonusType: BoardUnitType;
+  progressionBonus: UnitProgressionBonusConfig;
   skill: {
     name: string;
     description: string;
@@ -72,7 +74,7 @@ export const HEROES: Hero[] = [
   // バランス型 - 防御バフ
   {
     id: 'reimu',
-    name: '霊夢',
+    name: '博麗霊夢',
     role: 'balance',
     unitType: 'ranger',
     synergyBonusType: 'ranger',
@@ -84,9 +86,23 @@ export const HEROES: Hero[] = [
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: 0,
+    progressionBonus: {
+      baseGrowthProfile: 'balanced',
+      level4Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv4で二重結界の防御支援が強化される",
+        skillScore: 16,
+      },
+      level7Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv7で二重結界の範囲ダメージが強化される",
+        skillScore: 18,
+      },
+      skillImplementationState: 'implemented',
+    },
     skill: {
       name: '夢符「二重結界」',
-      description: '味方全体に防御バフ（被ダメージ-20%）',
+      description: '味方全体に防御バフを付与し、範囲2の敵に中ダメージを与える。',
       effect: (caster, allies, _enemies, log) => {
         for (const ally of allies) {
           if (!ally.isDead) {
@@ -100,7 +116,7 @@ export const HEROES: Hero[] = [
   // パワー型 - 全体魔法
   {
     id: 'marisa',
-    name: '魔理沙',
+    name: '霧雨魔理沙',
     role: 'dps',
     unitType: 'mage',
     synergyBonusType: 'mage',
@@ -112,9 +128,23 @@ export const HEROES: Hero[] = [
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: 0,
+    progressionBonus: {
+      baseGrowthProfile: 'burst',
+      level4Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv4でマスタースパークの威力が強化される",
+        skillScore: 18,
+      },
+      level7Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv7でマスタースパークの火力が大きく強化される",
+        skillScore: 24,
+      },
+      skillImplementationState: 'implemented',
+    },
     skill: {
       name: '恋符「マスタースパーク」',
-      description: 'ターゲットとの直線上の敵に魔法ダメージ（ATK × 2.0）',
+      description: '最もHPが高い敵を狙い、直線上の敵へ高ダメージを与える。',
       effect: (caster, _allies, enemies, log) => {
         const primaryTarget = enemies.find((enemy) => !enemy.isDead);
         if (!primaryTarget) {
@@ -138,7 +168,7 @@ export const HEROES: Hero[] = [
   // サポート - 攻撃バフ
   {
     id: 'okina',
-    name: '隠岐奈',
+    name: '摩多羅隠岐奈',
     role: 'support',
     unitType: 'mage',
     synergyBonusType: 'mage',
@@ -150,9 +180,23 @@ export const HEROES: Hero[] = [
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: 0,
+    progressionBonus: {
+      baseGrowthProfile: 'support',
+      level4Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv4で表の味方全体攻撃支援が強化される",
+        skillScore: 16,
+      },
+      level7Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv7で表と裏の攻撃支援がさらに強化される",
+        skillScore: 20,
+      },
+      skillImplementationState: 'implemented',
+    },
     skill: {
       name: '秘神「裏表の逆転」',
-      description: '味方全体に攻撃力バフ（与ダメージ+25%）',
+      description: '表では味方全体を弱く強化し、サブ時の裏ではメインを大きく強化する。',
       effect: (caster, allies, _enemies, log) => {
         for (const ally of allies) {
           if (!ally.isDead) {
@@ -166,7 +210,7 @@ export const HEROES: Hero[] = [
   // サポート - ダメージ軽減
   {
     id: 'keiki',
-    name: '袿姫',
+    name: '埴安神袿姫',
     role: 'support',
     unitType: 'mage',
     synergyBonusType: 'mage',
@@ -178,9 +222,23 @@ export const HEROES: Hero[] = [
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: 0,
+    progressionBonus: {
+      baseGrowthProfile: 'support',
+      level4Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv4で鬼形造形術の攻防支援が強化される",
+        skillScore: 18,
+      },
+      level7Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv7で鬼形造形術の効果量と効果時間が強化される",
+        skillScore: 20,
+      },
+      skillImplementationState: 'implemented',
+    },
     skill: {
-      name: '埴安神「偶像の加護」',
-      description: '自身の被ダメージ-40%、周囲の味方に被ダメージ-15%',
+      name: '鬼形造形術',
+      description: '範囲2の味方に攻撃と防御の両方のバフを付与する。',
       effect: (caster, allies, _enemies, log) => {
         // 自身に大防御バフ
         caster.buffModifiers.defenseMultiplier *= 1.4;
@@ -204,7 +262,7 @@ export const HEROES: Hero[] = [
   // 火力型 - 累積ATKバフ
   {
     id: 'jyoon',
-    name: '女苑',
+    name: '依神女苑',
     role: 'dps',
     unitType: 'vanguard',
     synergyBonusType: 'vanguard',
@@ -216,9 +274,23 @@ export const HEROES: Hero[] = [
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: 0,
+    progressionBonus: {
+      baseGrowthProfile: 'late-bloom',
+      level4Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv4で黄金のトルネードの攻撃性能が強化される",
+        skillScore: 20,
+      },
+      level7Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv7で高コストに見合う後半火力が解禁される",
+        skillScore: 30,
+      },
+      skillImplementationState: 'implemented',
+    },
     skill: {
       name: '財符「黄金のトルネード」',
-      description: '攻撃毎に自己ATK+10%累積（最大+50%）',
+      description: '一定時間、自身の攻撃と攻撃速度を強化する。Lv7までは被ダメージも増える。',
       effect: (caster, _allies, _enemies, log) => {
         const currentBonus = caster.buffModifiers.attackMultiplier;
         const maxBonus = 1.5;
@@ -244,9 +316,23 @@ export const HEROES: Hero[] = [
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: 0,
+    progressionBonus: {
+      baseGrowthProfile: 'support',
+      level4Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv4で範囲妨害が強化される",
+        skillScore: 18,
+      },
+      level7Bonus: {
+        kind: "skill-upgrade",
+        summary: "Lv7で範囲妨害がさらに強化される",
+        skillScore: 20,
+      },
+      skillImplementationState: 'implemented',
+    },
     skill: {
       name: '虚構「ディスコミュニケーション」',
-      description: '最もHPの低い敵の攻撃を一時無効化（プレースホルダー）',
+      description: '範囲2の敵に攻撃速度低下と防御低下を与える。crowd_control 免疫には無効。',
       effect: (caster, _allies, enemies, log) => {
         const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
         const target = livingEnemies.reduce<BattleUnit | null>((lowest, enemy) => {

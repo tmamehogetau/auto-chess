@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auto Chess MVP - Battle Mock</title>
+    <link rel="icon" href="./mock-assets/battle-icon-timer.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./battle-mock.css" />
+  </head>
+  <body>
+    <main
+      class="battle-mock-app"
+      data-battle-mock-app
+      data-battle-mock-theme="remilia"
+    >
+      <section class="battle-mock-stage" data-battle-mock-stage>
+        <header class="battle-mock-top-hud" data-battle-mock-top-hud></header>
+
+        <section class="battle-mock-board-frame" data-battle-mock-board-frame>
+          <div
+            class="battle-mock-stage-illustration"
+            data-battle-mock-stage-illustration
+            aria-hidden="true"
+          ></div>
+          <div
+            class="battle-mock-skyline-layer"
+            data-battle-mock-skyline
+            aria-hidden="true"
+          ></div>
+          <div
+            class="battle-mock-ornament-layer"
+            data-battle-mock-ornaments
+            aria-hidden="true"
+          ></div>
+          <div
+            class="battle-mock-atmosphere-layer"
+            data-battle-mock-atmosphere
+            aria-hidden="true"
+          ></div>
+          <div
+            class="battle-mock-arcana-layer"
+            data-battle-mock-arcana
+            aria-hidden="true"
+          ></div>
+          <div
+            class="battle-mock-side-architecture"
+            data-battle-mock-side-architecture
+            aria-hidden="true"
+          ></div>
+          <div
+            class="battle-mock-battle-banner"
+            data-battle-mock-battle-banner
+            data-battle-mock-transient-banner
+            aria-hidden="true"
+          ></div>
+
+          <aside class="battle-mock-boss-hud" data-battle-mock-boss-hud></aside>
+
+          <aside class="battle-mock-player-hud" data-battle-mock-player-hud></aside>
+
+          <aside class="battle-mock-ally-hud" data-battle-mock-ally-hud></aside>
+
+          <aside class="battle-mock-bench-hud" data-battle-mock-bench-hud></aside>
+
+          <section
+            class="battle-mock-board"
+            data-battle-mock-board
+            aria-label="共有盤面"
+          >
+            <div class="battle-mock-board-shell">
+              <div
+                class="battle-mock-board-floor-inlay"
+                data-battle-mock-board-floor
+                aria-hidden="true"
+              ></div>
+              <div class="battle-mock-board-glow" aria-hidden="true"></div>
+              <div class="battle-mock-board-target" aria-hidden="true"></div>
+              <div
+                class="battle-mock-board-grid"
+                data-battle-mock-board-grid
+                role="grid"
+                aria-label="共有盤面 6 行 6 列"
+                aria-rowcount="6"
+                aria-colcount="6"
+              ></div>
+            </div>
+          </section>
+          <section
+            class="battle-mock-battle-log"
+            data-battle-mock-battle-log
+            aria-label="バトルログ"
+          ></section>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./battle-mock.js"></script>
+  </body>
+</html>

@@ -198,8 +198,10 @@ const RAID_PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
   9: 2100,
   10: 2400,
   11: 2700,
-  12: 3000,
+  12: 0,
 };
+
+const RAID_FINAL_BOSS_HP = 3000;
 
 const RAID_AGGREGATE_CORE_BATTLE_COLUMNS = [1, 3, 5, 0, 2, 4] as const;
 const RAID_AGGREGATE_BATTLE_COLUMNS = [1, 0, 3, 2, 5, 4] as const;
@@ -321,6 +323,7 @@ interface BattleResult {
   phaseDamageToBoss?: number;
   timeline?: BattleTimelineEvent[];
   rawTimeline?: BattleTimelineEvent[];
+  combatLog?: string[];
   survivorSnapshots?: Array<{
     unitId: string;
     battleUnitId?: string;
@@ -2791,7 +2794,11 @@ export class MatchRoomController {
     this.pendingPhaseDamageForTest = null;
     let phaseProgress = this.phaseOrchestrator.recordPhaseProgress(state.roundIndex, totalDamage);
 
-    if (phaseProgress.result === "success" && this.didRaidSideLoseAllBattleUnits()) {
+    if (this.isRaidMode() && state.roundIndex >= 12) {
+      phaseProgress = this.phaseOrchestrator.overridePhaseResult(
+        this.didBossBattleUnitFall() ? "success" : "failed",
+      );
+    } else if (phaseProgress.result === "success" && this.didRaidSideLoseAllBattleUnits()) {
       phaseProgress = this.phaseOrchestrator.overridePhaseResult("failed");
     }
 
@@ -2857,6 +2864,28 @@ export class MatchRoomController {
     return participatingRaidPlayerIds.every((playerId) => this.didRaidPlayerLoseAllBattleUnits(playerId));
   }
 
+  private didBossBattleUnitFall(): boolean {
+    const state = this.ensureStarted();
+    const bossPlayerId = state.bossPlayerId;
+    if (!bossPlayerId) {
+      return false;
+    }
+
+    const bossBattleResult = this.battleResultsByPlayer.get(bossPlayerId);
+    if (!bossBattleResult) {
+      return false;
+    }
+
+    const selectedBossId = this.selectedBossByPlayer.get(bossPlayerId);
+    if (Array.isArray(bossBattleResult.survivorSnapshots)) {
+      return !bossBattleResult.survivorSnapshots.some((snapshot) =>
+        snapshot.unitId === selectedBossId || snapshot.battleUnitId === `boss-${bossPlayerId}`,
+      );
+    }
+
+    return bossBattleResult.won === false && bossBattleResult.survivors <= 0;
+  }
+
   private applyRaidPhaseSuccessBonus(phaseResult: "pending" | "success" | "failed"): void {
     const state = this.ensureStarted();
 
@@ -2910,7 +2939,7 @@ export class MatchRoomController {
 
   private resolvePhaseHpTarget(roundIndex: number): number {
     if (this.isRaidMode()) {
-      return RAID_PHASE_HP_TARGET_BY_ROUND[roundIndex] ?? RAID_PHASE_HP_TARGET_BY_ROUND[12] ?? 3000;
+      return RAID_PHASE_HP_TARGET_BY_ROUND[roundIndex] ?? RAID_PHASE_HP_TARGET_BY_ROUND[12] ?? 0;
     }
 
     const phaseTargets = this.featureFlags.enablePhaseExpansion
@@ -2926,6 +2955,15 @@ export class MatchRoomController {
     }
 
     return phaseTargets[12] ?? 0;
+  }
+
+  private resolveBossBattleUnitHp(roundIndex: number): number | undefined {
+    if (this.isFinalBattleRound(roundIndex)) {
+      return RAID_FINAL_BOSS_HP;
+    }
+
+    const phaseHpTarget = this.resolvePhaseHpTarget(roundIndex);
+    return phaseHpTarget > 0 ? phaseHpTarget : undefined;
   }
 
   private resolveMaxRounds(): number {
@@ -3132,14 +3170,14 @@ export class MatchRoomController {
       battleUnits: BattleUnit[],
       side: "left" | "right",
     ): void {
-      const phaseHpTarget = this.resolvePhaseHpTarget(this.roundIndex);
+      const bossHpOverride = this.resolveBossBattleUnitHp(this.roundIndex);
       for (const bossPlayerId of playerIds) {
         const bossId = this.selectedBossByPlayer.get(bossPlayerId);
         const bossBattleUnit = this.battleResolutionService.createBossBattleUnit(
           bossId,
           bossPlayerId,
           this.getBossPlacementForPlayer(bossPlayerId) ?? undefined,
-          phaseHpTarget,
+          bossHpOverride,
           side,
           this.getSpecialUnitLevel(bossPlayerId),
         );

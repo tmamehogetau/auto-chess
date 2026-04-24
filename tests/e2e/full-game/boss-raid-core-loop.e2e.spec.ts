@@ -170,7 +170,7 @@ describe("E2E: Boss Raid Core Loop", () => {
   );
 
   it(
-    "R12 reaches final judgment for a boss win on simultaneous wipe",
+    "R12 reaches final judgment for a raid win when the boss is defeated on simultaneous wipe",
     { timeout: 30_000 },
     async () => {
       await withFlags(
@@ -204,7 +204,6 @@ describe("E2E: Boss Raid Core Loop", () => {
           gameLoopState.consumeLife(raidClients[2]!.sessionId, 2);
 
           controller?.advanceByTime(nowMs + 100);
-          controller?.setPendingPhaseDamageForTest(3_000);
           controller?.advanceByTime(nowMs + 200);
           battleResultsByPlayer.set(raidClients[0]!.sessionId, {
             opponentId: bossClient.sessionId,
@@ -230,12 +229,22 @@ describe("E2E: Boss Raid Core Loop", () => {
             survivors: 0,
             opponentSurvivors: 1,
           });
+          battleResultsByPlayer.set(bossClient.sessionId, {
+            opponentId: raidClients[0]!.sessionId,
+            won: false,
+            damageDealt: 10,
+            damageTaken: 3_000,
+            survivors: 0,
+            opponentSurvivors: 0,
+            survivorSnapshots: [],
+          });
           controller?.advanceByTime(nowMs + 300);
           controller?.advanceByTime(nowMs + 400);
           roomInternals.syncStateFromController?.();
 
           expect(gameRoom.state.phase).toBe("End");
-          expect(gameRoom.state.ranking[0]).toBe(bossClient.sessionId);
+          expect(gameRoom.state.ranking[0]).toBe(raidClients[0]!.sessionId);
+          expect(gameRoom.state.ranking.at(-1)).toBe(bossClient.sessionId);
           expect(gameRoom.state.players.get(raidClients[0]!.sessionId)?.eliminated).toBe(true);
           expect(gameRoom.state.players.get(raidClients[1]!.sessionId)?.eliminated).toBe(true);
           expect(gameRoom.state.players.get(raidClients[2]!.sessionId)?.eliminated).toBe(true);

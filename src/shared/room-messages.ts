@@ -369,6 +369,8 @@ export type BattleTimelineEndReason =
   | "mutual_annihilation"
   | "timeout_hp_lead"
   | "timeout_hp_tie"
+  | "phase_hp_depleted"
+  | "boss_defeated"
   | "forced"
   | "unexpected";
 

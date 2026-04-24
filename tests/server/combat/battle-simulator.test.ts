@@ -112,6 +112,42 @@ describe("battle-simulator", () => {
     expect(resolveBossSkillDefinition(boss)).toBeNull();
   });
 
+  test("reschedules pending attacks when a timed attack-speed modifier starts", () => {
+    const simulator = new BattleSimulator();
+    const jyoon = createTestBattleUnit(
+      { cell: 0, unitType: "vanguard", unitId: "jyoon", unitLevel: 4 },
+      "left",
+      0,
+    );
+    jyoon.id = "hero-raid-a";
+    jyoon.sourceUnitId = "jyoon";
+    jyoon.attackPower = 1;
+    jyoon.attackSpeed = 1;
+    jyoon.attackRange = 99;
+    jyoon.movementSpeed = 0;
+
+    const enemy = createTestBattleUnit(
+      { cell: 3, unitType: "vanguard", unitId: "enemy", unitLevel: 1 },
+      "right",
+      0,
+    );
+    enemy.hp = 1000;
+    enemy.maxHp = 1000;
+    enemy.attackPower = 0;
+    enemy.attackSpeed = 0;
+    enemy.movementSpeed = 0;
+
+    const result = simulator.simulateBattle([jyoon], [enemy], [], [], 6900);
+    const postSkillAttack = result.timeline.find((event) =>
+      event.type === "attackStart"
+      && event.sourceBattleUnitId === "hero-raid-a"
+      && event.atMs > 6000
+      && event.atMs < 7000,
+    );
+
+    expect(postSkillAttack).toBeDefined();
+  });
+
   test("standard unit skills use cooldown timing instead of attack count", () => {
     const simulator = new BattleSimulator();
     const vanguard = createTestBattleUnit(

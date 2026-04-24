@@ -896,7 +896,7 @@ function formatRoundObjectiveProgress(round: {
   phaseDamageDealt: number;
   phaseHpTarget: number;
 }): string {
-  if (round.roundIndex === 12) {
+  if (round.roundIndex === 12 && round.phaseHpTarget === 0) {
     return `ボス本体 ${formatNumber(round.phaseDamageDealt)}`;
   }
   return `${formatNumber(round.phaseDamageDealt)}/${formatNumber(round.phaseHpTarget)}`;

@@ -835,6 +835,12 @@ const buildTrackedBattleUnitIdsForPlayer = (
     trackedUnitIds.add(`hero-${playerId}`);
   }
 
+  const player = serverRoom.state.players.get(playerId);
+  const selectedBossId = player?.selectedBossId ?? "";
+  if (player?.role === "boss" && selectedBossId.length > 0) {
+    trackedUnitIds.add(`boss-${playerId}`);
+  }
+
   return trackedUnitIds;
 };
 
@@ -1177,7 +1183,9 @@ const resolveBasicSkillActivationCountForBattleUnit = (
   subUnitName: string,
   attackCount: number,
   combatLog: string[] | undefined,
+  sourceUnitDuplicateCount = 1,
 ): number => {
+  const duplicateDivisor = Math.max(1, sourceUnitDuplicateCount);
   if (HEROES.some((hero) => hero.id === sourceUnitId)) {
     const allActivations = countCombatLogActivations(combatLog, `${sourceUnitId} activates `);
     const pairSkillActivations = resolvePairSkillActivationCountForBattleUnit(
@@ -1189,11 +1197,11 @@ const resolveBasicSkillActivationCountForBattleUnit = (
       (count, marker) => count + countCombatLogActivations(combatLog, `${sourceUnitId} activates ${marker}`),
       0,
     );
-    return Math.max(0, allActivations - pairSkillActivations - subUnitSkillActivations);
+    return Math.max(0, allActivations - pairSkillActivations - subUnitSkillActivations) / duplicateDivisor;
   }
 
   if (sourceUnitId === "mayumi" || sourceUnitId === "shion" || sourceUnitId === "ariya") {
-    return countCombatLogActivations(combatLog, `${sourceUnitId} activates `);
+    return countCombatLogActivations(combatLog, `${sourceUnitId} activates `) / duplicateDivisor;
   }
 
   const triggerCount = unitType == null
@@ -1210,6 +1218,7 @@ const resolvePairSkillActivationCountForBattleUnit = (
   sourceUnitId: string,
   subUnitName: string,
   combatLog: string[] | undefined,
+  sourceUnitDuplicateCount = 1,
 ): number => {
   const markers = PAIR_SKILL_LOG_MARKERS_BY_SUB_UNIT_NAME.get(subUnitName);
   if (!markers) {
@@ -1219,7 +1228,7 @@ const resolvePairSkillActivationCountForBattleUnit = (
   return markers.reduce(
     (count, marker) => count + countCombatLogActivations(combatLog, `${sourceUnitId} activates ${marker}`),
     0,
-  );
+  ) / Math.max(1, sourceUnitDuplicateCount);
 };
 
 const buildUnitBattleOutcomesForBattle = (
@@ -1235,6 +1244,12 @@ const buildUnitBattleOutcomesForBattle = (
   const battleStartEvent = timeline.find((event): event is BattleStartEvent => event.type === "battleStart");
   if (!battleStartEvent) {
     return [];
+  }
+
+  const sourceUnitCountById = new Map<string, number>();
+  for (const unit of battleStartEvent.units) {
+    const sourceUnitId = unit.sourceUnitId ?? unit.battleUnitId;
+    sourceUnitCountById.set(sourceUnitId, (sourceUnitCountById.get(sourceUnitId) ?? 0) + 1);
   }
 
   const ownerByTrackedUnitId = buildTrackedUnitOwnerMap(playersAtBattleStart);
@@ -1903,17 +1918,20 @@ const buildUnitBattleOutcomesForBattle = (
         plannedApproachMoveSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0;
       const firstAttackAtMs = firstAttackAtMsByBattleUnitId.get(unit.battleUnitId) ?? null;
       const attackCount = attackCountByBattleUnitId.get(unit.battleUnitId) ?? 0;
+      const sourceUnitDuplicateCount = sourceUnitCountById.get(sourceUnitId) ?? 1;
       const basicSkillActivationCount = resolveBasicSkillActivationCountForBattleUnit(
         sourceUnitId,
         metadata?.unitType ?? unit.displayName ?? undefined,
         metadata?.subUnitName ?? "",
         attackCount,
         combatLog,
+        sourceUnitDuplicateCount,
       );
       const pairSkillActivationCount = resolvePairSkillActivationCountForBattleUnit(
         sourceUnitId,
         metadata?.subUnitName ?? "",
         combatLog,
+        sourceUnitDuplicateCount,
       );
       const firstPlannedApproachTargetBattleUnitId =
         firstPlannedApproachTargetByBattleUnitId.get(unit.battleUnitId) ?? null;

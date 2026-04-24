@@ -518,6 +518,7 @@ export class BattleResolutionService {
     boardCellIndex?: number,
     battleSide: "left" | "right" = "left",
     heroUnitLevel: number = 1,
+    attachedSubUnit?: NonNullable<BoardUnitPlacement["subUnit"]>,
   ): BattleUnit | null {
     if (!heroId) return null;
 
@@ -552,6 +553,7 @@ export class BattleResolutionService {
         defenseMultiplier: 1,
         attackSpeedMultiplier: 1,
       },
+      ...(attachedSubUnit ? { attachedSubUnit } : {}),
     };
   }
 

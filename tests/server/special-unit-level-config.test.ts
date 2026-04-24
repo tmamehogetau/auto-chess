@@ -71,6 +71,13 @@ describe("special-unit-level-config", () => {
     expect(getSpecialUnitCombatMultiplierDelta(7)).toBe(0);
   });
 
+  test("combat multiplier delta は不正な現在レベルを価値として扱わない", () => {
+    expect(getSpecialUnitCombatMultiplierDelta(0)).toBe(0);
+    expect(getSpecialUnitCombatMultiplierDelta(-1)).toBe(0);
+    expect(getSpecialUnitCombatMultiplierDelta(1.5)).toBe(0);
+    expect(getSpecialUnitCombatMultiplierDelta(Number.NaN)).toBe(0);
+  });
+
   test("special unit level は Lv7 cap を超えない範囲だけ進められる", () => {
     expect(upgradeSpecialUnitLevel(1, 3)).toBe(4);
     expect(upgradeSpecialUnitLevel(4, 3)).toBe(7);

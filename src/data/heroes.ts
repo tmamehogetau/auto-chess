@@ -240,22 +240,23 @@ export const HEROES: Hero[] = [
       name: '鬼形造形術',
       description: '範囲2の味方に攻撃と防御の両方のバフを付与する。',
       effect: (caster, allies, _enemies, log) => {
-        // 自身に大防御バフ
+        // Legacy display-side effect kept aligned with HERO_SKILL_DEFINITIONS.
+        caster.buffModifiers.attackMultiplier *= 1.1;
         caster.buffModifiers.defenseMultiplier *= 1.4;
         
-        // 周囲（同セル〜隣接）の味方に小防御バフ
         for (const ally of allies) {
           if (!ally.isDead && ally !== caster) {
             const distance = sharedBoardManhattanDistance(
               sharedBoardIndexToCoordinate(ally.cell),
               sharedBoardIndexToCoordinate(caster.cell),
             );
-            if (distance <= 1) {
+            if (distance <= 2) {
+              ally.buffModifiers.attackMultiplier *= 1.1;
               ally.buffModifiers.defenseMultiplier *= 1.15;
             }
           }
         }
-        log.push(`${caster.type} activates 埴安神「偶像の加護」! +40% self defense, +15% nearby allies defense`);
+        log.push(`${caster.type} activates 鬼形造形術! attack and defense buffs applied`);
       },
     },
   },

@@ -413,6 +413,81 @@ describe("hero-exclusive unit skills", () => {
     expect(result.combatLog.some((entry) => entry.includes("埴輪「アイドルクリーチャー」 Lv1"))).toBe(true);
   });
 
+  test("hero-attached exclusive sub units bind pair skills without board placements", () => {
+    const simulator = new BattleSimulator();
+    const keiki = createBattleUnit({
+      id: "hero-keiki",
+      sourceUnitId: "keiki",
+      type: "mage",
+      unitLevel: 4,
+      hp: 1000,
+      maxHp: 1000,
+      attackPower: 20,
+      attackSpeed: 0,
+      attackRange: 2,
+      movementSpeed: 0,
+      cell: 0,
+      attachedSubUnit: {
+        unitType: "vanguard",
+        unitLevel: 4,
+        unitId: "mayumi",
+      },
+    });
+    const enemy = createBattleUnit({
+      id: "right-attacker",
+      sourceUnitId: "enemy-1",
+      battleSide: "right",
+      hp: 500,
+      maxHp: 500,
+      attackPower: 40,
+      attackSpeed: 2,
+      attackRange: 4,
+      movementSpeed: 0,
+      cell: 3,
+    });
+
+    const result = simulator.simulateBattle([keiki], [enemy], [], [], 11100);
+
+    expect(keiki.shieldAmount).toBeCloseTo(150);
+    expect(result.combatLog.some((entry) => entry.includes("埴輪「アイドルクリーチャー」 Lv1"))).toBe(true);
+  });
+
+  test("hero-attached okina schedules the back-side sub skill", () => {
+    const simulator = new BattleSimulator();
+    const host = createBattleUnit({
+      id: "hero-reimu",
+      sourceUnitId: "reimu",
+      type: "vanguard",
+      unitLevel: 4,
+      attackPower: 20,
+      attackSpeed: 0,
+      attackRange: 1,
+      movementSpeed: 0,
+      cell: 0,
+      attachedSubUnit: {
+        unitType: "vanguard",
+        unitLevel: 7,
+        unitId: "okina",
+      },
+    });
+    const enemy = createBattleUnit({
+      id: "right-dummy",
+      sourceUnitId: "enemy-1",
+      battleSide: "right",
+      hp: 1000,
+      maxHp: 1000,
+      attackPower: 0,
+      attackSpeed: 0,
+      movementSpeed: 0,
+      cell: 1,
+    });
+
+    const result = simulator.simulateBattle([host], [enemy], [], [], 7100);
+
+    expect(host.buffModifiers.attackMultiplier).toBeCloseTo(1.85);
+    expect(result.combatLog.some((entry) => entry.includes("秘神「裏表の逆転:裏」"))).toBe(true);
+  });
+
   test("mayumi pair skill gets stronger at level 7", () => {
     const simulator = new BattleSimulator();
     const keiki = createBattleUnit({

@@ -491,6 +491,8 @@ export const PAIR_SKILL_DEFINITIONS: Record<string, PairSkillEffect> = {
   },
 };
 
+// TODO(raid-balance): populate boss active skills here. Empty intentionally so
+// resolveBossSkillDefinition no-ops until boss skill tuning is designed.
 export const BOSS_SKILL_DEFINITIONS: Record<string, BossSkillEffect> = {};
 
 export function resolveUnitSkillDefinition(unit: BattleUnit): UnitSkillEffect | null {

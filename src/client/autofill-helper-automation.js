@@ -1,3 +1,5 @@
+import { HERO_EXCLUSIVE_UNITS } from "../data/hero-exclusive-units";
+import { HEROES } from "../data/heroes";
 import { getTouhouUnitById } from "../data/touhou-units";
 import {
   getClientSpecialUnitLevel,
@@ -17,6 +19,10 @@ export const AUTO_FILL_HERO_IDS = [
 const AUTO_FILL_SPECIAL_UNIT_IDS = new Set([
   AUTO_FILL_BOSS_ID,
   ...AUTO_FILL_HERO_IDS,
+]);
+const SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID = Object.fromEntries([
+  ...HEROES.map((unit) => [unit.id, unit.progressionBonus]),
+  ...HERO_EXCLUSIVE_UNITS.map((unit) => [unit.unitId, unit.progressionBonus]),
 ]);
 const AUTO_FILL_BOSS_DEPLOY_SEQUENCES = [
   [4, 10, 16, 3, 9, 15, 5, 11, 17, 1, 7, 13, 2, 8, 14, 0, 6, 12],
@@ -1417,20 +1423,23 @@ function buildSpecialUnitUpgradeAction(player, playerPhase) {
   };
 }
 
+function getAutoFillSpecialUnitUpgradeValueScore(player) {
+  return getClientSpecialUnitUpgradeValueScore(player, SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID);
+}
+
 function getRaidSpecialUnitUpgradePriorityScore(player, strategy = "upgrade", state = null) {
   if (player?.role !== "raid") {
     return Number.NEGATIVE_INFINITY;
   }
 
   const currentLevel = getClientSpecialUnitLevel(player);
-  const upgradeValueScore = getClientSpecialUnitUpgradeValueScore(player) * 24;
+  const upgradeValueScore = getAutoFillSpecialUnitUpgradeValueScore(player) * 24;
   if (upgradeValueScore <= 0) {
     return Number.NEGATIVE_INFINITY;
   }
 
   const roundIndex = getStateRoundIndex(state);
-  const ownedRaidUnitCount =
-    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const ownedRaidUnitCount = getOwnedRaidUnitCount(player);
   const rosterBonus = ownedRaidUnitCount >= 2
     ? 18
     : ownedRaidUnitCount >= 1
@@ -1452,7 +1461,7 @@ function getBossSpecialUnitUpgradePriorityScore(player, strategy = "upgrade", st
 
   const currentLevel = getClientSpecialUnitLevel(player);
   const upgradeValueScore =
-    getClientSpecialUnitUpgradeValueScore(player) * BOSS_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT;
+    getAutoFillSpecialUnitUpgradeValueScore(player) * BOSS_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT;
   if (upgradeValueScore <= 0) {
     return Number.NEGATIVE_INFINITY;
   }
@@ -1489,8 +1498,7 @@ function shouldPreferRaidSpecialUnitUpgradeOverRefresh(player, state = null) {
     return roundIndex >= 4;
   }
 
-  const ownedRaidUnitCount =
-    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const ownedRaidUnitCount = getOwnedRaidUnitCount(player);
 
   return currentLevel <= 4
     && ownedRaidUnitCount >= 2
@@ -1526,8 +1534,7 @@ function canPreferRaidSpecialUnitUpgradeWithBenchBacklog(player, state = null) {
   }
 
   const roundIndex = getStateRoundIndex(state);
-  const ownedRaidUnitCount =
-    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const ownedRaidUnitCount = getOwnedRaidUnitCount(player);
 
   return roundIndex !== null
     && roundIndex >= 5
@@ -1549,8 +1556,7 @@ function shouldLockInRaidSpecialUnitUpgrade(player, state = null) {
     return false;
   }
 
-  const ownedRaidUnitCount =
-    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const ownedRaidUnitCount = getOwnedRaidUnitCount(player);
   return ownedRaidUnitCount >= 2;
 }
 
@@ -1580,7 +1586,7 @@ function buildSpecialUnitUpgradeDecision(player, playerPhase, strategy = "upgrad
     return null;
   }
 
-  const valueScore = getClientSpecialUnitUpgradeValueScore(player);
+  const valueScore = getAutoFillSpecialUnitUpgradeValueScore(player);
   return {
     action,
     valueScore,
@@ -1619,6 +1625,12 @@ function hasDeployedSpecialUnit(player) {
   // Real room state does not serialize the selected hero/boss into boardUnits tokens.
   // Once a special unit is selected, it already participates in combat and can be upgraded.
   return true;
+}
+
+function getOwnedRaidUnitCount(player) {
+  return toArray(player?.boardUnits).length
+    + toArray(player?.benchUnits).length
+    + (hasDeployedSpecialUnit(player) ? 1 : 0);
 }
 
 function getStateRoundIndex(state) {

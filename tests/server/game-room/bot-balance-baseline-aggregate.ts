@@ -1666,6 +1666,13 @@ export function buildBotOnlyBaselineAggregateReport(
     totalCopies: number;
     matchesPresent: number;
   }>();
+  const finalBoardUnitsByRoleAndId = new Map<string, {
+    unitId: string;
+    unitType: string;
+    unitName: string;
+    totalCopies: number;
+    matchesPresent: number;
+  }>();
   const damageByUnit = new Map<string, {
     unitId: string;
     unitName: string;
@@ -1756,6 +1763,7 @@ export function buildBotOnlyBaselineAggregateReport(
     const bossMaxUnitLevelByMatch = new Map<string, number>();
     const raidMaxUnitLevelByMatch = new Map<string, number>();
     const seenFinalBoardUnitsInMatch = new Set<string>();
+    const seenFinalBoardUnitsByRoleInMatch = new Set<string>();
     let matchHasHighCostFinalBoardUnit = false;
     for (const player of report.finalPlayers) {
       hpTotalsByLabel.set(player.label, (hpTotalsByLabel.get(player.label) ?? 0) + player.hp);
@@ -1805,6 +1813,21 @@ export function buildBotOnlyBaselineAggregateReport(
           seenFinalBoardUnitsInMatch.add(boardUnit.unitId);
         }
         finalBoardUnitsById.set(boardUnit.unitId, existing);
+
+        const roleScopedKey = `${player.role}::${boardUnit.unitId}`;
+        const existingForRole = finalBoardUnitsByRoleAndId.get(roleScopedKey) ?? {
+          unitId: boardUnit.unitId,
+          unitType: boardUnit.unitType,
+          unitName: boardUnit.unitName,
+          totalCopies: 0,
+          matchesPresent: 0,
+        };
+        existingForRole.totalCopies += 1;
+        if (!seenFinalBoardUnitsByRoleInMatch.has(roleScopedKey)) {
+          existingForRole.matchesPresent += 1;
+          seenFinalBoardUnitsByRoleInMatch.add(roleScopedKey);
+        }
+        finalBoardUnitsByRoleAndId.set(roleScopedKey, existingForRole);
 
         const resolvedCost = resolveBoardUnitCost(boardUnit.unitId);
         if (resolvedCost !== null && resolvedCost >= HIGH_COST_THRESHOLD) {
@@ -2458,7 +2481,7 @@ export function buildBotOnlyBaselineAggregateReport(
         || right.observationCount - left.observationCount
         || left.unitId.localeCompare(right.unitId))
       .map((entry) => {
-        const finalBoard = finalBoardUnitsById.get(entry.unitId);
+        const finalBoard = finalBoardUnitsByRoleAndId.get(`${entry.role}::${entry.unitId}`);
         return {
           ...entry,
           offeredMatchRate: entry.matchesPresent / completedMatches,

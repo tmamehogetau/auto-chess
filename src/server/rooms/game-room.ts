@@ -948,7 +948,19 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private logPrepCommandActions(
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
-    shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
+    shopOffersSnapshot?: Array<{
+      unitType: string;
+      cost: number;
+      unitId?: string;
+      displayName?: string;
+      isRumorUnit?: boolean;
+    }>,
+    bossShopOffersSnapshot?: Array<{
+      unitType: string;
+      cost: number;
+      unitId?: string;
+      displayName?: string;
+    }>,
     benchUnitsSnapshot?: Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; unitLevel: number; unitCount: number }>,
     boardPlacementsSnapshot?: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; unitLevel?: number; unitCount?: number }>,
   ): void {
@@ -960,7 +972,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       getBoardPlacements: (sid) => this.controller?.getBoardPlacementsForPlayer(sid),
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
-    }, { shopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });
+    }, { shopOffersSnapshot, bossShopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });
   }
 
   private isAdminQueryClient(client: Client): boolean {
@@ -1319,6 +1331,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         sessionId,
         commandPayload,
         shopOffersSnapshot,
+        bossShopOffersSnapshot,
         benchUnitsSnapshot,
         boardPlacementsSnapshot,
       ) => {
@@ -1326,6 +1339,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           sessionId,
           commandPayload,
           shopOffersSnapshot,
+          bossShopOffersSnapshot,
           benchUnitsSnapshot,
           boardPlacementsSnapshot,
         );

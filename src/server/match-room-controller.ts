@@ -2883,7 +2883,7 @@ export class MatchRoomController {
       );
     }
 
-    return bossBattleResult.won === false && bossBattleResult.survivors <= 0;
+    return false;
   }
 
   private applyRaidPhaseSuccessBonus(phaseResult: "pending" | "success" | "failed"): void {
@@ -3156,6 +3156,7 @@ export class MatchRoomController {
         this.resolveHeroBattleCell(heroPlayerId),
         side,
         this.getSpecialUnitLevel(heroPlayerId),
+        this.getHeroAttachedSubUnitForPlayer(heroPlayerId) ?? undefined,
       );
       if (heroBattleUnit) {
         battleUnits.push(heroBattleUnit);

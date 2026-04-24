@@ -47,6 +47,7 @@ export interface PrepCommandLoggingDeps {
 
 export interface LogPrepCommandActionsOptions {
   shopOffersSnapshot?: LoggedShopOffer[] | undefined;
+  bossShopOffersSnapshot?: LoggedBossShopOffer[] | undefined;
   benchUnitsSnapshot?: Array<{
     unitType: "vanguard" | "ranger" | "mage" | "assassin";
     cost: number;
@@ -174,7 +175,7 @@ export function logPrepCommandActions(
   }
 
   if (commandPayload.bossShopBuySlotIndex !== undefined) {
-    const bossOffers = deps.getBossShopOffers(sessionId);
+    const bossOffers = options?.bossShopOffersSnapshot ?? deps.getBossShopOffers(sessionId);
     const offer = bossOffers?.[commandPayload.bossShopBuySlotIndex];
     if (offer) {
       deps.logger.logAction(sessionId, roundIndex, "buy_boss_unit", {

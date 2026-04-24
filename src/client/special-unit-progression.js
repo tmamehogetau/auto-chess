@@ -13,12 +13,7 @@ const DEFAULT_SPECIAL_UNIT_PROGRESSION_BONUS = {
   level7Bonus: null,
   skillImplementationState: "implemented",
 };
-const SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID = {
-  jyoon: {
-    ...DEFAULT_SPECIAL_UNIT_PROGRESSION_BONUS,
-    baseGrowthProfile: "late-bloom",
-  },
-};
+const SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID = {};
 
 function clampSpecialUnitLevel(level) {
   return Math.min(SPECIAL_UNIT_LEVEL_MAX, Math.max(SPECIAL_UNIT_LEVEL_MIN, level));
@@ -106,7 +101,10 @@ export function getClientSpecialUnitUpgradeCost(player) {
   return costs[currentLevel - SPECIAL_UNIT_LEVEL_MIN] ?? null;
 }
 
-export function getClientSpecialUnitUpgradeValueScore(player) {
+export function getClientSpecialUnitUpgradeValueScore(
+  player,
+  progressionBonusById = SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID,
+) {
   const currentLevel = getClientSpecialUnitLevel(player);
   const nextUpgradeCost = getClientSpecialUnitUpgradeCost(player);
   if (nextUpgradeCost === null) {
@@ -114,7 +112,7 @@ export function getClientSpecialUnitUpgradeValueScore(player) {
   }
 
   const specialUnitId = getClientSelectedSpecialUnitId(player);
-  const progression = SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID[specialUnitId]
+  const progression = progressionBonusById?.[specialUnitId]
     ?? DEFAULT_SPECIAL_UNIT_PROGRESSION_BONUS;
   const baseGrowthScore =
     getClientSpecialUnitCombatMultiplierDelta(currentLevel, specialUnitId) * BASE_MULTIPLIER_DELTA_SCORE;

@@ -122,14 +122,15 @@ export function getSpecialUnitCombatMultiplierDelta(
   currentLevel: number,
   specialUnitId?: string,
 ): number {
-  if (!Number.isFinite(currentLevel)) {
+  if (
+    !Number.isFinite(currentLevel)
+    || !Number.isInteger(currentLevel)
+    || currentLevel < SPECIAL_UNIT_LEVEL_MIN
+  ) {
     return 0;
   }
 
-  const normalizedCurrentLevel = Math.max(
-    SPECIAL_UNIT_LEVEL_MIN,
-    Math.min(SPECIAL_UNIT_LEVEL_MAX, Math.floor(currentLevel)),
-  );
+  const normalizedCurrentLevel = Math.min(SPECIAL_UNIT_LEVEL_MAX, currentLevel);
   if (normalizedCurrentLevel >= SPECIAL_UNIT_LEVEL_MAX) {
     return 0;
   }

@@ -122,6 +122,7 @@ export interface BattleUnit {
   pairSkillState?: Record<string, boolean>;
   subUnitSkillIds?: string[];
   subUnitSkillLevels?: Record<string, 1 | 4 | 7>;
+  attachedSubUnit?: NonNullable<BoardUnitPlacement["subUnit"]>;
   stackState?: Record<string, number>;
 }
 
@@ -244,17 +245,16 @@ function applyPairSkillBindings(
   placements: BoardUnitPlacement[],
   combatLog: string[],
 ): void {
-  const entryCount = Math.min(units.length, placements.length);
-
-  for (let index = 0; index < entryCount; index += 1) {
-    const unit = units[index];
-    const placement = placements[index];
-    if (!unit || !placement?.subUnit?.unitId) {
-      continue;
+  const bindSubUnitToHost = (
+    unit: BattleUnit,
+    subUnit: NonNullable<BoardUnitPlacement["subUnit"]>,
+  ): void => {
+    if (!subUnit.unitId) {
+      return;
     }
 
-    if (placement.subUnit.unitId === "okina") {
-      const okinaLevel = placement.subUnit.unitLevel ?? 1;
+    if (subUnit.unitId === "okina") {
+      const okinaLevel = subUnit.unitLevel ?? 1;
       const okinaSkillLevel: 1 | 4 | 7 = okinaLevel >= 7 ? 7 : okinaLevel >= 4 ? 4 : 1;
       unit.subUnitSkillIds = [...(unit.subUnitSkillIds ?? []), "okina-back"];
       unit.subUnitSkillLevels = {
@@ -264,19 +264,19 @@ function applyPairSkillBindings(
       combatLog.push(`${generateUnitName(unit)} links sub skill 秘神「裏表の逆転:裏」 Lv${okinaSkillLevel}`);
     }
 
-    const heroExclusiveUnit = getHeroExclusiveUnitById(placement.subUnit.unitId);
+    const heroExclusiveUnit = getHeroExclusiveUnitById(subUnit.unitId);
     if (!heroExclusiveUnit || heroExclusiveUnit.pairSkillId.length === 0) {
-      continue;
+      return;
     }
 
     const hostHeroId = resolveHeroId(unit) ?? unit.sourceUnitId ?? "";
     if (hostHeroId !== heroExclusiveUnit.exclusiveHeroId) {
-      continue;
+      return;
     }
 
-    const subUnitLevel = placement.subUnit.unitLevel;
+    const subUnitLevel = subUnit.unitLevel;
     if (typeof subUnitLevel !== "number" || !Number.isFinite(subUnitLevel)) {
-      continue;
+      return;
     }
 
     const pairSkillLevel = getProgressionMilestoneStage(
@@ -284,7 +284,7 @@ function applyPairSkillBindings(
       heroExclusiveUnit.progressionBonus,
     );
     if (pairSkillLevel === 0) {
-      continue;
+      return;
     }
 
     unit.pairSkillIds = [...(unit.pairSkillIds ?? []), heroExclusiveUnit.pairSkillId];
@@ -297,6 +297,24 @@ function applyPairSkillBindings(
     combatLog.push(
       `${generateUnitName(unit)} links pair skill Lv${pairSkillLevel} (${heroExclusiveUnit.displayName}): ${pairSkillDefinition?.name ?? heroExclusiveUnit.pairSkillId}`,
     );
+  };
+
+  const entryCount = Math.min(units.length, placements.length);
+
+  for (let index = 0; index < entryCount; index += 1) {
+    const unit = units[index];
+    const placement = placements[index];
+    if (!unit || !placement?.subUnit?.unitId) {
+      continue;
+    }
+
+    bindSubUnitToHost(unit, placement.subUnit);
+  }
+
+  for (const unit of units) {
+    if (unit.attachedSubUnit) {
+      bindSubUnitToHost(unit, unit.attachedSubUnit);
+    }
   }
 }
 
@@ -2334,6 +2352,38 @@ export class BattleSimulator {
         return currentTarget ?? findClosestLivingEnemy(caster, enemies);
       };
 
+      const reschedulePendingAttackForSpeedChange = (
+        target: BattleUnit,
+        previousAttackSpeedMultiplier: number,
+      ): void => {
+        const scheduledAttackTime = nextScheduledAttackAtByUnitId.get(target.id);
+        if (scheduledAttackTime === undefined) {
+          return;
+        }
+
+        const previousIntervalMs = target.attackSpeed > 0 && previousAttackSpeedMultiplier > 0
+          ? 1000 / (target.attackSpeed * previousAttackSpeedMultiplier)
+          : null;
+        const nextIntervalMs = getAttackIntervalMs(target);
+        if (previousIntervalMs === null || nextIntervalMs === null) {
+          nextScheduledAttackAtByUnitId.delete(target.id);
+          return;
+        }
+
+        const oldRemainingMs = Math.max(0, scheduledAttackTime - currentTime);
+        const elapsedProgress = Math.max(
+          0,
+          Math.min(1, (previousIntervalMs - oldRemainingMs) / previousIntervalMs),
+        );
+        const nextActionTime = currentTime + Math.max(0, (1 - elapsedProgress) * nextIntervalMs);
+        nextScheduledAttackAtByUnitId.set(target.id, nextActionTime);
+        actionQueue.push({
+          unit: target,
+          actionTime: nextActionTime,
+          type: "attack",
+        });
+      };
+
       const applyTimedModifier = (target: BattleUnit, modifier: TimedCombatModifier): void => {
         if (target.isDead || modifier.durationMs <= 0) {
           return;
@@ -2344,11 +2394,15 @@ export class BattleSimulator {
           effectInstanceId: `${target.id}:${modifier.id}:${timedEffectSequence++}`,
         };
 
+        const previousAttackSpeedMultiplier = target.buffModifiers.attackSpeedMultiplier;
         target.buffModifiers.attackMultiplier *= modifier.attackMultiplier ?? 1;
         target.buffModifiers.defenseMultiplier *= modifier.defenseMultiplier ?? 1;
         target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
         target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
           * (modifier.incomingDamageMultiplier ?? 1);
+        if ((modifier.attackSpeedMultiplier ?? 1) !== 1) {
+          reschedulePendingAttackForSpeedChange(target, previousAttackSpeedMultiplier);
+        }
 
         actionQueue.push({
           unit: target,
@@ -2362,11 +2416,15 @@ export class BattleSimulator {
         target: BattleUnit,
         modifier: ActiveTimedCombatModifier,
       ): void => {
+        const previousAttackSpeedMultiplier = target.buffModifiers.attackSpeedMultiplier;
         target.buffModifiers.attackMultiplier /= modifier.attackMultiplier ?? 1;
         target.buffModifiers.defenseMultiplier /= modifier.defenseMultiplier ?? 1;
         target.buffModifiers.attackSpeedMultiplier /= modifier.attackSpeedMultiplier ?? 1;
         target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
           / (modifier.incomingDamageMultiplier ?? 1);
+        if ((modifier.attackSpeedMultiplier ?? 1) !== 1) {
+          reschedulePendingAttackForSpeedChange(target, previousAttackSpeedMultiplier);
+        }
       };
 
       const applyShield = (target: BattleUnit, amount: number, sourceId: string): void => {

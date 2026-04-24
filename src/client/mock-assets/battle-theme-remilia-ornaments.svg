@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" fill="none" data-koumakan-ornaments="true">
+  <defs>
+    <linearGradient id="ornamentGold" x1="0" y1="0" x2="1600" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7b4b28" stop-opacity="0"/>
+      <stop offset=".16" stop-color="#d3a35d" stop-opacity=".62"/>
+      <stop offset=".5" stop-color="#f7d28d" stop-opacity=".2"/>
+      <stop offset=".84" stop-color="#d3a35d" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#7b4b28" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <g data-koumakan-side-arches="true" opacity=".36" stroke="url(#ornamentGold)" stroke-width="2.2">
+    <path d="M108 164H392M1208 164h284M112 606h270M1218 606h270"/>
+    <path d="M386 146c-46 68-46 162 0 230M1214 146c46 68 46 162 0 230"/>
+    <path d="M386 610c-42 80-42 188 0 304M1214 610c42 80 42 188 0 304"/>
+    <path d="M390 176h284M926 176h284M390 940h284M926 940h284" opacity=".62"/>
+  </g>
+  <g data-koumakan-column-trim="true" opacity=".3" stroke="#f7d28d" stroke-width="1.4">
+    <path d="M376 150v820M1224 150v820" stroke-width="7" opacity=".42"/>
+    <path d="M430 130v822M1170 130v822" opacity=".28"/>
+    <path d="M196 250c34 42 34 84 0 126M1404 250c-34 42-34 84 0 126"/>
+    <path d="M196 718c34 48 34 96 0 144M1404 718c-34 48-34 96 0 144"/>
+  </g>
+  <g data-koumakan-gold-filagree="true" opacity=".24" fill="#f7d28d">
+    <path d="M266 210c18 28 18 56 0 84-18-28-18-56 0-84Z"/>
+    <path d="M1334 210c-18 28-18 56 0 84 18-28 18-56 0-84Z"/>
+    <path d="M266 654c22 36 22 72 0 108-22-36-22-72 0-108Z"/>
+    <path d="M1334 654c-22 36-22 72 0 108 22-36 22-72 0-108Z"/>
+  </g>
+</svg>

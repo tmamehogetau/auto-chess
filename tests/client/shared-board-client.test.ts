@@ -2861,7 +2861,7 @@ describe("shared-board client", () => {
       boardWidth: 6,
       boardHeight: 6,
       cells: {
-        18: { unitId: "hero:player-1", ownerId: "player-1", displayName: "霊夢" },
+        18: { unitId: "hero:player-1", ownerId: "player-1", displayName: "博麗霊夢" },
         19: { unitId: "vanguard-1", ownerId: "player-1", displayName: "美鈴" },
       },
       cursors: {},
@@ -3269,7 +3269,7 @@ describe("shared-board client", () => {
         title: "美鈴",
         lines: expect.arrayContaining([
           "LV 2",
-          "サブ効果: 隠岐奈",
+          "サブ効果: 摩多羅隠岐奈",
           "他の自軍 unit の sub slot に入れます。",
         ]),
       }),
@@ -3345,7 +3345,7 @@ describe("shared-board client", () => {
     expect(hoverCalls).toEqual([
       expect.objectContaining({
         kicker: "Sub Unit",
-        title: "隠岐奈",
+        title: "摩多羅隠岐奈",
         portraitKey: "okina",
         lines: expect.arrayContaining([
           "装着先: 美鈴",
@@ -3499,7 +3499,7 @@ describe("shared-board client", () => {
     };
     expect(portrait?.className).toContain("shared-board-sub-slot-portrait");
     expect(portrait?.src).toBe("/pics/processed/front/okina.png");
-    expect(portrait?.alt).toBe("隠岐奈");
+    expect(portrait?.alt).toBe("摩多羅隠岐奈");
   });
 
   test("shared board keeps attached sub slots visible during purchase so next round prep does not hide them", async () => {
@@ -3699,7 +3699,7 @@ describe("shared-board client", () => {
         30: {
           unitId: "hero:player-1",
           ownerId: "player-1",
-          displayName: "霊夢",
+          displayName: "博麗霊夢",
         },
       },
       cursors: {},

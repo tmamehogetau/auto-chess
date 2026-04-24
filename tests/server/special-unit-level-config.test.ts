@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   calculateSpecialUnitUpgradeCost,
   getSpecialUnitCombatMultiplier,
+  getSpecialUnitCombatMultiplierDelta,
   getSpecialUnitUpgradeCost,
   upgradeSpecialUnitLevel,
 } from "../../src/server/special-unit-level-config";
@@ -14,8 +15,8 @@ describe("special-unit-level-config", () => {
     expect(getSpecialUnitUpgradeCost(2)).toBe(2);
     expect(getSpecialUnitUpgradeCost(3)).toBe(3);
     expect(getSpecialUnitUpgradeCost(4)).toBe(4);
-    expect(getSpecialUnitUpgradeCost(5)).toBe(6);
-    expect(getSpecialUnitUpgradeCost(6)).toBe(9);
+    expect(getSpecialUnitUpgradeCost(5)).toBe(5);
+    expect(getSpecialUnitUpgradeCost(6)).toBe(7);
     expect(getSpecialUnitUpgradeCost(7)).toBeNull();
   });
 
@@ -24,21 +25,21 @@ describe("special-unit-level-config", () => {
     expect(getSpecialUnitUpgradeCost(2, "jyoon")).toBe(3);
     expect(getSpecialUnitUpgradeCost(3, "jyoon")).toBe(4);
     expect(getSpecialUnitUpgradeCost(4, "jyoon")).toBe(5);
-    expect(getSpecialUnitUpgradeCost(5, "jyoon")).toBe(7);
-    expect(getSpecialUnitUpgradeCost(6, "jyoon")).toBe(10);
+    expect(getSpecialUnitUpgradeCost(5, "jyoon")).toBe(6);
+    expect(getSpecialUnitUpgradeCost(6, "jyoon")).toBe(8);
     expect(getSpecialUnitUpgradeCost(7, "jyoon")).toBeNull();
   });
 
   test("複数回強化コストは段階コストを順番に合算する", () => {
     expect(calculateSpecialUnitUpgradeCost(1, 3)).toBe(7);
-    expect(calculateSpecialUnitUpgradeCost(4, 3)).toBe(19);
-    expect(calculateSpecialUnitUpgradeCost(1, 6)).toBe(26);
+    expect(calculateSpecialUnitUpgradeCost(4, 3)).toBe(16);
+    expect(calculateSpecialUnitUpgradeCost(1, 6)).toBe(23);
   });
 
   test("女苑の複数回強化コストも専用テーブルで合算する", () => {
     expect(calculateSpecialUnitUpgradeCost(1, 3, "jyoon")).toBe(10);
-    expect(calculateSpecialUnitUpgradeCost(4, 3, "jyoon")).toBe(22);
-    expect(calculateSpecialUnitUpgradeCost(1, 6, "jyoon")).toBe(32);
+    expect(calculateSpecialUnitUpgradeCost(4, 3, "jyoon")).toBe(19);
+    expect(calculateSpecialUnitUpgradeCost(1, 6, "jyoon")).toBe(29);
   });
 
   test("default主人公の combat multiplier は spec の後半重めカーブを使う", () => {
@@ -61,6 +62,20 @@ describe("special-unit-level-config", () => {
     expect(getSpecialUnitCombatMultiplier(6, "jyoon")).toBe(2.85);
     expect(getSpecialUnitCombatMultiplier(7, "jyoon")).toBe(3.6);
     expect(getSpecialUnitCombatMultiplier(99, "jyoon")).toBe(1);
+  });
+
+  test("combat multiplier delta は次レベルの伸び幅を返す", () => {
+    expect(getSpecialUnitCombatMultiplierDelta(3)).toBeCloseTo(0.25);
+    expect(getSpecialUnitCombatMultiplierDelta(6)).toBeCloseTo(0.6);
+    expect(getSpecialUnitCombatMultiplierDelta(5, "jyoon")).toBeCloseTo(0.6);
+    expect(getSpecialUnitCombatMultiplierDelta(7)).toBe(0);
+  });
+
+  test("combat multiplier delta は不正な現在レベルを価値として扱わない", () => {
+    expect(getSpecialUnitCombatMultiplierDelta(0)).toBe(0);
+    expect(getSpecialUnitCombatMultiplierDelta(-1)).toBe(0);
+    expect(getSpecialUnitCombatMultiplierDelta(1.5)).toBe(0);
+    expect(getSpecialUnitCombatMultiplierDelta(Number.NaN)).toBe(0);
   });
 
   test("special unit level は Lv7 cap を超えない範囲だけ進められる", () => {

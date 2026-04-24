@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 292 360" preserveAspectRatio="none" role="img" aria-label="紅魔館パネル装飾">
+  <defs>
+    <linearGradient id="panelBase" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#35101d"/>
+      <stop offset=".42" stop-color="#11131d"/>
+      <stop offset="1" stop-color="#07101a"/>
+    </linearGradient>
+    <linearGradient id="goldLine" x1="0" x2="1">
+      <stop offset="0" stop-color="#6c4423" stop-opacity=".35"/>
+      <stop offset=".5" stop-color="#f5ce86" stop-opacity=".76"/>
+      <stop offset="1" stop-color="#6c4423" stop-opacity=".35"/>
+    </linearGradient>
+  </defs>
+  <path d="M14 2h264l12 14v328l-14 14H16L2 344V16Z" fill="#060810" opacity=".52"/>
+  <path d="M18 8h256l10 12v318l-12 14H20L8 338V20Z" fill="url(#panelBase)" stroke="url(#goldLine)" stroke-width="3"/>
+  <path d="M28 26h236M28 334h236" stroke="#f4cd82" stroke-width="2" stroke-opacity=".45"/>
+  <path d="M24 44h244M24 316h244" stroke="#7c502a" stroke-width="5" stroke-opacity=".28"/>
+  <g fill="#f4cd82" opacity=".46">
+    <circle cx="28" cy="28" r="3"/>
+    <circle cx="264" cy="28" r="3"/>
+    <circle cx="28" cy="332" r="3"/>
+    <circle cx="264" cy="332" r="3"/>
+  </g>
+  <path d="M38 58h216v244H38Z" fill="none" stroke="#f4cd82" stroke-width="1.2" stroke-opacity=".12"/>
+  <path d="M44 68c36-14 168-14 204 0M44 292c36 14 168 14 204 0" fill="none" stroke="#ef5b72" stroke-width="2" stroke-opacity=".12"/>
+  <path d="M12 120h268M12 238h268" stroke="#ffffff" stroke-width="1" stroke-opacity=".04"/>
+</svg>

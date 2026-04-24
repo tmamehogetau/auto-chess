@@ -90,7 +90,7 @@ function escapeHtml(value) {
 const HEROES = [
   {
     id: 'reimu',
-    name: '霊夢',
+    name: '博麗霊夢',
     role: 'balance',
     hp: 680,
     attack: 45,
@@ -101,18 +101,18 @@ const HEROES = [
   },
   {
     id: 'marisa',
-    name: '魔理沙',
+    name: '霧雨魔理沙',
     role: 'dps',
     hp: 400,
     attack: 60,
     skill: {
-      name: '星符「ドラゴンメテオ」',
+      name: '恋符「マスタースパーク」',
       description: '直線ビームで全敵に魔法ダメージ（ATK × 2.0）',
     },
   },
   {
     id: 'okina',
-    name: '隠岐奈',
+    name: '摩多羅隠岐奈',
     role: 'support',
     hp: 540,
     attack: 40,
@@ -123,7 +123,7 @@ const HEROES = [
   },
   {
     id: 'keiki',
-    name: '袿姫',
+    name: '埴安神袿姫',
     role: 'support',
     hp: 880,
     attack: 30,
@@ -134,7 +134,7 @@ const HEROES = [
   },
   {
     id: 'jyoon',
-    name: '女苑',
+    name: '依神女苑',
     role: 'dps',
     hp: 500,
     attack: 35,

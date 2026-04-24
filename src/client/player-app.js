@@ -134,11 +134,11 @@ const PLAYER_BATTLE_START_SWEEP_MS = 900;
 const PLAYER_DEADLINE_REFRESH_INTERVAL_MS = 250;
 
 const HERO_OPTIONS = [
-  { id: "reimu", name: "霊夢", role: "balance" },
-  { id: "marisa", name: "魔理沙", role: "dps" },
-  { id: "okina", name: "隠岐奈", role: "support" },
-  { id: "keiki", name: "袿姫", role: "support" },
-  { id: "jyoon", name: "女苑", role: "dps" },
+  { id: "reimu", name: "博麗霊夢", role: "balance" },
+  { id: "marisa", name: "霧雨魔理沙", role: "dps" },
+  { id: "okina", name: "摩多羅隠岐奈", role: "support" },
+  { id: "keiki", name: "埴安神袿姫", role: "support" },
+  { id: "jyoon", name: "依神女苑", role: "dps" },
   { id: "yuiman", name: "ユイマン・浅間", role: "support" },
 ];
 

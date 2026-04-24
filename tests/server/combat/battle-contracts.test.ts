@@ -86,6 +86,45 @@ describe("battle contracts", () => {
     expect(calculateAttackDamage(attacker, target, false, false)).toBe(12);
   });
 
+  test("damage helper applies temporary incoming damage modifiers", () => {
+    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", unitLevel: 1, attack: 20 }, "left", 0);
+    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
+
+    target.damageTakenMultiplier = 1.1;
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(22);
+
+    target.damageTakenMultiplier = 0.75;
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(15);
+  });
+
+  test("hero-exclusive placements resolve their dedicated combat stats instead of generic melee defaults", () => {
+    const mayumi = createTestBattleUnit(
+      { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "mayumi" },
+      "left",
+      0,
+    );
+    const shion = createTestBattleUnit(
+      { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "shion" },
+      "left",
+      1,
+    );
+    const ariya = createTestBattleUnit(
+      { cell: 2, unitType: "vanguard", unitLevel: 1, unitId: "ariya" },
+      "left",
+      2,
+    );
+
+    expect(mayumi.hp).toBe(1240);
+    expect(mayumi.attackPower).toBe(104);
+    expect(mayumi.damageReduction).toBe(28);
+    expect(shion.hp).toBe(860);
+    expect(shion.attackPower).toBe(148);
+    expect(shion.attackSpeed).toBe(1.22);
+    expect(ariya.hp).toBe(1040);
+    expect(ariya.attackPower).toBe(176);
+    expect(ariya.damageReduction).toBe(14);
+  });
+
   test("reflection helper never returns less than 1 damage when reflection applies", () => {
     expect(calculateReflectedDamage(10, 0.1)).toBe(1);
     expect(calculateReflectedDamage(37, 0.2)).toBe(7);
@@ -221,6 +260,111 @@ describe("battle contracts", () => {
 
     expect(result.phaseDamageToBossSide).toBe(40);
     expect(result.bossDamage).toBe(0);
+  });
+
+  test("escort defeat ends raid battle when phase damage reaches the boss phase HP target", () => {
+    const simulator = new BattleSimulator();
+    const raidAttacker = createTestBattleUnit(
+      { cell: 0, unitType: "ranger", unitLevel: 3, attack: 999 },
+      "left",
+      0,
+    );
+    raidAttacker.attackPower = 999;
+    raidAttacker.attackRange = 6;
+    raidAttacker.attackSpeed = 99;
+
+    const boss = createTestBattleUnit(
+      { cell: 7, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+      "right",
+      0,
+      true,
+    );
+    boss.hp = 80;
+    boss.maxHp = 80;
+    boss.attackRange = 0;
+    boss.attackSpeed = 0;
+
+    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 1);
+    escort.hp = 1;
+    escort.maxHp = 160;
+
+    const result = simulator.simulateBattle([raidAttacker], [boss, escort], [], [], 5_000);
+
+    expect(result.winner).toBe("left");
+    expect(result.endReason).toBe("phase_hp_depleted");
+    expect(result.phaseDamageToBossSide).toBe(80);
+    expect(result.rightSurvivors.some((unit) => unit.id === boss.id)).toBe(false);
+  });
+
+  test("R12 escort defeats do not deplete the boss HP objective", () => {
+    const simulator = new BattleSimulator();
+    const raidAttacker = createTestBattleUnit(
+      { cell: 0, unitType: "ranger", unitLevel: 1, attack: 1 },
+      "left",
+      0,
+    );
+    raidAttacker.attackPower = 1;
+    raidAttacker.attackRange = 6;
+    raidAttacker.attackSpeed = 99;
+
+    const boss = createTestBattleUnit(
+      { cell: 0, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+      "right",
+      0,
+      true,
+    );
+    boss.hp = 80;
+    boss.maxHp = 80;
+    boss.attackPower = 999;
+    boss.attackRange = 6;
+    boss.attackSpeed = 99;
+
+    const escort = createTestBattleUnit({ cell: 4, unitType: "vanguard", unitLevel: 1 }, "right", 1);
+    escort.hp = 1;
+    escort.maxHp = 160;
+    escort.attackRange = 0;
+    escort.attackSpeed = 0;
+
+    const result = simulator.simulateBattle([raidAttacker], [boss, escort], [], [], 5_000, null, null, null, DEFAULT_FLAGS, 12);
+
+    expect(result.winner).toBe("right");
+    expect(result.endReason).toBe("annihilation");
+    expect(result.phaseDamageToBossSide).toBeUndefined();
+    expect(result.rightSurvivors.some((unit) => unit.id === boss.id)).toBe(true);
+  });
+
+  test("R12 boss defeat ends the final battle even if escorts survive", () => {
+    const simulator = new BattleSimulator();
+    const raidAttacker = createTestBattleUnit(
+      { cell: 0, unitType: "ranger", unitLevel: 3, attack: 999 },
+      "left",
+      0,
+    );
+    raidAttacker.attackPower = 999;
+    raidAttacker.attackRange = 6;
+    raidAttacker.attackSpeed = 99;
+
+    const boss = createTestBattleUnit(
+      { cell: 4, unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+      "right",
+      0,
+      true,
+    );
+    boss.hp = 1;
+    boss.maxHp = 3_000;
+    boss.attackRange = 0;
+    boss.attackSpeed = 0;
+
+    const escort = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 3 }, "right", 1);
+    escort.attackRange = 0;
+    escort.attackSpeed = 0;
+
+    const result = simulator.simulateBattle([raidAttacker], [boss, escort], [], [], 5_000, null, null, null, DEFAULT_FLAGS, 12);
+
+    expect(result.winner).toBe("left");
+    expect(result.endReason).toBe("boss_defeated");
+    expect(result.rightSurvivors.some((unit) => unit.id === boss.id)).toBe(false);
+    expect(result.rightSurvivors.some((unit) => unit.id === escort.id)).toBe(true);
   });
 
   test("same-timestamp lethal attacks resolve as a draw when both units should die", () => {

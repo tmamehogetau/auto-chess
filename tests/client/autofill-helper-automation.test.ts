@@ -308,7 +308,42 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper prefers patchouli over other affordable boss offers", () => {
+  test("midgame boss helper upgrades Remilia before another reserve carry", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: [
+          "2:remilia",
+          { cell: 4, unitType: "vanguard", unitId: "meiling" },
+          { cell: 10, unitType: "assassin", unitId: "sakuya" },
+          { cell: 16, unitType: "mage", unitId: "patchouli" },
+        ],
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+          { unitId: "meiling", unitType: "vanguard", cost: 2 },
+        ],
+        shopOffers: [],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 5,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper no longer over-prioritizes Patchouli on an empty board", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -329,7 +364,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { bossShopBuySlotIndex: 1 },
+        payload: { bossShopBuySlotIndex: 2 },
         type: "prep_command",
       },
     ]);
@@ -462,6 +497,249 @@ describe("autofill helper automation", () => {
       state: {
         phase: "Prep",
         playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper upgrades its hero before a weak normal offer in early progression", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "momoyo", unitType: "vanguard", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper prefers a hero upgrade once its early raid roster is established", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 6,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitType: "ranger", unitId: "nazrin" },
+          { cell: 25, unitType: "vanguard", unitId: "yoshika" },
+        ],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 5,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper can upgrade its hero even with a bench unit waiting to deploy", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 6,
+        specialUnitLevel: 1,
+        benchUnits: ["ranger"],
+        benchUnitIds: ["nazrin"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitType: "ranger", unitId: "nazrin" },
+          { cell: 25, unitType: "vanguard", unitId: "yoshika" },
+        ],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 5,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper can upgrade its hero when real room state omits hero from boardUnits", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: [{ cell: 31, unitType: "vanguard", unitId: "yoshika" }],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper upgrades its hero before rerolling when no reserve buy is worth taking", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: ["30:reimu", { cell: 31, unitType: "vanguard", unitId: "yoshika" }],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper still bootstraps with a normal buy before its hero is selected", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: [],
+        selectedHeroId: null,
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper still prefers a top-tier normal offer over an early hero upgrade", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper still values jyoon's expensive late upgrade over a weak offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        boardUnits: [
+          "30:jyoon",
+          { cell: 31, unitType: "ranger", unitId: "nazrin" },
+          { cell: 25, unitType: "vanguard", unitId: "yoshika" },
+        ],
+        selectedHeroId: "jyoon",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
       },
     })).toEqual([
       {

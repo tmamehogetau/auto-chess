@@ -4,6 +4,9 @@
 
 Auto-Chess MVP is a Colyseus-based multiplayer auto-battler focused on shared-board play, hero collection, and release-slice hardening.
 
+Current project phase is `external playtest readiness`.
+`progression redesign`, `hero-exclusive units`, and bot follow-up are already merged into `main`.
+
 ## Project Map
 
 - `src/` - game logic, rooms, and state
@@ -18,11 +21,17 @@ Auto-Chess MVP is a Colyseus-based multiplayer auto-battler focused on shared-bo
 - `docs/plans/active/2026-03-15_Current_Execution_Dashboard.md`
 - `docs/specs/Game_Specification_Summary.md`
 
+For test execution and bot baseline workflows, also read:
+
+- `docs/reference/2026-04-21_Test_And_Bot_Baseline_Runbook.md`
+
 ## Required Verify Command
 
 ```bash
-npm run verify:ci
+npm.cmd run verify:ci
 ```
+
+On this Windows setup, prefer `npm.cmd` over `npm`.
 
 ## Local Fast Gate
 
@@ -30,11 +39,26 @@ npm run verify:ci
 npx lefthook run pre-commit
 ```
 
+## Bot Baseline Burn-In
+
+When a task changes helper bot behavior, progression, hero-exclusive units, or other bot-facing economy/combat decisions, prefer this additional burn-in:
+
+```bash
+npm.cmd run bot:balance:baseline -- --matches 100 --chunk-size 5
+```
+
+Use `docs/reference/2026-04-21_Test_And_Bot_Baseline_Runbook.md` for:
+
+- `verify:ci`
+- focused `bot-playability` smoke tests
+- parallel `100 match` baseline runs
+
 ## Review Focus
 
 - Prioritize regressions when `enableTouhouRoster=false`.
 - Keep Touhou-only behavior gated behind the existing feature flags.
 - Treat `unitId` propagation, pool inventory, and shared-board state consistency as high risk.
+- Treat `specialUnitLevel`, `unitLevel`, hero-exclusive shop state, and pair-skill gating as high risk.
 
 ## Documentation Handling
 
@@ -64,6 +88,6 @@ npx lefthook run pre-commit
 
 ## Done Criteria
 
-- `npm run verify:ci` passes.
+- `npm.cmd run verify:ci` passes.
 - Documentation changes stay under `docs/`.
 - CI still runs `verify:ci`.

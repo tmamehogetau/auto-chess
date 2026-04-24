@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" fill="none">
+  <defs>
+    <linearGradient id="frameGold" x1="160" y1="80" x2="1440" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f7d28d"/>
+      <stop offset="0.48" stop-color="#d2a05b"/>
+      <stop offset="1" stop-color="#f1c87a"/>
+    </linearGradient>
+    <linearGradient id="frameScarlet" x1="800" y1="96" x2="800" y2="904" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7f0f28" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#2f0b16" stop-opacity="0.24"/>
+    </linearGradient>
+    <filter id="frameGlow" x="0" y="0" width="1600" height="1000" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <path d="M110 92H1490V908H110Z" stroke="url(#frameGold)" stroke-opacity="0.5" stroke-width="3"/>
+  <path d="M150 132H1450V868H150Z" stroke="url(#frameGold)" stroke-opacity="0.32" stroke-width="1.5"/>
+  <path d="M218 92L110 198V92H218Z" fill="url(#frameScarlet)"/>
+  <path d="M1382 92L1490 198V92H1382Z" fill="url(#frameScarlet)"/>
+  <path d="M218 908L110 802V908H218Z" fill="url(#frameScarlet)"/>
+  <path d="M1382 908L1490 802V908H1382Z" fill="url(#frameScarlet)"/>
+  <g filter="url(#frameGlow)" opacity="0.25">
+    <rect x="152" y="134" width="1296" height="732" stroke="#e7bc70" stroke-width="10"/>
+  </g>
+  <path d="M280 122H1320" stroke="url(#frameGold)" stroke-linecap="round" stroke-opacity="0.62" stroke-width="4"/>
+  <path d="M280 878H1320" stroke="url(#frameGold)" stroke-linecap="round" stroke-opacity="0.62" stroke-width="4"/>
+</svg>

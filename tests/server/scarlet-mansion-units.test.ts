@@ -8,7 +8,15 @@ describe("scarlet mansion unit migration", () => {
   test("preserves non-zero built-in mitigation for legacy tank profiles", () => {
     expect(getScarletMansionUnitById("meiling")?.damageReduction).toBe(42);
     expect(getScarletMansionUnitById("sakuya")?.damageReduction).toBe(25);
-    expect(getScarletMansionUnitById("patchouli")?.damageReduction).toBe(36);
+    expect(getScarletMansionUnitById("patchouli")?.damageReduction).toBe(20);
+  });
+
+  test("keeps Patchouli as utility mage instead of an overwhelming carry", () => {
+    expect(getScarletMansionUnitById("patchouli")).toMatchObject({
+      hp: 520,
+      attack: 95,
+      attackSpeed: 0.65,
+    });
   });
 
   test("keeps legacy vanguard mitigation for MVP and Touhou rosters", () => {

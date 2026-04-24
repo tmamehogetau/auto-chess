@@ -509,6 +509,27 @@ describe("prep-command-logging", () => {
       });
     });
 
+    it("should use bossShopOffersSnapshot when logging boss shop buys", () => {
+      deps.getBossShopOffers = vi.fn(() => [
+        { unitType: "mage", unitId: "replaced", displayName: "Replaced", cost: 4 },
+      ]);
+
+      logPrepCommandActions("player1", { bossShopBuySlotIndex: 0 }, deps, {
+        bossShopOffersSnapshot: [
+          { unitType: "vanguard", unitId: "meiling", displayName: "紅美鈴", cost: 2 },
+        ],
+      });
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("buy_boss_unit");
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "vanguard",
+        unitId: "meiling",
+        unitName: "紅美鈴",
+        cost: 2,
+      });
+    });
+
     it("should log all action types in a complex payload", () => {
       const payload = {
         shopBuySlotIndex: 0,

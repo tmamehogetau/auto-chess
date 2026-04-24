@@ -1,4 +1,6 @@
 import type { BoardUnitType } from "../shared/room-messages";
+import type { UnitProgressionBonusConfig } from "../shared/progression-bonus-types";
+import { getStandardUnitProgressionBonusConfig as getTouhouStandardUnitProgressionBonusConfig } from "../data/touhou-units";
 
 /**
  * 通常ユニット level 進行の設定定数
@@ -63,6 +65,24 @@ export function getUnitLevelCombatMultiplier(unitLevel: number = UNIT_LEVEL_MIN)
 
   const normalizedLevel = Math.max(UNIT_LEVEL_MIN, Math.min(UNIT_LEVEL_MAX, Math.floor(unitLevel)));
   return UNIT_LEVEL_COMBAT_MULTIPLIER_BY_LEVEL[normalizedLevel] ?? DEFAULT_UNIT_LEVEL_COMBAT_MULTIPLIER;
+}
+
+export function getUnitLevelCombatMultiplierDelta(currentLevel: number): number {
+  if (!Number.isFinite(currentLevel)) {
+    return 0;
+  }
+
+  const normalizedCurrentLevel = Math.max(UNIT_LEVEL_MIN, Math.min(UNIT_LEVEL_MAX, Math.floor(currentLevel)));
+  if (normalizedCurrentLevel >= UNIT_LEVEL_MAX) {
+    return 0;
+  }
+
+  return getUnitLevelCombatMultiplier(normalizedCurrentLevel + 1)
+    - getUnitLevelCombatMultiplier(normalizedCurrentLevel);
+}
+
+export function getStandardUnitProgressionBonusConfig(unitId: string): UnitProgressionBonusConfig {
+  return getTouhouStandardUnitProgressionBonusConfig(unitId);
 }
 
 /**

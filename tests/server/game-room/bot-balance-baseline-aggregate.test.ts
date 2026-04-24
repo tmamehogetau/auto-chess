@@ -4,8 +4,131 @@ import {
   buildBotOnlyBaselineAggregateReport,
   mergeBotOnlyBaselineAggregateReports,
   type BotOnlyBaselineAggregateReport,
+  type BotOnlyBaselineFinalPlayer,
   type BotOnlyBaselineMatchSummary,
 } from "./bot-balance-baseline-aggregate";
+
+function createFinalPlayer(
+  playerId: string,
+  role: "boss" | "raid",
+  boardUnits: BotOnlyBaselineFinalPlayer["boardUnits"] = [],
+): BotOnlyBaselineFinalPlayer {
+  return {
+    playerId,
+    label: playerId,
+    role,
+    hp: 100,
+    gold: 0,
+    remainingLives: 1,
+    eliminated: false,
+    rank: role === "boss" ? 1 : 2,
+    selectedHeroId: role === "raid" ? "marisa" : "",
+    selectedBossId: role === "boss" ? "remilia" : "",
+    totalGoldEarned: 0,
+    totalGoldSpent: 0,
+    purchaseCount: 0,
+    refreshCount: 0,
+    sellCount: 0,
+    specialUnitUpgradeCount: 0,
+    boardUnits,
+  };
+}
+
+function createMinimalMatchSummary(
+  overrides: Partial<BotOnlyBaselineMatchSummary> = {},
+): BotOnlyBaselineMatchSummary {
+  return {
+    totalRounds: 1,
+    bossPlayerId: "boss",
+    ranking: ["boss", "raid"],
+    playerLabels: { boss: "boss", raid: "raid" },
+    finalPlayers: [
+      createFinalPlayer("boss", "boss"),
+      createFinalPlayer("raid", "raid"),
+    ],
+    battles: [],
+    ...overrides,
+  };
+}
+
+describe("buildBotOnlyBaselineAggregateReport", () => {
+  test("tracks shop offer purchase and final board adoption metrics by player side", () => {
+    const report = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        finalPlayers: [
+          createFinalPlayer("boss", "boss", [{
+            cell: 0,
+            unitName: "パチュリー・ノーレッジ",
+            unitType: "mage",
+            unitId: "patchouli",
+            unitLevel: 1,
+            subUnitName: "",
+          }]),
+          createFinalPlayer("raid", "raid"),
+        ],
+        purchases: [{
+          playerId: "boss",
+          label: "boss",
+          actionType: "buy_boss_unit",
+          unitType: "mage",
+          unitId: "patchouli",
+          unitName: "パチュリー・ノーレッジ",
+          cost: 4,
+        }, {
+          playerId: "boss",
+          label: "boss",
+          actionType: "buy_unit",
+          unitType: "vanguard",
+          unitId: "meiling",
+          unitName: "紅美鈴",
+          cost: 2,
+        }],
+        observedShopOffers: [{
+          playerId: "boss",
+          label: "boss",
+          role: "boss",
+          source: "bossShop",
+          unitId: "patchouli",
+          unitName: "パチュリー・ノーレッジ",
+          unitType: "mage",
+          cost: 4,
+          observationCount: 2,
+        }, {
+          playerId: "boss",
+          label: "boss",
+          role: "boss",
+          source: "shop",
+          unitId: "meiling",
+          unitName: "紅美鈴",
+          unitType: "vanguard",
+          cost: 2,
+          observationCount: 1,
+        }],
+      }),
+    ]);
+
+    expect(report.shopOfferMetrics).toContainEqual(expect.objectContaining({
+      unitId: "patchouli",
+      role: "boss",
+      source: "bossShop",
+      observationCount: 2,
+      matchesPresent: 1,
+      offeredMatchRate: 1,
+      purchaseCount: 1,
+      purchaseMatchCount: 1,
+      purchaseRate: 0.5,
+      finalBoardCopies: 1,
+      finalBoardMatchCount: 1,
+      finalBoardAdoptionRate: 1,
+    }));
+    expect(report.shopOfferMetrics).toContainEqual(expect.objectContaining({
+      unitId: "meiling",
+      role: "boss",
+      source: "shop",
+      purchaseCount: 1,
+    }));
+  });
+});
 
 describe("mergeBotOnlyBaselineAggregateReports", () => {
   test("combines chunk aggregates into one report", () => {
@@ -46,6 +169,8 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
           mutual_annihilation: 0,
           timeout_hp_lead: 1,
           timeout_hp_tie: 0,
+          phase_hp_depleted: 0,
+          boss_defeated: 0,
           forced: 0,
           unexpected: 0,
         },
@@ -72,6 +197,9 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         battleAppearances: 2,
         matchesPresent: 2,
         averageunitLevel: 1.5,
+        maxUnitLevel: 2,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 350,
         averageDamagePerMatch: 350,
         activeBattleRate: 1,
@@ -92,6 +220,9 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         battleAppearances: 4,
         matchesPresent: 2,
         averageunitLevel: 1.25,
+        maxUnitLevel: 2,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 200,
         averageDamagePerMatch: 400,
         activeBattleRate: 0.75,
@@ -265,6 +396,8 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
           mutual_annihilation: 0,
           timeout_hp_lead: 1,
           timeout_hp_tie: 1,
+          phase_hp_depleted: 0,
+          boss_defeated: 0,
           forced: 0,
           unexpected: 0,
         },
@@ -291,6 +424,9 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         battleAppearances: 1,
         matchesPresent: 1,
         averageunitLevel: 2,
+        maxUnitLevel: 2,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 450,
         averageDamagePerMatch: 450,
         activeBattleRate: 1,
@@ -311,6 +447,9 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         battleAppearances: 2,
         matchesPresent: 1,
         averageunitLevel: 2,
+        maxUnitLevel: 2,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 500,
         averageDamagePerMatch: 500,
         activeBattleRate: 1,
@@ -482,6 +621,8 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         mutual_annihilation: 0,
         timeout_hp_lead: 2,
         timeout_hp_tie: 1,
+        phase_hp_depleted: 0,
+        boss_defeated: 0,
         forced: 0,
         unexpected: 0,
       },
@@ -506,6 +647,9 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         battleAppearances: 3,
         matchesPresent: 3,
         averageunitLevel: (2 * 1.5 + 1 * 2) / 3,
+        maxUnitLevel: 2,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: (2 * 350 + 1 * 450) / 3,
         averageDamagePerMatch: 287.5,
         activeBattleRate: 1,
@@ -527,6 +671,9 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
         battleAppearances: 6,
         matchesPresent: 3,
         averageunitLevel: (4 * 1.25 + 2 * 2) / 6,
+        maxUnitLevel: 2,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 300,
         averageDamagePerMatch: 450,
         activeBattleRate: 5 / 6,
@@ -671,6 +818,8 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
             mutual_annihilation: 0,
             timeout_hp_lead: 0,
             timeout_hp_tie: 0,
+            phase_hp_depleted: 0,
+            boss_defeated: 0,
             forced: 0,
             unexpected: 0,
           },
@@ -731,6 +880,8 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
             mutual_annihilation: 0,
             timeout_hp_lead: 0,
             timeout_hp_tie: 0,
+            phase_hp_depleted: 0,
+            boss_defeated: 0,
             forced: 0,
             unexpected: 0,
           },
@@ -774,6 +925,157 @@ describe("mergeBotOnlyBaselineAggregateReports", () => {
 });
 
 describe("buildBotOnlyBaselineAggregateReport", () => {
+  test("exposes per-match round details for phase HP and wipe analysis", () => {
+    const raidPlayers = ["raid-a", "raid-b", "raid-c"].map((playerId, index) => ({
+      playerId,
+      label: `P${index + 2}`,
+      role: "raid",
+      hp: 100,
+      gold: 0,
+      remainingLives: 1,
+      eliminated: false,
+      rank: index + 2,
+      selectedHeroId: "reimu",
+      selectedBossId: "",
+      totalGoldEarned: 0,
+      totalGoldSpent: 0,
+      purchaseCount: 0,
+      refreshCount: 0,
+      sellCount: 0,
+      boardUnits: [],
+    }));
+    const aggregate = buildBotOnlyBaselineAggregateReport([{
+      totalRounds: 2,
+      bossPlayerId: "boss-1",
+      ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
+      playerLabels: {},
+      finalPlayers: [{
+        playerId: "boss-1",
+        label: "P1",
+        role: "boss",
+        hp: 100,
+        gold: 0,
+        remainingLives: 0,
+        eliminated: false,
+        rank: 1,
+        selectedHeroId: "",
+        selectedBossId: "remilia",
+        totalGoldEarned: 0,
+        totalGoldSpent: 0,
+        purchaseCount: 0,
+        refreshCount: 0,
+        sellCount: 0,
+        boardUnits: [],
+      }, ...raidPlayers],
+      battles: [],
+      rounds: [{
+        roundIndex: 1,
+        phase: "Elimination",
+        durationMs: 80,
+        phaseHpTarget: 600,
+        phaseDamageDealt: 600,
+        phaseResult: "failed",
+        phaseCompletionRate: 1,
+        playerConsequences: [{
+          playerId: "boss-1",
+          label: "P1",
+          role: "boss",
+          battleStartUnitCount: 1,
+          playerWipedOut: false,
+          remainingLivesBefore: 0,
+          remainingLivesAfter: 0,
+          eliminatedAfter: false,
+        }, ...raidPlayers.map((player) => ({
+          playerId: player.playerId,
+          label: player.label,
+          role: "raid",
+          battleStartUnitCount: 2,
+          playerWipedOut: true,
+          remainingLivesBefore: 2,
+          remainingLivesAfter: 1,
+          eliminatedAfter: false,
+        }))],
+        battles: [{
+          battleIndex: 0,
+          leftPlayerId: "boss-1",
+          rightPlayerId: "raid-a",
+          winner: "right",
+          battleDurationMs: 57,
+          battleEndReason: "phase_hp_depleted",
+          bossSurvivors: 1,
+          raidSurvivors: 0,
+          leftDamageDealt: 120,
+          rightDamageDealt: 600,
+          unitOutcomes: [{
+            playerId: "boss-1",
+            label: "P1",
+            unitId: "remilia",
+            unitName: "レミリア",
+            unitType: "remilia",
+            side: "boss",
+            totalDamage: 120,
+            phaseContributionDamage: 0,
+            finalHp: 400,
+            alive: true,
+            unitLevel: 1,
+            subUnitName: "",
+            isSpecialUnit: true,
+          }, {
+            playerId: "raid-a",
+            label: "P2",
+            unitId: "marisa",
+            unitName: "霧雨魔理沙",
+            unitType: "marisa",
+            side: "raid",
+            totalDamage: 500,
+            phaseContributionDamage: 500,
+            finalHp: 0,
+            alive: false,
+            unitLevel: 1,
+            subUnitName: "",
+            isSpecialUnit: true,
+          }, {
+            playerId: "raid-b",
+            label: "P3",
+            unitId: "rin",
+            unitName: "火焔猫燐",
+            unitType: "rin",
+            side: "raid",
+            totalDamage: 100,
+            phaseContributionDamage: 100,
+            finalHp: 0,
+            alive: false,
+            unitLevel: 2,
+            subUnitName: "",
+            isSpecialUnit: false,
+          }],
+        }],
+        eliminations: [],
+      }],
+    }], 1);
+
+    expect(aggregate.roundDetails).toEqual([expect.objectContaining({
+      matchIndex: 0,
+      matchWinnerRole: "boss",
+      roundIndex: 1,
+      battleEndTimeMs: 57,
+      phaseHpTarget: 600,
+      phaseDamageDealt: 600,
+      phaseResult: "failed",
+      allRaidPlayersWipedOut: true,
+      raidPlayersWipedOut: 3,
+      battleEndReasons: ["phase_hp_depleted"],
+      battleWinnerRoles: ["raid"],
+      bossSurvivors: 1,
+      raidSurvivors: 0,
+      raidPhaseContributionDamage: 600,
+    })]);
+    expect(aggregate.roundDetails?.[0]?.topRaidUnits[0]).toEqual(expect.objectContaining({
+      unitName: "霧雨魔理沙",
+      phaseContributionDamage: 500,
+    }));
+  });
+
   test("summarizes lean bot-only match results", () => {
     const aggregate = buildBotOnlyBaselineAggregateReport([
       {
@@ -959,6 +1261,8 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         mutual_annihilation: 0,
         timeout_hp_lead: 0,
         timeout_hp_tie: 0,
+        phase_hp_depleted: 0,
+        boss_defeated: 0,
         forced: 0,
         unexpected: 0,
       },
@@ -974,6 +1278,9 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       expect.objectContaining({
         unitId: "unit-remilia-1",
         unitType: "remilia",
+        maxUnitLevel: 1,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 300,
         averageDamagePerMatch: 300,
         activeBattleRate: 1,
@@ -1182,7 +1489,7 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         leftPlayerId: "boss-1",
         rightPlayerId: "raid-a",
         winner: "left",
-        battleEndReason: "forced",
+        battleEndReason: "phase_hp_depleted",
         bossSurvivors: 1,
         raidSurvivors: 3,
         unitDamageBreakdown: [],
@@ -1269,6 +1576,8 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       }],
     }]);
 
+    expect(aggregate.battleMetrics.endReasonCounts.phase_hp_depleted).toBe(1);
+    expect(aggregate.battleMetrics.endReasonCounts.forced).toBe(0);
     expect(aggregate.rangeActionDiagnosticsMetrics).toEqual([
       expect.objectContaining({
         side: "raid",
@@ -1371,7 +1680,7 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
             alive: true,
             unitLevel: 1,
             subUnitName: "",
-            isSpecialUnit: true,
+            isSpecialUnit: false,
             attackCount: 1,
             hitCount: 1,
             damageTaken: 100,
@@ -1476,7 +1785,7 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
             alive: true,
             unitLevel: 1,
             subUnitName: "",
-            isSpecialUnit: true,
+            isSpecialUnit: false,
             attackCount: 1,
             hitCount: 1,
             moveCount: 2,
@@ -1502,7 +1811,7 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
             alive: false,
             unitLevel: 1,
             subUnitName: "",
-            isSpecialUnit: true,
+            isSpecialUnit: false,
             attackCount: 1,
             hitCount: 1,
             moveCount: 1,
@@ -1523,7 +1832,7 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
     expect(aggregate.raidSpecialMeleeUnitDiagnostics).toEqual([
       {
         unitId: "jyoon",
-        unitName: "女苑",
+        unitName: "依神女苑",
         battleAppearances: 1,
         averageDamagePerBattle: 18,
         averageAttackCountPerBattle: 1,
@@ -1538,6 +1847,145 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         zeroDamageBattleRate: 0,
         survivalRate: 1,
       },
+    ]);
+  });
+
+  test("credits owner win rate by winning side role on shared-board battles", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([{
+      totalRounds: 1,
+      bossPlayerId: "boss-1",
+      ranking: ["boss-1", "raid-a", "raid-b"],
+      playerLabels: {
+        "boss-1": "P1",
+        "raid-a": "P2",
+        "raid-b": "P3",
+      },
+      finalPlayers: [
+        {
+          playerId: "boss-1",
+          label: "P1",
+          role: "boss",
+          hp: 100,
+          gold: 0,
+          remainingLives: 1,
+          eliminated: false,
+          rank: 1,
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          totalGoldEarned: 0,
+          totalGoldSpent: 0,
+          purchaseCount: 0,
+          refreshCount: 0,
+          sellCount: 0,
+          boardUnits: [],
+        },
+        {
+          playerId: "raid-a",
+          label: "P2",
+          role: "raid",
+          hp: 100,
+          gold: 0,
+          remainingLives: 1,
+          eliminated: false,
+          rank: 2,
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          totalGoldEarned: 0,
+          totalGoldSpent: 0,
+          purchaseCount: 0,
+          refreshCount: 0,
+          sellCount: 0,
+          boardUnits: [],
+        },
+        {
+          playerId: "raid-b",
+          label: "P3",
+          role: "raid",
+          hp: 100,
+          gold: 0,
+          remainingLives: 1,
+          eliminated: false,
+          rank: 3,
+          selectedHeroId: "marisa",
+          selectedBossId: "",
+          totalGoldEarned: 0,
+          totalGoldSpent: 0,
+          purchaseCount: 0,
+          refreshCount: 0,
+          sellCount: 0,
+          boardUnits: [],
+        },
+      ],
+      battles: [{
+        leftPlayerId: "boss-1",
+        rightPlayerId: "raid-a",
+        winner: "right",
+        bossSurvivors: 0,
+        raidSurvivors: 2,
+        unitDamageBreakdown: [],
+        unitOutcomes: [{
+          playerId: "raid-b",
+          label: "P3",
+          unitId: "yoshika",
+          unitName: "宮古芳香",
+          unitType: "yoshika",
+          side: "raid",
+          totalDamage: 80,
+          phaseContributionDamage: 80,
+          finalHp: 120,
+          alive: true,
+          unitLevel: 1,
+          subUnitName: "",
+          isSpecialUnit: false,
+          attackCount: 2,
+          hitCount: 2,
+          damageTaken: 20,
+          lifetimeMs: 3000,
+        }],
+      }],
+    }]);
+
+    expect(aggregate.raidBattleUnitMetrics).toEqual([
+      expect.objectContaining({
+        unitId: "yoshika",
+        ownerWinRate: 1,
+      }),
+    ]);
+  });
+
+  test("normalizes top damage unit names from canonical unit ids", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([{
+      totalRounds: 1,
+      bossPlayerId: "boss-1",
+      ranking: ["boss-1", "raid-a"],
+      playerLabels: {
+        "boss-1": "P1",
+        "raid-a": "P2",
+      },
+      finalPlayers: [],
+      battles: [{
+        leftPlayerId: "boss-1",
+        rightPlayerId: "raid-a",
+        winner: "left",
+        bossSurvivors: 1,
+        raidSurvivors: 0,
+        unitDamageBreakdown: [{
+          playerId: "boss-1",
+          label: "P1",
+          unitId: "patchouli",
+          unitName: "patchouli",
+          side: "boss",
+          totalDamage: 300,
+        }],
+        unitOutcomes: [],
+      }],
+    }]);
+
+    expect(aggregate.topDamageUnits).toEqual([
+      expect.objectContaining({
+        unitId: "patchouli",
+        unitName: "パチュリー・ノーレッジ",
+      }),
     ]);
   });
 

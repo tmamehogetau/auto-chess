@@ -2773,6 +2773,51 @@ describe("MatchRoomController", () => {
     expect(phaseProgress.completionRate).toBe(0);
   });
 
+  test("raid R12 Prepではphase HP targetが0になる", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          let nowMs = 0;
+          for (let completedRounds = 0; completedRounds < 11; completedRounds += 1) {
+            nowMs = advanceRaidRoundWithMinimalDurations(controller, nowMs);
+          }
+
+          const phaseProgress = controller.getPhaseProgress();
+
+          expect(controller.phase).toBe("Prep");
+          expect(controller.roundIndex).toBe(12);
+          expect(phaseProgress.targetHp).toBe(0);
+          expect(phaseProgress.damageDealt).toBe(0);
+          expect(phaseProgress.result).toBe("pending");
+          expect(phaseProgress.completionRate).toBe(0);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("raid round wipe only consumes lives for wiped protagonists", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
@@ -3074,7 +3119,7 @@ describe("MatchRoomController", () => {
     );
   });
 
-  test("raid R12 final judgment gives raid victory only when phase hp reaches zero and someone survives", async () => {
+  test("raid R12 final judgment gives raid victory when the boss unit is defeated", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
       async () => {
@@ -3134,7 +3179,15 @@ describe("MatchRoomController", () => {
             survivors: 0,
             opponentSurvivors: 1,
           });
-          controller.setPendingPhaseDamageForTest(3_000);
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: false,
+            damageDealt: 10,
+            damageTaken: 3_000,
+            survivors: 0,
+            opponentSurvivors: 1,
+            survivorSnapshots: [],
+          });
 
           controller.advanceByTime(nowMs + 2);
           controller.advanceByTime(nowMs + 3);
@@ -3438,7 +3491,7 @@ describe("MatchRoomController", () => {
     );
   });
 
-  test("raid R12 simultaneous wipe and phase break is a boss victory", async () => {
+  test("raid R12 boss defeat is a raid victory even when raiders are wiped", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
       async () => {
@@ -3501,14 +3554,23 @@ describe("MatchRoomController", () => {
             survivors: 0,
             opponentSurvivors: 1,
           });
-          controller.setPendingPhaseDamageForTest(3_000);
+          battleResultsByPlayer.set("p2", {
+            opponentId: "p1",
+            won: false,
+            damageDealt: 10,
+            damageTaken: 3_000,
+            survivors: 0,
+            opponentSurvivors: 0,
+            survivorSnapshots: [],
+          });
 
           controller.advanceByTime(nowMs + 2);
           controller.advanceByTime(nowMs + 3);
           controller.advanceByTime(nowMs + 4);
 
           expect(controller.phase).toBe("End");
-          expect(controller.rankingTopToBottom[0]).toBe("p2");
+          expect(controller.rankingTopToBottom[0]).toBe("p1");
+          expect(controller.rankingTopToBottom.at(-1)).toBe("p2");
         } finally {
           randomSpy.mockRestore();
         }
@@ -4761,12 +4823,12 @@ describe("MatchRoomController", () => {
     }
 
     expect(set1Controller.getPlayerHp("p1")).toBe(100);
-    expect(set1Controller.getPlayerHp("p4")).toBe(87);
+    expect(set1Controller.getPlayerHp("p4")).toBe(89);
     expect(set2Controller.getPlayerHp("p1")).toBe(100);
-    expect(set2Controller.getPlayerHp("p4")).toBe(87);
+    expect(set2Controller.getPlayerHp("p4")).toBe(89);
   });
 
-  test("前列vanguard2体の防衛陣形 fixture は shared-index pathing でも受け切れない", () => {
+  test("前列vanguard2体の防衛陣形 fixture は cooldown Shield Wall で押し返す", () => {
     const controller = new MatchRoomController(
       ["p1", "p2", "p3", "p4"],
       1_000,
@@ -4802,8 +4864,8 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(32_000);
     controller.advanceByTime(42_000);
 
-    expect(controller.getPlayerHp("p1")).toBe(91);
-    expect(controller.getPlayerHp("p4")).toBe(100);
+    expect(controller.getPlayerHp("p1")).toBe(100);
+    expect(controller.getPlayerHp("p4")).toBe(93);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {

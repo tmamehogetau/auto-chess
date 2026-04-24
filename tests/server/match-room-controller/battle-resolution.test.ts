@@ -455,7 +455,7 @@ describe("BattleResolutionService", () => {
         rightBattleUnits,
         mockLeftPlacements,
         mockRightPlacements,
-        30000,
+        40_000,
         "vanguard",
         "ranger",
         null,
@@ -464,7 +464,7 @@ describe("BattleResolutionService", () => {
       );
     });
 
-    it("should keep the normal 30 second battle timeout through round 11", () => {
+    it("should keep the normal 40 second battle timeout through round 11", () => {
       const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
       const rightBattleUnits = [createMockBattleUnit("unit2", "right")];
 
@@ -497,7 +497,7 @@ describe("BattleResolutionService", () => {
         rightBattleUnits,
         mockLeftPlacements,
         mockRightPlacements,
-        30000,
+        40_000,
         null,
         null,
         null,
@@ -591,7 +591,7 @@ describe("BattleResolutionService", () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
-        30000,
+        40_000,
         null,
         null,
         mockSubUnitConfig,

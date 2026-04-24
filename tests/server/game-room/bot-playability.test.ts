@@ -12,6 +12,7 @@ import {
   waitForCondition,
 } from "./helpers";
 import { AUTO_FILL_HERO_IDS } from "../../../src/client/autofill-helper-automation.js";
+import { HERO_EXCLUSIVE_UNITS } from "../../../src/data/hero-exclusive-units";
 import { HEROES } from "../../../src/data/heroes";
 import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
@@ -46,6 +47,7 @@ import {
   type BotOnlyBaselineMatchSummary,
   type BotOnlyBaselineObservedShopOffer,
   type BotOnlyBaselinePurchase,
+  type BotOnlyBaselineRoundSummary,
   type BotOnlyReportMetadata,
 } from "./bot-balance-baseline-aggregate";
 import {
@@ -98,6 +100,7 @@ type BotOnlyMatchRoundReport = {
     purchaseCount?: number;
     refreshCount?: number;
     sellCount?: number;
+    specialUnitUpgradeCount?: number;
     boardUnits: ReportBoardUnit[];
   }>;
   rounds: Array<{
@@ -220,6 +223,8 @@ type ReportUnitBattleOutcome = {
   subUnitName: string;
   isSpecialUnit: boolean;
   attackCount?: number;
+  basicSkillActivationCount?: number;
+  pairSkillActivationCount?: number;
   hitCount?: number;
   damageTaken?: number;
   moveCount?: number;
@@ -359,6 +364,7 @@ type BotOnlyTestAccess = {
     survivors: number;
     timeline?: BattleTimelineEvent[];
     rawTimeline?: BattleTimelineEvent[];
+    combatLog?: string[];
     survivorSnapshots?: Array<{
       unitId: string;
     }>;
@@ -384,6 +390,7 @@ type BotOnlyBaselineMatchArtifacts = {
   serverRoom: BotOnlyServerRoom;
   clients: BotOnlyTestClient[];
   battles: BotOnlyBaselineBattleSummary[];
+  rounds: BotOnlyBaselineRoundSummary[];
   observedShopOffers: BotOnlyBaselineObservedShopOffer[];
 };
 
@@ -393,6 +400,7 @@ type BotOnlyFinalPlayerEconomySnapshot = {
   purchaseCount: number;
   refreshCount: number;
   sellCount: number;
+  specialUnitUpgradeCount: number;
 };
 
 type BotOnlyRoomTimingSnapshot = BotOnlyReportMetadata["timings"] & {
@@ -425,6 +433,36 @@ const REPORT_UNIT_COMBAT_PROFILE_BY_TYPE = new Map<string, ReportUnitCombatProfi
   ["remilia", { range: getMvpPhase1Boss().range }],
   ...GENERIC_REPORT_UNIT_COMBAT_PROFILES.map((profile) => [profile.key, { range: profile.range }] as const),
 ]);
+
+const REPORT_SPECIAL_UNIT_IDS = new Set<string>([
+  ...HEROES.map((hero) => hero.id),
+  ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [unit.id, unit.unitId]),
+]);
+
+const isReportSpecialBattleUnit = (
+  sourceUnitId: string,
+  battleUnitId: string,
+  metadata: ReportBoardUnit | null,
+): boolean =>
+  metadata?.unitType === "hero"
+  || metadata?.unitType === "boss"
+  || REPORT_SPECIAL_UNIT_IDS.has(sourceUnitId)
+  || battleUnitId.startsWith("hero-")
+  || battleUnitId.startsWith("boss-");
+
+const GENERIC_BASIC_SKILL_TRIGGER_COUNT_BY_UNIT_TYPE: Readonly<Partial<Record<string, number>>> = {
+  vanguard: 3,
+  ranger: 3,
+  mage: 3,
+  assassin: 2,
+};
+
+const PAIR_SKILL_LOG_MARKERS_BY_SUB_UNIT_NAME = new Map<string, string[]>([
+  ["杖刀偶磨弓", ["mayumi-pair", "埴輪「アイドルクリーチャー」"]],
+  ["依神紫苑", ["shion-pair", "最凶最悪の双子神"]],
+]);
+
+const SUB_UNIT_SKILL_LOG_MARKERS = ["秘神「裏表の逆転:裏」"] as const;
 
 const BOT_ONLY_PHASE_PRIORITY: Record<RoundStateMessage["phase"], number> = {
   Waiting: 0,
@@ -648,11 +686,43 @@ const getReportBattleStartUnitsForPlayer = (
   playerId: string,
 ): ReportBoardUnit[] => {
   const testAccess = getTestAccess(serverRoom);
-  if (!testAccess) {
-    return [];
+  const battleStartUnits = (testAccess?.battleInputSnapshotByPlayer.get(playerId) ?? []).map(toReportBoardUnit);
+  const player = serverRoom.state.players.get(playerId);
+  if (!player) {
+    return battleStartUnits;
   }
 
-  return (testAccess.battleInputSnapshotByPlayer.get(playerId) ?? []).map(toReportBoardUnit);
+  if (typeof player.selectedHeroId === "string" && player.selectedHeroId.length > 0) {
+    battleStartUnits.push({
+      cell: 8,
+      unitName:
+        resolveSharedBoardHeroPresentation(player.selectedHeroId)?.displayName
+        ?? player.selectedHeroId,
+      unitType: "hero",
+      unitId: player.selectedHeroId,
+      unitLevel: player.specialUnitLevel ?? 1,
+      subUnitName: "",
+    });
+  }
+
+  if (
+    player.role === "boss"
+    && typeof player.selectedBossId === "string"
+    && player.selectedBossId.length > 0
+  ) {
+    battleStartUnits.push({
+      cell: 2,
+      unitName:
+        resolveSharedBoardBossPresentation(player.selectedBossId)?.displayName
+        ?? player.selectedBossId,
+      unitType: "boss",
+      unitId: player.selectedBossId,
+      unitLevel: player.specialUnitLevel ?? 1,
+      subUnitName: "",
+    });
+  }
+
+  return battleStartUnits;
 };
 
 const getTrackedBattleUnitIdsForPlayerAtBattleStart = (
@@ -763,6 +833,12 @@ const buildTrackedBattleUnitIdsForPlayer = (
   const selectedHeroId = serverRoom.state.players.get(playerId)?.selectedHeroId ?? "";
   if (selectedHeroId.length > 0) {
     trackedUnitIds.add(`hero-${playerId}`);
+  }
+
+  const player = serverRoom.state.players.get(playerId);
+  const selectedBossId = player?.selectedBossId ?? "";
+  if (player?.role === "boss" && selectedBossId.length > 0) {
+    trackedUnitIds.add(`boss-${playerId}`);
   }
 
   return trackedUnitIds;
@@ -933,6 +1009,7 @@ const buildUnitDamageBreakdownForBattle = (
   }
 
   const ownerByTrackedUnitId = buildTrackedUnitOwnerMap(playersAtBattleStart);
+  const metadataByPlayerAndUnitId = buildBoardUnitMetadataMapForBattle(playersAtBattleStart);
   const contributionsByBattleUnitId = new Map<string, {
     playerId: string;
     label: string;
@@ -953,12 +1030,18 @@ const buildUnitDamageBreakdownForBattle = (
       continue;
     }
     const ownerPlayer = playersAtBattleStart.find((player) => player.playerId === playerId);
+    const sourceUnitId = unit.sourceUnitId ?? unit.battleUnitId;
+    const metadata = peekBoardUnitMetadataForBattleUnit(
+      metadataByPlayerAndUnitId,
+      playerId,
+      sourceUnitId,
+    );
 
     contributionsByBattleUnitId.set(unit.battleUnitId, {
       playerId,
       label: getPlayerLabel(playerLabels, playerId),
-      unitId: unit.sourceUnitId ?? unit.battleUnitId,
-      unitName: unit.displayName ?? unit.sourceUnitId ?? unit.battleUnitId,
+      unitId: sourceUnitId,
+      unitName: metadata?.unitName ?? unit.displayName ?? sourceUnitId,
       side: ownerPlayer?.role === "boss" ? "boss" : "raid",
       totalDamage: 0,
     });
@@ -1000,6 +1083,15 @@ const buildBoardUnitMetadataMapForBattle = (
   }
 
   return metadataByPlayerAndUnitId;
+};
+
+const peekBoardUnitMetadataForBattleUnit = (
+  metadataByPlayerAndUnitId: Map<string, ReportBoardUnit[]>,
+  playerId: string,
+  unitId: string,
+): ReportBoardUnit | null => {
+  const key = `${playerId}::${unitId}`;
+  return metadataByPlayerAndUnitId.get(key)?.[0] ?? null;
 };
 
 const takeBoardUnitMetadataForBattleUnit = (
@@ -1074,10 +1166,76 @@ const resolveReportUnitCombatProfile = (
   ?? REPORT_UNIT_COMBAT_PROFILE_BY_TYPE.get(unitType)
   ?? null;
 
+const countCombatLogActivations = (
+  combatLog: string[] | undefined,
+  prefix: string,
+): number => {
+  if (!Array.isArray(combatLog) || prefix.length === 0) {
+    return 0;
+  }
+
+  return combatLog.filter((entry) => entry.includes(prefix)).length;
+};
+
+const resolveBasicSkillActivationCountForBattleUnit = (
+  sourceUnitId: string,
+  unitType: string | undefined,
+  subUnitName: string,
+  attackCount: number,
+  combatLog: string[] | undefined,
+  sourceUnitDuplicateCount = 1,
+): number => {
+  const duplicateDivisor = Math.max(1, sourceUnitDuplicateCount);
+  if (HEROES.some((hero) => hero.id === sourceUnitId)) {
+    const allActivations = countCombatLogActivations(combatLog, `${sourceUnitId} activates `);
+    const pairSkillActivations = resolvePairSkillActivationCountForBattleUnit(
+      sourceUnitId,
+      subUnitName,
+      combatLog,
+    );
+    const subUnitSkillActivations = SUB_UNIT_SKILL_LOG_MARKERS.reduce(
+      (count, marker) => count + countCombatLogActivations(combatLog, `${sourceUnitId} activates ${marker}`),
+      0,
+    );
+    return Math.max(0, allActivations - pairSkillActivations - subUnitSkillActivations) / duplicateDivisor;
+  }
+
+  if (sourceUnitId === "mayumi" || sourceUnitId === "shion" || sourceUnitId === "ariya") {
+    return countCombatLogActivations(combatLog, `${sourceUnitId} activates `) / duplicateDivisor;
+  }
+
+  const triggerCount = unitType == null
+    ? undefined
+    : GENERIC_BASIC_SKILL_TRIGGER_COUNT_BY_UNIT_TYPE[unitType];
+  if (!triggerCount || triggerCount <= 0) {
+    return 0;
+  }
+
+  return Math.floor(Math.max(0, attackCount) / triggerCount);
+};
+
+const resolvePairSkillActivationCountForBattleUnit = (
+  sourceUnitId: string,
+  subUnitName: string,
+  combatLog: string[] | undefined,
+  sourceUnitDuplicateCount = 1,
+): number => {
+  const markers = PAIR_SKILL_LOG_MARKERS_BY_SUB_UNIT_NAME.get(subUnitName);
+  if (!markers) {
+    return 0;
+  }
+
+  return markers.reduce(
+    (count, marker) => count + countCombatLogActivations(combatLog, `${sourceUnitId} activates ${marker}`),
+    0,
+  ) / Math.max(1, sourceUnitDuplicateCount);
+};
+
 const buildUnitBattleOutcomesForBattle = (
   timeline: BattleTimelineEvent[] | undefined,
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
   playerLabels: Map<string, string>,
+  combatLog?: string[] | undefined,
 ): ReportUnitBattleOutcome[] => {
   if (!Array.isArray(timeline) || timeline.length === 0) {
     return [];
@@ -1086,6 +1244,12 @@ const buildUnitBattleOutcomesForBattle = (
   const battleStartEvent = timeline.find((event): event is BattleStartEvent => event.type === "battleStart");
   if (!battleStartEvent) {
     return [];
+  }
+
+  const sourceUnitCountById = new Map<string, number>();
+  for (const unit of battleStartEvent.units) {
+    const sourceUnitId = unit.sourceUnitId ?? unit.battleUnitId;
+    sourceUnitCountById.set(sourceUnitId, (sourceUnitCountById.get(sourceUnitId) ?? 0) + 1);
   }
 
   const ownerByTrackedUnitId = buildTrackedUnitOwnerMap(playersAtBattleStart);
@@ -1754,6 +1918,21 @@ const buildUnitBattleOutcomesForBattle = (
         plannedApproachMoveSampleCountByBattleUnitId.get(unit.battleUnitId) ?? 0;
       const firstAttackAtMs = firstAttackAtMsByBattleUnitId.get(unit.battleUnitId) ?? null;
       const attackCount = attackCountByBattleUnitId.get(unit.battleUnitId) ?? 0;
+      const sourceUnitDuplicateCount = sourceUnitCountById.get(sourceUnitId) ?? 1;
+      const basicSkillActivationCount = resolveBasicSkillActivationCountForBattleUnit(
+        sourceUnitId,
+        metadata?.unitType ?? unit.displayName ?? undefined,
+        metadata?.subUnitName ?? "",
+        attackCount,
+        combatLog,
+        sourceUnitDuplicateCount,
+      );
+      const pairSkillActivationCount = resolvePairSkillActivationCountForBattleUnit(
+        sourceUnitId,
+        metadata?.subUnitName ?? "",
+        combatLog,
+        sourceUnitDuplicateCount,
+      );
       const firstPlannedApproachTargetBattleUnitId =
         firstPlannedApproachTargetByBattleUnitId.get(unit.battleUnitId) ?? null;
       const firstAttackTargetBattleUnitId = firstAttackAtMs == null
@@ -1781,7 +1960,7 @@ const buildUnitBattleOutcomesForBattle = (
         playerId,
         label: getPlayerLabel(playerLabels, playerId),
         unitId: sourceUnitId,
-        unitName: unit.displayName ?? metadata?.unitName ?? sourceUnitId,
+        unitName: metadata?.unitName ?? unit.displayName ?? sourceUnitId,
         side: ownerPlayer?.role === "boss" ? "boss" : "raid",
         totalDamage: damageByBattleUnitId.get(unit.battleUnitId) ?? 0,
         phaseContributionDamage: phaseContributionByBattleUnitId.get(unit.battleUnitId) ?? 0,
@@ -1789,8 +1968,10 @@ const buildUnitBattleOutcomesForBattle = (
         alive,
         unitLevel: metadata?.unitLevel ?? 1,
         subUnitName: metadata?.subUnitName ?? "",
-        isSpecialUnit: metadata == null,
+        isSpecialUnit: isReportSpecialBattleUnit(sourceUnitId, unit.battleUnitId, metadata),
         attackCount,
+        basicSkillActivationCount,
+        pairSkillActivationCount,
         hitCount: hitCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
         damageTaken: damageTakenByBattleUnitId.get(unit.battleUnitId) ?? 0,
         moveCount: moveCountByBattleUnitId.get(unit.battleUnitId) ?? 0,
@@ -2072,6 +2253,7 @@ const buildRoundBattleReport = (
 ): BotOnlyRoundBattleReport => {
   const battleDurationMs = battleDurationOverrideMs ?? resolveBattleDurationMsFromTimeline(timeline);
   const battleEndReason = resolveBattleEndReasonFromTimeline(timeline);
+  const combatLog = resolveBattleCombatLogForReportBattle(serverRoom, battle);
   const bossIsLeft = battle.leftPlayerId === serverRoom.state.bossPlayerId;
   return {
     battleIndex: battle.battleIndex,
@@ -2105,6 +2287,7 @@ const buildRoundBattleReport = (
       timeline,
       playersAtBattleStart,
       playerLabels,
+      combatLog,
     ),
   };
 };
@@ -2167,6 +2350,25 @@ const resolveBattleTimelineForReportBattle = (
     const timeline = battleResult?.rawTimeline ?? battleResult?.timeline;
     if (Array.isArray(timeline) && timeline.length > 0) {
       return timeline;
+    }
+  }
+
+  return [];
+};
+
+const resolveBattleCombatLogForReportBattle = (
+  serverRoom: BotOnlyServerRoom,
+  battle: {
+    leftPlayerId: string;
+    rightPlayerId: string;
+  },
+): string[] => {
+  const testAccess = getTestAccess(serverRoom);
+
+  for (const playerId of [battle.leftPlayerId, battle.rightPlayerId]) {
+    const combatLog = testAccess?.battleResultsByPlayer.get(playerId)?.combatLog;
+    if (Array.isArray(combatLog) && combatLog.length > 0) {
+      return [...combatLog];
     }
   }
 
@@ -2591,6 +2793,65 @@ test("buildBotOnlyMatchRoundReport prefers captured round battle details over re
     mode: "fast-parity",
     timeScale: 0.02,
   });
+});
+
+test("getReportBattleStartUnitsForPlayer includes special unit metadata for hero and boss", () => {
+  const fakeRoom = {
+    state: {
+      players: new Map([
+        ["raid-1", {
+          role: "raid",
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          specialUnitLevel: 4,
+        }],
+        ["boss-1", {
+          role: "boss",
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          specialUnitLevel: 5,
+        }],
+      ]),
+    },
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>([
+          ["raid-1", [{ cell: 31, unitType: "ranger", unitId: "nazrin", unitLevel: 2 }]],
+          ["boss-1", []],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(getReportBattleStartUnitsForPlayer(fakeRoom, "raid-1")).toEqual([
+    {
+      cell: 31,
+      unitName: "ナズーリン",
+      unitType: "ranger",
+      unitId: "nazrin",
+      unitLevel: 2,
+      subUnitName: "",
+    },
+    {
+      cell: 8,
+      unitName: "博麗霊夢",
+      unitType: "hero",
+      unitId: "reimu",
+      unitLevel: 4,
+      subUnitName: "",
+    },
+  ]);
+
+  expect(getReportBattleStartUnitsForPlayer(fakeRoom, "boss-1")).toEqual([
+    {
+      cell: 2,
+      unitName: "レミリア",
+      unitType: "boss",
+      unitId: "remilia",
+      unitLevel: 5,
+      subUnitName: "",
+    },
+  ]);
 });
 
 test("buildPlayerConsequences keeps battle-start tracked units after controller snapshots reset", () => {
@@ -5102,6 +5363,7 @@ const buildBotOnlyFinalPlayers = (
       purchaseCount: 0,
       refreshCount: 0,
       sellCount: 0,
+      specialUnitUpgradeCount: 0,
     };
 
     return {
@@ -5120,6 +5382,7 @@ const buildBotOnlyFinalPlayers = (
       purchaseCount: economy.purchaseCount,
       refreshCount: economy.refreshCount,
       sellCount: economy.sellCount,
+      specialUnitUpgradeCount: economy.specialUnitUpgradeCount,
       boardUnits: getReportBoardUnitsForPlayer(serverRoom, client.sessionId),
     };
   });
@@ -5137,6 +5400,7 @@ const buildBotOnlyFinalPlayerEconomyByPlayer = (
       purchaseCount: 0,
       refreshCount: 0,
       sellCount: 0,
+      specialUnitUpgradeCount: 0,
     };
 
     if (actionLog.details.goldAfter > actionLog.details.goldBefore) {
@@ -5156,6 +5420,11 @@ const buildBotOnlyFinalPlayerEconomyByPlayer = (
       case "sell_unit":
       case "board_sell":
         current.sellCount += 1;
+        break;
+      case "upgrade_special_unit":
+        current.specialUnitUpgradeCount += typeof actionLog.details.itemCount === "number"
+          ? actionLog.details.itemCount
+          : 1;
         break;
       default:
         break;
@@ -5177,13 +5446,19 @@ const buildBotOnlyBaselinePurchases = (
     if (actionLog.actionType !== "buy_unit" && actionLog.actionType !== "buy_boss_unit") {
       continue;
     }
+    const details = actionLog.details as typeof actionLog.details & {
+      unitId?: unknown;
+      unitName?: unknown;
+    };
 
     purchases.push({
       playerId: actionLog.playerId,
       label: getPlayerLabel(playerLabels, actionLog.playerId),
       actionType: actionLog.actionType,
-      unitType: typeof actionLog.details.unitType === "string" ? actionLog.details.unitType : "",
-      cost: typeof actionLog.details.cost === "number" ? actionLog.details.cost : 0,
+      unitType: typeof details.unitType === "string" ? details.unitType : "",
+      ...(typeof details.unitId === "string" && { unitId: details.unitId }),
+      ...(typeof details.unitName === "string" && { unitName: details.unitName }),
+      cost: typeof details.cost === "number" ? details.cost : 0,
     });
   }
 
@@ -5206,6 +5481,7 @@ const runBotOnlyHelperMatchForBaseline = async (
   ]);
   const playerLabels = getPlayerLabelMap(clients);
   const battles: BotOnlyBaselineBattleSummary[] = [];
+  const roundSnapshots: BotOnlyRoundSnapshot[] = [];
   const observedOfferKeySet = new Set<string>();
   const observedOffersByKey = new Map<string, BotOnlyBaselineObservedShopOffer>();
 
@@ -5308,12 +5584,17 @@ const runBotOnlyHelperMatchForBaseline = async (
 
   const startTime = Date.now();
   const maxDurationMs = 20_000;
+  let lastCapturedRoundIndex = 0;
 
   while (serverRoom.state.phase !== "End" && Date.now() - startTime < maxDurationMs) {
     await waitForCondition(() => serverRoom.state.phase === "Battle", 2_000, {
       timeoutMessage: `Timed out while waiting for Battle phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
     });
     const battleRoundIndex = serverRoom.state.roundIndex;
+    const battlePhaseDeadlineAtMs = Number.isFinite(serverRoom.state.phaseDeadlineAtMs)
+      ? serverRoom.state.phaseDeadlineAtMs
+      : null;
+    const battlePhaseRemainingAtStartMs = resolveRemainingTimeFromDeadlineAtMs(battlePhaseDeadlineAtMs);
     const playersAtBattleStart = captureRoundPlayers(
       serverRoom,
       clients,
@@ -5343,12 +5624,20 @@ const runBotOnlyHelperMatchForBaseline = async (
       },
     );
 
+    const playerBattleOutcomes = buildPlayerBattleOutcomes(serverRoom, playersAtBattleStart);
+    const battleTimelines = captureBattleTimelinesForRound(serverRoom, clients);
+    const battlePhaseElapsedMs = resolveBattlePhaseElapsedMs(
+      battlePhaseRemainingAtStartMs,
+      resolveRemainingTimeFromDeadlineAtMs(battlePhaseDeadlineAtMs),
+    );
     const roundBattles = buildRoundBattleReportsFromCurrentState(
       serverRoom,
       battleRoundIndex,
       playersAtBattleStart,
       playerLabels,
+      battlePhaseElapsedMs,
     );
+    const phaseProgress = buildRoundPhaseProgress(getCurrentControllerPhaseProgress(serverRoom));
     for (const battle of roundBattles) {
       battles.push({
         leftPlayerId: battle.leftPlayerId,
@@ -5374,12 +5663,44 @@ const runBotOnlyHelperMatchForBaseline = async (
           + `(phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex}, battleRound=${battleRoundIndex})`,
       },
     );
+    const playersAfterRound = captureRoundPlayers(
+      serverRoom,
+      clients,
+      getReportBoardUnitsForPlayer,
+    );
+    const snapshot: BotOnlyRoundSnapshot = {
+      roundIndex: battleRoundIndex,
+      phaseAfterRound: serverRoom.state.phase,
+      ...(battlePhaseElapsedMs !== undefined ? { battlePhaseElapsedMs } : {}),
+      phaseProgress,
+      playersAtBattleStart,
+      battleTimelines,
+      battles: roundBattles,
+      playerConsequences: buildPlayerConsequences(
+        playersAtBattleStart,
+        playerBattleOutcomes,
+        playersAfterRound,
+      ),
+      playersAfterRound,
+    };
+
+    if (snapshot.roundIndex > lastCapturedRoundIndex) {
+      roundSnapshots.push(snapshot);
+      lastCapturedRoundIndex = snapshot.roundIndex;
+    }
   }
+
+  const roundReport = buildBotOnlyMatchRoundReport({
+    serverRoom,
+    clients,
+    roundSnapshots,
+  });
 
   return {
     serverRoom,
     clients,
     battles,
+    rounds: roundReport.rounds,
     observedShopOffers: Array.from(observedOffersByKey.values()),
   };
 };
@@ -5398,6 +5719,30 @@ const buildBotOnlyBaselineMatchSummary = (
     playerLabels: Object.fromEntries(playerLabels),
     purchases: buildBotOnlyBaselinePurchases(artifacts.serverRoom, playerLabels),
     observedShopOffers: artifacts.observedShopOffers.map((offer) => ({ ...offer })),
+    rounds: artifacts.rounds.map((round) => ({
+      roundIndex: round.roundIndex,
+      phase: round.phase,
+      durationMs: round.durationMs,
+      phaseHpTarget: round.phaseHpTarget,
+      phaseDamageDealt: round.phaseDamageDealt,
+      phaseResult: round.phaseResult,
+      phaseCompletionRate: round.phaseCompletionRate,
+      playerConsequences: round.playerConsequences.map((player) => ({ ...player })),
+      battles: round.battles.map((battle) => ({
+        battleIndex: battle.battleIndex,
+        leftPlayerId: battle.leftPlayerId,
+        rightPlayerId: battle.rightPlayerId,
+        winner: battle.winner,
+        ...(typeof battle.battleDurationMs === "number" ? { battleDurationMs: battle.battleDurationMs } : {}),
+        ...(battle.battleEndReason !== undefined ? { battleEndReason: battle.battleEndReason } : {}),
+        ...(typeof battle.bossSurvivors === "number" ? { bossSurvivors: battle.bossSurvivors } : {}),
+        ...(typeof battle.raidSurvivors === "number" ? { raidSurvivors: battle.raidSurvivors } : {}),
+        leftDamageDealt: battle.leftDamageDealt,
+        rightDamageDealt: battle.rightDamageDealt,
+        unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+      })),
+      eliminations: [...round.eliminations],
+    })),
     finalPlayers: buildBotOnlyFinalPlayers(
       artifacts.serverRoom,
       artifacts.clients,
@@ -6580,6 +6925,7 @@ const buildBotOnlyBaselineAggregateReport = (
         purchaseCount: player.purchaseCount ?? 0,
         refreshCount: player.refreshCount ?? 0,
         sellCount: player.sellCount ?? 0,
+        specialUnitUpgradeCount: player.specialUnitUpgradeCount ?? 0,
         boardUnits: player.boardUnits,
       })),
       battles: report.rounds.flatMap((round) =>
@@ -7081,6 +7427,8 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         mutual_annihilation: 0,
         timeout_hp_lead: 0,
         timeout_hp_tie: 0,
+        phase_hp_depleted: 0,
+        boss_defeated: 0,
         forced: 0,
         unexpected: 0,
       },
@@ -7101,6 +7449,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averagePurchaseCount: 0,
         averageRefreshCount: 0,
         averageSellCount: 0,
+        averageSpecialUnitUpgradeCount: 0,
       },
       P2: {
         averagePlacement: 1.5,
@@ -7113,6 +7462,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averagePurchaseCount: 0,
         averageRefreshCount: 0,
         averageSellCount: 0,
+        averageSpecialUnitUpgradeCount: 0,
       },
       P3: {
         averagePlacement: 3,
@@ -7125,6 +7475,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averagePurchaseCount: 0,
         averageRefreshCount: 0,
         averageSellCount: 0,
+        averageSpecialUnitUpgradeCount: 0,
       },
       P4: {
         averagePlacement: 4,
@@ -7137,6 +7488,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averagePurchaseCount: 0,
         averageRefreshCount: 0,
         averageSellCount: 0,
+        averageSpecialUnitUpgradeCount: 0,
       },
     },
     bossBattleUnitMetrics: [
@@ -7147,6 +7499,9 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         battleAppearances: 2,
         matchesPresent: 2,
         averageunitLevel: 1,
+        maxUnitLevel: 1,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 16.5,
         averageDamagePerMatch: 16.5,
         activeBattleRate: 0,
@@ -7169,6 +7524,9 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         battleAppearances: 2,
         matchesPresent: 2,
         averageunitLevel: 1,
+        maxUnitLevel: 1,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 11,
         averageDamagePerMatch: 11,
         activeBattleRate: 0,
@@ -7192,6 +7550,9 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         battleAppearances: 2,
         matchesPresent: 2,
         averageunitLevel: 1,
+        maxUnitLevel: 1,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 7,
         averageDamagePerMatch: 7,
         activeBattleRate: 0,
@@ -7202,7 +7563,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averageLifetimeMs: 0,
         zeroDamageBattleRate: 0.5,
         survivalRate: 0.5,
-        ownerWinRate: 0,
+        ownerWinRate: 0.5,
         adoptionRate: 1,
         subUnitBattleAppearances: 0,
         subUnitMatchesPresent: 0,
@@ -7215,6 +7576,9 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         battleAppearances: 2,
         matchesPresent: 2,
         averageunitLevel: 1,
+        maxUnitLevel: 1,
+        level4ReachRate: 0,
+        level7ReachRate: 0,
         averageDamagePerBattle: 0,
         averageDamagePerMatch: 0,
         activeBattleRate: 0,
@@ -7225,7 +7589,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averageLifetimeMs: 0,
         zeroDamageBattleRate: 1,
         survivalRate: 0,
-        ownerWinRate: 0,
+        ownerWinRate: 0.5,
         adoptionRate: 1,
         subUnitBattleAppearances: 0,
         subUnitMatchesPresent: 0,
@@ -7342,6 +7706,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
       finalBoardAdoptionRate: 0,
     },
     highCostOfferMetrics: [],
+    shopOfferMetrics: [],
     rangeDamageEfficiencyMetrics: [
       {
         side: "boss",
@@ -7538,6 +7903,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
     ],
     raidMeleeCohortMetrics: [],
     raidSpecialMeleeUnitDiagnostics: [],
+    roundDetails: [],
   });
 });
 
@@ -7692,9 +8058,24 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
 
     await waitForCondition(() => clients.every((client) => serverRoom.state.players.get(client.sessionId)?.ready === true), 2_000);
 
-    await waitForCondition(() => serverRoom.state.lobbyStage === "selection", 2_000);
-    await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000);
-    await waitForCondition(() => serverRoom.state.phase === "Battle", 3_000);
+    await waitForCondition(
+      () => serverRoom.state.lobbyStage === "selection"
+        || serverRoom.state.phase === "Prep"
+        || serverRoom.state.phase === "Battle"
+        || serverRoom.state.roundIndex >= 2,
+      2_500,
+    );
+    await waitForCondition(
+      () => serverRoom.state.phase === "Prep"
+        || serverRoom.state.phase === "Battle"
+        || serverRoom.state.roundIndex >= 2,
+      2_500,
+    );
+    await waitForCondition(
+      () => serverRoom.state.phase === "Battle"
+        || (serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex >= 2),
+      3_000,
+    );
     await waitForCondition(
       () => serverRoom.state.phase === "Prep" && serverRoom.state.roundIndex === 2,
       3_000,

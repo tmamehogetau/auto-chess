@@ -6,8 +6,8 @@ const DEFAULT_SPECIAL_UNIT_UPGRADE_COST_BY_LEVEL: Readonly<Record<number, number
   2: 2,
   3: 3,
   4: 4,
-  5: 6,
-  6: 9,
+  5: 5,
+  6: 7,
 };
 
 const JYOON_SPECIAL_UNIT_UPGRADE_COST_BY_LEVEL: Readonly<Record<number, number>> = {
@@ -15,8 +15,8 @@ const JYOON_SPECIAL_UNIT_UPGRADE_COST_BY_LEVEL: Readonly<Record<number, number>>
   2: 3,
   3: 4,
   4: 5,
-  5: 7,
-  6: 10,
+  5: 6,
+  6: 8,
 };
 
 const DEFAULT_SPECIAL_UNIT_COMBAT_MULTIPLIER_BY_LEVEL: Readonly<Record<number, number>> = {
@@ -116,4 +116,24 @@ export function getSpecialUnitCombatMultiplier(
     : DEFAULT_SPECIAL_UNIT_COMBAT_MULTIPLIER_BY_LEVEL;
 
   return multiplierTable[unitLevel] ?? multiplierTable[SPECIAL_UNIT_LEVEL_MIN] ?? 1;
+}
+
+export function getSpecialUnitCombatMultiplierDelta(
+  currentLevel: number,
+  specialUnitId?: string,
+): number {
+  if (
+    !Number.isInteger(currentLevel)
+    || currentLevel < SPECIAL_UNIT_LEVEL_MIN
+  ) {
+    return 0;
+  }
+
+  const normalizedCurrentLevel = Math.min(SPECIAL_UNIT_LEVEL_MAX, currentLevel);
+  if (normalizedCurrentLevel >= SPECIAL_UNIT_LEVEL_MAX) {
+    return 0;
+  }
+
+  return getSpecialUnitCombatMultiplier(normalizedCurrentLevel + 1, specialUnitId)
+    - getSpecialUnitCombatMultiplier(normalizedCurrentLevel, specialUnitId);
 }

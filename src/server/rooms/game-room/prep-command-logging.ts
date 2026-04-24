@@ -3,10 +3,25 @@ import type { LoggedPrepCommandPayload } from "./prep-command-payload";
 import { calculateSellValue } from "../../unit-level-config";
 import { calculateSpecialUnitUpgradeCost } from "../../special-unit-level-config";
 
+type LoggedShopOffer = {
+  unitType: string;
+  cost: number;
+  unitId?: string;
+  displayName?: string;
+  isRumorUnit?: boolean;
+};
+
+type LoggedBossShopOffer = {
+  unitType: string;
+  cost: number;
+  unitId?: string;
+  displayName?: string;
+};
+
 export interface PrepCommandLoggingDeps {
   logger: MatchLogger | null;
-  getShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
-  getBossShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number }> | undefined;
+  getShopOffers: (sessionId: string) => LoggedShopOffer[] | undefined;
+  getBossShopOffers: (sessionId: string) => LoggedBossShopOffer[] | undefined;
   getSpecialUnitLevel?: (sessionId: string) => number | undefined;
   getSelectedSpecialUnitId?: (sessionId: string) => string | undefined;
   getBenchUnits?: (
@@ -31,7 +46,8 @@ export interface PrepCommandLoggingDeps {
 }
 
 export interface LogPrepCommandActionsOptions {
-  shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
+  shopOffersSnapshot?: LoggedShopOffer[] | undefined;
+  bossShopOffersSnapshot?: LoggedBossShopOffer[] | undefined;
   benchUnitsSnapshot?: Array<{
     unitType: "vanguard" | "ranger" | "mage" | "assassin";
     cost: number;
@@ -73,6 +89,8 @@ export function logPrepCommandActions(
     if (offer) {
       deps.logger.logAction(sessionId, roundIndex, "buy_unit", {
         unitType: offer.unitType,
+        ...(typeof offer.unitId === "string" && { unitId: offer.unitId }),
+        ...(typeof offer.displayName === "string" && { unitName: offer.displayName }),
         cost: offer.cost,
         ...(offer.isRumorUnit === true && { isRumorUnit: true }),
         goldBefore,
@@ -157,11 +175,13 @@ export function logPrepCommandActions(
   }
 
   if (commandPayload.bossShopBuySlotIndex !== undefined) {
-    const bossOffers = deps.getBossShopOffers(sessionId);
+    const bossOffers = options?.bossShopOffersSnapshot ?? deps.getBossShopOffers(sessionId);
     const offer = bossOffers?.[commandPayload.bossShopBuySlotIndex];
     if (offer) {
       deps.logger.logAction(sessionId, roundIndex, "buy_boss_unit", {
         unitType: offer.unitType,
+        ...(typeof offer.unitId === "string" && { unitId: offer.unitId }),
+        ...(typeof offer.displayName === "string" && { unitName: offer.displayName }),
         cost: offer.cost,
         goldBefore,
         goldAfter: goldBefore - offer.cost,

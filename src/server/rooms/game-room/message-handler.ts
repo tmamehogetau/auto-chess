@@ -22,7 +22,13 @@ import {
   PlayerPresenceState,
 } from "../../schema/match-room-state";
 
-type ShopOfferSnapshot = Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>;
+type ShopOfferSnapshot = Array<{
+  unitType: string;
+  cost: number;
+  unitId?: string;
+  displayName?: string;
+  isRumorUnit?: boolean;
+}>;
 type BenchUnitSnapshot = Array<{
   unitType: "vanguard" | "ranger" | "mage" | "assassin";
   cost: number;
@@ -53,6 +59,7 @@ export interface GameRoomMessageHandlerDeps {
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
     shopOffersSnapshot?: ShopOfferSnapshot,
+    bossShopOffersSnapshot?: ShopOfferSnapshot,
     benchUnitsSnapshot?: BenchUnitSnapshot,
     boardPlacementsSnapshot?: BoardPlacementSnapshot,
   ) => void;
@@ -240,6 +247,9 @@ export function handlePrepCommandMessage(
   const shopOffersSnapshot = commandPayload?.shopBuySlotIndex !== undefined
     ? controller.getShopOffersForPlayer(client.sessionId)
     : undefined;
+  const bossShopOffersSnapshot = commandPayload?.bossShopBuySlotIndex !== undefined
+    ? controller.getBossShopOffersForPlayer(client.sessionId)
+    : undefined;
   const benchUnitsSnapshot = commandPayload?.benchSellIndex !== undefined
     ? controller.getBenchUnitDetailsForPlayer(client.sessionId)
     : undefined;
@@ -279,6 +289,7 @@ export function handlePrepCommandMessage(
       client.sessionId,
       commandPayload,
       shopOffersSnapshot,
+      bossShopOffersSnapshot,
       benchUnitsSnapshot,
       boardPlacementsSnapshot,
     );

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildManualPlayUnitBattleOutcomes,
   buildManualPlayHumanReportText,
   normalizeManualPlayRoundPhaseContributionDamage,
   resolveManualPlayRoundTimeline,
@@ -300,5 +301,91 @@ describe("manual-play-human-log", () => {
     });
 
     expect(resolved).toEqual(roundOneTimeline);
+  });
+
+  it("preserves special unit levels for hero and boss battle outcomes", () => {
+    const outcomes = buildManualPlayUnitBattleOutcomes(
+      [{
+        type: "battleStart",
+        battleId: "battle-r1-1",
+        round: 1,
+        boardConfig: { width: 6, height: 6 },
+        units: [
+          {
+            battleUnitId: "hero-raid-a",
+            ownerPlayerId: "raid-a",
+            sourceUnitId: "reimu",
+            side: "raid",
+            x: 2,
+            y: 4,
+            currentHp: 1000,
+            maxHp: 1000,
+            displayName: "博麗霊夢",
+          },
+          {
+            battleUnitId: "boss-boss-1",
+            ownerPlayerId: "boss-1",
+            sourceUnitId: "remilia",
+            side: "boss",
+            x: 2,
+            y: 1,
+            currentHp: 1200,
+            maxHp: 1200,
+            displayName: "レミリア",
+          },
+        ],
+      }],
+      [
+        {
+          playerId: "raid-a",
+          role: "raid",
+          boardUnits: [{
+            cell: 8,
+            unitName: "博麗霊夢",
+            unitType: "hero",
+            unitId: "reimu",
+            unitLevel: 4,
+            subUnitName: "",
+          }],
+          trackedBattleUnitIds: ["hero-raid-a"],
+        },
+        {
+          playerId: "boss-1",
+          role: "boss",
+          boardUnits: [{
+            cell: 2,
+            unitName: "レミリア",
+            unitType: "boss",
+            unitId: "remilia",
+            unitLevel: 5,
+            subUnitName: "",
+          }],
+          trackedBattleUnitIds: ["boss-boss-1"],
+        },
+      ],
+      {
+        "raid-a": "P2",
+        "boss-1": "P1",
+      },
+    );
+
+    expect(outcomes).toEqual([
+      expect.objectContaining({
+        playerId: "boss-1",
+        unitId: "remilia",
+        unitName: "レミリア",
+        side: "boss",
+        unitLevel: 5,
+        isSpecialUnit: false,
+      }),
+      expect.objectContaining({
+        playerId: "raid-a",
+        unitId: "reimu",
+        unitName: "博麗霊夢",
+        side: "raid",
+        unitLevel: 4,
+        isSpecialUnit: false,
+      }),
+    ]);
   });
 });

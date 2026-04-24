@@ -353,9 +353,9 @@ describe("manual-check script contract", () => {
     expect(source.includes("id: 'okina'")).toBe(true);
     expect(source.includes("id: 'keiki'")).toBe(true);
     expect(source.includes("id: 'jyoon'")).toBe(true);
-    expect(source.includes("name: '隠岐奈'")).toBe(true);
-    expect(source.includes("name: '袿姫'")).toBe(true);
-    expect(source.includes("name: '女苑'")).toBe(true);
+    expect(source.includes("name: '摩多羅隠岐奈'")).toBe(true);
+    expect(source.includes("name: '埴安神袿姫'")).toBe(true);
+    expect(source.includes("name: '依神女苑'")).toBe(true);
     expect(source.includes("id: 'sanae'")).toBe(false);
     expect(source.includes("id: 'youmu'")).toBe(false);
     expect(source.includes("id: 'sakuya'")).toBe(false);

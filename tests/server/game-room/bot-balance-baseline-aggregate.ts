@@ -1,7 +1,9 @@
+import { HERO_EXCLUSIVE_UNITS } from "../../../src/data/hero-exclusive-units";
 import { HEROES } from "../../../src/data/heroes";
 import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 import { getUnitLevelCombatMultiplier } from "../../../src/server/unit-level-config";
+import { BOSS_CHARACTERS } from "../../../src/shared/boss-characters";
 import { getMvpPhase1Boss } from "../../../src/shared/types";
 
 export type BotOnlyReportMetadata = {
@@ -28,6 +30,7 @@ export type BotOnlyBaselinePlayerMetrics = {
   averagePurchaseCount: number;
   averageRefreshCount: number;
   averageSellCount: number;
+  averageSpecialUnitUpgradeCount?: number;
 };
 
 export type BotOnlyBaselineBattleUnitMetrics = {
@@ -37,10 +40,15 @@ export type BotOnlyBaselineBattleUnitMetrics = {
   battleAppearances: number;
   matchesPresent: number;
   averageunitLevel: number;
+  maxUnitLevel?: number;
+  level4ReachRate?: number;
+  level7ReachRate?: number;
   averageDamagePerBattle: number;
   averageDamagePerMatch: number;
   activeBattleRate: number;
   averageAttackCountPerBattle: number;
+  averageBasicSkillActivationsPerBattle?: number;
+  averagePairSkillActivationsPerBattle?: number;
   averageHitCountPerBattle: number;
   averageDamageTakenPerBattle: number;
   averageFirstAttackMs: number | null;
@@ -59,6 +67,8 @@ export type BotOnlyBaselineBattleEndReason =
   | "mutual_annihilation"
   | "timeout_hp_lead"
   | "timeout_hp_tie"
+  | "phase_hp_depleted"
+  | "boss_defeated"
   | "forced"
   | "unexpected";
 
@@ -96,6 +106,8 @@ export type BotOnlyBaselinePurchase = {
   label: string;
   actionType: "buy_unit" | "buy_boss_unit";
   unitType: string;
+  unitId?: string;
+  unitName?: string;
   cost: number;
 };
 
@@ -131,6 +143,15 @@ export type BotOnlyBaselineHighCostOfferMetric = {
   observationCount: number;
   matchesPresent: number;
   offeredMatchRate: number;
+};
+
+export type BotOnlyBaselineShopOfferMetric = BotOnlyBaselineHighCostOfferMetric & {
+  purchaseCount: number;
+  purchaseMatchCount: number;
+  purchaseRate: number;
+  finalBoardCopies: number;
+  finalBoardMatchCount: number;
+  finalBoardAdoptionRate: number;
 };
 
 export type BotOnlyBaselineRangeBand = "range_1" | "range_2_plus";
@@ -288,6 +309,7 @@ export type BotOnlyBaselineFinalPlayer = {
   purchaseCount: number;
   refreshCount: number;
   sellCount: number;
+  specialUnitUpgradeCount?: number;
   boardUnits: BotOnlyBaselineFinalBoardUnit[];
 };
 
@@ -315,6 +337,8 @@ export type BotOnlyBaselineBattleUnitOutcome = {
   subUnitName: string;
   isSpecialUnit: boolean;
   attackCount?: number;
+  basicSkillActivationCount?: number;
+  pairSkillActivationCount?: number;
   hitCount?: number;
   damageTaken?: number;
   moveCount?: number;
@@ -380,6 +404,82 @@ export type BotOnlyBaselineBattleSummary = {
   unitOutcomes: BotOnlyBaselineBattleUnitOutcome[];
 };
 
+export type BotOnlyBaselineRoundUnitDetail = {
+  playerId: string;
+  label: string;
+  unitId: string;
+  unitName: string;
+  side: "boss" | "raid";
+  totalDamage: number;
+  phaseContributionDamage: number;
+  finalHp: number;
+  alive: boolean;
+  unitLevel: number;
+};
+
+export type BotOnlyBaselineRoundPlayerConsequence = {
+  playerId: string;
+  label: string;
+  role: string;
+  battleStartUnitCount: number;
+  playerWipedOut: boolean;
+  remainingLivesBefore: number;
+  remainingLivesAfter: number;
+  eliminatedAfter: boolean;
+};
+
+export type BotOnlyBaselineRoundBattleDetail = {
+  battleIndex: number;
+  leftPlayerId: string;
+  rightPlayerId: string;
+  winner: "left" | "right" | "draw";
+  battleDurationMs?: number;
+  battleEndReason?: BotOnlyBaselineBattleEndReason;
+  bossSurvivors?: number;
+  raidSurvivors?: number;
+  leftDamageDealt: number;
+  rightDamageDealt: number;
+  unitOutcomes: BotOnlyBaselineBattleUnitOutcome[];
+};
+
+export type BotOnlyBaselineRoundSummary = {
+  roundIndex: number;
+  phase: string;
+  durationMs: number;
+  phaseHpTarget: number;
+  phaseDamageDealt: number;
+  phaseResult: "pending" | "success" | "failed";
+  phaseCompletionRate: number;
+  playerConsequences: BotOnlyBaselineRoundPlayerConsequence[];
+  battles: BotOnlyBaselineRoundBattleDetail[];
+  eliminations: string[];
+};
+
+export type BotOnlyBaselineMatchRoundDetail = {
+  matchIndex: number;
+  matchWinnerRole: "boss" | "raid";
+  totalRounds: number;
+  roundIndex: number;
+  battleEndTimeMs: number;
+  phaseHpTarget: number;
+  phaseDamageDealt: number;
+  phaseCompletionRate: number;
+  phaseResult: "pending" | "success" | "failed";
+  allRaidPlayersWipedOut: boolean;
+  raidPlayersWipedOut: number;
+  raidPlayersEliminatedAfterRound: number;
+  bossSurvivors: number;
+  raidSurvivors: number;
+  bossTotalDamage: number;
+  raidTotalDamage: number;
+  raidPhaseContributionDamage: number;
+  battleEndReasons: BotOnlyBaselineBattleEndReason[];
+  battleWinnerRoles: Array<"boss" | "raid" | "draw">;
+  raidPlayerConsequences: BotOnlyBaselineRoundPlayerConsequence[];
+  topBossUnits: BotOnlyBaselineRoundUnitDetail[];
+  topRaidUnits: BotOnlyBaselineRoundUnitDetail[];
+};
+
 export type BotOnlyBaselineMatchSummary = {
   metadata?: BotOnlyReportMetadata;
   totalRounds: number;
@@ -388,6 +488,7 @@ export type BotOnlyBaselineMatchSummary = {
   playerLabels: Record<string, string>;
   finalPlayers: BotOnlyBaselineFinalPlayer[];
   battles: BotOnlyBaselineBattleSummary[];
+  rounds?: BotOnlyBaselineRoundSummary[];
   purchases?: BotOnlyBaselinePurchase[];
   observedShopOffers?: BotOnlyBaselineObservedShopOffer[];
 };
@@ -414,11 +515,13 @@ export type BotOnlyBaselineAggregateReport = {
   topDamageUnits: BotOnlyBaselineTopDamageUnit[];
   highCostSummary?: BotOnlyBaselineHighCostSummary;
   highCostOfferMetrics?: BotOnlyBaselineHighCostOfferMetric[];
+  shopOfferMetrics?: BotOnlyBaselineShopOfferMetric[];
   rangeDamageEfficiencyMetrics: BotOnlyBaselineRangeDamageEfficiencyMetric[];
   rangeActionDiagnosticsMetrics: BotOnlyBaselineRangeActionDiagnosticsMetric[];
   rangeFormationDiagnosticsMetrics: BotOnlyBaselineRangeFormationDiagnosticsMetric[];
   raidMeleeCohortMetrics?: BotOnlyBaselineRaidMeleeCohortMetric[];
   raidSpecialMeleeUnitDiagnostics?: BotOnlyBaselineRaidSpecialMeleeUnitDiagnostic[];
+  roundDetails?: BotOnlyBaselineMatchRoundDetail[];
 };
 
 const HIGH_COST_THRESHOLD = 4;
@@ -428,12 +531,32 @@ const BOT_ONLY_BASELINE_BATTLE_END_REASONS: BotOnlyBaselineBattleEndReason[] = [
   "mutual_annihilation",
   "timeout_hp_lead",
   "timeout_hp_tie",
+  "phase_hp_depleted",
+  "boss_defeated",
   "forced",
   "unexpected",
 ];
 const UNIT_COST_BY_UNIT_ID = new Map(
   TOUHOU_UNITS.map((unit) => [unit.unitId, unit.cost] as const),
 );
+const UNIT_DISPLAY_NAME_BY_ID = new Map<string, string>([
+  ...TOUHOU_UNITS.map((unit) => [unit.unitId, unit.displayName] as const),
+  ...HEROES.map((hero) => [hero.id, hero.name] as const),
+  ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [
+    [unit.id, unit.displayName] as const,
+    [unit.unitId, unit.displayName] as const,
+  ]),
+  ...SCARLET_MANSION_UNITS.flatMap((unit) => [
+    [unit.id, unit.displayName] as const,
+    [unit.unitId, unit.displayName] as const,
+  ]),
+  ...BOSS_CHARACTERS.map((boss) => [boss.id, boss.displayName] as const),
+]);
+const SPECIAL_BATTLE_UNIT_IDS = new Set<string>([
+  ...HEROES.map((hero) => hero.id),
+  ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [unit.id, unit.unitId]),
+  ...BOSS_CHARACTERS.map((boss) => boss.id),
+]);
 
 type UnitCombatProfile = {
   attack: number;
@@ -522,9 +645,14 @@ type BattleUnitAggregateAccumulator = {
   battleAppearances: number;
   matchesPresent: number;
   totalunitLevel: number;
+  maxUnitLevel: number;
+  level4Matches: number;
+  level7Matches: number;
   totalDamage: number;
   activeBattles: number;
   totalAttackCount: number;
+  totalBasicSkillActivations: number;
+  totalPairSkillActivations: number;
   totalHitCount: number;
   totalDamageTaken: number;
   totalFirstAttackMs: number;
@@ -688,6 +816,8 @@ function createEmptyBattleEndReasonCounts(): Record<BotOnlyBaselineBattleEndReas
     mutual_annihilation: 0,
     timeout_hp_lead: 0,
     timeout_hp_tie: 0,
+    phase_hp_depleted: 0,
+    boss_defeated: 0,
     forced: 0,
     unexpected: 0,
   };
@@ -706,7 +836,7 @@ function buildEmptyBattleMetrics(): BotOnlyBaselineBattleMetrics {
 }
 
 function resolveBattleEndReason(
-  battle: BotOnlyBaselineBattleSummary,
+  battle: Pick<BotOnlyBaselineBattleSummary, "battleEndReason" | "bossSurvivors" | "raidSurvivors" | "winner">,
 ): BotOnlyBaselineBattleEndReason {
   if (battle.battleEndReason != null) {
     return battle.battleEndReason;
@@ -744,9 +874,14 @@ function createBattleUnitAggregateAccumulator(
     battleAppearances: 0,
     matchesPresent: 0,
     totalunitLevel: 0,
+    maxUnitLevel: 0,
+    level4Matches: 0,
+    level7Matches: 0,
     totalDamage: 0,
     activeBattles: 0,
     totalAttackCount: 0,
+    totalBasicSkillActivations: 0,
+    totalPairSkillActivations: 0,
     totalHitCount: 0,
     totalDamageTaken: 0,
     totalFirstAttackMs: 0,
@@ -775,6 +910,132 @@ function resolveUnitCombatProfile(
   return UNIT_COMBAT_PROFILE_BY_ID.get(unitId)
     ?? UNIT_COMBAT_PROFILE_BY_TYPE.get(unitType)
     ?? null;
+}
+
+function resolveBaselineUnitName(unitId: string, fallback: string): string {
+  return UNIT_DISPLAY_NAME_BY_ID.get(unitId) ?? fallback;
+}
+
+function isSpecialBattleUnitOutcome(outcome: BotOnlyBaselineBattleUnitOutcome): boolean {
+  return outcome.isSpecialUnit || SPECIAL_BATTLE_UNIT_IDS.has(outcome.unitId);
+}
+
+function resolveBattleWinnerRole(
+  battle: Pick<BotOnlyBaselineBattleSummary, "leftPlayerId" | "rightPlayerId" | "winner">,
+  playerById: Map<string, BotOnlyBaselineFinalPlayer>,
+  bossPlayerId: string,
+): "boss" | "raid" | null {
+  const winnerPlayerId = battle.winner === "left"
+    ? battle.leftPlayerId
+    : battle.winner === "right"
+      ? battle.rightPlayerId
+      : null;
+  if (winnerPlayerId == null) {
+    return null;
+  }
+
+  const role = playerById.get(winnerPlayerId)?.role;
+  if (role === "boss" || role === "raid") {
+    return role;
+  }
+
+  return winnerPlayerId === bossPlayerId ? "boss" : "raid";
+}
+
+function toRoundUnitDetail(
+  outcome: BotOnlyBaselineBattleUnitOutcome,
+): BotOnlyBaselineRoundUnitDetail {
+  return {
+    playerId: outcome.playerId,
+    label: outcome.label,
+    unitId: outcome.unitId,
+    unitName: resolveBaselineUnitName(outcome.unitId, outcome.unitName),
+    side: outcome.side,
+    totalDamage: outcome.totalDamage,
+    phaseContributionDamage: outcome.phaseContributionDamage,
+    finalHp: outcome.finalHp,
+    alive: outcome.alive,
+    unitLevel: outcome.unitLevel,
+  };
+}
+
+function buildRoundDetailsForMatch(
+  report: BotOnlyBaselineMatchSummary,
+  matchIndex: number,
+): BotOnlyBaselineMatchRoundDetail[] {
+  const playerById = new Map(
+    report.finalPlayers.map((player) => [player.playerId, player] as const),
+  );
+  const matchWinnerRole = report.ranking[0] === report.bossPlayerId ? "boss" : "raid";
+
+  return (report.rounds ?? []).map((round) => {
+    const raidPlayerConsequences = round.playerConsequences.filter(
+      (player) => player.role === "raid",
+    );
+    const allRaidPlayersWipedOut = raidPlayerConsequences.length > 0
+      && raidPlayerConsequences.every((player) => player.playerWipedOut);
+    const allUnitOutcomes = round.battles.flatMap((battle) => battle.unitOutcomes);
+    const bossUnitOutcomes = allUnitOutcomes.filter((unit) => unit.side === "boss");
+    const raidUnitOutcomes = allUnitOutcomes.filter((unit) => unit.side === "raid");
+    const bossSurvivors = round.battles.reduce(
+      (total, battle) => total + Math.max(0, Math.round(battle.bossSurvivors ?? 0)),
+      0,
+    );
+    const raidSurvivors = round.battles.reduce(
+      (total, battle) => total + Math.max(0, Math.round(battle.raidSurvivors ?? 0)),
+      0,
+    );
+    const battleEndTimeMs = Math.max(
+      0,
+      ...round.battles
+        .map((battle) => battle.battleDurationMs)
+        .filter((duration): duration is number =>
+          typeof duration === "number" && Number.isFinite(duration)),
+    );
+
+    return {
+      matchIndex,
+      matchWinnerRole,
+      totalRounds: report.totalRounds,
+      roundIndex: round.roundIndex,
+      battleEndTimeMs,
+      phaseHpTarget: round.phaseHpTarget,
+      phaseDamageDealt: round.phaseDamageDealt,
+      phaseCompletionRate: round.phaseCompletionRate,
+      phaseResult: round.phaseResult,
+      allRaidPlayersWipedOut,
+      raidPlayersWipedOut: raidPlayerConsequences.filter((player) => player.playerWipedOut).length,
+      raidPlayersEliminatedAfterRound: raidPlayerConsequences.filter((player) => player.eliminatedAfter).length,
+      bossSurvivors,
+      raidSurvivors,
+      bossTotalDamage: bossUnitOutcomes.reduce((total, unit) => total + unit.totalDamage, 0),
+      raidTotalDamage: raidUnitOutcomes.reduce((total, unit) => total + unit.totalDamage, 0),
+      raidPhaseContributionDamage: raidUnitOutcomes.reduce(
+        (total, unit) => total + unit.phaseContributionDamage,
+        0,
+      ),
+      battleEndReasons: round.battles.map((battle) => resolveBattleEndReason(battle)),
+      battleWinnerRoles: round.battles.map((battle) =>
+        battle.winner === "draw"
+          ? "draw"
+          : resolveBattleWinnerRole(battle, playerById, report.bossPlayerId) ?? "draw"),
+      raidPlayerConsequences,
+      topBossUnits: bossUnitOutcomes
+        .map((unit) => toRoundUnitDetail(unit))
+        .sort((left, right) =>
+          right.totalDamage - left.totalDamage
+          || right.finalHp - left.finalHp
+          || left.unitId.localeCompare(right.unitId))
+        .slice(0, 5),
+      topRaidUnits: raidUnitOutcomes
+        .map((unit) => toRoundUnitDetail(unit))
+        .sort((left, right) =>
+          right.phaseContributionDamage - left.phaseContributionDamage
+          || right.totalDamage - left.totalDamage
+          || left.unitId.localeCompare(right.unitId))
+        .slice(0, 8),
+    };
+  });
 }
 
 function createRangeDamageEfficiencyAccumulator(
@@ -1284,6 +1545,13 @@ function buildBattleUnitMetrics(
     battleAppearances: entry.battleAppearances,
     matchesPresent: entry.matchesPresent,
     averageunitLevel: entry.totalunitLevel / entry.battleAppearances,
+    maxUnitLevel: entry.maxUnitLevel,
+    level4ReachRate: entry.matchesPresent > 0
+      ? entry.level4Matches / entry.matchesPresent
+      : 0,
+    level7ReachRate: entry.matchesPresent > 0
+      ? entry.level7Matches / entry.matchesPresent
+      : 0,
     averageDamagePerBattle: entry.totalDamage / entry.battleAppearances,
     averageDamagePerMatch: entry.totalDamage / completedMatches,
     activeBattleRate: entry.activeBattles / entry.battleAppearances,
@@ -1298,6 +1566,18 @@ function buildBattleUnitMetrics(
     survivalRate: entry.survivedBattles / entry.battleAppearances,
     ownerWinRate: entry.ownerWins / entry.battleAppearances,
     adoptionRate: entry.matchesPresent / completedMatches,
+    ...(entry.totalBasicSkillActivations > 0
+      ? {
+        averageBasicSkillActivationsPerBattle:
+          entry.totalBasicSkillActivations / entry.battleAppearances,
+      }
+      : {}),
+    ...(entry.totalPairSkillActivations > 0
+      ? {
+        averagePairSkillActivationsPerBattle:
+          entry.totalPairSkillActivations / entry.battleAppearances,
+      }
+      : {}),
     ...(typeof entry.subUnitBattleAppearances === "number"
       ? { subUnitBattleAppearances: entry.subUnitBattleAppearances }
       : {}),
@@ -1337,11 +1617,13 @@ export function buildBotOnlyBaselineAggregateReport(
       topDamageUnits: [],
       highCostSummary: buildEmptyHighCostSummary(),
       highCostOfferMetrics: [],
+      shopOfferMetrics: [],
       rangeDamageEfficiencyMetrics: [],
       rangeActionDiagnosticsMetrics: [],
       rangeFormationDiagnosticsMetrics: [],
       raidMeleeCohortMetrics: [],
       raidSpecialMeleeUnitDiagnostics: [],
+      roundDetails: [],
     };
   }
 
@@ -1369,10 +1651,18 @@ export function buildBotOnlyBaselineAggregateReport(
   const purchaseCountTotalsByLabel = new Map<string, number>();
   const refreshCountTotalsByLabel = new Map<string, number>();
   const sellCountTotalsByLabel = new Map<string, number>();
+  const specialUnitUpgradeCountTotalsByLabel = new Map<string, number>();
   const remainingLivesTotalsByLabel = new Map<string, number>();
   const bossBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
   const raidBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
   const finalBoardUnitsById = new Map<string, {
+    unitId: string;
+    unitType: string;
+    unitName: string;
+    totalCopies: number;
+    matchesPresent: number;
+  }>();
+  const finalBoardUnitsByRoleAndId = new Map<string, {
     unitId: string;
     unitType: string;
     unitName: string;
@@ -1396,11 +1686,24 @@ export function buildBotOnlyBaselineAggregateReport(
     observationCount: number;
     matchesPresent: number;
   }>();
+  const shopOfferMetricsByKey = new Map<string, {
+    unitId: string;
+    unitName: string;
+    unitType: string;
+    role: "boss" | "raid";
+    source: "shop" | "bossShop";
+    cost: number;
+    observationCount: number;
+    matchesPresent: number;
+    purchaseCount: number;
+    purchaseMatchCount: number;
+  }>();
   const rangeDamageEfficiencyByKey = new Map<string, RangeDamageEfficiencyAccumulator>();
   const rangeActionDiagnosticsByKey = new Map<string, RangeActionDiagnosticsAccumulator>();
   const rangeFormationDiagnosticsByKey = new Map<string, RangeFormationDiagnosticsAccumulator>();
   const raidMeleeCohortMetricsByKey = new Map<string, RaidMeleeCohortAccumulator>();
   const raidSpecialMeleeUnitDiagnosticsById = new Map<string, RaidSpecialMeleeUnitDiagnosticAccumulator>();
+  const roundDetails: BotOnlyBaselineMatchRoundDetail[] = [];
   let highCostOfferObservationCount = 0;
   let highCostOfferMatchCount = 0;
   let highCostPurchaseCount = 0;
@@ -1408,10 +1711,11 @@ export function buildBotOnlyBaselineAggregateReport(
   let highCostFinalBoardCopies = 0;
   let highCostFinalBoardMatchCount = 0;
 
-  for (const report of reports) {
+  for (const [matchIndex, report] of reports.entries()) {
     if (!areBotOnlyReportMetadataEqual(sharedMetadata, report.metadata)) {
       sharedMetadata = undefined;
     }
+    roundDetails.push(...buildRoundDetailsForMatch(report, matchIndex));
 
     if (report.ranking[0] === report.bossPlayerId) {
       bossWins += 1;
@@ -1452,7 +1756,10 @@ export function buildBotOnlyBaselineAggregateReport(
     const seenBossBattleUnitsInMatch = new Set<string>();
     const seenRaidBattleUnitsInMatch = new Set<string>();
     const seenRaidSubUnitsInMatch = new Set<string>();
+    const bossMaxUnitLevelByMatch = new Map<string, number>();
+    const raidMaxUnitLevelByMatch = new Map<string, number>();
     const seenFinalBoardUnitsInMatch = new Set<string>();
+    const seenFinalBoardUnitsByRoleInMatch = new Set<string>();
     let matchHasHighCostFinalBoardUnit = false;
     for (const player of report.finalPlayers) {
       hpTotalsByLabel.set(player.label, (hpTotalsByLabel.get(player.label) ?? 0) + player.hp);
@@ -1480,6 +1787,10 @@ export function buildBotOnlyBaselineAggregateReport(
         player.label,
         (sellCountTotalsByLabel.get(player.label) ?? 0) + (player.sellCount ?? 0),
       );
+      specialUnitUpgradeCountTotalsByLabel.set(
+        player.label,
+        (specialUnitUpgradeCountTotalsByLabel.get(player.label) ?? 0) + (player.specialUnitUpgradeCount ?? 0),
+      );
       remainingLivesTotalsByLabel.set(
         player.label,
         (remainingLivesTotalsByLabel.get(player.label) ?? 0) + player.remainingLives,
@@ -1499,6 +1810,21 @@ export function buildBotOnlyBaselineAggregateReport(
         }
         finalBoardUnitsById.set(boardUnit.unitId, existing);
 
+        const roleScopedKey = `${player.role}::${boardUnit.unitId}`;
+        const existingForRole = finalBoardUnitsByRoleAndId.get(roleScopedKey) ?? {
+          unitId: boardUnit.unitId,
+          unitType: boardUnit.unitType,
+          unitName: boardUnit.unitName,
+          totalCopies: 0,
+          matchesPresent: 0,
+        };
+        existingForRole.totalCopies += 1;
+        if (!seenFinalBoardUnitsByRoleInMatch.has(roleScopedKey)) {
+          existingForRole.matchesPresent += 1;
+          seenFinalBoardUnitsByRoleInMatch.add(roleScopedKey);
+        }
+        finalBoardUnitsByRoleAndId.set(roleScopedKey, existingForRole);
+
         const resolvedCost = resolveBoardUnitCost(boardUnit.unitId);
         if (resolvedCost !== null && resolvedCost >= HIGH_COST_THRESHOLD) {
           highCostFinalBoardCopies += 1;
@@ -1511,7 +1837,38 @@ export function buildBotOnlyBaselineAggregateReport(
     }
 
     let matchHasHighCostPurchase = false;
+    const purchasedShopMetricKeysInMatch = new Set<string>();
     for (const purchase of report.purchases ?? []) {
+      const purchaseSource = purchase.actionType === "buy_boss_unit" ? "bossShop" : "shop";
+      const purchasingPlayerRole = playerById.get(purchase.playerId)?.role;
+      const purchaseRole = purchase.actionType === "buy_boss_unit"
+        ? "boss"
+        : purchasingPlayerRole === "boss"
+          ? "boss"
+          : "raid";
+      const purchaseUnitId = purchase.unitId ?? "";
+      if (purchaseUnitId.length > 0) {
+        const key = `${purchaseRole}::${purchaseSource}::${purchaseUnitId}`;
+        const existing = shopOfferMetricsByKey.get(key) ?? {
+          unitId: purchaseUnitId,
+          unitName: purchase.unitName ?? resolveBaselineUnitName(purchaseUnitId, purchase.unitType),
+          unitType: purchase.unitType,
+          role: purchaseRole,
+          source: purchaseSource,
+          cost: purchase.cost,
+          observationCount: 0,
+          matchesPresent: 0,
+          purchaseCount: 0,
+          purchaseMatchCount: 0,
+        };
+        existing.purchaseCount += 1;
+        if (!purchasedShopMetricKeysInMatch.has(key)) {
+          existing.purchaseMatchCount += 1;
+          purchasedShopMetricKeysInMatch.add(key);
+        }
+        shopOfferMetricsByKey.set(key, existing);
+      }
+
       if (purchase.cost < HIGH_COST_THRESHOLD) {
         continue;
       }
@@ -1524,7 +1881,28 @@ export function buildBotOnlyBaselineAggregateReport(
     }
 
     let matchHasHighCostOffer = false;
+    const seenShopOfferMetricKeysInMatch = new Set<string>();
     for (const offer of report.observedShopOffers ?? []) {
+      const shopMetricKey = `${offer.role}::${offer.source}::${offer.unitId}`;
+      const shopMetric = shopOfferMetricsByKey.get(shopMetricKey) ?? {
+        unitId: offer.unitId,
+        unitName: offer.unitName,
+        unitType: offer.unitType,
+        role: offer.role,
+        source: offer.source,
+        cost: offer.cost,
+        observationCount: 0,
+        matchesPresent: 0,
+        purchaseCount: 0,
+        purchaseMatchCount: 0,
+      };
+      shopMetric.observationCount += offer.observationCount;
+      if (!seenShopOfferMetricKeysInMatch.has(shopMetricKey)) {
+        shopMetric.matchesPresent += 1;
+        seenShopOfferMetricKeysInMatch.add(shopMetricKey);
+      }
+      shopOfferMetricsByKey.set(shopMetricKey, shopMetric);
+
       if (offer.cost < HIGH_COST_THRESHOLD) {
         continue;
       }
@@ -1552,6 +1930,7 @@ export function buildBotOnlyBaselineAggregateReport(
 
     const seenUnitKeysInMatch = new Set<string>();
     for (const battle of report.battles) {
+      const winnerRole = resolveBattleWinnerRole(battle, playerById, report.bossPlayerId);
       const bossSurvivors = Math.max(0, Math.round(battle.bossSurvivors ?? 0));
       const raidSurvivors = Math.max(0, Math.round(battle.raidSurvivors ?? 0));
       totalBattles += 1;
@@ -1571,8 +1950,9 @@ export function buildBotOnlyBaselineAggregateReport(
       for (const outcome of battle.unitOutcomes) {
         const resolvedUnitId = outcome.unitId;
         const resolvedUnitType = outcome.unitType ?? outcome.unitId;
-        const ownerWon = (battle.winner === "left" && outcome.playerId === battle.leftPlayerId)
-          || (battle.winner === "right" && outcome.playerId === battle.rightPlayerId);
+        const resolvedUnitName = resolveBaselineUnitName(resolvedUnitId, outcome.unitName);
+        const isSpecialUnit = isSpecialBattleUnitOutcome(outcome);
+        const ownerWon = winnerRole === outcome.side;
         const combatProfile = resolveUnitCombatProfile(resolvedUnitId, resolvedUnitType);
         if (combatProfile && combatProfile.attackSpeed > 0) {
           const rangeBand = resolveRangeBand(combatProfile.range);
@@ -1788,7 +2168,7 @@ export function buildBotOnlyBaselineAggregateReport(
           rangeFormationDiagnosticsByKey.set(rangeMetricKey, rangeFormationMetric);
 
           if (outcome.side === "raid" && rangeBand === "range_1") {
-            const cohort: BotOnlyBaselineRaidMeleeCohort = outcome.isSpecialUnit
+            const cohort: BotOnlyBaselineRaidMeleeCohort = isSpecialUnit
               ? "special"
               : "standard";
             const cohortMetric = raidMeleeCohortMetricsByKey.get(cohort)
@@ -1809,9 +2189,9 @@ export function buildBotOnlyBaselineAggregateReport(
             }
             raidMeleeCohortMetricsByKey.set(cohort, cohortMetric);
 
-            if (outcome.isSpecialUnit) {
+            if (isSpecialUnit) {
               const diagnostic = raidSpecialMeleeUnitDiagnosticsById.get(resolvedUnitId)
-                ?? createRaidSpecialMeleeUnitDiagnosticAccumulator(resolvedUnitId, outcome.unitName);
+                ?? createRaidSpecialMeleeUnitDiagnosticAccumulator(resolvedUnitId, resolvedUnitName);
               diagnostic.battleAppearances += 1;
               diagnostic.totalDamage += outcome.totalDamage;
               diagnostic.totalAttackCount += outcome.attackCount ?? 0;
@@ -1848,12 +2228,15 @@ export function buildBotOnlyBaselineAggregateReport(
             ?? createBattleUnitAggregateAccumulator(
               resolvedUnitId,
               resolvedUnitType,
-              outcome.unitName,
+              resolvedUnitName,
             );
           existing.battleAppearances += 1;
           existing.totalunitLevel += outcome.unitLevel;
+          existing.maxUnitLevel = Math.max(existing.maxUnitLevel, outcome.unitLevel);
           existing.totalDamage += outcome.totalDamage;
           existing.totalAttackCount += outcome.attackCount ?? 0;
+          existing.totalBasicSkillActivations += outcome.basicSkillActivationCount ?? 0;
+          existing.totalPairSkillActivations += outcome.pairSkillActivationCount ?? 0;
           existing.totalHitCount += outcome.hitCount ?? 0;
           existing.totalDamageTaken += outcome.damageTaken ?? 0;
           if ((outcome.attackCount ?? 0) > 0) {
@@ -1877,6 +2260,10 @@ export function buildBotOnlyBaselineAggregateReport(
             existing.matchesPresent += 1;
             seenBossBattleUnitsInMatch.add(resolvedUnitId);
           }
+          bossMaxUnitLevelByMatch.set(
+            resolvedUnitId,
+            Math.max(bossMaxUnitLevelByMatch.get(resolvedUnitId) ?? 0, outcome.unitLevel),
+          );
           bossBattleUnitsById.set(resolvedUnitId, existing);
           continue;
         }
@@ -1885,13 +2272,16 @@ export function buildBotOnlyBaselineAggregateReport(
           ?? createBattleUnitAggregateAccumulator(
             resolvedUnitId,
             resolvedUnitType,
-            outcome.unitName,
+            resolvedUnitName,
             true,
           );
         existing.battleAppearances += 1;
         existing.totalunitLevel += outcome.unitLevel;
+        existing.maxUnitLevel = Math.max(existing.maxUnitLevel, outcome.unitLevel);
         existing.totalDamage += outcome.totalDamage;
         existing.totalAttackCount += outcome.attackCount ?? 0;
+        existing.totalBasicSkillActivations += outcome.basicSkillActivationCount ?? 0;
+        existing.totalPairSkillActivations += outcome.pairSkillActivationCount ?? 0;
         existing.totalHitCount += outcome.hitCount ?? 0;
         existing.totalDamageTaken += outcome.damageTaken ?? 0;
         if ((outcome.attackCount ?? 0) > 0) {
@@ -1915,6 +2305,10 @@ export function buildBotOnlyBaselineAggregateReport(
           existing.matchesPresent += 1;
           seenRaidBattleUnitsInMatch.add(resolvedUnitId);
         }
+        raidMaxUnitLevelByMatch.set(
+          resolvedUnitId,
+          Math.max(raidMaxUnitLevelByMatch.get(resolvedUnitId) ?? 0, outcome.unitLevel),
+        );
         if (outcome.subUnitName.length > 0) {
           existing.subUnitBattleAppearances = (existing.subUnitBattleAppearances ?? 0) + 1;
           if (!seenRaidSubUnitsInMatch.has(resolvedUnitId)) {
@@ -1927,9 +2321,13 @@ export function buildBotOnlyBaselineAggregateReport(
 
       for (const contribution of battle.unitDamageBreakdown) {
         const key = `${contribution.side}::${contribution.unitId}`;
+        const resolvedUnitName = resolveBaselineUnitName(
+          contribution.unitId,
+          contribution.unitName,
+        );
         const existing = damageByUnit.get(key) ?? {
           unitId: contribution.unitId,
-          unitName: contribution.unitName,
+          unitName: resolvedUnitName,
           side: contribution.side,
           totalDamage: 0,
           appearances: 0,
@@ -1940,6 +2338,32 @@ export function buildBotOnlyBaselineAggregateReport(
           seenUnitKeysInMatch.add(key);
         }
         damageByUnit.set(key, existing);
+      }
+    }
+
+    for (const [unitId, maxUnitLevel] of bossMaxUnitLevelByMatch) {
+      const existing = bossBattleUnitsById.get(unitId);
+      if (existing == null) {
+        continue;
+      }
+      if (maxUnitLevel >= 4) {
+        existing.level4Matches += 1;
+      }
+      if (maxUnitLevel >= 7) {
+        existing.level7Matches += 1;
+      }
+    }
+
+    for (const [unitId, maxUnitLevel] of raidMaxUnitLevelByMatch) {
+      const existing = raidBattleUnitsById.get(unitId);
+      if (existing == null) {
+        continue;
+      }
+      if (maxUnitLevel >= 4) {
+        existing.level4Matches += 1;
+      }
+      if (maxUnitLevel >= 7) {
+        existing.level7Matches += 1;
       }
     }
   }
@@ -1988,6 +2412,8 @@ export function buildBotOnlyBaselineAggregateReport(
           averagePurchaseCount: (purchaseCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
           averageRefreshCount: (refreshCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
           averageSellCount: (sellCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
+          averageSpecialUnitUpgradeCount:
+            (specialUnitUpgradeCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
         }];
       }),
     ),
@@ -2045,6 +2471,23 @@ export function buildBotOnlyBaselineAggregateReport(
         ...entry,
         offeredMatchRate: entry.matchesPresent / completedMatches,
       })),
+    shopOfferMetrics: Array.from(shopOfferMetricsByKey.values())
+      .sort((left, right) =>
+        right.matchesPresent - left.matchesPresent
+        || right.observationCount - left.observationCount
+        || left.unitId.localeCompare(right.unitId))
+      .map((entry) => {
+        const finalBoard = finalBoardUnitsByRoleAndId.get(`${entry.role}::${entry.unitId}`);
+        return {
+          ...entry,
+          offeredMatchRate: entry.matchesPresent / completedMatches,
+          // purchaseRate is defined over observed offers; purchases should have matching offer observations.
+          purchaseRate: entry.observationCount > 0 ? entry.purchaseCount / entry.observationCount : 0,
+          finalBoardCopies: finalBoard?.totalCopies ?? 0,
+          finalBoardMatchCount: finalBoard?.matchesPresent ?? 0,
+          finalBoardAdoptionRate: completedMatches > 0 ? (finalBoard?.matchesPresent ?? 0) / completedMatches : 0,
+        };
+      }),
     rangeDamageEfficiencyMetrics: Array.from(rangeDamageEfficiencyByKey.values())
       .sort((left, right) =>
         left.side.localeCompare(right.side)
@@ -2066,6 +2509,7 @@ export function buildBotOnlyBaselineAggregateReport(
     raidSpecialMeleeUnitDiagnostics: Array.from(raidSpecialMeleeUnitDiagnosticsById.values())
       .sort((left, right) => left.unitId.localeCompare(right.unitId))
       .map((entry) => buildRaidSpecialMeleeUnitDiagnostic(entry)),
+    roundDetails,
   };
 
   return sharedMetadata == null
@@ -2127,11 +2571,13 @@ export function mergeBotOnlyBaselineAggregateReports(
       topDamageUnits: [],
       highCostSummary: buildEmptyHighCostSummary(),
       highCostOfferMetrics: [],
+      shopOfferMetrics: [],
       rangeDamageEfficiencyMetrics: [],
       rangeActionDiagnosticsMetrics: [],
       rangeFormationDiagnosticsMetrics: [],
       raidMeleeCohortMetrics: [],
       raidSpecialMeleeUnitDiagnostics: [],
+      roundDetails: [],
     };
   }
 
@@ -2158,6 +2604,7 @@ export function mergeBotOnlyBaselineAggregateReports(
   const purchaseCountTotalsByLabel = new Map<string, number>();
   const refreshCountTotalsByLabel = new Map<string, number>();
   const sellCountTotalsByLabel = new Map<string, number>();
+  const specialUnitUpgradeCountTotalsByLabel = new Map<string, number>();
   const remainingLivesTotalsByLabel = new Map<string, number>();
   const appearanceCountsByLabel = new Map<string, number>();
   const bossBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
@@ -2186,11 +2633,27 @@ export function mergeBotOnlyBaselineAggregateReports(
     observationCount: number;
     matchesPresent: number;
   }>();
+  const shopOfferMetricsByKey = new Map<string, {
+    unitId: string;
+    unitName: string;
+    unitType: string;
+    role: "boss" | "raid";
+    source: "shop" | "bossShop";
+    cost: number;
+    observationCount: number;
+    matchesPresent: number;
+    purchaseCount: number;
+    purchaseMatchCount: number;
+    finalBoardCopies: number;
+    finalBoardMatchCount: number;
+  }>();
   const rangeDamageEfficiencyByKey = new Map<string, RangeDamageEfficiencyAccumulator>();
   const rangeActionDiagnosticsByKey = new Map<string, RangeActionDiagnosticsAccumulator>();
   const rangeFormationDiagnosticsByKey = new Map<string, RangeFormationDiagnosticsAccumulator>();
   const raidMeleeCohortMetricsByKey = new Map<string, RaidMeleeCohortAccumulator>();
   const raidSpecialMeleeUnitDiagnosticsById = new Map<string, RaidSpecialMeleeUnitDiagnosticAccumulator>();
+  const roundDetails: BotOnlyBaselineMatchRoundDetail[] = [];
+  let roundDetailMatchOffset = 0;
   let highCostOfferObservationCount = 0;
   let highCostOfferMatchCount = 0;
   let highCostPurchaseCount = 0;
@@ -2202,6 +2665,19 @@ export function mergeBotOnlyBaselineAggregateReports(
     if (!areBotOnlyReportMetadataEqual(sharedMetadata, aggregate.metadata)) {
       sharedMetadata = undefined;
     }
+
+    for (const detail of aggregate.roundDetails ?? []) {
+      roundDetails.push({
+        ...detail,
+        matchIndex: detail.matchIndex + roundDetailMatchOffset,
+        raidPlayerConsequences: detail.raidPlayerConsequences.map((player) => ({ ...player })),
+        topBossUnits: detail.topBossUnits.map((unit) => ({ ...unit })),
+        topRaidUnits: detail.topRaidUnits.map((unit) => ({ ...unit })),
+        battleEndReasons: [...detail.battleEndReasons],
+        battleWinnerRoles: [...detail.battleWinnerRoles],
+      });
+    }
+    roundDetailMatchOffset += aggregate.completedMatches;
 
     bossWins += aggregate.bossWins;
     totalRounds += aggregate.averageRounds * aggregate.completedMatches;
@@ -2269,6 +2745,11 @@ export function mergeBotOnlyBaselineAggregateReports(
         label,
         (sellCountTotalsByLabel.get(label) ?? 0) + metrics.averageSellCount * appearanceCount,
       );
+      specialUnitUpgradeCountTotalsByLabel.set(
+        label,
+        (specialUnitUpgradeCountTotalsByLabel.get(label) ?? 0)
+          + (metrics.averageSpecialUnitUpgradeCount ?? 0) * appearanceCount,
+      );
       remainingLivesTotalsByLabel.set(
         label,
         (remainingLivesTotalsByLabel.get(label) ?? 0) + metrics.averageRemainingLives * appearanceCount,
@@ -2285,9 +2766,14 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.battleAppearances += entry.battleAppearances;
       existing.matchesPresent += entry.matchesPresent;
       existing.totalunitLevel += entry.averageunitLevel * entry.battleAppearances;
+      existing.maxUnitLevel = Math.max(existing.maxUnitLevel, entry.maxUnitLevel ?? 0);
+      existing.level4Matches += (entry.level4ReachRate ?? 0) * entry.matchesPresent;
+      existing.level7Matches += (entry.level7ReachRate ?? 0) * entry.matchesPresent;
       existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
       existing.activeBattles += entry.activeBattleRate * entry.battleAppearances;
       existing.totalAttackCount += entry.averageAttackCountPerBattle * entry.battleAppearances;
+      existing.totalBasicSkillActivations += (entry.averageBasicSkillActivationsPerBattle ?? 0) * entry.battleAppearances;
+      existing.totalPairSkillActivations += (entry.averagePairSkillActivationsPerBattle ?? 0) * entry.battleAppearances;
       existing.totalHitCount += entry.averageHitCountPerBattle * entry.battleAppearances;
       existing.totalDamageTaken += entry.averageDamageTakenPerBattle * entry.battleAppearances;
       if (entry.averageFirstAttackMs != null) {
@@ -2313,9 +2799,14 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.battleAppearances += entry.battleAppearances;
       existing.matchesPresent += entry.matchesPresent;
       existing.totalunitLevel += entry.averageunitLevel * entry.battleAppearances;
+      existing.maxUnitLevel = Math.max(existing.maxUnitLevel, entry.maxUnitLevel ?? 0);
+      existing.level4Matches += (entry.level4ReachRate ?? 0) * entry.matchesPresent;
+      existing.level7Matches += (entry.level7ReachRate ?? 0) * entry.matchesPresent;
       existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
       existing.activeBattles += entry.activeBattleRate * entry.battleAppearances;
       existing.totalAttackCount += entry.averageAttackCountPerBattle * entry.battleAppearances;
+      existing.totalBasicSkillActivations += (entry.averageBasicSkillActivationsPerBattle ?? 0) * entry.battleAppearances;
+      existing.totalPairSkillActivations += (entry.averagePairSkillActivationsPerBattle ?? 0) * entry.battleAppearances;
       existing.totalHitCount += entry.averageHitCountPerBattle * entry.battleAppearances;
       existing.totalDamageTaken += entry.averageDamageTakenPerBattle * entry.battleAppearances;
       if (entry.averageFirstAttackMs != null) {
@@ -2383,6 +2874,31 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.observationCount += entry.observationCount;
       existing.matchesPresent += entry.matchesPresent;
       highCostOfferMetricsByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.shopOfferMetrics ?? []) {
+      const key = `${entry.role}::${entry.source}::${entry.unitId}`;
+      const existing = shopOfferMetricsByKey.get(key) ?? {
+        unitId: entry.unitId,
+        unitName: entry.unitName,
+        unitType: entry.unitType,
+        role: entry.role,
+        source: entry.source,
+        cost: entry.cost,
+        observationCount: 0,
+        matchesPresent: 0,
+        purchaseCount: 0,
+        purchaseMatchCount: 0,
+        finalBoardCopies: 0,
+        finalBoardMatchCount: 0,
+      };
+      existing.observationCount += entry.observationCount;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.purchaseCount += entry.purchaseCount;
+      existing.purchaseMatchCount += entry.purchaseMatchCount;
+      existing.finalBoardCopies += entry.finalBoardCopies;
+      existing.finalBoardMatchCount += entry.finalBoardMatchCount;
+      shopOfferMetricsByKey.set(key, existing);
     }
 
     for (const entry of aggregate.rangeDamageEfficiencyMetrics) {
@@ -2736,6 +3252,8 @@ export function mergeBotOnlyBaselineAggregateReports(
           averagePurchaseCount: (purchaseCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
           averageRefreshCount: (refreshCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
           averageSellCount: (sellCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
+          averageSpecialUnitUpgradeCount:
+            (specialUnitUpgradeCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
         }]),
     ),
     bossBattleUnitMetrics: Array.from(bossBattleUnitsById.values())
@@ -2796,6 +3314,18 @@ export function mergeBotOnlyBaselineAggregateReports(
         ...entry,
         offeredMatchRate: entry.matchesPresent / completedMatches,
       })),
+    shopOfferMetrics: Array.from(shopOfferMetricsByKey.values())
+      .sort((left, right) =>
+        right.matchesPresent - left.matchesPresent
+        || right.observationCount - left.observationCount
+        || left.unitId.localeCompare(right.unitId))
+      .map((entry) => ({
+        ...entry,
+        offeredMatchRate: completedMatches > 0 ? entry.matchesPresent / completedMatches : 0,
+        // purchaseRate is defined over observed offers; purchases should have matching offer observations.
+        purchaseRate: entry.observationCount > 0 ? entry.purchaseCount / entry.observationCount : 0,
+        finalBoardAdoptionRate: completedMatches > 0 ? entry.finalBoardMatchCount / completedMatches : 0,
+      })),
     rangeDamageEfficiencyMetrics: Array.from(rangeDamageEfficiencyByKey.values())
       .sort((left, right) =>
         left.side.localeCompare(right.side)
@@ -2817,6 +3347,7 @@ export function mergeBotOnlyBaselineAggregateReports(
     raidSpecialMeleeUnitDiagnostics: Array.from(raidSpecialMeleeUnitDiagnosticsById.values())
       .sort((left, right) => left.unitId.localeCompare(right.unitId))
       .map((entry) => buildRaidSpecialMeleeUnitDiagnostic(entry)),
+    roundDetails,
   };
 
   return sharedMetadata == null

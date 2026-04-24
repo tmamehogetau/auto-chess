@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { BotOnlyBaselineAggregateReport } from "./bot-balance-baseline-aggregate";
+import { buildBotBalanceBaselineAnalysis } from "./bot-balance-baseline-analysis";
 import {
   buildBotBalanceBaselineJapaneseJson,
   buildBotBalanceBaselineJapaneseMarkdown,
@@ -42,8 +43,10 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       endReasonCounts: {
         annihilation: 2,
         mutual_annihilation: 0,
-        timeout_hp_lead: 6,
+        timeout_hp_lead: 5,
         timeout_hp_tie: 1,
+        phase_hp_depleted: 1,
+        boss_defeated: 0,
         forced: 0,
         unexpected: 0,
       },
@@ -53,6 +56,61 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       "11": 2,
       "12": 6,
     },
+    roundDetails: [{
+      matchIndex: 0,
+      matchWinnerRole: "boss",
+      totalRounds: 12,
+      roundIndex: 1,
+      battleEndTimeMs: 57,
+      phaseHpTarget: 600,
+      phaseDamageDealt: 600,
+      phaseCompletionRate: 1,
+      phaseResult: "failed",
+      allRaidPlayersWipedOut: true,
+      raidPlayersWipedOut: 3,
+      raidPlayersEliminatedAfterRound: 0,
+      bossSurvivors: 1,
+      raidSurvivors: 0,
+      bossTotalDamage: 240,
+      raidTotalDamage: 600,
+      raidPhaseContributionDamage: 600,
+      battleEndReasons: ["phase_hp_depleted"],
+      battleWinnerRoles: ["raid"],
+      raidPlayerConsequences: [{
+        playerId: "raid-a",
+        label: "P2",
+        role: "raid",
+        battleStartUnitCount: 3,
+        playerWipedOut: true,
+        remainingLivesBefore: 2,
+        remainingLivesAfter: 1,
+        eliminatedAfter: false,
+      }],
+      topBossUnits: [{
+        playerId: "boss-1",
+        label: "P1",
+        unitId: "remilia",
+        unitName: "レミリア",
+        side: "boss",
+        totalDamage: 240,
+        phaseContributionDamage: 0,
+        finalHp: 1200,
+        alive: true,
+        unitLevel: 1,
+      }],
+      topRaidUnits: [{
+        playerId: "raid-a",
+        label: "P2",
+        unitId: "marisa",
+        unitName: "霧雨魔理沙",
+        side: "raid",
+        totalDamage: 600,
+        phaseContributionDamage: 600,
+        finalHp: 0,
+        alive: false,
+        unitLevel: 1,
+      }],
+    }],
     playerMetrics: {
       P1: {
         averagePlacement: 1.8,
@@ -87,10 +145,14 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         battleAppearances: 12,
         matchesPresent: 9,
         averageunitLevel: 1.4,
+        maxUnitLevel: 4,
+        level4ReachRate: 1 / 9,
+        level7ReachRate: 0,
         averageDamagePerBattle: 420.5,
         averageDamagePerMatch: 5606.67,
         activeBattleRate: 0.9,
         averageAttackCountPerBattle: 4.2,
+        averageBasicSkillActivationsPerBattle: 1.1,
         averageHitCountPerBattle: 3.5,
         averageDamageTakenPerBattle: 180.4,
         averageFirstAttackMs: 145.6,
@@ -109,10 +171,15 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         battleAppearances: 18,
         matchesPresent: 9,
         averageunitLevel: 2.2,
+        maxUnitLevel: 7,
+        level4ReachRate: 4 / 9,
+        level7ReachRate: 1 / 9,
         averageDamagePerBattle: 120.5,
         averageDamagePerMatch: 2410,
         activeBattleRate: 0.75,
         averageAttackCountPerBattle: 2.1,
+        averageBasicSkillActivationsPerBattle: 0.6,
+        averagePairSkillActivationsPerBattle: 0.2,
         averageHitCountPerBattle: 1.4,
         averageDamageTakenPerBattle: 220.3,
         averageFirstAttackMs: 240.8,
@@ -167,6 +234,25 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         observationCount: 4,
         matchesPresent: 3,
         offeredMatchRate: 3 / 9,
+      },
+    ],
+    shopOfferMetrics: [
+      {
+        unitId: "patchouli",
+        unitName: "パチュリー・ノーレッジ",
+        unitType: "mage",
+        role: "boss",
+        source: "bossShop",
+        cost: 4,
+        observationCount: 12,
+        matchesPresent: 9,
+        offeredMatchRate: 1,
+        purchaseCount: 5,
+        purchaseMatchCount: 5,
+        purchaseRate: 5 / 12,
+        finalBoardCopies: 4,
+        finalBoardMatchCount: 4,
+        finalBoardAdoptionRate: 4 / 9,
       },
     ],
     rangeDamageEfficiencyMetrics: [
@@ -511,6 +597,24 @@ function createSampleSummary(): BotBalanceBaselineSummary {
 }
 
 describe("bot balance baseline human report", () => {
+  test("analysis JSON exposes integrity and final battle sections", () => {
+    const analysis = buildBotBalanceBaselineAnalysis(createSampleSummary());
+
+    expect(analysis).toMatchObject({
+      schemaVersion: 1,
+      overview: expect.objectContaining({
+        integrityStatus: expect.any(String),
+        balanceStatus: expect.any(String),
+      }),
+      integrity: expect.objectContaining({
+        issues: expect.any(Array),
+      }),
+      finalBattle: expect.objectContaining({
+        sampleCount: expect.any(Number),
+      }),
+    });
+  });
+
   test("builds a Japanese JSON report with localized top-level sections", () => {
     const jsonReport = buildBotBalanceBaselineJapaneseJson(createSampleSummary()) as Record<string, unknown>;
 
@@ -547,10 +651,26 @@ describe("bot balance baseline human report", () => {
         expect.objectContaining({
           "終了理由": "時間切れHP判定決着",
           "内部値": "timeout_hp_lead",
-          "件数": 6,
+          "件数": 5,
+        }),
+        expect.objectContaining({
+          "終了理由": "フェーズHP削り切り",
+          "内部値": "phase_hp_depleted",
+          "件数": 1,
         }),
       ]),
     });
+    expect(jsonReport["各ラウンド詳細"]).toEqual([
+      expect.objectContaining({
+        "試合番号": 0,
+        "ラウンド": 1,
+        "終了時間(実プレイ秒)": 5.7,
+        "フェーズHP目標": 600,
+        "フェーズHPダメージ": 600,
+        "ラウンド結果": "failed",
+        "レイド全員撃破": true,
+      }),
+    ]);
     expect(jsonReport["プレイヤー別成績"]).toEqual({
       P1: expect.objectContaining({
         "平均順位": 1.8,
@@ -566,6 +686,12 @@ describe("bot balance baseline human report", () => {
     expect(jsonReport["ボス側戦闘ユニット指標"]).toEqual([
       expect.objectContaining({
         "ユニットID": "patchouli",
+        "最大到達レベル": 4,
+        "Lv4到達率": 1 / 9,
+        "Lv7到達率": 0,
+        "戦闘ごとの平均基本スキル発動回数": 1.1,
+        "戦闘ごとの平均ペアスキル発動回数": 0,
+        "担当側戦闘勝率": 0.66,
         "採用率": 1,
       }),
     ]);
@@ -573,6 +699,12 @@ describe("bot balance baseline human report", () => {
       expect.objectContaining({
         "ユニットID": "rin",
         "ユニット種別": "rin",
+        "最大到達レベル": 7,
+        "Lv4到達率": 4 / 9,
+        "Lv7到達率": 1 / 9,
+        "戦闘ごとの平均基本スキル発動回数": 0.6,
+        "戦闘ごとの平均ペアスキル発動回数": 0.2,
+        "担当側戦闘勝率": 0.4,
         "サブ採用回数": 7,
         "サブ採用試合数": 5,
         "採用率": 1,
@@ -759,24 +891,38 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("- ボス購入方針: strength");
     expect(markdown).toContain("- レイド購入方針: strength, strength, growth");
     expect(markdown).toContain("- bot1: boss希望=ON / 購入方針=strength");
+    expect(markdown).toContain("## 先に見るべき結論");
+    expect(markdown).toContain("## 進行健全性診断");
+    expect(markdown).toContain("## バランス診断");
+    expect(markdown).toContain("## R12最終戦");
+    expect(markdown).toContain("## ショップ出現診断");
     expect(markdown).toContain("## 全体結果");
     expect(markdown).toContain("## 戦闘終了指標");
     expect(markdown).toContain("| 戦闘数 | 平均ボス側生存数 | 平均レイド側生存数 | 両軍生存終了率 | ボス側全滅率 | レイド側全滅率 |");
     expect(markdown).toContain("| 9 | 1.4 | 2.1 | 77.8% | 11.1% | 22.2% |");
     expect(markdown).toContain("| 片側全滅決着 | annihilation | 2 | 22.2% |");
-    expect(markdown).toContain("| 時間切れHP判定決着 | timeout_hp_lead | 6 | 66.7% |");
+    expect(markdown).toContain("| 時間切れHP判定決着 | timeout_hp_lead | 5 | 55.6% |");
+    expect(markdown).toContain("| フェーズHP削り切り | phase_hp_depleted | 1 | 11.1% |");
     expect(markdown).toContain("## ラウンド分布");
+    expect(markdown).toContain("## 各ラウンド詳細");
+    expect(markdown).toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | レイド全滅 |");
+    expect(markdown).not.toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | フェーズHP |");
+    expect(markdown).toContain("| 0 | 1 | 5.7 | boss | failed | 600/600 | 100.0% | YES | 3 | 1 | 0 | フェーズHP削り切り | raid | P2:撃破 2->1 | 霧雨魔理沙 Lv1 dmg=600(phase 600) hp=0 撃破 | レミリア Lv1 dmg=240 hp=1200 生存 |");
     expect(markdown).toContain("## プレイヤー別成績");
     expect(markdown).toContain("| プレイヤー | 平均順位 | 1位率 | 平均残HP | 平均残機 | 平均最終所持Gold | 平均獲得Gold | 平均消費Gold | 平均購入回数 | 平均リロール回数 | 平均売却回数 |");
     expect(markdown).toContain("| P1 | 1.8 | 30.0% | 100 | 2.1 | 8.4 | 1.2 | 13.7 | 5.6 | 2.4 | 0.2 |");
     expect(markdown).toContain("## ボス側戦闘ユニット指標");
     expect(markdown).toContain("## レイド側戦闘ユニット指標");
+    expect(markdown).toContain("担当側戦闘勝率");
+    expect(markdown).toContain("基本スキル/戦闘");
+    expect(markdown).toContain("ペアスキル/戦闘");
     expect(markdown).toContain("## ボス側戦闘テレメトリ");
     expect(markdown).toContain("## レイド側戦闘テレメトリ");
     expect(markdown).toContain("## 最終盤面ユニット指標");
     expect(markdown).toContain("## 上位ダメージユニット");
     expect(markdown).toContain("## 高コスト指標");
     expect(markdown).toContain("## 高コストショップ提示ユニット");
+    expect(markdown).toContain("| パチュリー・ノーレッジ | patchouli | boss | bossShop | 4 | 100.0% | 41.7% | 44.4% |");
     expect(markdown).toContain("## 射程別ダメージ効率比較");
     expect(markdown).toContain("| 陣営 | 射程帯 | 戦闘登場回数 | 戦闘ごとの平均ダメージ | 基礎火力発揮率 | 攻撃機会消化率 | 平均初回攻撃(ms) | 0ダメージ戦闘率 |");
     expect(markdown).toContain("| boss | 射程1 | 6 | 60 | 0.6 | 75.0% | 210 | 16.7% |");
@@ -813,8 +959,8 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| 純狐 | junko | vanguard | raid | shop | 4 | 4 | 3 | 33.3% |");
     expect(markdown).toContain("## チャンク実行状況");
     expect(markdown).toContain("## 失敗一覧");
-    expect(markdown).toContain("| パチュリー・ノーレッジ | patchouli | mage | 12 | 9 | 1.4 | 420.5 | 5606.67 | 95.0% | 66.0% | 100.0% |");
-    expect(markdown).toContain("| 火焔猫燐 | rin | rin | 18 | 9 | 2.2 | 120.5 | 2410 | 80.0% | 40.0% | 100.0% | 7 | 5 | 55.6% |");
+    expect(markdown).toContain("| パチュリー・ノーレッジ | patchouli | mage | 12 | 9 | 1.4 | 4 | 11.1% | 0.0% | 1.1 | 0 | 420.5 | 5606.67 | 95.0% | 66.0% | 100.0% |");
+    expect(markdown).toContain("| 火焔猫燐 | rin | rin | 18 | 9 | 2.2 | 7 | 44.4% | 11.1% | 0.6 | 0.2 | 120.5 | 2410 | 80.0% | 40.0% | 100.0% | 7 | 5 | 55.6% |");
     expect(markdown).toContain("| パチュリー・ノーレッジ | patchouli | mage | 90.0% | 4.2 | 3.5 | 180.4 | 145.6 | 770.2 | 5.0% |");
     expect(markdown).toContain("| 火焔猫燐 | rin | rin | 75.0% | 2.1 | 1.4 | 220.3 | 240.8 | 610.5 | 20.0% |");
     expect(markdown).toContain("| 姫虫百々世 | momoyo | vanguard | 30 | 9 | 3.33 | 100.0% |");

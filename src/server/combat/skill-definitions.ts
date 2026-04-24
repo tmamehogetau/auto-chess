@@ -7,23 +7,68 @@ import {
 import type { BoardCoordinate } from "../../shared/board-geometry";
 import type { BattleUnit } from "./battle-simulator";
 
-export interface SkillEffect {
-  name: string;
-  triggerType: 'on_attack_count';  // N 回攻撃ごとにトリガー
-  triggerCount: number;             // N の値
-  execute: (caster: BattleUnit, allies: BattleUnit[], enemies: BattleUnit[], log: string[]) => void;
+export interface SkillTiming {
+  initialSkillDelayMs: number;
+  skillCooldownMs: number;
 }
 
-export interface HeroSkillEffect {
+export interface TimedCombatModifier {
+  id: string;
+  durationMs: number;
+  attackMultiplier?: number;
+  defenseMultiplier?: number;
+  attackSpeedMultiplier?: number;
+  incomingDamageMultiplier?: number;
+}
+
+export interface SkillExecutionContext {
+  currentTimeMs: number;
+  applyTimedModifier: (target: BattleUnit, modifier: TimedCombatModifier) => void;
+  applyShield: (target: BattleUnit, amount: number, sourceId: string) => void;
+  findCurrentOrNearestTarget: (caster: BattleUnit, enemies: BattleUnit[]) => BattleUnit | null;
+  executePairSkillsOnMainSkillActivated: (
+    main: BattleUnit,
+    allies: BattleUnit[],
+    enemies: BattleUnit[],
+  ) => void;
+}
+
+export interface SkillEffect extends SkillTiming {
   name: string;
-  triggerType: 'on_mana_full';      // マナ100到達でトリガー
-  execute: (caster: BattleUnit, allies: BattleUnit[], enemies: BattleUnit[], log: string[]) => void;
+  execute: (
+    caster: BattleUnit,
+    allies: BattleUnit[],
+    enemies: BattleUnit[],
+    log: string[],
+    context?: SkillExecutionContext,
+  ) => void;
+}
+
+export interface HeroSkillEffect extends SkillTiming {
+  name: string;
+  execute: (
+    caster: BattleUnit,
+    allies: BattleUnit[],
+    enemies: BattleUnit[],
+    log: string[],
+    context?: SkillExecutionContext,
+  ) => void;
 }
 
 export interface UnitSkillEffect extends SkillEffect {}
 
+export type BossSkillEffect = SkillEffect;
+
 export interface PairSkillEffect {
   name: string;
+  executeOnMainSkillActivated?: (
+    main: BattleUnit,
+    allies: BattleUnit[],
+    enemies: BattleUnit[],
+    log: string[],
+    context: SkillExecutionContext,
+    pairSkillLevel: 1 | 2,
+  ) => void;
   executeOnBeforeTakeDamage?: (
     target: BattleUnit,
     attacker: BattleUnit,
@@ -57,6 +102,81 @@ function calculateSharedBoardDistance(leftCell: number, rightCell: number): numb
     sharedBoardIndexToCoordinate(leftCell),
     sharedBoardIndexToCoordinate(rightCell),
   );
+}
+
+type SkillStage = 1 | 4 | 7;
+
+function resolveSkillStage(unit: BattleUnit): SkillStage {
+  const unitLevel = unit.unitLevel ?? 1;
+  if (unitLevel >= 7) {
+    return 7;
+  }
+  if (unitLevel >= 4) {
+    return 4;
+  }
+  return 1;
+}
+
+function selectUnitsWithinRange(
+  centerCell: number,
+  units: BattleUnit[],
+  radius: number,
+): BattleUnit[] {
+  return units.filter((unit) => (
+    !unit.isDead
+    && calculateSharedBoardDistance(centerCell, unit.cell) <= radius
+  ));
+}
+
+function selectHighestHpTarget(caster: BattleUnit, enemies: BattleUnit[]): BattleUnit | null {
+  const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
+  if (livingEnemies.length === 0) {
+    return null;
+  }
+
+  return livingEnemies.reduce((best, enemy) => {
+    if (enemy.hp !== best.hp) {
+      return enemy.hp > best.hp ? enemy : best;
+    }
+
+    const bestDistance = calculateSharedBoardDistance(caster.cell, best.cell);
+    const enemyDistance = calculateSharedBoardDistance(caster.cell, enemy.cell);
+    if (enemyDistance !== bestDistance) {
+      return enemyDistance < bestDistance ? enemy : best;
+    }
+
+    return enemy.cell < best.cell ? enemy : best;
+  });
+}
+
+function createImmediateSkillContext(_log: string[]): SkillExecutionContext {
+  return {
+    currentTimeMs: 0,
+    applyTimedModifier: (target, modifier) => {
+      target.buffModifiers.attackMultiplier *= modifier.attackMultiplier ?? 1;
+      target.buffModifiers.defenseMultiplier *= modifier.defenseMultiplier ?? 1;
+      target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
+      target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
+        * (modifier.incomingDamageMultiplier ?? 1);
+    },
+    applyShield: (target, amount) => {
+      target.shieldAmount = (target.shieldAmount ?? 0) + amount;
+    },
+    findCurrentOrNearestTarget: (caster, enemies) => {
+      const currentTarget = enemies.find(
+        (enemy) => enemy.id === caster.currentTargetId && !enemy.isDead,
+      );
+      return currentTarget ?? selectLowestHpTarget(caster, enemies);
+    },
+    executePairSkillsOnMainSkillActivated: () => undefined,
+  };
+}
+
+function resolveSkillContext(
+  context: SkillExecutionContext | undefined,
+  log: string[],
+): SkillExecutionContext {
+  return context ?? createImmediateSkillContext(log);
 }
 
 function selectLowestHpTarget(caster: BattleUnit, enemies: BattleUnit[]): BattleUnit | null {
@@ -163,8 +283,8 @@ function getUnitsOnBeamLine(caster: BattleUnit, primaryTarget: BattleUnit, enemi
 export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   vanguard: {
     name: 'Shield Wall',
-    triggerType: 'on_attack_count',
-    triggerCount: 3,
+    initialSkillDelayMs: 3000,
+    skillCooldownMs: 7500,
     execute: (caster, allies, _enemies, log) => {
       for (const ally of allies) {
         if (!ally.isDead) {
@@ -176,8 +296,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   },
   ranger: {
     name: 'Precise Shot',
-    triggerType: 'on_attack_count',
-    triggerCount: 3,
+    initialSkillDelayMs: 3000,
+    skillCooldownMs: 6000,
     execute: (caster, _allies, enemies, log) => {
       const target = selectLowestHpTarget(caster, enemies);
       if (target) {
@@ -193,8 +313,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   },
   mage: {
     name: 'Arcane Burst',
-    triggerType: 'on_attack_count',
-    triggerCount: 3,
+    initialSkillDelayMs: 4000,
+    skillCooldownMs: 8000,
     execute: (caster, _allies, enemies, log) => {
       for (const enemy of enemies) {
         if (!enemy.isDead) {
@@ -219,8 +339,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
   },
   assassin: {
     name: 'Backstab',
-    triggerType: 'on_attack_count',
-    triggerCount: 2,
+    initialSkillDelayMs: 2500,
+    skillCooldownMs: 5000,
     execute: (caster, _allies, enemies, log) => {
       const target = selectLowestHpTarget(caster, enemies);
       if (target) {
@@ -238,80 +358,142 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
 
 export const HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEffect> = {
   "mayumi-basic": {
-    name: "埴輪防衛線",
-    triggerType: "on_attack_count",
-    triggerCount: 3,
-    execute: (caster, _allies, _enemies, log) => {
-      caster.buffModifiers.defenseMultiplier *= 1.4;
-      log.push(`${caster.sourceUnitId ?? caster.type} activates 埴輪防衛線! Gains +40% defense`);
+    name: "埴輪「熟練剣士埴輪」",
+    initialSkillDelayMs: 7000,
+    skillCooldownMs: 14000,
+    execute: (caster, _allies, _enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+      skillContext.applyTimedModifier(caster, {
+        id: "mayumi-skilled-swordsman",
+        durationMs: 6000,
+        attackMultiplier: stage >= 7 ? 1.60 : stage >= 4 ? 1.35 : 1.20,
+        defenseMultiplier: stage >= 7 ? 1.80 : stage >= 4 ? 1.50 : 1.30,
+      });
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 埴輪「熟練剣士埴輪」`);
     },
   },
   "shion-basic": {
-    name: "貧困の気配",
-    triggerType: "on_attack_count",
-    triggerCount: 3,
-    execute: (caster, _allies, enemies, log) => {
-      const target = selectLowestHpTarget(caster, enemies);
+    name: "貧符「超貧乏玉」",
+    initialSkillDelayMs: 6000,
+    skillCooldownMs: 12000,
+    execute: (caster, _allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const target = skillContext.findCurrentOrNearestTarget(caster, enemies);
       if (!target) {
         return;
       }
 
-      target.buffModifiers.attackMultiplier *= 0.75;
-      log.push(`${caster.sourceUnitId ?? caster.type} activates 貧困の気配! ${target.type} loses 25% attack`);
+      const stage = resolveSkillStage(caster);
+      const damageMultiplier = stage >= 7 ? 2.5 : stage >= 4 ? 1.8 : 1.3;
+      const damage = calculateUltimateDamage(
+        caster,
+        caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
+        target,
+      );
+      target.hp -= damage;
+      skillContext.applyTimedModifier(target, {
+        id: "shion-poverty-orb",
+        durationMs: 6000,
+        attackMultiplier: stage >= 7 ? 0.55 : stage >= 4 ? 0.70 : 0.80,
+      });
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 貧符「超貧乏玉」`);
     },
   },
   "ariya-basic": {
-    name: "破城の踏み込み",
-    triggerType: "on_attack_count",
-    triggerCount: 3,
+    name: "ストーンゴッデス",
+    initialSkillDelayMs: 5000,
+    skillCooldownMs: 5000,
     execute: (caster, _allies, _enemies, log) => {
-      caster.buffModifiers.attackMultiplier *= 1.4;
-      caster.buffModifiers.attackSpeedMultiplier *= 1.2;
-      log.push(`${caster.sourceUnitId ?? caster.type} activates 破城の踏み込み! Gains +40% attack and +20% attack speed`);
+      const stage = resolveSkillStage(caster);
+      const maxStacks = stage >= 7 ? 8 : stage >= 4 ? 7 : 6;
+      const attackPerStack = stage >= 7 ? 0.09 : stage >= 4 ? 0.07 : 0.05;
+      const defensePerStack = stage >= 7 ? 0.06 : stage >= 4 ? 0.05 : 0.04;
+      const key = "ariya-stone-goddess";
+      const currentStacks = caster.stackState?.[key] ?? 0;
+      if (currentStacks >= maxStacks) {
+        return;
+      }
+
+      caster.stackState = {
+        ...(caster.stackState ?? {}),
+        [key]: currentStacks + 1,
+      };
+      caster.buffModifiers.attackMultiplier += attackPerStack;
+      caster.buffModifiers.defenseMultiplier += defensePerStack;
+      log.push(`${caster.sourceUnitId ?? caster.type} activates ストーンゴッデス`);
+    },
+  },
+};
+
+export const SCARLET_MANSION_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEffect> = {
+  patchouli: {
+    name: "火水木金土符「賢者の石」",
+    initialSkillDelayMs: 5000,
+    skillCooldownMs: 9000,
+    execute: (caster, _allies, enemies, log) => {
+      const stage = resolveSkillStage(caster);
+      const damageMultiplier = stage >= 7 ? 1.5 : stage >= 4 ? 1.35 : 1.2;
+      const targets = enemies
+        .filter((enemy) => !enemy.isDead)
+        .sort((left, right) =>
+          calculateSharedBoardDistance(caster.cell, left.cell)
+          - calculateSharedBoardDistance(caster.cell, right.cell))
+        .slice(0, 3);
+
+      for (const target of targets) {
+        const damage = calculateUltimateDamage(
+          caster,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
+          target,
+        );
+        target.hp -= damage;
+      }
+
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 火水木金土符「賢者の石」`);
     },
   },
 };
 
 export const PAIR_SKILL_DEFINITIONS: Record<string, PairSkillEffect> = {
   "mayumi-pair": {
-    name: "埴輪の護り",
-    executeOnBeforeTakeDamage: (target, _attacker, log) => {
-      if (target.maxHp <= 0) {
-        return;
-      }
-
-      if (target.hp / target.maxHp > 0.5) {
-        return;
-      }
-
-      if (target.pairSkillState?.["mayumi-pair-active"] === true) {
-        return;
-      }
-
-      target.buffModifiers.defenseMultiplier *= 1.25;
-      target.pairSkillState = {
-        ...(target.pairSkillState ?? {}),
-        "mayumi-pair-active": true,
-      };
-      log.push(`${target.sourceUnitId ?? target.type} activates mayumi-pair! Gains emergency defense`);
+    name: "埴輪「アイドルクリーチャー」",
+    executeOnMainSkillActivated: (main, _allies, _enemies, log, context, pairSkillLevel) => {
+      const attackMultiplier = pairSkillLevel >= 2 ? 1.25 : 1.15;
+      const shieldRatio = pairSkillLevel >= 2 ? 0.25 : 0.15;
+      context.applyShield(main, main.maxHp * shieldRatio, "埴輪「アイドルクリーチャー」");
+      context.applyTimedModifier(main, {
+        id: "mayumi-idol-creature",
+        durationMs: 8000,
+        attackMultiplier,
+      });
+      log.push(`${main.sourceUnitId ?? main.type} activates 埴輪「アイドルクリーチャー」 Lv${pairSkillLevel}`);
     },
   },
   "shion-pair": {
-    name: "疫病の縁",
-    executeOnAfterAttackHit: (attacker, target, log) => {
-      if (attacker.pairSkillState?.["shion-pair-consumed"] === true) {
-        return;
+    name: "最凶最悪の双子神",
+    executeOnMainSkillActivated: (main, _allies, enemies, log, context, pairSkillLevel) => {
+      const target = context.findCurrentOrNearestTarget(main, enemies);
+      context.applyTimedModifier(main, {
+        id: "shion-worst-twin-gods-self",
+        durationMs: 6000,
+        attackMultiplier: pairSkillLevel >= 2 ? 1.20 : 1.10,
+      });
+      if (target) {
+        context.applyTimedModifier(target, {
+          id: "shion-worst-twin-gods-target",
+          durationMs: 6000,
+          attackMultiplier: pairSkillLevel >= 2 ? 0.70 : 0.85,
+        });
       }
-
-      target.buffModifiers.attackMultiplier *= 0.8;
-      attacker.pairSkillState = {
-        ...(attacker.pairSkillState ?? {}),
-        "shion-pair-consumed": true,
-      };
-      log.push(`${attacker.sourceUnitId ?? attacker.type} activates shion-pair! ${target.sourceUnitId ?? target.type} loses 20% attack`);
+      log.push(`${main.sourceUnitId ?? main.type} activates 最凶最悪の双子神 Lv${pairSkillLevel}`);
     },
   },
 };
+
+// TODO(raid-balance): populate boss active skills here. Empty intentionally so
+// resolveBossSkillDefinition no-ops until boss skill tuning is designed.
+export const BOSS_SKILL_DEFINITIONS: Record<string, BossSkillEffect> = {};
 
 export function resolveUnitSkillDefinition(unit: BattleUnit): UnitSkillEffect | null {
   const sourceUnitId = typeof unit.sourceUnitId === "string" ? unit.sourceUnitId : "";
@@ -320,7 +502,25 @@ export function resolveUnitSkillDefinition(unit: BattleUnit): UnitSkillEffect | 
     return HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS[heroExclusiveUnit.skillId] ?? null;
   }
 
+  const scarletMansionSkill = SCARLET_MANSION_BASIC_SKILL_DEFINITIONS[sourceUnitId];
+  if (scarletMansionSkill) {
+    return scarletMansionSkill;
+  }
+
   return SKILL_DEFINITIONS[unit.type] ?? null;
+}
+
+export function resolveBossSkillDefinition(unit: BattleUnit): BossSkillEffect | null {
+  if (!unit.isBoss) {
+    return null;
+  }
+
+  const sourceUnitId = typeof unit.sourceUnitId === "string" ? unit.sourceUnitId : "";
+  if (sourceUnitId.length === 0) {
+    return null;
+  }
+
+  return BOSS_SKILL_DEFINITIONS[sourceUnitId] ?? null;
 }
 
 export function resolvePairSkillDefinition(pairSkillId: string): PairSkillEffect | null {
@@ -340,118 +540,152 @@ export function resolvePairSkillDefinitions(unit: BattleUnit): PairSkillEffect[]
 // ヒーロースキル定義
 export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
   reimu: {
-    name: '博麗結界',
-    triggerType: 'on_mana_full',
-    execute: (caster, allies, _enemies, log) => {
-      // 味方全員に防御バフ（簡易化実装）
+    name: "夢符「二重結界」",
+    initialSkillDelayMs: 8000,
+    skillCooldownMs: 14000,
+    execute: (caster, allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+      const defenseMultiplier = stage >= 4 ? 1.20 : 1.15;
+      const damageMultiplier = stage >= 7 ? 1.8 : 1.2;
+
       for (const ally of allies) {
         if (!ally.isDead) {
-          ally.buffModifiers.defenseMultiplier *= 1.2;
+          skillContext.applyTimedModifier(ally, {
+            id: "reimu-double-barrier",
+            durationMs: 7000,
+            defenseMultiplier,
+          });
         }
       }
-      log.push(`${caster.type} activates 博麗結界! All allies gain +20% defense`);
-    }
+
+      for (const enemy of selectUnitsWithinRange(caster.cell, enemies, 2)) {
+        const damage = calculateUltimateDamage(
+          caster,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
+          enemy,
+        );
+        enemy.hp -= damage;
+      }
+
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 夢符「二重結界」`);
+      skillContext.executePairSkillsOnMainSkillActivated(caster, allies, enemies);
+    },
   },
   marisa: {
-    name: '恋符「マスタースパーク」',
-    triggerType: 'on_mana_full',
-    execute: (caster, _allies, enemies, log) => {
-      const primaryTarget = enemies.find((enemy) => !enemy.isDead);
+    name: "恋符「マスタースパーク」",
+    initialSkillDelayMs: 10000,
+    skillCooldownMs: 16000,
+    execute: (caster, allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+      const damageMultiplier = stage >= 7 ? 3.8 : stage >= 4 ? 3.0 : 2.4;
+      const primaryTarget = selectHighestHpTarget(caster, enemies);
       if (!primaryTarget) {
         return;
       }
 
       const targets = getUnitsOnBeamLine(caster, primaryTarget, enemies);
-      if (targets.length === 0) {
-        return;
-      }
-
       for (const target of targets) {
         const damage = calculateUltimateDamage(
           caster,
-          caster.attackPower * caster.buffModifiers.attackMultiplier * 2.0,
+          caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
           target,
         );
         target.hp -= damage;
       }
 
-      log.push(`${caster.type} activates 恋符「マスタースパーク」! Hits ${targets.length} enemies`);
-    }
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 恋符「マスタースパーク」`);
+      skillContext.executePairSkillsOnMainSkillActivated(caster, allies, enemies);
+    },
   },
-  sanae: {
-    name: '奇跡『神風の祝福』',
-    triggerType: 'on_mana_full',
-    execute: (caster, allies, _enemies, log) => {
-      // 味方全員に攻撃力バフと防御バフ
+  okina: {
+    name: "秘神「裏表の逆転」",
+    initialSkillDelayMs: 7000,
+    skillCooldownMs: 13000,
+    execute: (caster, allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+      const attackMultiplier = stage >= 7 ? 1.30 : stage >= 4 ? 1.20 : 1.10;
+
       for (const ally of allies) {
         if (!ally.isDead) {
-          ally.buffModifiers.attackMultiplier *= 1.25;
-          ally.buffModifiers.defenseMultiplier *= 1.1;
-        }
-      }
-      log.push(`${caster.type} activates 奇跡『神風の祝福』! All allies gain +25% attack and +10% defense`);
-    }
-  },
-  youmu: {
-    name: '人符『現世斬』',
-    triggerType: 'on_mana_full',
-    execute: (caster, _allies, enemies, log) => {
-      // HPが最も低い敵に3連撃（ATK × 1.2 × 3）
-      const target = selectLowestHpTarget(caster, enemies);
-      if (target) {
-        const singleDamage = Math.floor(caster.attackPower * caster.buffModifiers.attackMultiplier * 1.2);
-        const totalDamage = singleDamage * 3;
-        target.hp -= totalDamage;
-        log.push(`${caster.type} activates 人符『現世斬』! Deals ${totalDamage} damage (3 hits) to ${target.type}`);
-      }
-    }
-  },
-  sakuya: {
-    name: '時符『プライベートスクウェア』',
-    triggerType: 'on_mana_full',
-    execute: (caster, _allies, enemies, log) => {
-      // 最も敵が密集している地点を中心に、半径2マスの円形範囲内の敵にデバフを適用
-      // 現在のシステムでは移動速度は実装されていないため、攻撃速度減少のみ適用
-      const livingEnemies = enemies.filter(e => !e.isDead);
-      if (livingEnemies.length === 0) return;
-
-      // 半径2マス以内の敵を検索してデバフを適用
-      const radius = 2;
-      const centerCell = selectBestAreaCenter(caster, livingEnemies, radius) ?? (livingEnemies[0]?.cell ?? 0);
-      const affectedEnemies: BattleUnit[] = [];
-      for (const enemy of livingEnemies) {
-        const distance = calculateSharedBoardDistance(enemy.cell, centerCell);
-        if (distance <= radius) {
-          if (enemy.debuffImmunityCategories?.includes('crowd_control')) {
-            continue;
-          }
-          // 攻撃速度 -30% (3秒間)
-          // 注: 現在のシステムでは永続的なバフのみ実装されているため、即座に適用
-          // 将来的にはデバフ持続時間の管理機能が必要
-          enemy.buffModifiers.attackSpeedMultiplier *= 0.7;
-          affectedEnemies.push(enemy);
+          skillContext.applyTimedModifier(ally, {
+            id: "okina-front-reversal",
+            durationMs: 6000,
+            attackMultiplier,
+          });
         }
       }
 
-      if (affectedEnemies.length > 0) {
-        log.push(`${caster.type} activates 時符『プライベートスクウェア』! ${affectedEnemies.length} enemies slowed by -30% attack speed at cell ${centerCell}`);
-        // 注: 移動速度 -60% は将来的な実装待ち
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 秘神「裏表の逆転」`);
+      skillContext.executePairSkillsOnMainSkillActivated(caster, allies, enemies);
+    },
+  },
+  keiki: {
+    name: "鬼形造形術",
+    initialSkillDelayMs: 11000,
+    skillCooldownMs: 17000,
+    execute: (caster, allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+      const multiplier = stage >= 7 ? 1.30 : stage >= 4 ? 1.20 : 1.10;
+      const durationMs = stage >= 7 ? 10000 : 8000;
+
+      for (const ally of selectUnitsWithinRange(caster.cell, allies, 2)) {
+        skillContext.applyTimedModifier(ally, {
+          id: "keiki-modeling",
+          durationMs,
+          attackMultiplier: multiplier,
+          defenseMultiplier: multiplier,
+        });
       }
-    }
+
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 鬼形造形術`);
+      skillContext.executePairSkillsOnMainSkillActivated(caster, allies, enemies);
+    },
+  },
+  jyoon: {
+    name: "財符「黄金のトルネード」",
+    initialSkillDelayMs: 6000,
+    skillCooldownMs: 10000,
+    execute: (caster, allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+      skillContext.applyTimedModifier(caster, {
+        id: "jyoon-golden-tornado",
+        durationMs: 5000,
+        attackMultiplier: stage >= 7 ? 1.65 : stage >= 4 ? 1.35 : 1.20,
+        attackSpeedMultiplier: stage >= 7 ? 1.45 : stage >= 4 ? 1.30 : 1.20,
+        incomingDamageMultiplier: stage >= 7 ? 1.0 : 1.10,
+      });
+
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 財符「黄金のトルネード」`);
+      skillContext.executePairSkillsOnMainSkillActivated(caster, allies, enemies);
+    },
   },
   yuiman: {
-    name: 'ディスコミュニケーション',
-    triggerType: 'on_mana_full',
-    execute: (caster, _allies, enemies, log) => {
-      const target = selectLowestHpTarget(caster, enemies);
-      if (target?.debuffImmunityCategories?.includes("crowd_control")) {
-        log.push(`${caster.type} activates ディスコミュニケーション! ${target.type} resisted the slow`);
-        return;
+    name: "虚構「ディスコミュニケーション」",
+    initialSkillDelayMs: 8000,
+    skillCooldownMs: 13000,
+    execute: (caster, allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
+      const stage = resolveSkillStage(caster);
+
+      for (const enemy of selectUnitsWithinRange(caster.cell, enemies, 2)) {
+        if (enemy.debuffImmunityCategories?.includes("crowd_control")) {
+          continue;
+        }
+        skillContext.applyTimedModifier(enemy, {
+          id: "yuiman-discommunication",
+          durationMs: 6000,
+          attackSpeedMultiplier: stage >= 7 ? 0.50 : stage >= 4 ? 0.60 : 0.70,
+          defenseMultiplier: stage >= 7 ? 0.75 : stage >= 4 ? 0.85 : 0.90,
+        });
       }
-      if (target) {
-        target.buffModifiers.attackSpeedMultiplier *= 0.5;
-        log.push(`${caster.type} activates ディスコミュニケーション! Slowed ${target.type}`);
-      }
-    }
-  }
+
+      log.push(`${caster.sourceUnitId ?? caster.type} activates 虚構「ディスコミュニケーション」`);
+      skillContext.executePairSkillsOnMainSkillActivated(caster, allies, enemies);
+    },
+  },
 };

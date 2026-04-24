@@ -3,7 +3,9 @@ import { describe, expect, test } from "vitest";
 import {
   calculateSellValue,
   getMinimumPurchaseCountForUnitLevel,
+  getStandardUnitProgressionBonusConfig,
   getUnitLevelCombatMultiplier,
+  getUnitLevelCombatMultiplierDelta,
   getUnitLevelForPurchaseCount,
 } from "../../src/server/unit-level-config";
 
@@ -34,6 +36,27 @@ describe("unit-level-config", () => {
     expect(getUnitLevelCombatMultiplier(6)).toBe(2.5);
     expect(getUnitLevelCombatMultiplier(7)).toBe(3);
     expect(getUnitLevelCombatMultiplier(99)).toBe(3);
+  });
+
+  test("combat multiplier delta は次レベルの伸び幅を返す", () => {
+    expect(getUnitLevelCombatMultiplierDelta(3)).toBeCloseTo(0.4);
+    expect(getUnitLevelCombatMultiplierDelta(6)).toBeCloseTo(0.5);
+    expect(getUnitLevelCombatMultiplierDelta(7)).toBe(0);
+  });
+
+  test("通常ユニット progression bonus config は既定値で返り、将来の unitId override に耐える", () => {
+    expect(getStandardUnitProgressionBonusConfig("rin")).toEqual({
+      baseGrowthProfile: "standard",
+      level4Bonus: null,
+      level7Bonus: null,
+      skillImplementationState: "implemented",
+    });
+    expect(getStandardUnitProgressionBonusConfig("unknown-unit")).toEqual({
+      baseGrowthProfile: "standard",
+      level4Bonus: null,
+      level7Bonus: null,
+      skillImplementationState: "implemented",
+    });
   });
 
   test("sell value は Lv4/Lv7 でも旧 4回/7回 bucket の経済感を維持する", () => {

@@ -26,6 +26,10 @@ import {
 } from "./game-room/message-handler";
 import { FeatureFlagService } from "../feature-flag-service";
 import { SharedBoardBridge } from "../shared-board-bridge";
+import {
+  resolveSharedBoardBossPresentation,
+  resolveSharedBoardHeroPresentation,
+} from "../shared-board-unit-presentation";
 import { MatchLogger } from "../match-logger";
 import { validateRosterAvailability } from "../roster/roster-provider";
 import { DEFAULT_GAME_ROOM_OPTIONS } from "./game-room-config";
@@ -59,6 +63,7 @@ import {
   writeManualPlayHumanReport,
   type ManualPlayFinalPlayer,
   type ManualPlayHumanReport,
+  type ManualPlayBoardUnit,
   type ManualPlayPlayerAtBattleStart,
   type ManualPlayPlayerConsequence,
   type ManualPlayRoundReport,
@@ -528,6 +533,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         }
 
         const battlePlacements = testAccess?.battleInputSnapshotByPlayer.get(playerId) ?? [];
+        const boardUnits: ManualPlayBoardUnit[] = battlePlacements.map(toManualPlayBoardUnit);
         const trackedBattleUnitIds = battlePlacements
           .flatMap((placement) => [
             placement.unitId?.trim() ?? "",
@@ -537,15 +543,41 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
         if (playerState.selectedHeroId.length > 0) {
           trackedBattleUnitIds.push(`hero-${playerId}`);
+          const heroCell =
+            this.controller?.getHeroPlacementForPlayer(playerId)
+            ?? battlePlacements.find((placement) =>
+              placement.subUnit?.unitId === playerState.selectedHeroId)?.cell
+            ?? 8;
+          boardUnits.push({
+            cell: heroCell,
+            unitName:
+              resolveSharedBoardHeroPresentation(playerState.selectedHeroId)?.displayName
+              ?? playerState.selectedHeroId,
+            unitType: "hero",
+            unitId: playerState.selectedHeroId,
+            unitLevel: playerState.specialUnitLevel,
+            subUnitName: "",
+          });
         }
         if (playerState.role === "boss" && playerState.selectedBossId.length > 0) {
           trackedBattleUnitIds.push(`boss-${playerId}`);
+          const bossCell = this.controller?.getBossPlacementForPlayer(playerId) ?? 2;
+          boardUnits.push({
+            cell: bossCell,
+            unitName:
+              resolveSharedBoardBossPresentation(playerState.selectedBossId)?.displayName
+              ?? playerState.selectedBossId,
+            unitType: "boss",
+            unitId: playerState.selectedBossId,
+            unitLevel: playerState.specialUnitLevel,
+            subUnitName: "",
+          });
         }
 
         return {
           playerId,
           role: playerState.role,
-          boardUnits: battlePlacements.map(toManualPlayBoardUnit),
+          boardUnits,
           trackedBattleUnitIds,
         } satisfies ManualPlayPlayerAtBattleStart;
       })
@@ -922,7 +954,19 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private logPrepCommandActions(
     sessionId: string,
     commandPayload: LoggedPrepCommandPayload | undefined,
-    shopOffersSnapshot?: Array<{ unitType: string; cost: number; isRumorUnit?: boolean }>,
+    shopOffersSnapshot?: Array<{
+      unitType: string;
+      cost: number;
+      unitId?: string;
+      displayName?: string;
+      isRumorUnit?: boolean;
+    }>,
+    bossShopOffersSnapshot?: Array<{
+      unitType: string;
+      cost: number;
+      unitId?: string;
+      displayName?: string;
+    }>,
     benchUnitsSnapshot?: Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; cost: number; unitLevel: number; unitCount: number }>,
     boardPlacementsSnapshot?: Array<{ cell: number; unitType: "vanguard" | "ranger" | "mage" | "assassin"; sellValue?: number; unitLevel?: number; unitCount?: number }>,
   ): void {
@@ -934,7 +978,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       getBoardPlacements: (sid) => this.controller?.getBoardPlacementsForPlayer(sid),
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
-    }, { shopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });
+    }, { shopOffersSnapshot, bossShopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });
   }
 
   private isAdminQueryClient(client: Client): boolean {
@@ -1293,6 +1337,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         sessionId,
         commandPayload,
         shopOffersSnapshot,
+        bossShopOffersSnapshot,
         benchUnitsSnapshot,
         boardPlacementsSnapshot,
       ) => {
@@ -1300,6 +1345,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
           sessionId,
           commandPayload,
           shopOffersSnapshot,
+          bossShopOffersSnapshot,
           benchUnitsSnapshot,
           boardPlacementsSnapshot,
         );

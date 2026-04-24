@@ -2,6 +2,7 @@ import { getTouhouUnitById } from "../data/touhou-units";
 import {
   getClientSpecialUnitLevel,
   getClientSpecialUnitUpgradeCost,
+  getClientSpecialUnitUpgradeValueScore,
 } from "./special-unit-progression.js";
 
 export const AUTO_FILL_BOSS_ID = "remilia";
@@ -30,9 +31,9 @@ const AUTO_FILL_RAID_DEPLOY_SEQUENCES = [
 const FRONTLINE_UNIT_TYPES = new Set(["vanguard"]);
 const BACKLINE_UNIT_TYPES = new Set(["ranger", "mage"]);
 const BOSS_OFFER_PRIORITY_BY_UNIT_ID = {
-  patchouli: 300,
-  sakuya: 200,
-  meiling: 100,
+  sakuya: 240,
+  meiling: 230,
+  patchouli: 220,
 };
 const BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_ID = {
   hecatia: 280,
@@ -103,9 +104,9 @@ const RAID_HIGH_COST_STRATEGY_COST_WEIGHT = 100;
 const RAID_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT = 0.45;
 const RAID_HIGH_COST_STRATEGY_DUPLICATE_WEIGHT = 0.25;
 const HERO_EXCLUSIVE_OFFER_PRIORITY_BY_UNIT_ID = {
-  mayumi: 250,
-  shion: 240,
-  ariya: 230,
+  mayumi: 280,
+  shion: 310,
+  ariya: 295,
 };
 const HERO_EXCLUSIVE_FIRST_COPY_BONUS = 80;
 const HERO_EXCLUSIVE_DUPLICATE_BONUS = 120;
@@ -120,6 +121,12 @@ const AUTO_FILL_HIGH_COST_PIVOT_ROUND = 6;
 const AUTO_FILL_HIGH_COST_PIVOT_LEVEL = 4;
 const AUTO_FILL_PIVOT_HIGH_COST_PREMIUM = 260;
 const AUTO_FILL_PIVOT_LOW_COST_PENALTY = 220;
+const AUTO_FILL_LATE_SPECIAL_UNIT_UPGRADE_SCORE_MARGIN = 80;
+const AUTO_FILL_LATE_SPECIAL_UNIT_UPGRADE_VALUE_FLOOR = 9.5;
+const BOSS_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT = 44;
+const BOSS_SPECIAL_UNIT_UPGRADE_ESTABLISHED_ROSTER_BONUS = 80;
+const BOSS_SPECIAL_UNIT_UPGRADE_EARLY_LEVEL_BONUS = 45;
+const BOSS_SPECIAL_UNIT_UPGRADE_ROUND_BONUS_CAP = 36;
 const MAX_STANDARD_DEPLOY_SLOTS_BY_ROLE = {
   boss: 6,
   raid: 2,
@@ -1231,34 +1238,46 @@ function buildRaidHeroExclusiveReserveBuyAction(player, strategy, state = null) 
   };
 }
 
-function buildReserveBuyAction(player, strategy, state = null) {
+function buildBossReserveBuyDecision(player) {
+  const bossShopBuy = buildBossShopReserveBuyAction(player);
+  const normalShopBuy = buildBossNormalReserveBuyAction(player);
+
+  if (bossShopBuy && normalShopBuy) {
+    return normalShopBuy.score > bossShopBuy.score
+      ? normalShopBuy
+      : bossShopBuy;
+  }
+
+  return bossShopBuy ?? normalShopBuy ?? null;
+}
+
+function buildRaidReserveBuyDecision(player, strategy, state = null) {
+  const heroExclusiveBuy = buildRaidHeroExclusiveReserveBuyAction(player, strategy, state);
+  const normalShopBuy = buildRaidNormalReserveBuyAction(player, strategy, state);
+
+  if (heroExclusiveBuy && normalShopBuy) {
+    return heroExclusiveBuy.score >= normalShopBuy.score
+      ? heroExclusiveBuy
+      : normalShopBuy;
+  }
+
+  return heroExclusiveBuy ?? normalShopBuy ?? null;
+}
+
+function buildReserveBuyDecision(player, strategy, state = null) {
   if (player?.role === "boss") {
-    const bossShopBuy = buildBossShopReserveBuyAction(player);
-    const normalShopBuy = buildBossNormalReserveBuyAction(player);
-
-    if (bossShopBuy && normalShopBuy) {
-      return normalShopBuy.score > bossShopBuy.score
-        ? normalShopBuy.action
-        : bossShopBuy.action;
-    }
-
-    return bossShopBuy?.action ?? normalShopBuy?.action ?? null;
+    return buildBossReserveBuyDecision(player);
   }
 
   if (player?.role === "raid") {
-    const heroExclusiveBuy = buildRaidHeroExclusiveReserveBuyAction(player, strategy, state);
-    const normalShopBuy = buildRaidNormalReserveBuyAction(player, strategy, state);
-
-    if (heroExclusiveBuy && normalShopBuy) {
-      return heroExclusiveBuy.score >= normalShopBuy.score
-        ? heroExclusiveBuy.action
-        : normalShopBuy.action;
-    }
-
-    return heroExclusiveBuy?.action ?? normalShopBuy?.action ?? null;
+    return buildRaidReserveBuyDecision(player, strategy, state);
   }
 
   return null;
+}
+
+function buildReserveBuyAction(player, strategy, state = null) {
+  return buildReserveBuyDecision(player, strategy, state)?.action ?? null;
 }
 
 function parseBoardPlacement(value) {
@@ -1367,8 +1386,15 @@ function buildSpecialUnitUpgradeAction(player, playerPhase) {
   if (
     playerPhase !== "purchase"
     || (player?.role !== "boss" && player?.role !== "raid")
-    || hasUnits(player?.benchUnits)
   ) {
+    return null;
+  }
+
+  if (player?.role === "boss" && hasUnits(player?.benchUnits)) {
+    return null;
+  }
+
+  if (player?.role === "raid" && !hasDeployedSpecialUnit(player)) {
     return null;
   }
 
@@ -1389,6 +1415,210 @@ function buildSpecialUnitUpgradeAction(player, playerPhase) {
     type: "prep_command",
     payload: { specialUnitUpgradeCount: 1 },
   };
+}
+
+function getRaidSpecialUnitUpgradePriorityScore(player, strategy = "upgrade", state = null) {
+  if (player?.role !== "raid") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const currentLevel = getClientSpecialUnitLevel(player);
+  const upgradeValueScore = getClientSpecialUnitUpgradeValueScore(player) * 24;
+  if (upgradeValueScore <= 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  const ownedRaidUnitCount =
+    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const rosterBonus = ownedRaidUnitCount >= 2
+    ? 18
+    : ownedRaidUnitCount >= 1
+      ? 8
+      : 0;
+  const roundBonus = roundIndex !== null
+    ? Math.min(Math.max(roundIndex - 3, 0) * 4, 24)
+    : 0;
+  const urgencyBonus = currentLevel <= 2 ? 18 : 0;
+  const catchUpBonus = roundIndex !== null && roundIndex >= 6 && currentLevel <= 2 ? 24 : 0;
+  const strategyPenalty = strategy === "highCost" ? 12 : 0;
+  return upgradeValueScore + rosterBonus + roundBonus + urgencyBonus + catchUpBonus - strategyPenalty;
+}
+
+function getBossSpecialUnitUpgradePriorityScore(player, strategy = "upgrade", state = null) {
+  if (player?.role !== "boss") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const currentLevel = getClientSpecialUnitLevel(player);
+  const upgradeValueScore =
+    getClientSpecialUnitUpgradeValueScore(player) * BOSS_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT;
+  if (upgradeValueScore <= 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  const ownedBossUnitCount =
+    getPlacedPurchasedUnitCount("boss", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const rosterBonus = ownedBossUnitCount >= 3
+    ? BOSS_SPECIAL_UNIT_UPGRADE_ESTABLISHED_ROSTER_BONUS
+    : ownedBossUnitCount >= 2
+      ? BOSS_SPECIAL_UNIT_UPGRADE_ESTABLISHED_ROSTER_BONUS / 2
+      : 0;
+  const roundBonus = roundIndex !== null
+    ? Math.min(Math.max(roundIndex - 3, 0) * 6, BOSS_SPECIAL_UNIT_UPGRADE_ROUND_BONUS_CAP)
+    : 0;
+  const urgencyBonus = currentLevel <= 2 ? BOSS_SPECIAL_UNIT_UPGRADE_EARLY_LEVEL_BONUS : 0;
+  const strategyPenalty = strategy === "highCost" ? 20 : 0;
+
+  return upgradeValueScore + rosterBonus + roundBonus + urgencyBonus - strategyPenalty;
+}
+
+function shouldPreferRaidSpecialUnitUpgradeOverRefresh(player, state = null) {
+  if (player?.role !== "raid") {
+    return false;
+  }
+
+  const currentLevel = getClientSpecialUnitLevel(player);
+  const roundIndex = getStateRoundIndex(state);
+  if (roundIndex === null) {
+    return false;
+  }
+
+  if (currentLevel <= 2) {
+    return roundIndex >= 4;
+  }
+
+  const ownedRaidUnitCount =
+    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+
+  return currentLevel <= 4
+    && ownedRaidUnitCount >= 2
+    && roundIndex >= 5;
+}
+
+function shouldForceRaidSpecialUnitUpgradeProgression(player, reserveBuyDecision, state = null) {
+  if (player?.role !== "raid" || !reserveBuyDecision) {
+    return false;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  if (roundIndex === null || roundIndex < 5) {
+    return false;
+  }
+
+  if (getClientSpecialUnitLevel(player) > 2) {
+    return false;
+  }
+
+  const targetOffer = getOfferFromReserveBuyAction(player, reserveBuyDecision?.action);
+  if (!targetOffer || isHeroExclusiveOffer(targetOffer)) {
+    return false;
+  }
+
+  const offerCost = getOfferCost(targetOffer) ?? 0;
+  return offerCost <= 1 && !canReserveOfferStackIntoOwnedUnit(player, targetOffer);
+}
+
+function canPreferRaidSpecialUnitUpgradeWithBenchBacklog(player, state = null) {
+  if (player?.role !== "raid" || !hasUnits(player?.benchUnits)) {
+    return true;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  const ownedRaidUnitCount =
+    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+
+  return roundIndex !== null
+    && roundIndex >= 5
+    && ownedRaidUnitCount >= 3;
+}
+
+function shouldLockInRaidSpecialUnitUpgrade(player, state = null) {
+  if (player?.role !== "raid") {
+    return false;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  if (roundIndex === null || roundIndex < 5) {
+    return false;
+  }
+
+  const currentLevel = getClientSpecialUnitLevel(player);
+  if (currentLevel > 2) {
+    return false;
+  }
+
+  const ownedRaidUnitCount =
+    getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length;
+  return ownedRaidUnitCount >= 2;
+}
+
+function shouldLockInBossSpecialUnitUpgrade(player, state = null) {
+  if (player?.role !== "boss") {
+    return false;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  if (roundIndex === null || roundIndex < 5) {
+    return false;
+  }
+
+  const currentLevel = getClientSpecialUnitLevel(player);
+  if (currentLevel > 2) {
+    return false;
+  }
+
+  const ownedBossUnitCount =
+    getPlacedPurchasedUnitCount("boss", player?.boardUnits) + toArray(player?.benchUnits).length;
+  return ownedBossUnitCount >= 3;
+}
+
+function buildSpecialUnitUpgradeDecision(player, playerPhase, strategy = "upgrade", state = null) {
+  const action = buildSpecialUnitUpgradeAction(player, playerPhase);
+  if (!action) {
+    return null;
+  }
+
+  const valueScore = getClientSpecialUnitUpgradeValueScore(player);
+  return {
+    action,
+    valueScore,
+    score: player?.role === "boss"
+      ? getBossSpecialUnitUpgradePriorityScore(player, strategy, state)
+      : getRaidSpecialUnitUpgradePriorityScore(player, strategy, state),
+  };
+}
+
+function doesSpecialUnitUpgradeOutrankReserveBuy(currentLevel, upgradeScore, reserveBuyScore, upgradeValueScore) {
+  if (!Number.isFinite(upgradeScore) || !Number.isFinite(reserveBuyScore)) {
+    return false;
+  }
+
+  if (currentLevel <= 4) {
+    return upgradeScore > reserveBuyScore;
+  }
+
+  if (!Number.isFinite(upgradeValueScore) || upgradeValueScore < AUTO_FILL_LATE_SPECIAL_UNIT_UPGRADE_VALUE_FLOOR) {
+    return false;
+  }
+
+  return upgradeScore > reserveBuyScore + AUTO_FILL_LATE_SPECIAL_UNIT_UPGRADE_SCORE_MARGIN;
+}
+
+function hasDeployedSpecialUnit(player) {
+  const specialUnitId = player.role === "raid"
+    ? player.selectedHeroId
+    : player.role === "boss"
+      ? player.selectedBossId
+      : "";
+  if (!specialUnitId) {
+    return false;
+  }
+
+  // Real room state does not serialize the selected hero/boss into boardUnits tokens.
+  // Once a special unit is selected, it already participates in combat and can be upgraded.
+  return true;
 }
 
 function getStateRoundIndex(state) {
@@ -1810,9 +2040,58 @@ export function buildAutoFillHelperActions({
       helperPlayer.selectedHeroId,
       helperPlayer.selectedBossId,
     ).length > 0;
-    const reserveBuyAction = (nextDeployCell !== null || hasSubDeployCapacity)
-      ? buildReserveBuyAction(helperPlayer, helperStrategy, state)
+    const reserveBuyDecision = (nextDeployCell !== null || hasSubDeployCapacity)
+      ? buildReserveBuyDecision(helperPlayer, helperStrategy, state)
       : null;
+    const reserveBuyAction = reserveBuyDecision?.action ?? null;
+    const specialUnitUpgradeDecision = buildSpecialUnitUpgradeDecision(
+      helperPlayer,
+      playerPhase,
+      helperStrategy,
+      state,
+    );
+    const currentSpecialUnitLevel = getClientSpecialUnitLevel(helperPlayer);
+    const deployedSpecialUnit = hasDeployedSpecialUnit(helperPlayer);
+    const shouldPreferBossSpecialUnitUpgrade = playerPhase === "purchase"
+      && helperPlayer.role === "boss"
+      && deployedSpecialUnit
+      && specialUnitUpgradeDecision !== null
+      && (
+        shouldLockInBossSpecialUnitUpgrade(helperPlayer, state)
+        || (
+          reserveBuyDecision !== null
+          && specialUnitUpgradeDecision.score > reserveBuyDecision.score
+        )
+      );
+    const shouldPreferSpecialUnitUpgrade = playerPhase === "purchase"
+      && deployedSpecialUnit
+      && specialUnitUpgradeDecision !== null
+      && helperPlayer.role === "raid"
+      && canPreferRaidSpecialUnitUpgradeWithBenchBacklog(helperPlayer, state)
+      && (
+        shouldLockInRaidSpecialUnitUpgrade(helperPlayer, state)
+        || (
+        (
+          reserveBuyDecision !== null
+          && (
+            shouldForceRaidSpecialUnitUpgradeProgression(helperPlayer, reserveBuyDecision, state)
+            || doesSpecialUnitUpgradeOutrankReserveBuy(
+              currentSpecialUnitLevel,
+              specialUnitUpgradeDecision.score,
+              reserveBuyDecision.score,
+              specialUnitUpgradeDecision.valueScore,
+            )
+          )
+        )
+        || (
+          reserveBuyDecision === null
+          && (
+            !canRefreshReserveShop(helperPlayer, helperStrategy)
+            || shouldPreferRaidSpecialUnitUpgradeOverRefresh(helperPlayer, state)
+          )
+        )
+        )
+      );
     const reserveManagementAction = buildReserveManagementAction(
       helperPlayer,
       reserveBuyAction,
@@ -1832,6 +2111,10 @@ export function buildAutoFillHelperActions({
       )
       : [];
 
+    if (shouldPreferBossSpecialUnitUpgrade || shouldPreferSpecialUnitUpgrade) {
+      return [specialUnitUpgradeDecision.action];
+    }
+
     if (reserveManagementAction) {
       return [reserveManagementAction];
     }
@@ -1845,12 +2128,8 @@ export function buildAutoFillHelperActions({
         return [reserveBuyAction];
       }
 
-      const specialUnitUpgradeAction = buildSpecialUnitUpgradeAction(
-        helperPlayer,
-        playerPhase,
-      );
-      if (specialUnitUpgradeAction) {
-        return [specialUnitUpgradeAction];
+      if (specialUnitUpgradeDecision) {
+        return [specialUnitUpgradeDecision.action];
       }
 
       if (
@@ -1941,12 +2220,8 @@ export function buildAutoFillHelperActions({
       return [reserveBuyAction];
     }
 
-    const specialUnitUpgradeAction = buildSpecialUnitUpgradeAction(
-      helperPlayer,
-      playerPhase,
-    );
-    if (specialUnitUpgradeAction) {
-      return [specialUnitUpgradeAction];
+    if (specialUnitUpgradeDecision) {
+      return [specialUnitUpgradeDecision.action];
     }
 
     if (

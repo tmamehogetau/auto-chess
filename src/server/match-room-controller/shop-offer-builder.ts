@@ -172,9 +172,14 @@ export class ShopOfferBuilder {
    */
   buildBossShopOffers(): ShopOffer[] {
     const offers: ShopOffer[] = [];
+    const usedUnitIds = new Set<string>();
 
     for (let slotIndex = 0; slotIndex < BOSS_SHOP_SIZE; slotIndex += 1) {
-      const unit = this.deps.getRandomScarletMansionUnit();
+      let unit = this.deps.getRandomScarletMansionUnit();
+      for (let retryCount = 0; retryCount < 8 && usedUnitIds.has(unit.unitId); retryCount += 1) {
+        unit = this.deps.getRandomScarletMansionUnit();
+      }
+      usedUnitIds.add(unit.unitId);
       offers.push({
         unitType: unit.unitType,
         unitId: unit.unitId,

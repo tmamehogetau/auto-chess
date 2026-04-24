@@ -1,4 +1,5 @@
 import type { BotOnlyBaselineAggregateReport } from "./bot-balance-baseline-aggregate";
+import { buildBotBalanceBaselineAnalysis } from "./bot-balance-baseline-analysis";
 import type { BotBalanceBaselineHelperConfig, BotBalanceBaselineHelperPolicy } from "./bot-balance-baseline-runner";
 
 export type BotBalanceBaselineFailureSummary = {
@@ -47,6 +48,10 @@ function localizeBattleEndReason(reason: string): string {
       return "時間切れHP判定決着";
     case "timeout_hp_tie":
       return "時間切れHP同値引き分け";
+    case "phase_hp_depleted":
+      return "フェーズHP削り切り";
+    case "boss_defeated":
+      return "ボス撃破";
     case "forced":
       return "強制決着";
     default:
@@ -86,6 +91,7 @@ export function buildBotBalanceBaselineJapaneseJson(
     finalBoardAdoptionRate: 0,
   };
   const highCostOfferMetrics = aggregate.highCostOfferMetrics ?? [];
+  const battleTimelineTimeScale = resolveBattleTimelineTimeScale(aggregate);
 
   return {
     "実行条件": {
@@ -148,6 +154,49 @@ export function buildBotBalanceBaselineJapaneseJson(
       "ラウンド": Number(round),
       "件数": count,
     })),
+    "各ラウンド詳細": (aggregate.roundDetails ?? []).map((round) => ({
+      "試合番号": round.matchIndex,
+      "ラウンド": round.roundIndex,
+      "終了時間(実プレイ秒)": toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale),
+      "最終勝利陣営": round.matchWinnerRole,
+      "フェーズHP目標": round.phaseHpTarget,
+      "フェーズHPダメージ": round.phaseDamageDealt,
+      "フェーズHP達成率": round.phaseCompletionRate,
+      "ラウンド結果": round.phaseResult,
+      "レイド全員撃破": round.allRaidPlayersWipedOut,
+      "撃破されたレイド人数": round.raidPlayersWipedOut,
+      "このラウンド後の脱落レイド人数": round.raidPlayersEliminatedAfterRound,
+      "ボス側生存数": round.bossSurvivors,
+      "レイド側生存数": round.raidSurvivors,
+      "ボス側総ダメージ": round.bossTotalDamage,
+      "レイド側総ダメージ": round.raidTotalDamage,
+      "レイド側フェーズ貢献ダメージ": round.raidPhaseContributionDamage,
+      "戦闘終了理由": round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)),
+      "戦闘勝利陣営": round.battleWinnerRoles,
+      "レイド別結果": round.raidPlayerConsequences.map((player) => ({
+        "プレイヤー": player.label,
+        "戦闘開始ユニット数": player.battleStartUnitCount,
+        "撃破": player.playerWipedOut,
+        "残機Before": player.remainingLivesBefore,
+        "残機After": player.remainingLivesAfter,
+        "脱落": player.eliminatedAfter,
+      })),
+      "上位ボスユニット": round.topBossUnits.map((unit) => ({
+        "ユニット名": unit.unitName,
+        "Lv": unit.unitLevel,
+        "与ダメージ": unit.totalDamage,
+        "最終HP": unit.finalHp,
+        "生存": unit.alive,
+      })),
+      "上位レイドユニット": round.topRaidUnits.map((unit) => ({
+        "ユニット名": unit.unitName,
+        "Lv": unit.unitLevel,
+        "与ダメージ": unit.totalDamage,
+        "フェーズ貢献ダメージ": unit.phaseContributionDamage,
+        "最終HP": unit.finalHp,
+        "生存": unit.alive,
+      })),
+    })),
     "プレイヤー別成績": Object.fromEntries(
       Object.entries(aggregate.playerMetrics).map(([label, metrics]) => [label, {
         "平均順位": metrics.averagePlacement,
@@ -160,6 +209,7 @@ export function buildBotBalanceBaselineJapaneseJson(
         "平均購入回数": metrics.averagePurchaseCount,
         "平均リロール回数": metrics.averageRefreshCount,
         "平均売却回数": metrics.averageSellCount,
+        "平均主人公強化回数": metrics.averageSpecialUnitUpgradeCount ?? 0,
       }]),
     ),
     "ボス側戦闘ユニット指標": aggregate.bossBattleUnitMetrics.map((unit) => ({
@@ -168,11 +218,16 @@ export function buildBotBalanceBaselineJapaneseJson(
       "ユニット名": unit.unitName,
       "戦闘登場回数": unit.battleAppearances,
       "登場試合数": unit.matchesPresent,
-      "平均星レベル": unit.averageunitLevel,
+      "平均ユニットレベル": unit.averageunitLevel,
+      "最大到達レベル": unit.maxUnitLevel ?? 0,
+      "Lv4到達率": unit.level4ReachRate ?? 0,
+      "Lv7到達率": unit.level7ReachRate ?? 0,
+      "戦闘ごとの平均基本スキル発動回数": unit.averageBasicSkillActivationsPerBattle ?? 0,
+      "戦闘ごとの平均ペアスキル発動回数": unit.averagePairSkillActivationsPerBattle ?? 0,
       "戦闘ごとの平均ダメージ": unit.averageDamagePerBattle,
       "試合ごとの平均ダメージ": unit.averageDamagePerMatch,
       "生存率": unit.survivalRate,
-      "所持者勝率": unit.ownerWinRate,
+      "担当側戦闘勝率": unit.ownerWinRate,
       "採用率": unit.adoptionRate,
     })),
     "レイド側戦闘ユニット指標": aggregate.raidBattleUnitMetrics.map((unit) => ({
@@ -181,11 +236,16 @@ export function buildBotBalanceBaselineJapaneseJson(
       "ユニット名": unit.unitName,
       "戦闘登場回数": unit.battleAppearances,
       "登場試合数": unit.matchesPresent,
-      "平均星レベル": unit.averageunitLevel,
+      "平均ユニットレベル": unit.averageunitLevel,
+      "最大到達レベル": unit.maxUnitLevel ?? 0,
+      "Lv4到達率": unit.level4ReachRate ?? 0,
+      "Lv7到達率": unit.level7ReachRate ?? 0,
+      "戦闘ごとの平均基本スキル発動回数": unit.averageBasicSkillActivationsPerBattle ?? 0,
+      "戦闘ごとの平均ペアスキル発動回数": unit.averagePairSkillActivationsPerBattle ?? 0,
       "戦闘ごとの平均ダメージ": unit.averageDamagePerBattle,
       "試合ごとの平均ダメージ": unit.averageDamagePerMatch,
       "生存率": unit.survivalRate,
-      "所持者勝率": unit.ownerWinRate,
+      "担当側戦闘勝率": unit.ownerWinRate,
       "採用率": unit.adoptionRate,
       "サブ採用回数": unit.subUnitBattleAppearances ?? 0,
       "サブ採用試合数": unit.subUnitMatchesPresent ?? 0,
@@ -410,6 +470,7 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   summary: BotBalanceBaselineSummary,
 ): string {
   const { aggregate } = summary;
+  const analysis = buildBotBalanceBaselineAnalysis(summary);
   const highCostSummary = aggregate.highCostSummary ?? {
     offerObservationCount: 0,
     offerMatchCount: 0,
@@ -451,6 +512,48 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
 
   lines.push(
     "",
+    "## 先に見るべき結論",
+    "",
+    `- バランス分析可否: ${analysis.balance.sampleUsability}`,
+    `- 進行健全性: ${analysis.integrity.status}`,
+    `- 進行診断 critical/warning/info: ${analysis.diagnostics.criticalCount}/${analysis.diagnostics.warningCount}/${analysis.diagnostics.infoCount}`,
+    `- R12到達率: ${formatPercent(analysis.overview.r12ReachRate)}`,
+    `- R12レイド勝率: ${formatPercent(analysis.finalBattle.raidWinRate)}`,
+    "",
+    "## 進行健全性診断",
+    "",
+  );
+
+  if (analysis.integrity.issues.length === 0) {
+    lines.push("- 進行不具合候補なし");
+  } else {
+    lines.push(
+      "| 重大度 | code | 内容 | 根拠 |",
+      "| --- | --- | --- | --- |",
+      ...analysis.integrity.issues.map((issue) =>
+        `| ${issue.severity} | ${escapeMarkdownCell(issue.code)} | ${escapeMarkdownCell(issue.message)} | ${escapeMarkdownCell(formatDiagnosticEvidence(issue.evidence))} |`),
+    );
+  }
+
+  lines.push(
+    "",
+    "## バランス診断",
+    "",
+  );
+
+  if (analysis.balance.issues.length === 0) {
+    lines.push(`- balanceStatus=${analysis.balance.status}`);
+  } else {
+    lines.push(
+      "| 重大度 | code | confidence | 内容 | 次アクション |",
+      "| --- | --- | --- | --- | --- |",
+      ...analysis.balance.issues.map((issue) =>
+        `| ${issue.severity} | ${escapeMarkdownCell(issue.code)} | ${formatNumber(issue.confidence)} | ${escapeMarkdownCell(issue.message)} | ${issue.recommendedNextAction} |`),
+    );
+  }
+
+  lines.push(
+    "",
     "## 全体結果",
     "",
     `- 完走数: ${aggregate.completedMatches}`,
@@ -487,14 +590,50 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
 
   lines.push(
     "",
+    "## 各ラウンド詳細",
+    "",
+    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  const battleTimelineTimeScale = resolveBattleTimelineTimeScale(aggregate);
+  for (const round of aggregate.roundDetails ?? []) {
+    lines.push(
+      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## R12最終戦",
+    "",
+    "| 試行数 | レイド勝率 | ボス撃破率 | 同時全滅数 | 平均ボス本体ダメージ | 平均ボス残HP | 平均終了秒 |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    `| ${analysis.finalBattle.sampleCount} | ${formatPercent(analysis.finalBattle.raidWinRate)} | ${formatPercent(analysis.finalBattle.bossDefeatRate)} | ${analysis.finalBattle.simultaneousWipeCount} | ${formatNumber(analysis.finalBattle.averageBossBodyDamage)} | ${formatNumber(analysis.finalBattle.averageBossRemainingHp)} | ${formatNumber(analysis.finalBattle.averageBattleEndSeconds)} |`,
+  );
+
+  lines.push(
+    "",
+    "## ショップ出現診断",
+    "",
+    "| ユニット名 | ユニットID | ロール | 提示元 | コスト | 提示試合率 | 購入率 | 最終採用率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const unit of analysis.shop.mostOffered.slice(0, 10)) {
+    lines.push(
+      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${unit.role} | ${unit.source} | ${formatNumber(unit.cost)} | ${formatPercent(unit.offeredMatchRate)} | ${formatPercent(unit.purchaseRate)} | ${formatPercent(unit.finalBoardAdoptionRate)} |`,
+    );
+  }
+
+  lines.push(
+    "",
     "## プレイヤー別成績",
     "",
-    "| プレイヤー | 平均順位 | 1位率 | 平均残HP | 平均残機 | 平均最終所持Gold | 平均獲得Gold | 平均消費Gold | 平均購入回数 | 平均リロール回数 | 平均売却回数 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| プレイヤー | 平均順位 | 1位率 | 平均残HP | 平均残機 | 平均最終所持Gold | 平均獲得Gold | 平均消費Gold | 平均購入回数 | 平均リロール回数 | 平均売却回数 | 平均主人公強化回数 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const [label, metrics] of Object.entries(aggregate.playerMetrics)) {
     lines.push(
-      `| ${escapeMarkdownCell(label)} | ${formatNumber(metrics.averagePlacement)} | ${formatPercent(metrics.firstPlaceRate)} | ${formatNumber(metrics.averageRemainingHp)} | ${formatNumber(metrics.averageRemainingLives)} | ${formatNumber(metrics.averageFinalGold)} | ${formatNumber(metrics.averageGoldEarned)} | ${formatNumber(metrics.averageGoldSpent)} | ${formatNumber(metrics.averagePurchaseCount)} | ${formatNumber(metrics.averageRefreshCount)} | ${formatNumber(metrics.averageSellCount)} |`,
+      `| ${escapeMarkdownCell(label)} | ${formatNumber(metrics.averagePlacement)} | ${formatPercent(metrics.firstPlaceRate)} | ${formatNumber(metrics.averageRemainingHp)} | ${formatNumber(metrics.averageRemainingLives)} | ${formatNumber(metrics.averageFinalGold)} | ${formatNumber(metrics.averageGoldEarned)} | ${formatNumber(metrics.averageGoldSpent)} | ${formatNumber(metrics.averagePurchaseCount)} | ${formatNumber(metrics.averageRefreshCount)} | ${formatNumber(metrics.averageSellCount)} | ${formatNumber(metrics.averageSpecialUnitUpgradeCount ?? 0)} |`,
     );
   }
 
@@ -502,12 +641,12 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     "",
     "## ボス側戦闘ユニット指標",
     "",
-    "| ユニット名 | ユニットID | ユニット種別 | 戦闘登場回数 | 登場試合数 | 平均星レベル | 戦闘ごとの平均ダメージ | 試合ごとの平均ダメージ | 生存率 | 所持者勝率 | 採用率 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| ユニット名 | ユニットID | ユニット種別 | 戦闘登場回数 | 登場試合数 | 平均ユニットレベル | 最大到達レベル | Lv4到達率 | Lv7到達率 | 基本スキル/戦闘 | ペアスキル/戦闘 | 戦闘ごとの平均ダメージ | 試合ごとの平均ダメージ | 生存率 | 担当側戦闘勝率 | 採用率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const unit of aggregate.bossBattleUnitMetrics) {
     lines.push(
-      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageunitLevel)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} |`,
+      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageunitLevel)} | ${formatNumber(unit.maxUnitLevel ?? 0)} | ${formatPercent(unit.level4ReachRate ?? 0)} | ${formatPercent(unit.level7ReachRate ?? 0)} | ${formatNumber(unit.averageBasicSkillActivationsPerBattle ?? 0)} | ${formatNumber(unit.averagePairSkillActivationsPerBattle ?? 0)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} |`,
     );
   }
 
@@ -515,12 +654,12 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     "",
     "## レイド側戦闘ユニット指標",
     "",
-    "| ユニット名 | ユニットID | ユニット種別 | 戦闘登場回数 | 登場試合数 | 平均星レベル | 戦闘ごとの平均ダメージ | 試合ごとの平均ダメージ | 生存率 | 所持者勝率 | 採用率 | サブ採用回数 | サブ採用試合数 | サブ採用率 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| ユニット名 | ユニットID | ユニット種別 | 戦闘登場回数 | 登場試合数 | 平均ユニットレベル | 最大到達レベル | Lv4到達率 | Lv7到達率 | 基本スキル/戦闘 | ペアスキル/戦闘 | 戦闘ごとの平均ダメージ | 試合ごとの平均ダメージ | 生存率 | 担当側戦闘勝率 | 採用率 | サブ採用回数 | サブ採用試合数 | サブ採用率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   for (const unit of aggregate.raidBattleUnitMetrics) {
     lines.push(
-      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageunitLevel)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} | ${unit.subUnitBattleAppearances ?? 0} | ${unit.subUnitMatchesPresent ?? 0} | ${formatPercent(unit.subUnitAdoptionRate ?? 0)} |`,
+      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.battleAppearances} | ${unit.matchesPresent} | ${formatNumber(unit.averageunitLevel)} | ${formatNumber(unit.maxUnitLevel ?? 0)} | ${formatPercent(unit.level4ReachRate ?? 0)} | ${formatPercent(unit.level7ReachRate ?? 0)} | ${formatNumber(unit.averageBasicSkillActivationsPerBattle ?? 0)} | ${formatNumber(unit.averagePairSkillActivationsPerBattle ?? 0)} | ${formatNumber(unit.averageDamagePerBattle)} | ${formatNumber(unit.averageDamagePerMatch)} | ${formatPercent(unit.survivalRate)} | ${formatPercent(unit.ownerWinRate)} | ${formatPercent(unit.adoptionRate)} | ${unit.subUnitBattleAppearances ?? 0} | ${unit.subUnitMatchesPresent ?? 0} | ${formatPercent(unit.subUnitAdoptionRate ?? 0)} |`,
     );
   }
 
@@ -706,8 +845,61 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   return `${lines.join("\n")}\n`;
 }
 
+function formatRoundPlayerConsequences(
+  players: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["raidPlayerConsequences"],
+): string {
+  if (players.length === 0) {
+    return "-";
+  }
+
+  return players
+    .map((player) =>
+      `${player.label}:${player.playerWipedOut ? "撃破" : "生存"} ${player.remainingLivesBefore}->${player.remainingLivesAfter}${player.eliminatedAfter ? " 脱落" : ""}`)
+    .join(" / ");
+}
+
+function formatRoundUnitDetails(
+  units: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["topRaidUnits"],
+  side: "boss" | "raid",
+): string {
+  if (units.length === 0) {
+    return "-";
+  }
+
+  return units
+    .slice(0, 3)
+    .map((unit) => {
+      const damageLabel = side === "raid"
+        ? `${formatNumber(unit.totalDamage)}(phase ${formatNumber(unit.phaseContributionDamage)})`
+        : formatNumber(unit.totalDamage);
+      return `${unit.unitName} Lv${unit.unitLevel} dmg=${damageLabel} hp=${formatNumber(unit.finalHp)} ${unit.alive ? "生存" : "撃破"}`;
+    })
+    .join(" / ");
+}
+
 function escapeMarkdownCell(value: string): string {
   return value.replaceAll("|", "\\|").replaceAll("\n", " ");
+}
+
+function formatDiagnosticEvidence(evidence: Array<{ matchIndex: number; roundIndex?: number }>): string {
+  if (evidence.length === 0) {
+    return "-";
+  }
+  return evidence
+    .slice(0, 3)
+    .map((item) => `match=${item.matchIndex}${item.roundIndex == null ? "" : ` R${item.roundIndex}`}`)
+    .join(", ");
+}
+
+function formatRoundObjectiveProgress(round: {
+  roundIndex: number;
+  phaseDamageDealt: number;
+  phaseHpTarget: number;
+}): string {
+  if (round.roundIndex === 12) {
+    return `ボス本体 ${formatNumber(round.phaseDamageDealt)}`;
+  }
+  return `${formatNumber(round.phaseDamageDealt)}/${formatNumber(round.phaseHpTarget)}`;
 }
 
 function formatNumber(value: number): string {
@@ -716,6 +908,17 @@ function formatNumber(value: number): string {
   }
 
   return value.toFixed(2).replace(/\.?0+$/u, "");
+}
+
+function resolveBattleTimelineTimeScale(aggregate: BotOnlyBaselineAggregateReport): number {
+  const timeScale = aggregate.metadata?.timeScale;
+  return typeof timeScale === "number" && Number.isFinite(timeScale) && timeScale > 0
+    ? timeScale
+    : 1;
+}
+
+function toRealPlaySeconds(scaledDurationMs: number, timeScale: number): number {
+  return Number(((scaledDurationMs / timeScale) / 1000).toFixed(2));
 }
 
 function formatNullableNumber(value: number | null): string {

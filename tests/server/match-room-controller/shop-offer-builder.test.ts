@@ -195,7 +195,7 @@ describe("ShopOfferBuilder", () => {
       const offers = builder.buildBossShopOffers();
 
       expect(offers).toHaveLength(2);
-      expect(mockDeps.getRandomScarletMansionUnit).toHaveBeenCalledTimes(2);
+      expect(mockDeps.getRandomScarletMansionUnit).toHaveBeenCalledTimes(10);
       offers.forEach((offer) => {
         expect(offer).toHaveProperty("unitType");
         expect(offer).toHaveProperty("rarity");
@@ -234,6 +234,37 @@ describe("ShopOfferBuilder", () => {
       expect(offers[0]!.cost).toBe(2);
       expect(offers[1]!.unitType).toBe("mage");
       expect(offers[1]!.cost).toBe(3);
+    });
+
+    test("re-rolls duplicate boss shop offers when another scarlet unit is available", () => {
+      const createMockUnit = (unitType: BoardUnitType, cost: 2 | 3 | 4, id: string): import("../../../src/data/scarlet-mansion-units").ScarletMansionUnit => ({
+        id,
+        unitId: id,
+        displayName: `Unit ${id}`,
+        unitType,
+        cost,
+        hp: 1000,
+        attack: 100,
+        attackSpeed: 1.0,
+        movementSpeed: 1,
+        range: 1,
+        critRate: 0,
+        critDamageMultiplier: 1.5,
+        damageReduction: 0,
+        role: "テスト",
+        skillDescription: "テストスキル",
+        flavorText: "テストフレーバー",
+      });
+
+      mockDeps.getRandomScarletMansionUnit = vi.fn()
+        .mockReturnValueOnce(createMockUnit("mage", 4, "patchouli"))
+        .mockReturnValueOnce(createMockUnit("mage", 4, "patchouli"))
+        .mockReturnValueOnce(createMockUnit("vanguard", 2, "meiling"));
+
+      const offers = builder.buildBossShopOffers();
+
+      expect(offers.map((offer) => offer.unitId)).toEqual(["patchouli", "meiling"]);
+      expect(mockDeps.getRandomScarletMansionUnit).toHaveBeenCalledTimes(3);
     });
   });
 

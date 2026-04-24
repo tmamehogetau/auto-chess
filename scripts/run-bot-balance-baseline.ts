@@ -8,6 +8,9 @@ import {
   type BotOnlyBaselineAggregateReport,
 } from "../tests/server/game-room/bot-balance-baseline-aggregate";
 import {
+  buildBotBalanceBaselineAnalysis,
+} from "../tests/server/game-room/bot-balance-baseline-analysis";
+import {
   buildBotBalanceBaselineJapaneseJson,
   buildBotBalanceBaselineJapaneseMarkdown,
   type BotBalanceBaselineSummary,
@@ -413,6 +416,7 @@ async function main(): Promise<void> {
       message: failure.message,
     })));
   const summaryPath = join(options.outputDir, "summary.json");
+  const analysisJsonPath = join(options.outputDir, "summary.analysis.json");
   const humanMarkdownPath = join(options.outputDir, "summary.ja.md");
   const humanJsonPath = join(options.outputDir, "summary.ja.json");
   const helperConfigs = createBotBalanceBaselineHelperConfigs({
@@ -445,16 +449,19 @@ async function main(): Promise<void> {
       durationMs: record.durationMs,
     })),
   };
+  const analysisReport = buildBotBalanceBaselineAnalysis(summary);
   const japaneseJsonReport = buildBotBalanceBaselineJapaneseJson(summary);
   const japaneseMarkdownReport = buildBotBalanceBaselineJapaneseMarkdown(summary);
 
   writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  writeFileSync(analysisJsonPath, `${JSON.stringify(analysisReport, null, 2)}\n`, "utf8");
   writeFileSync(humanJsonPath, `${JSON.stringify(japaneseJsonReport, null, 2)}\n`, "utf8");
   writeFileSync(humanMarkdownPath, japaneseMarkdownReport, "utf8");
   console.log(JSON.stringify({
     type: "bot_balance_baseline_summary",
     data: {
       summaryPath,
+      analysisJsonPath,
       humanJsonPath,
       humanMarkdownPath,
       outputDir: options.outputDir,

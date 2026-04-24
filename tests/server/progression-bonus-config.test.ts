@@ -29,6 +29,18 @@ describe("progression-bonus-config", () => {
       },
       skillImplementationState: "implemented",
     });
+    expect(resolveSpecialUnitProgressionBonusConfig("remilia")).toMatchObject({
+      baseGrowthProfile: "boss-offense",
+      level4Bonus: {
+        kind: "boss-pressure",
+        statScore: 18,
+      },
+      level7Bonus: {
+        kind: "boss-finisher",
+        statScore: 28,
+      },
+      skillImplementationState: "missing",
+    });
   });
 
   test("milestone bonus score applies level 4/7 bonuses only on the threshold step", () => {

@@ -558,10 +558,6 @@ const SPECIAL_BATTLE_UNIT_IDS = new Set<string>([
   ...BOSS_CHARACTERS.map((boss) => boss.id),
 ]);
 
-function resolveUnitDisplayName(unitId: string, fallback: string): string {
-  return UNIT_DISPLAY_NAME_BY_ID.get(unitId) ?? fallback;
-}
-
 type UnitCombatProfile = {
   attack: number;
   attackSpeed: number;
@@ -1855,7 +1851,7 @@ export function buildBotOnlyBaselineAggregateReport(
         const key = `${purchaseRole}::${purchaseSource}::${purchaseUnitId}`;
         const existing = shopOfferMetricsByKey.get(key) ?? {
           unitId: purchaseUnitId,
-          unitName: purchase.unitName ?? resolveUnitDisplayName(purchaseUnitId, purchase.unitType),
+          unitName: purchase.unitName ?? resolveBaselineUnitName(purchaseUnitId, purchase.unitType),
           unitType: purchase.unitType,
           role: purchaseRole,
           source: purchaseSource,
@@ -2485,6 +2481,7 @@ export function buildBotOnlyBaselineAggregateReport(
         return {
           ...entry,
           offeredMatchRate: entry.matchesPresent / completedMatches,
+          // purchaseRate is defined over observed offers; purchases should have matching offer observations.
           purchaseRate: entry.observationCount > 0 ? entry.purchaseCount / entry.observationCount : 0,
           finalBoardCopies: finalBoard?.totalCopies ?? 0,
           finalBoardMatchCount: finalBoard?.matchesPresent ?? 0,
@@ -3325,6 +3322,7 @@ export function mergeBotOnlyBaselineAggregateReports(
       .map((entry) => ({
         ...entry,
         offeredMatchRate: completedMatches > 0 ? entry.matchesPresent / completedMatches : 0,
+        // purchaseRate is defined over observed offers; purchases should have matching offer observations.
         purchaseRate: entry.observationCount > 0 ? entry.purchaseCount / entry.observationCount : 0,
         finalBoardAdoptionRate: completedMatches > 0 ? entry.finalBoardMatchCount / completedMatches : 0,
       })),

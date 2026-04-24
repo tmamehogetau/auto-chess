@@ -1,5 +1,6 @@
 import { HERO_EXCLUSIVE_UNITS } from "../data/hero-exclusive-units";
 import { HEROES } from "../data/heroes";
+import { BOSS_CHARACTERS } from "../shared/boss-characters";
 import type {
   LevelBonusDescriptor,
   UnitProgressionBonusConfig,
@@ -90,6 +91,11 @@ export function resolveSpecialUnitProgressionBonusConfig(
   const exclusiveUnit = HERO_EXCLUSIVE_UNITS.find((value) => value.id === specialUnitId);
   if (exclusiveUnit) {
     return exclusiveUnit.progressionBonus;
+  }
+
+  const boss = BOSS_CHARACTERS.find((value) => value.id === specialUnitId);
+  if (boss) {
+    return boss.progressionBonus;
   }
 
   return DEFAULT_SPECIAL_UNIT_PROGRESSION;

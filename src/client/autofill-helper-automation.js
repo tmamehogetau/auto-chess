@@ -1,6 +1,7 @@
 import { HERO_EXCLUSIVE_UNITS } from "../data/hero-exclusive-units";
 import { HEROES } from "../data/heroes";
 import { getTouhouUnitById } from "../data/touhou-units";
+import { BOSS_CHARACTERS } from "../shared/boss-characters";
 import {
   getClientSpecialUnitLevel,
   getClientSpecialUnitUpgradeCost,
@@ -23,6 +24,7 @@ const AUTO_FILL_SPECIAL_UNIT_IDS = new Set([
 const SPECIAL_UNIT_PROGRESSION_BONUS_BY_ID = Object.fromEntries([
   ...HEROES.map((unit) => [unit.id, unit.progressionBonus]),
   ...HERO_EXCLUSIVE_UNITS.map((unit) => [unit.unitId, unit.progressionBonus]),
+  ...BOSS_CHARACTERS.map((unit) => [unit.id, unit.progressionBonus]),
 ]);
 const AUTO_FILL_BOSS_DEPLOY_SEQUENCES = [
   [4, 10, 16, 3, 9, 15, 5, 11, 17, 1, 7, 13, 2, 8, 14, 0, 6, 12],
@@ -129,6 +131,7 @@ const AUTO_FILL_PIVOT_HIGH_COST_PREMIUM = 260;
 const AUTO_FILL_PIVOT_LOW_COST_PENALTY = 220;
 const AUTO_FILL_LATE_SPECIAL_UNIT_UPGRADE_SCORE_MARGIN = 80;
 const AUTO_FILL_LATE_SPECIAL_UNIT_UPGRADE_VALUE_FLOOR = 9.5;
+const RAID_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT = 24;
 const BOSS_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT = 44;
 const BOSS_SPECIAL_UNIT_UPGRADE_ESTABLISHED_ROSTER_BONUS = 80;
 const BOSS_SPECIAL_UNIT_UPGRADE_EARLY_LEVEL_BONUS = 45;
@@ -1433,7 +1436,8 @@ function getRaidSpecialUnitUpgradePriorityScore(player, strategy = "upgrade", st
   }
 
   const currentLevel = getClientSpecialUnitLevel(player);
-  const upgradeValueScore = getAutoFillSpecialUnitUpgradeValueScore(player) * 24;
+  const upgradeValueScore =
+    getAutoFillSpecialUnitUpgradeValueScore(player) * RAID_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT;
   if (upgradeValueScore <= 0) {
     return Number.NEGATIVE_INFINITY;
   }
@@ -1467,8 +1471,7 @@ function getBossSpecialUnitUpgradePriorityScore(player, strategy = "upgrade", st
   }
 
   const roundIndex = getStateRoundIndex(state);
-  const ownedBossUnitCount =
-    getPlacedPurchasedUnitCount("boss", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const ownedBossUnitCount = getOwnedBossUnitCount(player);
   const rosterBonus = ownedBossUnitCount >= 3
     ? BOSS_SPECIAL_UNIT_UPGRADE_ESTABLISHED_ROSTER_BONUS
     : ownedBossUnitCount >= 2
@@ -1575,8 +1578,7 @@ function shouldLockInBossSpecialUnitUpgrade(player, state = null) {
     return false;
   }
 
-  const ownedBossUnitCount =
-    getPlacedPurchasedUnitCount("boss", player?.boardUnits) + toArray(player?.benchUnits).length;
+  const ownedBossUnitCount = getOwnedBossUnitCount(player);
   return ownedBossUnitCount >= 3;
 }
 
@@ -1631,6 +1633,10 @@ function getOwnedRaidUnitCount(player) {
   return toArray(player?.boardUnits).length
     + toArray(player?.benchUnits).length
     + (hasDeployedSpecialUnit(player) ? 1 : 0);
+}
+
+function getOwnedBossUnitCount(player) {
+  return toArray(player?.boardUnits).length + toArray(player?.benchUnits).length;
 }
 
 function getStateRoundIndex(state) {

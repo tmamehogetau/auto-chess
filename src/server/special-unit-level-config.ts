@@ -123,8 +123,7 @@ export function getSpecialUnitCombatMultiplierDelta(
   specialUnitId?: string,
 ): number {
   if (
-    !Number.isFinite(currentLevel)
-    || !Number.isInteger(currentLevel)
+    !Number.isInteger(currentLevel)
     || currentLevel < SPECIAL_UNIT_LEVEL_MIN
   ) {
     return 0;

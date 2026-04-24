@@ -2357,7 +2357,7 @@ export class BattleSimulator {
         previousAttackSpeedMultiplier: number,
       ): void => {
         const scheduledAttackTime = nextScheduledAttackAtByUnitId.get(target.id);
-        if (scheduledAttackTime === undefined) {
+        if (scheduledAttackTime === undefined || scheduledAttackTime <= currentTime) {
           return;
         }
 
@@ -2389,8 +2389,19 @@ export class BattleSimulator {
           return;
         }
 
+        const {
+          incomingDamageMultiplier: rawIncomingDamageMultiplier,
+          ...modifierWithoutIncomingDamageMultiplier
+        } = modifier;
+        const acceptedIncomingDamageMultiplier =
+          rawIncomingDamageMultiplier !== undefined && rawIncomingDamageMultiplier > 0
+            ? rawIncomingDamageMultiplier
+            : undefined;
         const activeModifier: ActiveTimedCombatModifier = {
-          ...modifier,
+          ...modifierWithoutIncomingDamageMultiplier,
+          ...(acceptedIncomingDamageMultiplier !== undefined
+            ? { incomingDamageMultiplier: acceptedIncomingDamageMultiplier }
+            : {}),
           effectInstanceId: `${target.id}:${modifier.id}:${timedEffectSequence++}`,
         };
 
@@ -2399,7 +2410,7 @@ export class BattleSimulator {
         target.buffModifiers.defenseMultiplier *= modifier.defenseMultiplier ?? 1;
         target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
         target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
-          * (modifier.incomingDamageMultiplier ?? 1);
+          * (acceptedIncomingDamageMultiplier ?? 1);
         if ((modifier.attackSpeedMultiplier ?? 1) !== 1) {
           reschedulePendingAttackForSpeedChange(target, previousAttackSpeedMultiplier);
         }
@@ -2420,8 +2431,12 @@ export class BattleSimulator {
         target.buffModifiers.attackMultiplier /= modifier.attackMultiplier ?? 1;
         target.buffModifiers.defenseMultiplier /= modifier.defenseMultiplier ?? 1;
         target.buffModifiers.attackSpeedMultiplier /= modifier.attackSpeedMultiplier ?? 1;
+        const incomingDamageMultiplier =
+          modifier.incomingDamageMultiplier !== undefined && modifier.incomingDamageMultiplier > 0
+            ? modifier.incomingDamageMultiplier
+            : 1;
         target.damageTakenMultiplier = (target.damageTakenMultiplier ?? 1)
-          / (modifier.incomingDamageMultiplier ?? 1);
+          / incomingDamageMultiplier;
         if ((modifier.attackSpeedMultiplier ?? 1) !== 1) {
           reschedulePendingAttackForSpeedChange(target, previousAttackSpeedMultiplier);
         }

@@ -543,8 +543,13 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
 
         if (playerState.selectedHeroId.length > 0) {
           trackedBattleUnitIds.push(`hero-${playerId}`);
+          const heroCell =
+            this.controller?.getHeroPlacementForPlayer(playerId)
+            ?? battlePlacements.find((placement) =>
+              placement.subUnit?.unitId === playerState.selectedHeroId)?.cell
+            ?? 8;
           boardUnits.push({
-            cell: 8,
+            cell: heroCell,
             unitName:
               resolveSharedBoardHeroPresentation(playerState.selectedHeroId)?.displayName
               ?? playerState.selectedHeroId,
@@ -556,8 +561,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         }
         if (playerState.role === "boss" && playerState.selectedBossId.length > 0) {
           trackedBattleUnitIds.push(`boss-${playerId}`);
+          const bossCell = this.controller?.getBossPlacementForPlayer(playerId) ?? 2;
           boardUnits.push({
-            cell: 2,
+            cell: bossCell,
             unitName:
               resolveSharedBoardBossPresentation(playerState.selectedBossId)?.displayName
               ?? playerState.selectedBossId,

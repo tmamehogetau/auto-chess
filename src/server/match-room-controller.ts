@@ -2962,6 +2962,8 @@ export class MatchRoomController {
       return RAID_FINAL_BOSS_HP;
     }
 
+    // Raid boss HP is phase-objective HP, so specialUnitLevel scales boss attack
+    // in createBossBattleUnit but intentionally does not scale these HP targets.
     const phaseHpTarget = this.resolvePhaseHpTarget(roundIndex);
     return phaseHpTarget > 0 ? phaseHpTarget : undefined;
   }

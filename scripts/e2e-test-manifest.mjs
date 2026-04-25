@@ -12,7 +12,6 @@ const require = createRequire(import.meta.url);
 const E2E_TEST_SHARDS = {
   a: [
     "tests/e2e/full-game/full-game-with-phase2-features.e2e.spec.ts",
-    "tests/e2e/full-game/player-elimination.e2e.spec.ts",
     "tests/e2e/full-game/sub-unit-system.e2e.spec.ts",
     "tests/e2e/shared-board-bridge/bridge.cleanup.e2e.spec.ts",
     "tests/e2e/shared-board-bridge/bridge.lifecycle.e2e.spec.ts",
@@ -20,12 +19,15 @@ const E2E_TEST_SHARDS = {
   ],
   b: [
     "tests/e2e/full-game/boss-raid-core-loop.e2e.spec.ts",
-    "tests/e2e/full-game/full-round-completion.e2e.spec.ts",
     "tests/e2e/full-game/p1-features-integration.e2e.spec.ts",
+    "tests/e2e/full-game/player-elimination.e2e.spec.ts",
     "tests/e2e/full-game/phase-hp-progress.e2e.spec.ts",
     "tests/e2e/full-game/roster-switch.e2e.spec.ts",
     "tests/e2e/full-game/unit-operations.e2e.spec.ts",
     "tests/e2e/shared-board-bridge/bridge.ui-integration.e2e.spec.ts",
+  ],
+  c: [
+    "tests/e2e/full-game/full-round-completion.e2e.spec.ts",
   ],
 };
 
@@ -108,7 +110,8 @@ export async function auditE2eTestManifest(repoRoot = DEFAULT_REPO_ROOT) {
   const allTests = await listAllE2eTests(repoRoot);
   const shardA = await getE2eTestsForShard("a", repoRoot);
   const shardB = await getE2eTestsForShard("b", repoRoot);
-  const combined = new Set([...shardA, ...shardB]);
+  const shardC = await getE2eTestsForShard("c", repoRoot);
+  const combined = new Set([...shardA, ...shardB, ...shardC]);
 
   if (combined.size !== allTests.length) {
     throw new Error("e2e test manifest does not cover every suite exactly once");
@@ -118,6 +121,7 @@ export async function auditE2eTestManifest(repoRoot = DEFAULT_REPO_ROOT) {
     allCount: allTests.length,
     shardACount: shardA.length,
     shardBCount: shardB.length,
+    shardCCount: shardC.length,
   };
 }
 
@@ -166,7 +170,10 @@ async function main() {
 
   if (audit) {
     const summary = await auditE2eTestManifest();
-    console.log(`e2e-test-manifest ok: ${summary.allCount} total (${summary.shardACount} shard-a / ${summary.shardBCount} shard-b)`);
+    console.log(
+      `e2e-test-manifest ok: ${summary.allCount} total`
+      + ` (${summary.shardACount} shard-a / ${summary.shardBCount} shard-b / ${summary.shardCCount} shard-c)`,
+    );
     return;
   }
 
@@ -183,7 +190,7 @@ async function main() {
     return;
   }
 
-  throw new Error("expected --audit, --list=<a|b>, or --run=<a|b>");
+  throw new Error("expected --audit, --list=<a|b|c>, or --run=<a|b|c>");
 }
 
 if (process.argv[1] === SCRIPT_FILE) {

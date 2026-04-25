@@ -43,6 +43,7 @@ const PARALLEL_SAFE_SERVER_TESTS = [
   "tests/server/touhou-balance.contract.test.ts",
   "tests/server/unit-id-data-integrity.test.ts",
 ];
+const BOT_PLAYABILITY_SERVER_TEST = "tests/server/game-room/bot-playability.test.ts";
 
 function normalizeRelativePath(filePath, repoRoot = DEFAULT_REPO_ROOT) {
   return path.relative(repoRoot, filePath).split(path.sep).join("/");
@@ -137,6 +138,20 @@ export async function getSerialRequiredServerTests(repoRoot = DEFAULT_REPO_ROOT)
   return allTests.filter((filePath) => !parallelSafe.has(filePath));
 }
 
+export async function getSerialBotPlayabilityServerTests(repoRoot = DEFAULT_REPO_ROOT) {
+  const serialRequired = await getSerialRequiredServerTests(repoRoot);
+  if (!serialRequired.includes(BOT_PLAYABILITY_SERVER_TEST)) {
+    throw new Error(`serial bot playability test is not in serial-required group: ${BOT_PLAYABILITY_SERVER_TEST}`);
+  }
+
+  return [BOT_PLAYABILITY_SERVER_TEST];
+}
+
+export async function getSerialRestServerTests(repoRoot = DEFAULT_REPO_ROOT) {
+  const serialRequired = await getSerialRequiredServerTests(repoRoot);
+  return serialRequired.filter((filePath) => filePath !== BOT_PLAYABILITY_SERVER_TEST);
+}
+
 export async function getServerTestsForGroup(groupName, repoRoot = DEFAULT_REPO_ROOT) {
   if (groupName === "parallel-safe") {
     return getParallelSafeServerTests(repoRoot);
@@ -144,6 +159,14 @@ export async function getServerTestsForGroup(groupName, repoRoot = DEFAULT_REPO_
 
   if (groupName === "serial-required") {
     return getSerialRequiredServerTests(repoRoot);
+  }
+
+  if (groupName === "serial-bot-playability") {
+    return getSerialBotPlayabilityServerTests(repoRoot);
+  }
+
+  if (groupName === "serial-rest") {
+    return getSerialRestServerTests(repoRoot);
   }
 
   throw new Error(`unknown server test group: ${groupName}`);
@@ -213,7 +236,10 @@ async function main() {
     return;
   }
 
-  throw new Error("expected --audit, --list=<parallel-safe|serial-required>, or --run=<parallel-safe|serial-required>");
+  throw new Error(
+    "expected --audit, --list=<parallel-safe|serial-required|serial-bot-playability|serial-rest>,"
+    + " or --run=<parallel-safe|serial-required|serial-bot-playability|serial-rest>",
+  );
 }
 
 if (process.argv[1] === SCRIPT_FILE) {

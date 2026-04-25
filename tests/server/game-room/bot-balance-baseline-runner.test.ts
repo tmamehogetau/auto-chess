@@ -81,14 +81,14 @@ describe("bot balance baseline runner helpers", () => {
   });
 
   test("uses sane defaults for parallelism and worker port offsets", () => {
-    expect(DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM).toBe(8);
+    expect(DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM).toBe(12);
     expect(resolveBotBalanceBaselineAutoParallelism(4)).toBe(4);
     expect(resolveBotBalanceBaselineAutoParallelism(8)).toBe(4);
-    expect(resolveBotBalanceBaselineAutoParallelism(12)).toBe(6);
-    expect(resolveBotBalanceBaselineAutoParallelism(16)).toBe(8);
-    expect(resolveBotBalanceBaselineAutoParallelism(64)).toBe(8);
+    expect(resolveBotBalanceBaselineAutoParallelism(12)).toBe(9);
+    expect(resolveBotBalanceBaselineAutoParallelism(16)).toBe(12);
+    expect(resolveBotBalanceBaselineAutoParallelism(64)).toBe(16);
     expect(resolveBotBalanceBaselineParallelism(undefined, 16)).toBe(
-      DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM,
+      12,
     );
     expect(resolveBotBalanceBaselineParallelism(0)).toBe(1);
     expect(resolveBotBalanceBaselineParallelism(6)).toBe(6);
@@ -97,6 +97,7 @@ describe("bot balance baseline runner helpers", () => {
       DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE,
     );
     expect(resolveBotBalanceBaselinePortOffsetBase(-10)).toBe(0);
+    expect(resolveBotBalanceBaselinePortOffsetBase(60_000, 16)).toBe(55_266);
     expect(resolveBotBalanceBaselineWorkerPortOffset(0)).toBe(
       DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE,
     );

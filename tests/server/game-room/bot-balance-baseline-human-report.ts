@@ -77,6 +77,50 @@ function localizeRaidMeleeCohort(cohort: string): string {
   }
 }
 
+function buildShopOfferGroupDiagnostics(
+  offerMetrics: NonNullable<BotOnlyBaselineAggregateReport["shopOfferMetrics"]>,
+): Array<{
+  role: string;
+  source: string;
+  cost: number;
+  unitCount: number;
+  averageOffers: number;
+  minOffers: number;
+  maxOffers: number;
+  maxMinRatio: number;
+}> {
+  const groups = new Map<string, NonNullable<BotOnlyBaselineAggregateReport["shopOfferMetrics"]>>();
+  for (const offer of offerMetrics) {
+    const key = `${offer.role}::${offer.source}::${offer.cost}`;
+    const group = groups.get(key) ?? [];
+    group.push(offer);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const first = group[0]!;
+      const offerCounts = group.map((offer) => offer.observationCount);
+      const minOffers = Math.min(...offerCounts);
+      const maxOffers = Math.max(...offerCounts);
+      const totalOffers = offerCounts.reduce((sum, count) => sum + count, 0);
+      return {
+        role: first.role,
+        source: first.source,
+        cost: first.cost,
+        unitCount: group.length,
+        averageOffers: totalOffers / group.length,
+        minOffers,
+        maxOffers,
+        maxMinRatio: minOffers > 0 ? maxOffers / minOffers : 0,
+      };
+    })
+    .sort((left, right) =>
+      left.role.localeCompare(right.role)
+      || left.source.localeCompare(right.source)
+      || left.cost - right.cost);
+}
+
 export function buildBotBalanceBaselineJapaneseJson(
   summary: BotBalanceBaselineSummary,
 ): Record<string, unknown> {
@@ -162,6 +206,17 @@ export function buildBotBalanceBaselineJapaneseJson(
       "フェーズHP目標": round.phaseHpTarget,
       "フェーズHPダメージ": round.phaseDamageDealt,
       "フェーズHP達成率": round.phaseCompletionRate,
+      "推定フェーズHP火力指数": round.phaseHpPowerIndex ?? null,
+      "レミリア本体集中": round.bossBodyFocus
+        ? {
+          "配置": formatBossBodyFocusCell(round.bossBodyFocus),
+          "被ダメージ": round.bossBodyFocus.damageTaken,
+          "直接フェーズ貢献": round.bossBodyFocus.directPhaseDamage,
+          "初被弾(ms)": round.bossBodyFocus.firstDamageAtMs,
+          "撃破": round.bossBodyFocus.defeated,
+          "最終HP": round.bossBodyFocus.finalHp,
+        }
+        : null,
       "ラウンド結果": round.phaseResult,
       "レイド全員撃破": round.allRaidPlayersWipedOut,
       "撃破されたレイド人数": round.raidPlayersWipedOut,
@@ -250,6 +305,9 @@ export function buildBotBalanceBaselineJapaneseJson(
       "サブ採用回数": unit.subUnitBattleAppearances ?? 0,
       "サブ採用試合数": unit.subUnitMatchesPresent ?? 0,
       "サブ採用率": unit.subUnitAdoptionRate ?? 0,
+      "サブ搭載回数": unit.hostedSubUnitBattleAppearances ?? 0,
+      "サブ搭載試合数": unit.hostedSubUnitMatchesPresent ?? 0,
+      "サブ搭載率": unit.hostedSubUnitAdoptionRate ?? 0,
     })),
     "ボス側戦闘テレメトリ": aggregate.bossBattleUnitMetrics.map((unit) => ({
       "ユニットID": unit.unitId,
@@ -312,6 +370,17 @@ export function buildBotBalanceBaselineJapaneseJson(
       "提示試合数": unit.matchesPresent,
       "提示試合率": unit.offeredMatchRate,
     })),
+    "ショップ提示グループ診断": buildShopOfferGroupDiagnostics(aggregate.shopOfferMetrics ?? [])
+      .map((group) => ({
+        "ロール": group.role,
+        "提示元": group.source,
+        "コスト": group.cost,
+        "ユニット数": group.unitCount,
+        "平均提示回数": group.averageOffers,
+        "最小提示回数": group.minOffers,
+        "最大提示回数": group.maxOffers,
+        "最大/最小": group.maxMinRatio,
+      })),
     "射程別ダメージ効率比較": aggregate.rangeDamageEfficiencyMetrics.map((entry) => ({
       "陣営": entry.side,
       "射程帯": localizeRangeBand(entry.rangeBand),
@@ -592,15 +661,8 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     "",
     "## 各ラウンド詳細",
     "",
-    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "- 詳細なラウンド別明細は `round-details.ja.md` に分離しています。",
   );
-  const battleTimelineTimeScale = resolveBattleTimelineTimeScale(aggregate);
-  for (const round of aggregate.roundDetails ?? []) {
-    lines.push(
-      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
-    );
-  }
 
   lines.push(
     "",
@@ -621,6 +683,19 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   for (const unit of analysis.shop.mostOffered.slice(0, 10)) {
     lines.push(
       `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${unit.role} | ${unit.source} | ${formatNumber(unit.cost)} | ${formatPercent(unit.offeredMatchRate)} | ${formatPercent(unit.purchaseRate)} | ${formatPercent(unit.finalBoardAdoptionRate)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "### 同条件グループ別提示ばらつき",
+    "",
+    "| ロール | 提示元 | コスト | ユニット数 | 平均提示回数 | 最小提示回数 | 最大提示回数 | 最大/最小 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const group of buildShopOfferGroupDiagnostics(aggregate.shopOfferMetrics ?? [])) {
+    lines.push(
+      `| ${group.role} | ${group.source} | ${formatNumber(group.cost)} | ${formatNumber(group.unitCount)} | ${formatNumber(group.averageOffers)} | ${formatNumber(group.minOffers)} | ${formatNumber(group.maxOffers)} | ${formatNumber(group.maxMinRatio)} |`,
     );
   }
 
@@ -843,6 +918,57 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+export function buildBotBalanceBaselineRoundDetailsJapaneseMarkdown(
+  summary: BotBalanceBaselineSummary,
+): string {
+  const { aggregate } = summary;
+  const battleTimelineTimeScale = resolveBattleTimelineTimeScale(aggregate);
+  const lines: string[] = [
+    "# Bot Balance Baseline ラウンド詳細",
+    "",
+    `- 要求対戦数: ${summary.requestedMatchCount}`,
+    `- 完走数: ${aggregate.completedMatches}`,
+    `- 出力先: ${summary.outputDir}`,
+    "",
+    "## 各ラウンド詳細",
+    "",
+    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  ];
+
+  for (const round of aggregate.roundDetails ?? []) {
+    lines.push(
+      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${formatNullableNumber(round.phaseHpPowerIndex ?? null)} | ${escapeMarkdownCell(formatBossBodyFocusDetail(round.bossBodyFocus ?? null))} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function formatBossBodyFocusCell(
+  focus: NonNullable<NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["bossBodyFocus"]>,
+): string {
+  if (focus.cell === null || focus.x === null || focus.y === null) {
+    return "-";
+  }
+
+  return `cell ${focus.cell} (x=${focus.x}, y=${focus.y})`;
+}
+
+function formatBossBodyFocusDetail(
+  focus: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["bossBodyFocus"] | null,
+): string {
+  if (!focus) {
+    return "-";
+  }
+
+  const firstDamage = typeof focus.firstDamageAtMs === "number"
+    ? `, first=${formatNumber(focus.firstDamageAtMs)}ms`
+    : "";
+  const hp = focus.finalHp === null ? "-" : formatNumber(focus.finalHp);
+  return `${formatBossBodyFocusCell(focus)}, dmg=${formatNumber(focus.damageTaken)}, phase=${formatNumber(focus.directPhaseDamage)}, hp=${hp}, ${focus.defeated ? "撃破" : "生存"}${firstDamage}`;
 }
 
 function formatRoundPlayerConsequences(

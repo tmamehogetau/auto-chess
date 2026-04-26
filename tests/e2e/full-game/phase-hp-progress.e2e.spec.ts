@@ -114,13 +114,13 @@ describe("E2E: Phase HP Progress", () => {
           (state) => state.roundIndex === 1 && (state.phase === "Prep" || state.phase === "Battle"),
         );
         expect(r1PrepOrBattleState).toBeDefined();
-        expect(r1PrepOrBattleState.phaseHpTarget).toBe(600);
+        expect(r1PrepOrBattleState.phaseHpTarget).toBe(1200);
 
         const r1ResolvedState = roundStates.find(
           (state) => state.roundIndex === 1 && state.phaseResult !== "pending",
         );
         expect(r1ResolvedState).toBeDefined();
-        expect(r1ResolvedState.phaseHpTarget).toBe(600);
+        expect(r1ResolvedState.phaseHpTarget).toBe(1200);
         expect(r1ResolvedState.phaseDamageDealt).toBeGreaterThanOrEqual(0);
         expect(["success", "failed"]).toContain(r1ResolvedState.phaseResult);
         expect(r1ResolvedState.phaseCompletionRate).toBeGreaterThanOrEqual(0);
@@ -301,7 +301,7 @@ describe("E2E: Phase HP Progress", () => {
 
           const resolvedState = roundStates.find((state) => state.roundIndex === 1 && state.phaseResult === "failed");
           expect(resolvedState).toBeDefined();
-          expect(resolvedState?.phaseHpTarget).toBe(600);
+          expect(resolvedState?.phaseHpTarget).toBe(1200);
           expect(resolvedState?.phaseDamageDealt).toBe(100);
           expect((gameRoom.state.players.get(raidClientA.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(1);
           expect((gameRoom.state.players.get(raidClientB.sessionId) as { remainingLives?: number } | undefined)?.remainingLives).toBe(2);
@@ -382,7 +382,7 @@ describe("E2E: Phase HP Progress", () => {
             (state) => state.roundIndex === 1 && state.phaseResult !== "pending",
           );
           expect(resolvedState).toBeDefined();
-          expect(resolvedState?.phaseHpTarget).toBe(600);
+          expect(resolvedState?.phaseHpTarget).toBe(1200);
           expect(resolvedState?.phaseDamageDealt).toBe(180);
           expect(resolvedState?.phaseResult).toBe("failed");
 

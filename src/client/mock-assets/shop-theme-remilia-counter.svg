@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="520" viewBox="0 0 780 520" preserveAspectRatio="none" data-shop-remilia-counter="true">
+  <defs>
+    <linearGradient id="counterTop" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#372134"/>
+      <stop offset="0.42" stop-color="#0b1421"/>
+      <stop offset="1" stop-color="#24111e"/>
+    </linearGradient>
+    <linearGradient id="counterGold" x1="0" x2="1">
+      <stop offset="0" stop-color="#6d4a25"/>
+      <stop offset="0.5" stop-color="#f2cc82"/>
+      <stop offset="1" stop-color="#6d4a25"/>
+    </linearGradient>
+    <pattern id="counterGrain" width="76" height="52" patternUnits="userSpaceOnUse">
+      <path d="M0 14c18-8 34-8 52 0s34 8 52 0" fill="none" stroke="#f5d895" stroke-opacity=".12" stroke-width="1.4"/>
+      <path d="M8 42c24-10 42-10 64 0" fill="none" stroke="#070b13" stroke-opacity=".34" stroke-width="2"/>
+    </pattern>
+    <radialGradient id="counterSigil" cx=".5" cy=".46" r=".44">
+      <stop offset="0" stop-color="#f5d895" stop-opacity=".22"/>
+      <stop offset=".72" stop-color="#d94461" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <path d="M44 36h692l34 54-48 384H58L10 90Z" fill="#03070d" opacity=".7"/>
+  <path d="M54 30h672l30 52-44 382H68L24 82Z" fill="url(#counterTop)" stroke="url(#counterGold)" stroke-width="2.2"/>
+  <path d="M78 66h624l20 32-36 328H94L58 98Z" fill="url(#counterGrain)" opacity=".72"/>
+  <path d="M100 96h580l-24 276H124Z" fill="url(#counterSigil)"/>
+  <path d="M92 88h596M112 420h556" stroke="#f4cf8c" stroke-opacity=".42" stroke-width="1.3" stroke-dasharray="92 14 28 10"/>
+  <path d="M160 116c96 28 364 28 460 0M160 394c96-30 364-30 460 0" fill="none" stroke="#d94461" stroke-opacity=".18" stroke-width="2.4"/>
+  <path d="M390 112l34 84 84 34-84 34-34 84-34-84-84-34 84-34Z" fill="none" stroke="#f2cc82" stroke-opacity=".22" stroke-width="1.6"/>
+  <path d="M390 160l18 44 44 18-44 18-18 44-18-44-44-18 44-18Z" fill="#080d16" fill-opacity=".22" stroke="#f2cc82" stroke-opacity=".34" stroke-width="1.2"/>
+  <g fill="#f2cc82" opacity=".58">
+    <circle cx="76" cy="76" r="4"/>
+    <circle cx="704" cy="76" r="4"/>
+    <circle cx="90" cy="442" r="4"/>
+    <circle cx="690" cy="442" r="4"/>
+  </g>
+</svg>

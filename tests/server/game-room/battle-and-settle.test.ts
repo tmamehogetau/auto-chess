@@ -114,7 +114,7 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
     expect(serverRoom.state.phase).toBe("Battle");
 
-    serverRoom.setPendingPhaseDamageForTest(600);
+    serverRoom.setPendingPhaseDamageForTest(1200);
     const originalDidRaidSideLoseAllBattleUnits = roomInternals.controller.didRaidSideLoseAllBattleUnits;
     roomInternals.controller.didRaidSideLoseAllBattleUnits = () => false;
     try {
@@ -154,8 +154,8 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
       roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
       expect(serverRoom.state.phase).toBe("Settle");
       expect(roomInternals.controller.getPhaseProgress()).toMatchObject({
-        targetHp: 600,
-        damageDealt: 600,
+        targetHp: 1200,
+        damageDealt: 1200,
         result: "success",
       });
     } finally {

@@ -24,6 +24,7 @@ type FakeHelperPlayer = {
 type FakeHelperState = {
   phase: string;
   playerPhase?: string;
+  roundIndex?: number;
   lobbyStage?: string;
   featureFlagsEnableTouhouRoster?: boolean;
   players: Map<string, FakeHelperPlayer>;
@@ -671,11 +672,86 @@ describe("helper automation wrapper", () => {
     room.state = state;
     room.emitState();
 
+  expect(room.sentMessages[0]).toMatchObject({
+    type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+    message: expect.objectContaining({
+      cmdSeq: 1,
+      bossShopBuySlotIndex: 1,
+    }),
+  });
+});
+
+  test("wrapper drives a thin boss roster to buy a frontline guard before a premium backline offer", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      roundIndex: 1,
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 3,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["2:remilia"],
+          shopOffers: [{ unitType: "vanguard", unitId: "yoshika", cost: 1 }],
+          bossShopOffers: [{ unitType: "mage", unitId: "patchouli", cost: 2 }],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        } as FakeHelperPlayer],
+      ]),
+    };
+    const room = new FakeHelperRoom(state, { advanceToDeployAfterBuy: false });
+
+    attachAutoFillHelperAutomationForTest(room, 0, { policy: "strength" });
+
+    room.emitState();
+
     expect(room.sentMessages[0]).toMatchObject({
       type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       message: expect.objectContaining({
         cmdSeq: 1,
-        bossShopBuySlotIndex: 1,
+        shopBuySlotIndex: 0,
+      }),
+    });
+  });
+
+  test("wrapper deploys boss frontline guards between Remilia and the raid side", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      roundIndex: 1,
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 0,
+          benchUnits: ["mage", "vanguard", "ranger"],
+          benchUnitIds: ["patchouli", "yoshika", "nazrin"],
+          boardUnits: ["2:remilia"],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        } as FakeHelperPlayer],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0, { policy: "strength" });
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        benchToBoardCell: {
+          benchIndex: 1,
+          cell: 8,
+        },
       }),
     });
   });

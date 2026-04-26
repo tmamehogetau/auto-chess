@@ -261,7 +261,7 @@ describe("Full Game Simulation (R1-R8)", () => {
       expect(serverRoom.state.players.size).toBe(4);
 
       await runEvidenceMatch(serverRoom, clients, {
-        roundTargets: { 1: 600, 2: 750, 3: 900, 4: 1050, 5: 1250, 6: 1450, 7: 1650, 8: 1850 },
+        roundTargets: { 1: 1200, 2: 1500, 3: 1800, 4: 2100, 5: 2500, 6: 2900, 7: 3300, 8: 3550 },
         finalRound: 8,
         placements: [
           { unitType: "vanguard", cell: 0 },

@@ -52,6 +52,60 @@ function createMinimalMatchSummary(
 }
 
 describe("buildBotOnlyBaselineAggregateReport", () => {
+  test("counts sub-unit adoption on the attached sub unit rather than the host unit", () => {
+    const report = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        battles: [{
+          leftPlayerId: "raid",
+          rightPlayerId: "boss",
+          winner: "left",
+          unitDamageBreakdown: [],
+          unitOutcomes: [{
+            playerId: "raid",
+            label: "raid",
+            unitId: "rin",
+            unitName: "火焔猫燐",
+            unitType: "vanguard",
+            side: "raid",
+            totalDamage: 120,
+            phaseContributionDamage: 120,
+            finalHp: 300,
+            alive: true,
+            unitLevel: 2,
+            subUnitName: "摩多羅隠岐奈",
+            attachedSubUnitId: "okina",
+            attachedSubUnitName: "摩多羅隠岐奈",
+            attachedSubUnitType: "hero",
+            isSpecialUnit: false,
+            attackCount: 2,
+            hitCount: 2,
+            damageTaken: 20,
+            lifetimeMs: 1000,
+          } as unknown as BotOnlyBaselineMatchSummary["battles"][number]["unitOutcomes"][number]],
+        }],
+      }),
+    ]);
+
+    expect(report.raidBattleUnitMetrics).toContainEqual(expect.objectContaining({
+      unitId: "rin",
+      unitType: "vanguard",
+      subUnitBattleAppearances: 0,
+      subUnitMatchesPresent: 0,
+      hostedSubUnitBattleAppearances: 1,
+      hostedSubUnitMatchesPresent: 1,
+    }));
+    expect(report.raidBattleUnitMetrics).toContainEqual(expect.objectContaining({
+      unitId: "okina",
+      unitType: "hero",
+      unitName: "摩多羅隠岐奈",
+      battleAppearances: 0,
+      matchesPresent: 0,
+      subUnitBattleAppearances: 1,
+      subUnitMatchesPresent: 1,
+      subUnitAdoptionRate: 1,
+    }));
+  });
+
   test("tracks shop offer purchase and final board adoption metrics by player side", () => {
     const report = buildBotOnlyBaselineAggregateReport([
       createMinimalMatchSummary({
@@ -945,6 +999,18 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       boardUnits: [],
     }));
     const aggregate = buildBotOnlyBaselineAggregateReport([{
+      metadata: {
+        mode: "custom",
+        timeScale: 1,
+        timings: {
+          readyAutoStartMs: 0,
+          prepDurationMs: 0,
+          battleDurationMs: 114,
+          settleDurationMs: 0,
+          eliminationDurationMs: 0,
+          selectionTimeoutMs: 0,
+        },
+      },
       totalRounds: 2,
       bossPlayerId: "boss-1",
       ranking: ["boss-1", "raid-a", "raid-b", "raid-c"],
@@ -1015,11 +1081,14 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
             side: "boss",
             totalDamage: 120,
             phaseContributionDamage: 0,
-            finalHp: 400,
-            alive: true,
-            unitLevel: 1,
+            finalHp: 0,
+            alive: false,
+            unitLevel: 4,
             subUnitName: "",
             isSpecialUnit: true,
+            damageTaken: 600,
+            initialRow: 0,
+            initialColumn: 2,
           }, {
             playerId: "raid-a",
             label: "P2",
@@ -1051,10 +1120,21 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
           }],
         }],
         eliminations: [],
+      }, {
+        roundIndex: 2,
+        phase: "Elimination",
+        durationMs: 80,
+        phaseHpTarget: 100,
+        phaseDamageDealt: 50,
+        phaseResult: "failed",
+        phaseCompletionRate: 0.5,
+        playerConsequences: [],
+        battles: [],
+        eliminations: [],
       }],
     }], 1);
 
-    expect(aggregate.roundDetails).toEqual([expect.objectContaining({
+    expect(aggregate.roundDetails?.[0]).toEqual(expect.objectContaining({
       matchIndex: 0,
       matchWinnerRole: "boss",
       roundIndex: 1,
@@ -1062,6 +1142,7 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       phaseHpTarget: 600,
       phaseDamageDealt: 600,
       phaseResult: "failed",
+      phaseHpPowerIndex: 2,
       allRaidPlayersWipedOut: true,
       raidPlayersWipedOut: 3,
       battleEndReasons: ["phase_hp_depleted"],
@@ -1069,7 +1150,27 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       bossSurvivors: 1,
       raidSurvivors: 0,
       raidPhaseContributionDamage: 600,
-    })]);
+      bossBodyFocus: expect.objectContaining({
+        unitId: "remilia",
+        unitName: "レミリア",
+        cell: 2,
+        x: 2,
+        y: 0,
+        unitLevel: 4,
+        damageTaken: 600,
+        directPhaseDamage: 600,
+        firstDamageAtMs: null,
+        defeated: true,
+        finalHp: 0,
+      }),
+    }));
+    expect(aggregate.roundDetails?.[1]).toEqual(expect.objectContaining({
+      roundIndex: 2,
+      phaseHpTarget: 100,
+      phaseDamageDealt: 50,
+      phaseCompletionRate: 0.5,
+      phaseHpPowerIndex: 0.5,
+    }));
     expect(aggregate.roundDetails?.[0]?.topRaidUnits[0]).toEqual(expect.objectContaining({
       unitName: "霧雨魔理沙",
       phaseContributionDamage: 500,

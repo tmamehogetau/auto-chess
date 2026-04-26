@@ -130,7 +130,7 @@ describe("Rumor Influence Integration", () => {
 
       // フェーズ成功ダメージを設定
       controller.setPendingRoundDamage({
-        [actualBoss!]: 600,
+        [actualBoss!]: 1800,
       });
 
       // R1: Battle → Settle
@@ -172,7 +172,7 @@ describe("Rumor Influence Integration", () => {
       }
 
       controller.setPendingRoundDamage({
-        [actualBoss!]: 600,
+        [actualBoss!]: 1800,
       });
 
       // Battle → Settle → Elimination → Prep と遷移
@@ -204,7 +204,7 @@ describe("Rumor Influence Integration", () => {
       }
 
       controller.setPendingRoundDamage({
-        [actualBoss!]: 600,
+        [actualBoss!]: 1800,
       });
 
       if (controller.phaseDeadlineAtMs) {
@@ -332,7 +332,7 @@ describe("Rumor Influence Integration", () => {
 
       // ダメージを設定（本来ならフェーズ成功）
       controller.setPendingRoundDamage({
-        [actualBoss!]: 600,
+        [actualBoss!]: 1800,
       });
 
       // Battle → Settle → Elimination → R2 Prep
@@ -407,9 +407,9 @@ describe("Rumor Influence Integration", () => {
         controller.advanceByTime(controller.prepDeadlineAtMs + 100);
       }
 
-      // フェーズ成功（600ダメージで成功）
+      // フェーズ成功（1800ダメージで成功）
       controller.setPendingRoundDamage({
-        [actualBoss!]: 600,
+        [actualBoss!]: 1800,
       });
 
       // Battle → Settle → Elimination → R2 Prep
@@ -465,7 +465,7 @@ describe("Rumor Influence Integration", () => {
       }
 
       // フェーズ成功
-      controller.setPendingRoundDamage({ [actualBoss!]: 600 });
+      controller.setPendingRoundDamage({ [actualBoss!]: 1800 });
 
       // Battle → Settle → Elimination → R2 Prep
       while (controller.phase !== "Prep" || controller.roundIndex !== 2) {
@@ -521,7 +521,7 @@ describe("Rumor Influence Integration", () => {
 
       // フェーズ成功
       controller.setPendingRoundDamage({
-        [actualBoss!]: 600,
+        [actualBoss!]: 1800,
       });
 
       // Battle → Settle → Elimination → R2 Prep
@@ -576,7 +576,7 @@ describe("Rumor Influence Integration", () => {
       if (controller.prepDeadlineAtMs) {
         controller.advanceByTime(controller.prepDeadlineAtMs + 100);
       }
-      controller.setPendingRoundDamage({ [actualBoss!]: 600 });
+      controller.setPendingRoundDamage({ [actualBoss!]: 1800 });
 
       // R1 settle
       if (controller.phaseDeadlineAtMs) {
@@ -595,8 +595,8 @@ describe("Rumor Influence Integration", () => {
       if (controller.prepDeadlineAtMs) {
         controller.advanceByTime(controller.prepDeadlineAtMs + 100);
       }
-      // R2のHPターゲットは750なので、それ以上のダメージが必要
-      controller.setPendingRoundDamage({ [actualBoss!]: 800 });
+      // R2のHPターゲットは1500なので、それ以上のダメージが必要
+      controller.setPendingRoundDamage({ [actualBoss!]: 1600 });
 
       // R2 settle
       if (controller.phaseDeadlineAtMs) {

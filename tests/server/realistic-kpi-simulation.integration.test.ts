@@ -229,17 +229,17 @@ async function runMatchToFinalRound(
   await waitForCondition(() => serverRoom.state.phase === "Prep", 1_000);
 
   const roundTargets: Record<number, number> = {
-    1: 600,
-    2: 750,
-    3: 900,
-    4: 1050,
-    5: 1250,
-    6: 1450,
-    7: 1650,
-    8: 1850,
-    9: 2100,
-    10: 2400,
-    11: 2700,
+    1: 1200,
+    2: 1500,
+    3: 1800,
+    4: 2100,
+    5: 2500,
+    6: 2900,
+    7: 3300,
+    8: 3550,
+    9: 3800,
+    10: 4100,
+    11: 4400,
     12: 0,
   };
   const finalRound = options.finalRound ?? 8;

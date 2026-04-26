@@ -8,7 +8,7 @@ interface StatBand {
 }
 
 const NON_OUTLIER_BANDS: Readonly<Record<TouhouUnit["cost"], StatBand>> = {
-  1: { hp: [390, 620], attack: [40, 45] },
+  1: { hp: [390, 620], attack: [36, 41] },
   2: { hp: [540, 740], attack: [52, 64] },
   3: { hp: [680, 820], attack: [66, 76] },
   4: { hp: [900, 1120], attack: [84, 104] },

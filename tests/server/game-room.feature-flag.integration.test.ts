@@ -768,7 +768,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedRin.unitId).toBe("rin");
           expect(resolvedRin.factionId).toBe("chireiden");
           expect(resolvedRin.hp).toBe(620);
-          expect(resolvedRin.attack).toBe(40);
+          expect(resolvedRin.attack).toBe(36);
           expect(resolvedRin.attackSpeed).toBe(0.85);
           expect(resolvedRin.movementSpeed).toBe(2);
           expect(resolvedRin.range).toBe(1);

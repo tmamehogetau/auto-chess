@@ -78,6 +78,20 @@ function createTestBattleUnit(
   );
 }
 
+const dealTestDamage: SkillExecutionContext["dealDamage"] = (_caster, target, amount) => {
+  if (!Number.isFinite(amount) || amount <= 0 || target.isDead) {
+    return 0;
+  }
+
+  const scaledDamage = Math.max(0, Math.floor(amount * (target.damageTakenMultiplier ?? 1)));
+  const shieldBeforeHit = target.shieldAmount ?? 0;
+  const shieldAbsorbed = Math.min(shieldBeforeHit, scaledDamage);
+  const damageAfterShield = scaledDamage - shieldAbsorbed;
+  target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+  target.hp -= damageAfterShield;
+  return damageAfterShield;
+};
+
 function expectCombatClass(unit: BattleUnit, expected: BoardUnitType): void {
   expect((unit as BattleUnit & { combatClass?: BoardUnitType }).combatClass).toBe(expected);
 }
@@ -991,6 +1005,7 @@ describe("battle-simulator", () => {
               * (modifier.incomingDamageMultiplier ?? 1);
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -1146,6 +1161,7 @@ describe("battle-simulator", () => {
         {
           currentTimeMs: 0,
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           applyTimedModifier: () => undefined,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: () => undefined,
@@ -1326,6 +1342,7 @@ describe("battle-simulator", () => {
           target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
         },
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: (_source, config) => {
           scheduledSkill.current = config;
@@ -1464,6 +1481,7 @@ describe("battle-simulator", () => {
             };
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: (_source, config) => {
             scheduledSkills.push(config);
@@ -1731,6 +1749,7 @@ describe("battle-simulator", () => {
             * (modifier.incomingDamageMultiplier ?? 1);
         },
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => null,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -1774,6 +1793,7 @@ describe("battle-simulator", () => {
               * (modifier.incomingDamageMultiplier ?? 1);
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => null,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -1955,6 +1975,7 @@ describe("battle-simulator", () => {
             durationMs = modifier.durationMs;
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => null,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2074,6 +2095,7 @@ describe("battle-simulator", () => {
             durations.push(modifier.durationMs);
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => null,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2223,6 +2245,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 1000,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => target,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2294,6 +2317,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 0,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2331,6 +2355,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 0,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2380,6 +2405,7 @@ describe("battle-simulator", () => {
           currentTimeMs: 0,
           applyTimedModifier: () => undefined,
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2463,6 +2489,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 1000,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => target,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2496,6 +2523,7 @@ describe("battle-simulator", () => {
           currentTimeMs: 1000,
           applyTimedModifier: () => undefined,
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => target,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2680,6 +2708,7 @@ describe("battle-simulator", () => {
           target.buffModifiers.attackMultiplier *= modifier.attackMultiplier ?? 1;
         },
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2732,6 +2761,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 0,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2790,6 +2820,7 @@ describe("battle-simulator", () => {
             });
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -2895,6 +2926,7 @@ describe("battle-simulator", () => {
         target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
       },
       applyShield: () => undefined,
+          dealDamage: dealTestDamage,
       findCurrentOrNearestTarget: () => primary,
       scheduleSkillTicks: (_source, config) => {
         scheduledSkill.current = config;
@@ -2971,6 +3003,7 @@ describe("battle-simulator", () => {
         target.buffModifiers.attackMultiplier *= modifier.attackMultiplier ?? 1;
       },
       applyShield: () => undefined,
+          dealDamage: dealTestDamage,
       findCurrentOrNearestTarget: () => primary,
       scheduleSkillTicks: () => undefined,
       executePairSkillsOnMainSkillActivated: (main, hookAllies, hookEnemies) => {
@@ -3066,6 +3099,7 @@ describe("battle-simulator", () => {
             * (modifier.incomingDamageMultiplier ?? 1);
         },
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => target,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -3112,6 +3146,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 0,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => target,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -3159,6 +3194,7 @@ describe("battle-simulator", () => {
           targetUnit.buffModifiers.attackMultiplier *= modifier.attackMultiplier ?? 1;
         },
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => target,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -3224,6 +3260,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 0,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: () => undefined,
         executePairSkillsOnMainSkillActivated: () => undefined,
@@ -3294,6 +3331,7 @@ describe("battle-simulator", () => {
             buffDurationMs = modifier.durationMs;
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -3398,6 +3436,7 @@ describe("battle-simulator", () => {
           * (modifier.incomingDamageMultiplier ?? 1);
       },
       applyShield: () => undefined,
+          dealDamage: dealTestDamage,
       findCurrentOrNearestTarget: () => primary,
       scheduleSkillTicks: () => undefined,
       executePairSkillsOnMainSkillActivated: (main, hookAllies, hookEnemies) => {
@@ -3486,6 +3525,7 @@ describe("battle-simulator", () => {
           * (modifier.incomingDamageMultiplier ?? 1);
       },
       applyShield: () => undefined,
+          dealDamage: dealTestDamage,
       findCurrentOrNearestTarget: () => primary,
       scheduleSkillTicks: () => undefined,
       executePairSkillsOnMainSkillActivated: (main, hookAllies, hookEnemies) => {
@@ -3549,6 +3589,7 @@ describe("battle-simulator", () => {
         currentTimeMs: 0,
         applyTimedModifier: () => undefined,
         applyShield: () => undefined,
+          dealDamage: dealTestDamage,
         findCurrentOrNearestTarget: () => primary,
         scheduleSkillTicks: (_source, config) => {
           scheduledSkill.current = config;
@@ -3635,6 +3676,7 @@ describe("battle-simulator", () => {
           currentTimeMs: 0,
           applyTimedModifier: () => undefined,
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: (_source, config) => {
             scheduledSkill.current = config;
@@ -4100,6 +4142,7 @@ describe("battle-simulator", () => {
           * (modifier.incomingDamageMultiplier ?? 1);
       },
       applyShield: () => undefined,
+          dealDamage: dealTestDamage,
       findCurrentOrNearestTarget: (caster, enemies) =>
         enemies.find((enemy) => enemy.id === caster.currentTargetId && !enemy.isDead) ?? null,
       scheduleSkillTicks: () => undefined,
@@ -4337,6 +4380,7 @@ describe("battle-simulator", () => {
           currentTimeMs: 0,
           applyTimedModifier: () => undefined,
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: (_source, config) => {
             scheduledSkill.current = config;
@@ -4492,6 +4536,7 @@ describe("battle-simulator", () => {
             target.buffModifiers.attackSpeedMultiplier *= modifier.attackSpeedMultiplier ?? 1;
           },
           applyShield: () => undefined,
+          dealDamage: dealTestDamage,
           findCurrentOrNearestTarget: () => primary,
           scheduleSkillTicks: () => undefined,
           executePairSkillsOnMainSkillActivated: () => undefined,
@@ -5106,6 +5151,7 @@ describe("battle-simulator", () => {
       currentTimeMs: 0,
       applyTimedModifier: () => undefined,
       applyShield: () => undefined,
+          dealDamage: dealTestDamage,
       findCurrentOrNearestTarget: () => null,
       scheduleSkillTicks: (_source, config) => scheduledTicks.push(config),
       executePairSkillsOnMainSkillActivated: () => undefined,
@@ -5267,32 +5313,38 @@ describe("battle-simulator", () => {
 
   test("standard unit skills use cooldown timing instead of attack count", () => {
     const simulator = new BattleSimulator();
-    const vanguard = createTestBattleUnit(
-      { cell: 3, unitType: "vanguard", unitLevel: 1 },
-      "left",
-      0,
-    );
-    vanguard.attackPower = 1;
-    vanguard.attackSpeed = 10;
-    vanguard.attackRange = 4;
-    vanguard.movementSpeed = 0;
+    const createVanguard = () => {
+      const vanguard = createTestBattleUnit(
+        { cell: 3, unitType: "vanguard", unitLevel: 1 },
+        "left",
+        0,
+      );
+      vanguard.attackPower = 1;
+      vanguard.attackSpeed = 10;
+      vanguard.attackRange = 4;
+      vanguard.movementSpeed = 0;
+      return vanguard;
+    };
 
-    const enemy = createTestBattleUnit(
-      { cell: 0, unitType: "vanguard", unitLevel: 1 },
-      "right",
-      0,
-    );
-    enemy.attackPower = 0;
-    enemy.attackSpeed = 0;
-    enemy.attackRange = 4;
-    enemy.movementSpeed = 0;
-    enemy.hp = 5000;
-    enemy.maxHp = 5000;
+    const createEnemy = () => {
+      const enemy = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
+        "right",
+        0,
+      );
+      enemy.attackPower = 0;
+      enemy.attackSpeed = 0;
+      enemy.attackRange = 4;
+      enemy.movementSpeed = 0;
+      enemy.hp = 5000;
+      enemy.maxHp = 5000;
+      return enemy;
+    };
 
-    const beforeCooldown = simulator.simulateBattle([vanguard], [enemy], [], [], 2_900);
+    const beforeCooldown = simulator.simulateBattle([createVanguard()], [createEnemy()], [], [], 2_900);
     expect(beforeCooldown.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(false);
 
-    const afterCooldown = simulator.simulateBattle([vanguard], [enemy], [], [], 3_100);
+    const afterCooldown = simulator.simulateBattle([createVanguard()], [createEnemy()], [], [], 3_100);
     expect(afterCooldown.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(true);
   });
 

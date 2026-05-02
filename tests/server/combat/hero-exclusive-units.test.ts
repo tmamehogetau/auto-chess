@@ -61,6 +61,15 @@ function createTestSkillContext(): SkillExecutionContext {
     applyShield: (target, amount) => {
       target.shieldAmount = (target.shieldAmount ?? 0) + amount;
     },
+    dealDamage: (_caster, target, amount) => {
+      const shieldBeforeHit = target.shieldAmount ?? 0;
+      const damage = Math.max(0, Math.floor(amount * (target.damageTakenMultiplier ?? 1)));
+      const shieldAbsorbed = Math.min(shieldBeforeHit, damage);
+      const damageAfterShield = damage - shieldAbsorbed;
+      target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+      target.hp -= damageAfterShield;
+      return damageAfterShield;
+    },
     findCurrentOrNearestTarget: (caster, enemies) => (
       enemies.find((enemy) => enemy.id === caster.currentTargetId && !enemy.isDead)
       ?? enemies.find((enemy) => !enemy.isDead)

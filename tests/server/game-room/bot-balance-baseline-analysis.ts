@@ -961,9 +961,10 @@ export function buildBotBalanceBaselineAnalysis(
   const bossBodyFocus = buildBossBodyFocus(aggregate);
   const balance = buildBalance(aggregate, integrity, finalBattle);
   const r12MatchCount = countR12Matches(aggregate);
-  const criticalCount = integrity.issues.filter((issue) => issue.severity === "critical").length;
-  const warningCount = integrity.issues.filter((issue) => issue.severity === "warning").length;
-  const infoCount = integrity.issues.filter((issue) => issue.severity === "info").length;
+  const diagnosticIssues = [...integrity.issues, ...balance.issues];
+  const criticalCount = diagnosticIssues.filter((issue) => issue.severity === "critical").length;
+  const warningCount = diagnosticIssues.filter((issue) => issue.severity === "warning").length;
+  const infoCount = diagnosticIssues.filter((issue) => issue.severity === "info").length;
 
   return {
     schemaVersion: 1,

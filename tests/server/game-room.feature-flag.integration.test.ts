@@ -817,9 +817,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           controller.boardPlacementsByPlayer.set(sessionId, [
             { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
-            { cell: 3, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 3, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
             { cell: 4, unitType: "vanguard", unitId: "byakuren", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
@@ -867,9 +867,9 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           controller.boardPlacementsByPlayer.set(sessionId, [
             { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
-            { cell: 3, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 3, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
             { cell: 4, unitType: "vanguard", unitId: "byakuren", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [

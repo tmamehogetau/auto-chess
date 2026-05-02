@@ -1443,7 +1443,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper fills a durable third unit in early rounds", () => {
+  test("prep phase boss helper completes the Scarlet core with Sakuya before upgrading Remilia in early rounds", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -2253,7 +2253,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase raid helper still prioritizes raw strength when the duplicate signal is absent from bench", () => {
+  test("prep phase raid helper can upgrade a deployed board-token hero without a bench duplicate", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,
       player: {
@@ -2273,7 +2273,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopBuySlotIndex: 0 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);

@@ -1564,6 +1564,27 @@ function buildOkinaHeroSubDeployAction(player) {
 }
 
 function getNonSpecialBoardUnitCount(boardUnits, selectedHeroId = "", selectedBossId = "") {
+  return getNonSpecialUnitCount(boardUnits, selectedHeroId, selectedBossId);
+}
+
+function resolveSpecialCheckUnitId(unit) {
+  const placement = parseBoardPlacement(unit);
+  if (placement) {
+    return placement.unitId;
+  }
+
+  if (typeof unit === "string") {
+    return unit;
+  }
+
+  if (unit && typeof unit === "object") {
+    return unit.unitId ?? unit.id ?? unit.sourceUnitId ?? "";
+  }
+
+  return "";
+}
+
+function getNonSpecialUnitCount(units, selectedHeroId = "", selectedBossId = "") {
   const specialUnitIds = new Set(AUTO_FILL_SPECIAL_UNIT_IDS);
 
   for (const value of [selectedHeroId, selectedBossId]) {
@@ -1573,10 +1594,9 @@ function getNonSpecialBoardUnitCount(boardUnits, selectedHeroId = "", selectedBo
   }
 
   let count = 0;
-  for (const placement of toArray(boardUnits)
-    .map((unit) => parseBoardPlacement(unit))
-    .filter((placement) => placement !== null)) {
-    if (specialUnitIds.has(placement.unitId)) {
+  for (const unit of toArray(units)) {
+    const unitId = resolveSpecialCheckUnitId(unit);
+    if (unitId && specialUnitIds.has(unitId)) {
       continue;
     }
     count += 1;
@@ -3059,6 +3079,10 @@ function buildSpecialUnitUpgradeAction(player, playerPhase) {
     return null;
   }
 
+  if (player?.role === "boss" && !hasDeployedSpecialUnit(player)) {
+    return null;
+  }
+
   if (player?.role === "raid" && !hasDeployedSpecialUnit(player)) {
     return null;
   }
@@ -3288,8 +3312,19 @@ function hasDeployedSpecialUnit(player) {
     : player.role === "boss"
       ? player.selectedBossId
       : "";
-  if (!specialUnitId) {
-    return false;
+
+  if (player.role === "raid") {
+    return specialUnitId
+      ? HEROES.some((hero) => hero.id === specialUnitId)
+      : toArray(player?.boardUnits).some((unit) =>
+        HEROES.some((hero) => hero.id === normalizeUnitId(resolveSpecialCheckUnitId(unit))));
+  }
+
+  if (player.role === "boss") {
+    return specialUnitId
+      ? BOSS_CHARACTERS.some((boss) => boss.id === specialUnitId)
+      : toArray(player?.boardUnits).some((unit) =>
+        BOSS_CHARACTERS.some((boss) => boss.id === normalizeUnitId(resolveSpecialCheckUnitId(unit))));
   }
 
   // Real room state does not serialize the selected hero/boss into boardUnits tokens.
@@ -3298,13 +3333,31 @@ function hasDeployedSpecialUnit(player) {
 }
 
 function getOwnedRaidUnitCount(player) {
-  return toArray(player?.boardUnits).length
-    + toArray(player?.benchUnits).length
+  return getNonSpecialBoardUnitCount(
+    player?.boardUnits,
+    player?.selectedHeroId,
+    player?.selectedBossId,
+  )
+    + getNonSpecialUnitCount(
+      player?.benchUnits,
+      player?.selectedHeroId,
+      player?.selectedBossId,
+    )
     + (hasDeployedSpecialUnit(player) ? 1 : 0);
 }
 
 function getOwnedBossUnitCount(player) {
-  return toArray(player?.boardUnits).length + toArray(player?.benchUnits).length;
+  return getNonSpecialBoardUnitCount(
+    player?.boardUnits,
+    player?.selectedHeroId,
+    player?.selectedBossId,
+  )
+    + getNonSpecialUnitCount(
+      player?.benchUnits,
+      player?.selectedHeroId,
+      player?.selectedBossId,
+    )
+    + (hasDeployedSpecialUnit(player) ? 1 : 0);
 }
 
 function getStateRoundIndex(state) {

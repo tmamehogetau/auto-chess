@@ -4,6 +4,7 @@ import {
   type PrepCommandLoggingDeps,
 } from "../../../src/server/rooms/game-room/prep-command-logging";
 import type { MatchLogger, PlayerActionLog } from "../../../src/server/match-logger";
+import type { FeatureFlags } from "../../../src/shared/feature-flags";
 import type { BoardUnitType } from "../../../src/shared/room-messages";
 
 interface LoggedAction {
@@ -13,9 +14,25 @@ interface LoggedAction {
   details: PlayerActionLog["details"];
 }
 
+const BASE_FLAGS: FeatureFlags = {
+  enableHeroSystem: false,
+  enableSharedPool: false,
+  enablePhaseExpansion: false,
+  enableDominationSystem: false,
+  enableSubUnitSystem: false,
+  enableEmblemCells: false,
+  enableSpellCard: false,
+  enableRumorInfluence: false,
+  enableBossExclusiveShop: false,
+  enableSharedBoardShadow: false,
+  enableTouhouRoster: false,
+  enableTouhouFactions: false,
+  enablePerUnitSharedPool: false,
+};
+
 describe("prep-command-logging", () => {
   let mockLogger: MatchLogger;
-  let mockGetShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; isRumorUnit?: boolean }> | undefined;
+  let mockGetShopOffers: (sessionId: string) => Array<{ unitType: string; cost: number; unitId?: string; isRumorUnit?: boolean }> | undefined;
   let mockRoundIndex: number;
   let deps: PrepCommandLoggingDeps;
   let loggedActions: LoggedAction[];
@@ -63,6 +80,28 @@ describe("prep-command-logging", () => {
       expect(loggedActions[0]!.roundIndex).toBe(5);
       expect(loggedActions[0]!.details).toMatchObject({
         unitType: "ranger",
+        cost: 2,
+        goldBefore: 10,
+        goldAfter: 8,
+      });
+    });
+
+    it("should not include a Chimata acquisition coin in buy_unit goldAfter", () => {
+      mockGetShopOffers = vi.fn(() => [
+        { unitType: "mage", unitId: "chimata", cost: 2 },
+      ]);
+      deps.getShopOffers = mockGetShopOffers;
+      deps.getRosterFlags = () => ({
+        ...BASE_FLAGS,
+        enableTouhouRoster: true,
+      });
+
+      logPrepCommandActions("player1", { shopBuySlotIndex: 0 }, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "mage",
+        unitId: "chimata",
         cost: 2,
         goldBefore: 10,
         goldAfter: 8,

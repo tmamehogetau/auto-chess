@@ -58,6 +58,7 @@ function createSummary(overrides: Partial<BotBalanceBaselineSummary> = {}): BotB
     portOffsetBase: 10_000,
     bossPolicy: "strength",
     raidPolicies: ["strength", "strength", "strength"],
+    optimizationVariant: "full",
     helperConfigs: [
       { wantsBoss: true, policy: "strength" },
       { wantsBoss: false, policy: "strength" },
@@ -94,6 +95,18 @@ describe("bot balance baseline analysis report", () => {
   test("separates R12 final boss body combat from phase HP objectives", () => {
     const summary = createSummary({
       aggregate: createSampleAggregate({
+        metadata: {
+          mode: "custom",
+          timeScale: 0.01,
+          timings: {
+            readyAutoStartMs: 200,
+            prepDurationMs: 900,
+            battleDurationMs: 800,
+            settleDurationMs: 20,
+            eliminationDurationMs: 10,
+            selectionTimeoutMs: 200,
+          },
+        },
         completedMatches: 1,
         bossWins: 0,
         raidWins: 1,
@@ -156,6 +169,7 @@ describe("bot balance baseline analysis report", () => {
       averageBossBodyDamage: 3020,
       averageBossRemainingHp: 0,
       averageBattleEndSeconds: 17,
+      averageBattleEndRealPlaySeconds: 1700,
     });
     expect(analysis.finalBattle.samples[0]).toMatchObject({
       matchIndex: 0,
@@ -164,6 +178,79 @@ describe("bot balance baseline analysis report", () => {
       bossDefeated: true,
       finalBattleWinner: "raid",
       matchWinnerRole: "raid",
+    });
+  });
+
+  test("summarizes R12 boss body protection outcomes", () => {
+    const summary = createSummary({
+      aggregate: createSampleAggregate({
+        completedMatches: 2,
+        roundHistogram: { "12": 2 },
+        roundDetails: [{
+          matchIndex: 0,
+          matchWinnerRole: "raid",
+          totalRounds: 12,
+          roundIndex: 12,
+          battleEndTimeMs: 12_000,
+          phaseHpTarget: 0,
+          phaseDamageDealt: 3100,
+          phaseCompletionRate: 0,
+          phaseResult: "success",
+          allRaidPlayersWipedOut: false,
+          raidPlayersWipedOut: 0,
+          raidPlayersEliminatedAfterRound: 0,
+          bossSurvivors: 2,
+          raidSurvivors: 5,
+          bossTotalDamage: 2400,
+          raidTotalDamage: 3100,
+          raidPhaseContributionDamage: 1700,
+          battleEndReasons: ["boss_defeated"],
+          battleWinnerRoles: ["raid"],
+          raidPlayerConsequences: [],
+          topBossUnits: [],
+          topRaidUnits: [],
+        }, {
+          matchIndex: 1,
+          matchWinnerRole: "boss",
+          totalRounds: 12,
+          roundIndex: 12,
+          battleEndTimeMs: 16_000,
+          phaseHpTarget: 0,
+          phaseDamageDealt: 2100,
+          phaseCompletionRate: 0,
+          phaseResult: "failed",
+          allRaidPlayersWipedOut: true,
+          raidPlayersWipedOut: 3,
+          raidPlayersEliminatedAfterRound: 0,
+          bossSurvivors: 4,
+          raidSurvivors: 0,
+          bossTotalDamage: 3600,
+          raidTotalDamage: 2100,
+          raidPhaseContributionDamage: 900,
+          battleEndReasons: ["annihilation"],
+          battleWinnerRoles: ["boss"],
+          raidPlayerConsequences: [],
+          topBossUnits: [],
+          topRaidUnits: [],
+        }],
+      }),
+    });
+
+    const analysis = buildBotBalanceBaselineAnalysis(summary);
+
+    expect(analysis.finalBattle.bodyProtection).toMatchObject({
+      bossBodyDefeatedWithBossSurvivorsCount: 1,
+      bossBodyDefeatedWithBossSurvivorsSampleRate: 0.5,
+      bossBodyDefeatedWithBossSurvivorsDefeatRate: 1,
+      averageBossSurvivorsWhenBodyDefeated: 2,
+      averageBossSurvivorsWhenBossWins: 4,
+      averageRaidSurvivorsWhenBodyDefeated: 5,
+    });
+    expect(analysis.finalBattle.samples[0]).toMatchObject({
+      bossDefeated: true,
+      bossSurvivors: 2,
+      raidSurvivors: 5,
+      bossBodyDefeatedWithBossSurvivors: true,
     });
   });
 

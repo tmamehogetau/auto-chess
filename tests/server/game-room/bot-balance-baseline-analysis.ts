@@ -84,6 +84,26 @@ export type RoundPhaseAnalysis = {
   averageBattleEndRealPlaySeconds: number;
 };
 
+export type FinalBattleBossBodyProtectionAnalysis = {
+  bossBodyDefeatedWithBossSurvivorsCount: number;
+  bossBodyDefeatedWithBossSurvivorsSampleRate: number;
+  bossBodyDefeatedWithBossSurvivorsDefeatRate: number;
+  averageBossSurvivorsWhenBodyDefeated: number;
+  averageBossSurvivorsWhenBossWins: number;
+  averageRaidSurvivorsWhenBodyDefeated: number;
+};
+
+export type FinalBattleBossSpellAnalysis = {
+  spellId: string;
+  sampleCount: number;
+  activationCount: number;
+  activationRate: number;
+  averageFirstActivationMs: number | null;
+  averageTickCount: number;
+  averageTotalDamage: number;
+  averageMaxStack: number | null;
+};
+
 export type FinalBattleAnalysis = {
   sampleCount: number;
   bossBodyHp: number;
@@ -96,6 +116,9 @@ export type FinalBattleAnalysis = {
   averageBossBodyDamage: number;
   averageBossRemainingHp: number;
   averageBattleEndSeconds: number;
+  averageBattleEndRealPlaySeconds: number;
+  bodyProtection: FinalBattleBossBodyProtectionAnalysis;
+  bossSpells: FinalBattleBossSpellAnalysis[];
   endReasonCounts: Partial<Record<BotOnlyBaselineBattleEndReason, number>>;
   samples: Array<{
     matchIndex: number;
@@ -103,6 +126,9 @@ export type FinalBattleAnalysis = {
     bossBodyHp: number;
     bossBodyDamage: number;
     bossDefeated: boolean;
+    bossSurvivors: number;
+    raidSurvivors: number;
+    bossBodyDefeatedWithBossSurvivors: boolean;
     finalBattleWinner: "boss" | "raid";
     matchWinnerRole: "boss" | "raid";
   }>;
@@ -350,8 +376,22 @@ function buildEmptyFinalBattle(): FinalBattleAnalysis {
     averageBossBodyDamage: 0,
     averageBossRemainingHp: FINAL_BOSS_BODY_HP_FALLBACK,
     averageBattleEndSeconds: 0,
+    averageBattleEndRealPlaySeconds: 0,
+    bodyProtection: buildEmptyFinalBattleBossBodyProtection(),
+    bossSpells: [],
     endReasonCounts: {},
     samples: [],
+  };
+}
+
+function buildEmptyFinalBattleBossBodyProtection(): FinalBattleBossBodyProtectionAnalysis {
+  return {
+    bossBodyDefeatedWithBossSurvivorsCount: 0,
+    bossBodyDefeatedWithBossSurvivorsSampleRate: 0,
+    bossBodyDefeatedWithBossSurvivorsDefeatRate: 0,
+    averageBossSurvivorsWhenBodyDefeated: 0,
+    averageBossSurvivorsWhenBossWins: 0,
+    averageRaidSurvivorsWhenBodyDefeated: 0,
   };
 }
 
@@ -372,6 +412,42 @@ function resolveBattleTimeScale(aggregate: BotOnlyBaselineAggregateReport): numb
   return typeof timeScale === "number" && Number.isFinite(timeScale) && timeScale > 0
     ? timeScale
     : 1;
+}
+
+function buildFinalBattleBossSpells(
+  rounds: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>,
+): FinalBattleBossSpellAnalysis[] {
+  const bySpellId = new Map<string, Array<NonNullable<typeof rounds[number]["bossSpellMetrics"]>[number]>>();
+
+  for (const round of rounds) {
+    for (const metric of round.bossSpellMetrics ?? []) {
+      const metrics = bySpellId.get(metric.spellId) ?? [];
+      metrics.push(metric);
+      bySpellId.set(metric.spellId, metrics);
+    }
+  }
+
+  return Array.from(bySpellId.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([spellId, metrics]) => {
+      const firstActivationTimes = metrics
+        .map((metric) => metric.firstActivationAtMs)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const maxStacks = metrics
+        .map((metric) => metric.maxStack)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+      return {
+        spellId,
+        sampleCount: rounds.length,
+        activationCount: metrics.reduce((total, metric) => total + metric.activationCount, 0),
+        activationRate: metrics.length / Math.max(1, rounds.length),
+        averageFirstActivationMs: firstActivationTimes.length > 0 ? average(firstActivationTimes) : null,
+        averageTickCount: average(metrics.map((metric) => metric.tickCount)),
+        averageTotalDamage: average(metrics.map((metric) => metric.totalDamage)),
+        averageMaxStack: maxStacks.length > 0 ? average(maxStacks) : null,
+      };
+    });
 }
 
 function buildRounds(aggregate: BotOnlyBaselineAggregateReport): RoundPhaseAnalysis[] {
@@ -430,6 +506,7 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
     const bossBodyDamage = Math.max(0, round.phaseDamageDealt);
     const bossDefeated = round.bossSurvivors <= 0 || round.battleEndReasons.includes("boss_defeated");
     const finalBattleWinner: "boss" | "raid" = bossDefeated ? "raid" : "boss";
+    const bossBodyDefeatedWithBossSurvivors = bossDefeated && round.bossSurvivors > 0;
 
     return {
       matchIndex: round.matchIndex,
@@ -437,13 +514,21 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
       bossBodyHp: FINAL_BOSS_BODY_HP_FALLBACK,
       bossBodyDamage,
       bossDefeated,
+      bossSurvivors: round.bossSurvivors,
+      raidSurvivors: round.raidSurvivors,
+      bossBodyDefeatedWithBossSurvivors,
       finalBattleWinner,
       matchWinnerRole: round.matchWinnerRole,
     };
   });
   const bossDefeatCount = samples.filter((sample) => sample.bossDefeated).length;
   const raidWinCount = samples.filter((sample) => sample.finalBattleWinner === "raid").length;
+  const bossWinSamples = samples.filter((sample) => sample.finalBattleWinner === "boss");
+  const bodyDefeatedSamples = samples.filter((sample) => sample.bossDefeated);
+  const bodyDefeatedWithBossSurvivors = bodyDefeatedSamples.filter((sample) =>
+    sample.bossBodyDefeatedWithBossSurvivors);
   const endReasonCounts: Partial<Record<BotOnlyBaselineBattleEndReason, number>> = {};
+  const timeScale = resolveBattleTimeScale(aggregate);
 
   for (const round of rounds) {
     for (const reason of round.battleEndReasons) {
@@ -464,6 +549,19 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
     averageBossRemainingHp: average(samples.map((sample) =>
       Math.max(0, sample.bossBodyHp - sample.bossBodyDamage))),
     averageBattleEndSeconds: average(rounds.map((round) => secondsFromMs(round.battleEndTimeMs))),
+    averageBattleEndRealPlaySeconds: average(rounds.map((round) =>
+      realPlaySecondsFromMs(round.battleEndTimeMs, timeScale))),
+    bodyProtection: {
+      bossBodyDefeatedWithBossSurvivorsCount: bodyDefeatedWithBossSurvivors.length,
+      bossBodyDefeatedWithBossSurvivorsSampleRate: bodyDefeatedWithBossSurvivors.length / samples.length,
+      bossBodyDefeatedWithBossSurvivorsDefeatRate: bodyDefeatedSamples.length > 0
+        ? bodyDefeatedWithBossSurvivors.length / bodyDefeatedSamples.length
+        : 0,
+      averageBossSurvivorsWhenBodyDefeated: average(bodyDefeatedSamples.map((sample) => sample.bossSurvivors)),
+      averageBossSurvivorsWhenBossWins: average(bossWinSamples.map((sample) => sample.bossSurvivors)),
+      averageRaidSurvivorsWhenBodyDefeated: average(bodyDefeatedSamples.map((sample) => sample.raidSurvivors)),
+    },
+    bossSpells: buildFinalBattleBossSpells(rounds),
     endReasonCounts,
     samples,
   };

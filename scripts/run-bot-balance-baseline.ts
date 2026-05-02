@@ -22,11 +22,15 @@ import {
   createBotBalanceBaselineHelperConfigs,
   createBaselineChunkDefinitions,
   resolveBotBalanceBaselineHelperPolicy,
+  resolveBotBalanceBaselineOptimizationVariant,
   resolveBotBalanceBaselineParallelism,
   resolveBotBalanceBaselinePortOffsetBase,
+  resolveBotBalanceBaselineRaidHeroIds,
   resolveBotBalanceBaselineRaidPolicies,
   resolveBotBalanceBaselineWorkerPortOffset,
   type BaselineChunkConfigSnapshot,
+  type BotBalanceBaselineOptimizationVariant,
+  type BotBalanceBaselineRaidHeroIds,
 } from "../tests/server/game-room/bot-balance-baseline-runner";
 
 type ChunkFailure = {
@@ -61,6 +65,8 @@ type CliOptions = {
   portOffsetBase: number;
   bossPolicy: "strength" | "growth";
   raidPolicies: Array<"strength" | "growth">;
+  raidHeroIds: BotBalanceBaselineRaidHeroIds | null;
+  optimizationVariant: BotBalanceBaselineOptimizationVariant;
   outputDir: string;
   resume: boolean;
 };
@@ -83,6 +89,8 @@ function parseCliOptions(argv: string[]): CliOptions {
   let portOffsetBase = resolveBotBalanceBaselinePortOffsetBase(undefined);
   let bossPolicy = resolveBotBalanceBaselineHelperPolicy(undefined);
   let raidPolicies = resolveBotBalanceBaselineRaidPolicies(undefined);
+  let raidHeroIds: BotBalanceBaselineRaidHeroIds | null = null;
+  let optimizationVariant = resolveBotBalanceBaselineOptimizationVariant(undefined);
   let outputDir = defaultOutputDir;
   let resume = false;
 
@@ -135,6 +143,18 @@ function parseCliOptions(argv: string[]): CliOptions {
       continue;
     }
 
+    if (argument === "--raid-heroes" && nextValue) {
+      raidHeroIds = resolveBotBalanceBaselineRaidHeroIds(nextValue);
+      index += 1;
+      continue;
+    }
+
+    if (argument === "--optimization-variant" && nextValue) {
+      optimizationVariant = resolveBotBalanceBaselineOptimizationVariant(nextValue);
+      index += 1;
+      continue;
+    }
+
     if (argument === "--resume") {
       resume = true;
       continue;
@@ -150,6 +170,8 @@ function parseCliOptions(argv: string[]): CliOptions {
           "  --port-offset-base <n> Base port offset for this run (default: 10000)",
           "  --boss-policy <mode>   Boss helper purchase policy: strength|growth",
           "  --raid-policies <csv>  Raid helper policies for bots 2-4 (default: strength,strength,strength)",
+          "  --raid-heroes <csv>    Fixed raid heroes for bots 2-4, e.g. reimu,marisa,okina",
+          "  --optimization-variant <mode> Optimization ablation: full|raid-optimization-off|boss-optimization-off|all-optimization-off|board-refit-off|raid-board-refit-off|boss-board-refit-off|future-shop-off|okina-host-off",
           "  --output-dir <path>    Directory for chunk logs and summary",
           "  --resume               Reuse existing chunk JSON files in output dir",
         ].join("\n"),
@@ -165,6 +187,8 @@ function parseCliOptions(argv: string[]): CliOptions {
     portOffsetBase: resolveBotBalanceBaselinePortOffsetBase(portOffsetBase, parallelism),
     bossPolicy,
     raidPolicies,
+    raidHeroIds,
+    optimizationVariant,
     outputDir,
     resume,
   };
@@ -249,6 +273,8 @@ async function runBaselineChunk(
   portOffsetBase: number,
   bossPolicy: "strength" | "growth",
   raidPolicies: Array<"strength" | "growth">,
+  raidHeroIds: BotBalanceBaselineRaidHeroIds | null,
+  optimizationVariant: BotBalanceBaselineOptimizationVariant,
 ): Promise<ChunkRunRecord> {
   const logPath = join(outputDir, `chunk-${String(chunkIndex + 1).padStart(3, "0")}.log`);
   const startedAt = new Date().toISOString();
@@ -276,8 +302,11 @@ async function runBaselineChunk(
         ...process.env,
         RUN_BOT_BALANCE_BASELINE: "true",
         BOT_BASELINE_MATCH_COUNT: String(requestedMatchCount),
+        BOT_BASELINE_MATCH_START_INDEX: String(matchStartIndex),
         BOT_BASELINE_BOSS_POLICY: bossPolicy,
         BOT_BASELINE_RAID_POLICIES: raidPolicies.join(","),
+        ...(raidHeroIds ? { BOT_BASELINE_RAID_HERO_IDS: raidHeroIds.join(",") } : {}),
+        BOT_BASELINE_OPTIMIZATION_VARIANT: optimizationVariant,
         BOT_BASELINE_TIMEOUT_MS: String(timeoutMs),
         BOT_BASELINE_WORKER_INDEX: String(workerIndex),
         SUPPRESS_VERBOSE_TEST_LOGS: "true",
@@ -320,6 +349,8 @@ async function runBaselineChunk(
       requestedMatchCount,
       bossPolicy,
       raidPolicies,
+      raidHeroIds,
+      optimizationVariant,
     }),
     workerIndex,
     portOffset,
@@ -363,6 +394,8 @@ async function main(): Promise<void> {
             requestedMatchCount: chunkDefinition.requestedMatchCount,
             bossPolicy: options.bossPolicy,
             raidPolicies: options.raidPolicies,
+            raidHeroIds: options.raidHeroIds,
+            optimizationVariant: options.optimizationVariant,
           }),
         )
         : null;
@@ -376,6 +409,8 @@ async function main(): Promise<void> {
         options.portOffsetBase,
         options.bossPolicy,
         options.raidPolicies,
+        options.raidHeroIds,
+        options.optimizationVariant,
       );
 
       if (!existingChunk) {
@@ -424,6 +459,8 @@ async function main(): Promise<void> {
   const helperConfigs = createBotBalanceBaselineHelperConfigs({
     bossPolicy: options.bossPolicy,
     raidPolicies: options.raidPolicies,
+    raidHeroIds: options.raidHeroIds,
+    optimizationVariant: options.optimizationVariant,
   });
   const summary: BotBalanceBaselineSummary = {
     requestedMatchCount: options.matchCount,
@@ -432,6 +469,7 @@ async function main(): Promise<void> {
     portOffsetBase: options.portOffsetBase,
     bossPolicy: options.bossPolicy,
     raidPolicies: options.raidPolicies,
+    optimizationVariant: options.optimizationVariant,
     helperConfigs,
     chunkCount: chunkRecords.length,
     outputDir: options.outputDir,
@@ -474,6 +512,7 @@ async function main(): Promise<void> {
       abortedMatches: aggregate.abortedMatches,
       bossWinRate: aggregate.bossWinRate,
       averageRounds: aggregate.averageRounds,
+      optimizationVariant: options.optimizationVariant,
       failureCount: failures.length,
     },
   }));

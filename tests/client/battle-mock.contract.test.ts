@@ -44,6 +44,7 @@ const hpIconAssetPath = resolve(
   repoRoot,
   "src/client/mock-assets/battle-icon-hp.svg",
 );
+
 const levelIconAssetPath = resolve(
   repoRoot,
   "src/client/mock-assets/battle-icon-level.svg",

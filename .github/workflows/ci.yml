@@ -16,13 +16,16 @@ jobs:
         include:
         - label: core
           node-version: 20.x
-          verify-stages: typecheck,client,server-audit,server-parallel,server-serial
+          verify-stages: typecheck,client,server-audit,server-parallel,server-serial-rest,server-serial-bot-playability
         - label: e2e-a
           node-version: 20.x
           verify-stages: e2e-a
         - label: e2e-b
           node-version: 20.x
           verify-stages: e2e-b
+        - label: e2e-c
+          node-version: 20.x
+          verify-stages: e2e-c
 
     steps:
     - uses: actions/checkout@v4

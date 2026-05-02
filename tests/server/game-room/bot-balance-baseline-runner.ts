@@ -7,11 +7,14 @@ import {
 } from "../../../src/server/rooms/game-room-config";
 
 const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MIN = 4;
-const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MAX = 8;
-export const DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM = 8;
+const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MAX = 16;
+export const DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM = 12;
 export const BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE = 500;
 export const DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE = 10_000;
 export const DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY = "strength";
+const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_BASE = 2_570;
+const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_HASH_RANGE = 200;
+const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_MAX = 65_535;
 const BOT_BALANCE_BASELINE_READY_AUTO_START_MS = 200;
 const BOT_BALANCE_BASELINE_SETTLE_DURATION_MS = 20;
 const BOT_BALANCE_BASELINE_ELIMINATION_DURATION_MS = 10;
@@ -156,7 +159,9 @@ export function resolveBotBalanceBaselineAutoParallelism(
   const normalizedAvailableParallelism = Number.isFinite(availableParallelism)
     ? Math.max(1, Math.trunc(availableParallelism ?? 1))
     : resolveRuntimeAvailableParallelism();
-  const recommendedParallelism = Math.floor(normalizedAvailableParallelism / 2);
+  const recommendedParallelism = normalizedAvailableParallelism <= 8
+    ? Math.floor(normalizedAvailableParallelism / 2)
+    : Math.floor(normalizedAvailableParallelism * 0.75);
 
   return Math.min(
     BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MAX,
@@ -175,12 +180,21 @@ export function resolveBotBalanceBaselineParallelism(
   return Math.max(1, Math.trunc(rawValue));
 }
 
-export function resolveBotBalanceBaselinePortOffsetBase(rawValue: number | undefined): number {
+export function resolveBotBalanceBaselinePortOffsetBase(
+  rawValue: number | undefined,
+  workerCount = 1,
+): number {
+  const normalizedWorkerCount = Math.max(1, Math.trunc(workerCount));
+  const maxOffsetBase = BOT_BALANCE_BASELINE_TEST_SERVER_PORT_MAX
+    - BOT_BALANCE_BASELINE_TEST_SERVER_PORT_BASE
+    - (BOT_BALANCE_BASELINE_TEST_SERVER_PORT_HASH_RANGE - 1)
+    - BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE * (normalizedWorkerCount - 1);
+
   if (!Number.isFinite(rawValue) || rawValue == null) {
     return DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE;
   }
 
-  return Math.max(0, Math.trunc(rawValue));
+  return Math.min(maxOffsetBase, Math.max(0, Math.trunc(rawValue)));
 }
 
 export function resolveBotBalanceBaselineWorkerPortOffset(

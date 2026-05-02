@@ -17,12 +17,20 @@ export const DEFAULT_VERIFY_CI_STAGES = [
     args: ["run", "--silent", "test:server:parallel-safe"],
   },
   {
-    name: "server-serial",
+    name: "server-serial-rest",
     command: NPM_COMMAND,
-    args: ["run", "--silent", "test:server:serial-required"],
+    args: ["run", "--silent", "test:server:serial-rest"],
+    parallelGroup: "server-serial",
+  },
+  {
+    name: "server-serial-bot-playability",
+    command: NPM_COMMAND,
+    args: ["run", "--silent", "test:server:serial-bot-playability"],
+    parallelGroup: "server-serial",
   },
   { name: "e2e-a", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:a"], parallelGroup: "e2e" },
   { name: "e2e-b", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:b"], parallelGroup: "e2e" },
+  { name: "e2e-c", command: NPM_COMMAND, args: ["run", "--silent", "test:e2e:ci:c"], parallelGroup: "e2e" },
 ];
 
 function formatElapsedMs(elapsedMs) {

@@ -7,7 +7,7 @@ import {
   type SpellCombatModifiers,
 } from "../../../src/server/match-room-controller/battle-resolution";
 import type { BattleUnit } from "../../../src/server/combat/battle-simulator";
-import type { BoardUnitPlacement } from "../../../src/shared/room-messages";
+import type { BoardUnitPlacement, BoardUnitType } from "../../../src/shared/room-messages";
 import type { MatchLogger } from "../../../src/server/match-logger";
 import { createBattleStartEvent } from "../../../src/server/combat/battle-timeline";
 import { HEROES } from "../../../src/data/heroes";
@@ -48,6 +48,10 @@ const expectHeroBattleUnitToMatchDefinition = (
     damageReduction: hero?.damageReduction,
     cell,
   });
+};
+
+const expectCombatClass = (unit: BattleUnit | null, expected: BoardUnitType) => {
+  expect((unit as BattleUnit & { combatClass?: BoardUnitType } | null)?.combatClass).toBe(expected);
 };
 
 describe("BattleResolutionService", () => {
@@ -753,6 +757,16 @@ describe("BattleResolutionService", () => {
       expect(marisa?.attackRange ?? 0).toBeGreaterThan(reimu?.attackRange ?? 0);
       expect(jyoon?.attackSpeed ?? 0).toBeGreaterThan(reimu?.attackSpeed ?? 0);
       expect(okina?.attackRange ?? 0).toBeGreaterThan(jyoon?.attackRange ?? 0);
+    });
+
+    it("should expose hero and boss combat classes for class-reading skills", () => {
+      expectCombatClass(service.createHeroBattleUnit("reimu", "player1", 10, "left"), "ranger");
+      expectCombatClass(service.createHeroBattleUnit("marisa", "player2", 11, "left"), "mage");
+      expectCombatClass(service.createHeroBattleUnit("okina", "player3", 12, "left"), "mage");
+      expectCombatClass(service.createHeroBattleUnit("keiki", "player4", 13, "left"), "mage");
+      expectCombatClass(service.createHeroBattleUnit("jyoon", "player5", 14, "left"), "assassin");
+      expectCombatClass(service.createHeroBattleUnit("yuiman", "player6", 15, "left"), "mage");
+      expectCombatClass(service.createBossBattleUnit("remilia", "boss", 2, undefined, "right"), "assassin");
     });
 
     it("should scale hero hp and attack with the provided special unit level", () => {

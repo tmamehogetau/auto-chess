@@ -56,6 +56,22 @@ vi.mock("../../../src/data/spell-cards", () => ({
           category: "instantLaser",
           effect: { type: "damage", target: "raid", value: 50 },
         },
+        {
+          id: "area-1",
+          name: "紅符「不夜城レッド」",
+          description: "レイドメンバー全員に40ダメージを与える",
+          roundRange: [1, 4],
+          category: "areaAttack",
+          effect: { type: "damage", target: "raid", value: 40 },
+        },
+        {
+          id: "rush-1",
+          name: "夜符「デーモンキングクレイドル」",
+          description: "レイドメンバー全員に45ダメージを与える",
+          roundRange: [1, 4],
+          category: "rush",
+          effect: { type: "damage", target: "raid", value: 45 },
+        },
       ];
     }
     if (roundIndex >= 5 && roundIndex <= 8) {
@@ -206,6 +222,20 @@ describe("SpellCardHandler", () => {
       handler.declareSpell(12);
       expect(handler.getDeclaredSpellId()).toBe("last-word");
     });
+
+    it("同じラウンド帯ではラウンドごとに未使用スペルを順に宣言し、使い切るとnullになる", () => {
+      handler.declareSpell(1);
+      expect(handler.getDeclaredSpellId()).toBe("instant-1");
+
+      handler.declareSpell(2);
+      expect(handler.getDeclaredSpellId()).toBe("area-1");
+
+      handler.declareSpell(3);
+      expect(handler.getDeclaredSpellId()).toBe("rush-1");
+
+      handler.declareSpell(4);
+      expect(handler.getDeclaredSpellId()).toBeNull();
+    });
   });
 
   describe("declareSpellById", () => {
@@ -233,6 +263,19 @@ describe("SpellCardHandler", () => {
     it("ラウンド範囲外のスペルIDはfalseを返す", () => {
       const result = handler.declareSpellById(5, "instant-1"); // instant-1はR1-4のみ
       expect(result).toBe(false);
+    });
+
+    it("使用済みスペルIDは再宣言できない", () => {
+      expect(handler.declareSpellById(1, "instant-1")).toBe(true);
+      expect(handler.declareSpellById(1, "instant-1")).toBe(false);
+    });
+
+    it("ID指定済みの同一ラウンドは自動宣言で上書きしない", () => {
+      expect(handler.declareSpellById(1, "area-1")).toBe(true);
+
+      handler.declareSpell(1);
+
+      expect(handler.getDeclaredSpellId()).toBe("area-1");
     });
   });
 

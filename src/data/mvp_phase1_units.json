@@ -13,7 +13,7 @@
     "id": "remilia",
     "name": "レミリア",
     "hp": 580,
-    "attack": 47,
+    "attack": 75,
     "attackSpeed": 0.57,
     "range": 3,
     "critRate": 0,

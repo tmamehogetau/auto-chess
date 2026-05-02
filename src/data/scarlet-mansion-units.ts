@@ -2,7 +2,7 @@
  * Scarlet Devil Mansion Units (紅魔館ユニット)
  * 
  * Boss Exclusive Shop専用のユニット定義
- * 紅魔館シナジー: 2体以上出場でレミリアが強化
+ * レミリアの幼きデーモンロードパッシブによりboss側支援を受ける
  */
 
 import type { BoardUnitType } from "../shared/room-messages";
@@ -17,6 +17,8 @@ export interface ScarletMansionUnit extends CombatStats {
   displayName: string;
   /** ユニットタイプ（通常のBoardUnitTypeとは別枠） */
   unitType: BoardUnitType;
+  /** 戦闘中のクラス判定 */
+  combatClass?: BoardUnitType;
   /** コスト（2G-4G） */
   cost: 2 | 3 | 4;
   /** 役割説明 */
@@ -52,18 +54,19 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     unitId: "meiling",
     displayName: "紅美鈴",
     unitType: "vanguard",
+    combatClass: "vanguard",
     cost: 2,
-    hp: 850,
-    attack: 65,
-    attackSpeed: 0.85,
+    hp: 860,
+    attack: 55,
+    attackSpeed: 0.8,
     movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 1,
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: approximateLegacyDamageReduction({
-      defense: 17.5,
-      physicalReduction: 20,
-      magicReduction: 15,
+      defense: 15,
+      physicalReduction: 12,
+      magicReduction: 12,
     }),
     role: "序盤の壁",
     skillDescription: "彩華「虹色太極拳」- 周囲の敵攻撃を誘引し、被ダメージを軽減",
@@ -74,21 +77,22 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     unitId: "sakuya",
     displayName: "十六夜咲夜",
     unitType: "assassin",
+    combatClass: "assassin",
     cost: 3,
-    hp: 720,
-    attack: 95,
-    attackSpeed: 1.15,
+    hp: 650,
+    attack: 78,
+    attackSpeed: 1.05,
     movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 2,
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: approximateLegacyDamageReduction({
-      defense: 10,
-      physicalReduction: 10,
-      magicReduction: 10,
+      defense: 5,
+      physicalReduction: 5,
+      magicReduction: 5,
     }),
-    role: "守護サポート",
-    skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
+    role: "単体制御",
+    skillDescription: "時符「プライベートスクウェア」- 攻撃力の高い敵1体の攻撃速度と移動速度を低下",
     flavorText: "紅魔館のメイド長。完璧で瀟洒な仕事人。",
   },
   {
@@ -96,21 +100,22 @@ export const SCARLET_MANSION_UNITS: Readonly<ScarletMansionUnit[]> = [
     unitId: "patchouli",
     displayName: "パチュリー・ノーレッジ",
     unitType: "mage",
+    combatClass: "mage",
     cost: 4,
-    hp: 520,
-    attack: 95,
-    attackSpeed: 0.65,
+    hp: 500,
+    attack: 86,
+    attackSpeed: 0.75,
     movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 4,
     critRate: 0,
     critDamageMultiplier: 1.5,
     damageReduction: approximateLegacyDamageReduction({
-      defense: 8,
+      defense: 4,
       physicalReduction: 0,
-      magicReduction: 15,
+      magicReduction: 8,
     }),
     role: "爆発補助",
-    skillDescription: "火水木金土符「賢者の石」- 近くの敵最大3体に魔法ダメージ",
+    skillDescription: "日符「ロイヤルフレア」- 激重発動で自身の周囲3マスに大ダメージ",
     flavorText: "紅魔館の魔法使い。動きたくない。",
   },
 ] as const;

@@ -39,7 +39,7 @@ describe("progression-bonus-config", () => {
         kind: "boss-finisher",
         statScore: 28,
       },
-      skillImplementationState: "missing",
+      skillImplementationState: "implemented",
     });
   });
 

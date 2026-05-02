@@ -1,5 +1,20 @@
 import type { BattleUnit } from "./battle-simulator";
 
+function resolveExperimentMultiplier(envName: string, fallback: number): number {
+  const rawValue = process.env[envName];
+  if (rawValue === undefined || rawValue.trim().length === 0) {
+    return fallback;
+  }
+
+  const value = Number.parseFloat(rawValue);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+const EXPERIMENT_ATTACK_DAMAGE_MULTIPLIER = resolveExperimentMultiplier(
+  "AUTO_CHESS_EXPERIMENT_ATTACK_DAMAGE_MULTIPLIER",
+  0.5,
+);
+
 export interface AppliedDamageSummary {
   damageDealtLeftIncrement: number;
   damageDealtRightIncrement: number;
@@ -15,25 +30,54 @@ export interface UnitDefeatConsequences {
   phaseDamageIncrement: number;
 }
 
+export interface AttackDamageResult {
+  actualDamage: number;
+  preventedDamageReflection: number;
+}
+
+export function calculateAttackDamageResult(
+  attacker: BattleUnit,
+  target: BattleUnit,
+  isCrit: boolean,
+  _bossPassiveActive: boolean,
+): AttackDamageResult {
+  const critMultiplier = isCrit ? attacker.critDamageMultiplier : 1.0;
+  const lowHpTargetMultiplier = target.hp < target.maxHp * 0.5
+    ? 1 + Math.max(attacker.bonusDamageVsLowHpTarget ?? 0, 0)
+    : 1.0;
+  const baseDamage = attacker.attackPower
+    * attacker.buffModifiers.attackMultiplier
+    * critMultiplier
+    * lowHpTargetMultiplier;
+  const damageReduction = target.damageReduction ?? 0;
+  const defenseMultiplier = Math.max(target.buffModifiers.defenseMultiplier ?? 1, 0.01);
+  const incomingDamageMultiplier = Math.max(target.damageTakenMultiplier ?? 1, 0.01);
+  const factionDamageTakenMultiplier = Math.max(target.factionDamageTakenMultiplier ?? 1, 0.01);
+  const scaledBaseDamage = baseDamage * EXPERIMENT_ATTACK_DAMAGE_MULTIPLIER;
+  const damageBeforeFactionReduction = Math.max(
+    1,
+    Math.floor(((scaledBaseDamage * (1 - damageReduction / 100)) / defenseMultiplier) * incomingDamageMultiplier),
+  );
+  const actualDamage = Math.max(
+    1,
+    Math.floor(damageBeforeFactionReduction * factionDamageTakenMultiplier),
+  );
+
+  return {
+    actualDamage,
+    preventedDamageReflection: target.reflectPreventedDamage
+      ? Math.max(0, damageBeforeFactionReduction - actualDamage)
+      : 0,
+  };
+}
+
 export function calculateAttackDamage(
   attacker: BattleUnit,
   target: BattleUnit,
   isCrit: boolean,
   bossPassiveActive: boolean,
 ): number {
-  const critMultiplier = isCrit ? attacker.critDamageMultiplier : 1.0;
-  const bossAtkMultiplier = bossPassiveActive ? 1.2 : 1.0;
-  const baseDamage = attacker.attackPower
-    * attacker.buffModifiers.attackMultiplier
-    * critMultiplier
-    * bossAtkMultiplier;
-  const damageReduction = target.damageReduction ?? 0;
-  const defenseMultiplier = Math.max(target.buffModifiers.defenseMultiplier ?? 1, 0.01);
-  const incomingDamageMultiplier = Math.max(target.damageTakenMultiplier ?? 1, 0.01);
-  const actualDamage = Math.max(
-    1,
-    Math.floor(((baseDamage * (1 - damageReduction / 100)) / defenseMultiplier) * incomingDamageMultiplier),
-  );
+  const { actualDamage } = calculateAttackDamageResult(attacker, target, isCrit, bossPassiveActive);
 
   return actualDamage;
 }

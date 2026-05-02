@@ -62,6 +62,10 @@ import {
   type UnitEffectSetId,
 } from "./combat/unit-effect-definitions";
 import {
+  calculateSynergyDetails,
+  getTouhouFactionTierEffect,
+} from "./combat/synergy-definitions";
+import {
   calculateSellValue,
   UNIT_SELL_VALUE_BY_TYPE,
 } from "./unit-level-config";
@@ -82,6 +86,7 @@ import {
 } from "./roster/roster-provider";
 import type { FeatureFlags } from "../shared/feature-flags";
 import { type SpellCard } from "../data/spell-cards";
+import { resolveBattlePlacements } from "./unit-id-resolver";
 import {
   SpellCardHandler,
   type SpellCombatModifiers,
@@ -398,6 +403,10 @@ export class MatchRoomController {
 
   private readonly kouRyuudouFreeRefreshConsumedByPlayer: Map<string, boolean>;
 
+  private readonly touhouBonusFreeRefreshCountByPlayer: Map<string, number>;
+
+  private readonly touhouLevelUpGoldBonusClaimKeysByPlayer: Map<string, Set<string>>;
+
   private readonly battleResultsByPlayer: Map<string, BattleResult>;
 
   private readonly selectedHeroByPlayer: Map<string, string>;
@@ -521,6 +530,8 @@ export class MatchRoomController {
     this.benchUnitsByPlayer = new Map<string, BenchUnit[]>();
     this.ownedUnitsByPlayer = new Map<string, OwnedUnits>();
     this.kouRyuudouFreeRefreshConsumedByPlayer = new Map<string, boolean>();
+    this.touhouBonusFreeRefreshCountByPlayer = new Map<string, number>();
+    this.touhouLevelUpGoldBonusClaimKeysByPlayer = new Map<string, Set<string>>();
     this.battleResultsByPlayer = new Map<string, BattleResult>();
     this.selectedHeroByPlayer = new Map<string, string>();
     this.heroPlacementByPlayer = new Map<string, number>();
@@ -614,6 +625,8 @@ export class MatchRoomController {
         assassin: 0,
       });
       this.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, false);
+      this.touhouBonusFreeRefreshCountByPlayer.set(playerId, 0);
+      this.touhouLevelUpGoldBonusClaimKeysByPlayer.set(playerId, new Set<string>());
       this.selectedHeroByPlayer.set(playerId, "");
       this.heroPlacementByPlayer.set(playerId, -1);
       this.heroSubHostCellByPlayer.set(playerId, -1);
@@ -688,6 +701,8 @@ export class MatchRoomController {
       shopPurchaseCountByPlayer: this.shopPurchaseCountByPlayer,
       shopLockedByPlayer: this.shopLockedByPlayer,
       kouRyuudouFreeRefreshConsumedByPlayer: this.kouRyuudouFreeRefreshConsumedByPlayer,
+      touhouBonusFreeRefreshCountByPlayer: this.touhouBonusFreeRefreshCountByPlayer,
+      touhouLevelUpGoldBonusClaimKeysByPlayer: this.touhouLevelUpGoldBonusClaimKeysByPlayer,
       rumorInfluenceEligibleByPlayer: this.rumorInfluenceEligibleByPlayer,
       shopOffersByPlayer: this.shopOffersByPlayer,
       bossShopOffersByPlayer: this.bossShopOffersByPlayer,
@@ -1838,6 +1853,13 @@ export class MatchRoomController {
       goldByPlayer: this.goldByPlayer,
       getBaseIncome: (playerId) => state.isBoss(playerId) ? BOSS_PREP_BASE_INCOME : RAID_PREP_BASE_INCOME,
       initialGold: INITIAL_GOLD,
+      onIncomeApplied: (playerId, amount, goldBefore, goldAfter) => {
+        this.matchLogger?.logAction(playerId, state.roundIndex, "prep_income", {
+          amount,
+          goldBefore,
+          goldAfter,
+        });
+      },
     });
   }
 
@@ -2397,6 +2419,8 @@ export class MatchRoomController {
     this.benchUnitsByPlayer.delete(playerId);
     this.ownedUnitsByPlayer.delete(playerId);
     this.kouRyuudouFreeRefreshConsumedByPlayer.delete(playerId);
+    this.touhouBonusFreeRefreshCountByPlayer.delete(playerId);
+    this.touhouLevelUpGoldBonusClaimKeysByPlayer.delete(playerId);
     this.selectedHeroByPlayer.delete(playerId);
     this.heroPlacementByPlayer.delete(playerId);
     this.heroSubHostCellByPlayer.delete(playerId);
@@ -2752,9 +2776,44 @@ export class MatchRoomController {
       const placements = this.boardPlacementsByPlayer.get(playerId) ?? [];
       this.battleInputSnapshotByPlayer.set(
         playerId,
-        placements.map((placement) => ({ ...placement })),
+        this.buildBattleInputSnapshotPlacements(playerId, placements),
       );
     }
+  }
+
+  private buildBattleInputSnapshotPlacements(
+    playerId: string,
+    placements: readonly BoardUnitPlacement[],
+  ): BoardUnitPlacement[] {
+    const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
+    if (heroSubHostCell === null || !this.enableSubUnitSystem) {
+      return placements.map((placement) => ({ ...placement }));
+    }
+
+    const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
+    if (selectedHeroId !== "okina") {
+      return placements.map((placement) => ({ ...placement }));
+    }
+
+    const okinaHero = HEROES.find((hero) => hero.id === "okina");
+    if (!okinaHero) {
+      return placements.map((placement) => ({ ...placement }));
+    }
+
+    return placements.map((placement) => {
+      const snapshotPlacement = { ...placement };
+      if (snapshotPlacement.cell !== heroSubHostCell || snapshotPlacement.subUnit) {
+        return snapshotPlacement;
+      }
+
+      snapshotPlacement.subUnit = {
+        unitType: okinaHero.unitType,
+        combatClass: okinaHero.combatClass,
+        unitId: okinaHero.id,
+        unitLevel: this.getSpecialUnitLevel(playerId),
+      };
+      return snapshotPlacement;
+    });
   }
 
   private applyPendingRoundDamage(): void {
@@ -2899,7 +2958,13 @@ export class MatchRoomController {
       }
 
       const currentGold = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
-      this.goldByPlayer.set(playerId, currentGold + RAID_PHASE_SUCCESS_BONUS);
+      const nextGold = currentGold + RAID_PHASE_SUCCESS_BONUS;
+      this.goldByPlayer.set(playerId, nextGold);
+      this.matchLogger?.logAction(playerId, state.roundIndex, "raid_phase_success_bonus", {
+        amount: RAID_PHASE_SUCCESS_BONUS,
+        goldBefore: currentGold,
+        goldAfter: nextGold,
+      });
     }
   }
 
@@ -3183,6 +3248,7 @@ export class MatchRoomController {
           bossHpOverride,
           side,
           this.getSpecialUnitLevel(bossPlayerId),
+          this.getDeclaredSpellId(),
         );
         if (bossBattleUnit) {
           battleUnits.push(bossBattleUnit);
@@ -3216,6 +3282,31 @@ export class MatchRoomController {
     }
   }
 
+  private applyKouRyuudouBattleEndGoldBonus(playerId: string): void {
+    if (!this.rosterFlags.enableTouhouFactions || this.isBossPlayer(playerId)) {
+      return;
+    }
+
+    const placements = this.boardPlacementsByPlayer.get(playerId) ?? [];
+    if (placements.length === 0) {
+      return;
+    }
+
+    const resolvedPlacements = resolveBattlePlacements(placements, this.rosterFlags);
+    const synergyDetails = calculateSynergyDetails(
+      resolvedPlacements,
+      null,
+      { enableTouhouFactions: true },
+    );
+    const tier = synergyDetails.factionActiveTiers.kou_ryuudou ?? 0;
+    const bonusGold = getTouhouFactionTierEffect("kou_ryuudou", tier)?.special?.battleEndGoldBonus ?? 0;
+    if (bonusGold <= 0) {
+      return;
+    }
+
+    this.goldByPlayer.set(playerId, (this.goldByPlayer.get(playerId) ?? INITIAL_GOLD) + bonusGold);
+  }
+
   private storeBattleResolutionResults(
     matchup: PreparedMatchupContext,
     resolutionResult: BattleResolutionResult,
@@ -3227,6 +3318,31 @@ export class MatchRoomController {
       matchup.raidBattleInput,
     )) {
       this.battleResultsByPlayer.set(assignment.playerId, assignment.battleResult);
+      this.applyKouRyuudouBattleEndGoldBonus(assignment.playerId);
+    }
+    this.applyBattleGoldRewards(resolutionResult.goldRewardsByPlayerId);
+  }
+
+  private applyBattleGoldRewards(goldRewardsByPlayerId: Record<string, number> | undefined): void {
+    if (!goldRewardsByPlayerId) {
+      return;
+    }
+
+    const state = this.ensureStarted();
+    for (const [playerId, rawAmount] of Object.entries(goldRewardsByPlayerId)) {
+      const amount = Math.floor(rawAmount);
+      if (amount <= 0 || !state.alivePlayerIds.includes(playerId)) {
+        continue;
+      }
+
+      const goldBefore = this.goldByPlayer.get(playerId) ?? INITIAL_GOLD;
+      const goldAfter = goldBefore + amount;
+      this.goldByPlayer.set(playerId, goldAfter);
+      this.matchLogger?.logAction(playerId, state.roundIndex, "battle_economy_bonus", {
+        amount,
+        goldBefore,
+        goldAfter,
+      });
     }
   }
 

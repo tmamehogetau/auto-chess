@@ -59,6 +59,7 @@ export interface Hero extends CombatStats {
   name: string;
   role: 'tank' | 'dps' | 'support' | 'control' | 'balance' | 'economy';
   unitType: BoardUnitType;
+  combatClass: BoardUnitType;
   synergyBonusType: BoardUnitType;
   progressionBonus: UnitProgressionBonusConfig;
   skill: {
@@ -77,6 +78,7 @@ export const HEROES: Hero[] = [
     name: '博麗霊夢',
     role: 'balance',
     unitType: 'ranger',
+    combatClass: 'ranger',
     synergyBonusType: 'ranger',
     hp: 680,
     attack: 45,
@@ -119,6 +121,7 @@ export const HEROES: Hero[] = [
     name: '霧雨魔理沙',
     role: 'dps',
     unitType: 'mage',
+    combatClass: 'mage',
     synergyBonusType: 'mage',
     hp: 400,
     attack: 60,
@@ -171,6 +174,7 @@ export const HEROES: Hero[] = [
     name: '摩多羅隠岐奈',
     role: 'support',
     unitType: 'mage',
+    combatClass: 'mage',
     synergyBonusType: 'mage',
     hp: 540,
     attack: 40,
@@ -213,6 +217,7 @@ export const HEROES: Hero[] = [
     name: '埴安神袿姫',
     role: 'support',
     unitType: 'mage',
+    combatClass: 'mage',
     synergyBonusType: 'mage',
     hp: 880,
     attack: 30,
@@ -238,21 +243,21 @@ export const HEROES: Hero[] = [
     },
     skill: {
       name: '鬼形造形術',
-      description: '範囲2の味方に攻撃と防御の両方のバフを付与する。',
+      description: '範囲3の味方に攻撃と防御の両方のバフを付与する。',
       effect: (caster, allies, _enemies, log) => {
         // Legacy display-side effect kept aligned with HERO_SKILL_DEFINITIONS.
-        caster.buffModifiers.attackMultiplier *= 1.1;
-        caster.buffModifiers.defenseMultiplier *= 1.4;
-        
+        caster.buffModifiers.attackMultiplier *= 1.12;
+        caster.buffModifiers.defenseMultiplier *= 1.12;
+
         for (const ally of allies) {
           if (!ally.isDead && ally !== caster) {
             const distance = sharedBoardManhattanDistance(
               sharedBoardIndexToCoordinate(ally.cell),
               sharedBoardIndexToCoordinate(caster.cell),
             );
-            if (distance <= 2) {
-              ally.buffModifiers.attackMultiplier *= 1.1;
-              ally.buffModifiers.defenseMultiplier *= 1.15;
+            if (distance <= 3) {
+              ally.buffModifiers.attackMultiplier *= 1.12;
+              ally.buffModifiers.defenseMultiplier *= 1.12;
             }
           }
         }
@@ -266,6 +271,7 @@ export const HEROES: Hero[] = [
     name: '依神女苑',
     role: 'dps',
     unitType: 'vanguard',
+    combatClass: 'assassin',
     synergyBonusType: 'vanguard',
     hp: 500,
     attack: 35,
@@ -308,6 +314,7 @@ export const HEROES: Hero[] = [
     name: 'ユイマン・浅間',
     role: 'support',
     unitType: 'mage',
+    combatClass: 'mage',
     synergyBonusType: 'mage',
     hp: 520,
     attack: 38,

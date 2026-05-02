@@ -93,68 +93,68 @@ describe("synergy-definitions", () => {
       });
     });
 
-    test("chireiden tier effect から final metadata を取得できる", () => {
+    test("chireiden tier effect から軽減分反射 metadata を取得できる", () => {
       expect(getTouhouFactionTierEffect("chireiden", 1)).toEqual({
         effectId: "faction.chireiden",
-        statModifiers: {
-          defense: 0,
-        },
         special: {
-          reflectRatio: 0.1,
+          factionDamageTakenMultiplier: 0.94,
+          reflectPreventedDamage: true,
         },
       });
       expect(getTouhouFactionTierEffect("chireiden", 2)).toEqual({
         effectId: "faction.chireiden",
-        statModifiers: {
-          defense: 1,
-        },
         special: {
-          reflectRatio: 0.2,
+          factionDamageTakenMultiplier: 0.88,
+          reflectPreventedDamage: true,
         },
       });
     });
 
-    test("myourenji tier effect から final metadata を取得できる", () => {
+    test("myourenji tier effect から HP と守護結界 metadata を取得できる", () => {
       expect(getTouhouFactionTierEffect("myourenji", 1)).toEqual({
         effectId: "faction.myourenji",
         statModifiers: {
-          hpMultiplier: 1.05,
-          attackPower: 0,
+          hpMultiplier: 1.06,
+        },
+        special: {
+          battleStartShieldMaxHpRatio: 0.06,
         },
       });
       expect(getTouhouFactionTierEffect("myourenji", 2)).toEqual({
         effectId: "faction.myourenji",
         statModifiers: {
           hpMultiplier: 1.1,
-          attackPower: 1,
         },
         special: {
-          shopCostReduction: 1,
+          battleStartShieldMaxHpRatio: 0.1,
         },
       });
       expect(getTouhouFactionTierEffect("myourenji", 3)).toEqual({
         effectId: "faction.myourenji",
         statModifiers: {
           hpMultiplier: 1.15,
-          attackPower: 2,
         },
         special: {
+          battleStartShieldMaxHpRatio: 0.14,
           shopCostReduction: 1,
         },
       });
     });
 
-    test("grassroot_network tier effect から tuned attack metadata を取得できる", () => {
+    test("grassroot_network tier effect から attack speed と追い込み metadata を取得できる", () => {
       expect(getTouhouFactionTierEffect("grassroot_network", 1)).toEqual({
         effectId: "faction.grassroot_network",
         statModifiers: {
-          attackPower: 1,
+          attackSpeedMultiplier: 1.1,
         },
       });
       expect(getTouhouFactionTierEffect("grassroot_network", 2)).toEqual({
         effectId: "faction.grassroot_network",
         statModifiers: {
-          attackPower: 1,
+          attackSpeedMultiplier: 1.15,
+        },
+        special: {
+          bonusDamageVsLowHpTarget: 0.2,
         },
       });
     });
@@ -164,36 +164,62 @@ describe("synergy-definitions", () => {
         effectId: "faction.shinreibyou",
         special: {
           ultimateDamageMultiplier: 1.1,
+          initialManaBonus: 10,
         },
       });
       expect(getTouhouFactionTierEffect("shinreibyou", 2)).toEqual({
         effectId: "faction.shinreibyou",
         special: {
-          ultimateDamageMultiplier: 1.2,
+          ultimateDamageMultiplier: 1.18,
+          initialManaBonus: 20,
           bonusDamageVsDebuffedTarget: 0.12,
         },
       });
       expect(getTouhouFactionTierEffect("shinreibyou", 3)).toEqual({
         effectId: "faction.shinreibyou",
         special: {
-          ultimateDamageMultiplier: 1.35,
+          ultimateDamageMultiplier: 1.3,
+          initialManaBonus: 35,
           bonusDamageVsDebuffedTarget: 0.18,
+          manaGainMultiplier: 1.15,
         },
       });
     });
 
-    test("kou_ryuudou tier effect から shop/free-refresh metadata を取得できる", () => {
+    test("kou_ryuudou tier effect から battle/economy metadata を取得できる", () => {
       expect(getTouhouFactionTierEffect("kou_ryuudou", 1)).toEqual({
         effectId: "faction.kou_ryuudou",
         special: {
-          shopCostReduction: 1,
+          battleEndGoldBonus: 1,
+          initialManaBonus: 10,
         },
       });
       expect(getTouhouFactionTierEffect("kou_ryuudou", 2)).toEqual({
         effectId: "faction.kou_ryuudou",
         special: {
-          shopCostReduction: 1,
-          firstFreeRefreshes: 1,
+          battleEndGoldBonus: 2,
+          initialManaBonus: 20,
+          battleStartAttackSpeedMultiplier: 1.15,
+          battleStartAttackSpeedDurationMs: 6000,
+        },
+      });
+    });
+
+    test("kanjuden tier effect から強めの火力/マナ/耐性 metadata を取得できる", () => {
+      expect(getTouhouFactionTierEffect("kanjuden", 1)).toEqual({
+        effectId: "faction.kanjuden",
+        special: {
+          damageDealtMultiplier: 1.12,
+          initialManaBonus: 15,
+          debuffImmunityCategories: ["crowd_control"],
+        },
+      });
+      expect(getTouhouFactionTierEffect("kanjuden", 2)).toEqual({
+        effectId: "faction.kanjuden",
+        special: {
+          damageDealtMultiplier: 1.25,
+          initialManaBonus: 35,
+          debuffImmunityCategories: ["crowd_control", "stat_down", "dot"],
         },
       });
     });

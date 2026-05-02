@@ -99,6 +99,7 @@ export type UnitEffectSetId = "set1" | "set2";
 
 export interface AttachedSubUnitPlacement {
   unitType: BoardUnitType;
+  combatClass?: BoardUnitType;
   unitId?: UnitId;
   factionId?: TouhouFactionId | null;
   unitLevel?: number;
@@ -111,6 +112,7 @@ export interface BoardUnitPlacement {
   cell: number;
   ownerPlayerId?: string;
   unitType: BoardUnitType;
+  combatClass?: BoardUnitType;
   unitId?: UnitId;
   factionId?: TouhouFactionId | null;
   hp?: number;

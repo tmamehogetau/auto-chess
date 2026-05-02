@@ -13,6 +13,12 @@ export interface ApplyPrepIncomeParams {
   baseIncome?: number;
   getBaseIncome?: (playerId: string) => number;
   initialGold: number;
+  onIncomeApplied?: (
+    playerId: string,
+    amount: number,
+    goldBefore: number,
+    goldAfter: number,
+  ) => void;
 }
 
 export interface InitializePrepShopsParams<TShopOffer, TBossOffer> {
@@ -80,13 +86,16 @@ export interface RefreshShopByCountParams<TShopOffer extends ComparableShopOffer
   shopOffersByPlayer: Map<string, TShopOffer[]>;
   enableRumorInfluence: boolean;
   getAvailableFreeRefreshes: (playerId: string) => number;
+  consumeFreeRefreshes?: (playerId: string, refreshCount: number) => void;
 }
 
 export function applyPrepIncomeToPlayers(params: ApplyPrepIncomeParams): void {
   for (const playerId of params.alivePlayerIds) {
     const currentGold = params.goldByPlayer.get(playerId) ?? params.initialGold;
     const incomeAmount = params.getBaseIncome?.(playerId) ?? params.baseIncome ?? 0;
-    params.goldByPlayer.set(playerId, currentGold + incomeAmount);
+    const nextGold = currentGold + incomeAmount;
+    params.goldByPlayer.set(playerId, nextGold);
+    params.onIncomeApplied?.(playerId, incomeAmount, currentGold, nextGold);
   }
 }
 
@@ -177,7 +186,11 @@ export function refreshShopByCount<TShopOffer extends ComparableShopOffer>(
     params.refreshCount > 0 &&
     params.getAvailableFreeRefreshes(params.playerId) > 0
   ) {
-    params.kouRyuudouFreeRefreshConsumedByPlayer.set(params.playerId, true);
+    if (params.consumeFreeRefreshes) {
+      params.consumeFreeRefreshes(params.playerId, params.refreshCount);
+    } else {
+      params.kouRyuudouFreeRefreshConsumedByPlayer.set(params.playerId, true);
+    }
   }
 
   if (params.enableRumorInfluence && isRumorEligible) {

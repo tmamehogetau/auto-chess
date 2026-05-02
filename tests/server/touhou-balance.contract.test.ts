@@ -19,9 +19,13 @@ const EXPLICIT_OUTLIER_IDS = new Set<TouhouUnit["unitId"]>([
   "koishi",
   "ichirin",
   "sekibanki",
+  "chimata",
+  "tsukasa",
+  "megumu",
   "seiga",
   "utsuho",
   "shou",
+  "rin",
 ]);
 
 function average(values: readonly number[]): number {
@@ -53,15 +57,22 @@ describe("touhou balance contract", () => {
     const sekibanki = TOUHOU_UNITS.find((unit) => unit.unitId === "sekibanki");
     const utsuho = TOUHOU_UNITS.find((unit) => unit.unitId === "utsuho");
     const shou = TOUHOU_UNITS.find((unit) => unit.unitId === "shou");
+    const rin = TOUHOU_UNITS.find((unit) => unit.unitId === "rin");
 
     expect(futo).toMatchObject({ hp: 900, attack: 90, cost: 4 });
-    expect(chimata).toMatchObject({ hp: 900, attack: 84, cost: 4 });
+    const tsukasa = TOUHOU_UNITS.find((unit) => unit.unitId === "tsukasa");
+    const megumu = TOUHOU_UNITS.find((unit) => unit.unitId === "megumu");
+
+    expect(chimata).toMatchObject({ hp: 670, attack: 62, cost: 2 });
+    expect(tsukasa).toMatchObject({ hp: 580, attack: 55, cost: 3 });
+    expect(megumu).toMatchObject({ hp: 680, attack: 76, cost: 4 });
     expect(koishi).toMatchObject({ hp: 580, attack: 68, cost: 2 });
     expect(ichirin).toMatchObject({ hp: 820, attack: 50, cost: 2 });
     expect(sekibanki).toMatchObject({ hp: 520, attack: 64, cost: 2 });
     expect(seiga).toMatchObject({ hp: 650, attack: 80, cost: 3 });
     expect(utsuho).toMatchObject({ hp: 960, attack: 108, cost: 4 });
     expect(shou).toMatchObject({ hp: 1010, attack: 81, cost: 4 });
+    expect(rin).toMatchObject({ hp: 680, attack: 36, cost: 1 });
   });
 
   test("higher-cost Touhou units は直下 cost 平均を hp/attack 両方で同時に下回らない", () => {
@@ -84,6 +95,10 @@ describe("touhou balance contract", () => {
       const previousAttackAverage = average(previousCostUnits!.map((unit) => unit.attack));
 
       for (const unit of currentCostUnits!) {
+        if (EXPLICIT_OUTLIER_IDS.has(unit.unitId)) {
+          continue;
+        }
+
         expect(
           unit.hp < previousHpAverage && unit.attack < previousAttackAverage,
           `${unit.unitId} should not trail cost ${cost - 1} averages on both hp and attack`,

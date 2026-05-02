@@ -68,7 +68,7 @@ export function getUnitLevelCombatMultiplier(unitLevel: number = UNIT_LEVEL_MIN)
 }
 
 export function getUnitLevelCombatMultiplierDelta(currentLevel: number): number {
-  if (!Number.isFinite(currentLevel)) {
+  if (!Number.isFinite(currentLevel) || currentLevel < UNIT_LEVEL_MIN) {
     return 0;
   }
 

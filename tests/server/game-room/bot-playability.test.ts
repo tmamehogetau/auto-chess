@@ -1921,7 +1921,7 @@ const buildUnitBattleOutcomesForBattle = (
       const sourceUnitDuplicateCount = sourceUnitCountById.get(sourceUnitId) ?? 1;
       const basicSkillActivationCount = resolveBasicSkillActivationCountForBattleUnit(
         sourceUnitId,
-        metadata?.unitType ?? unit.displayName ?? undefined,
+        metadata?.unitType ?? undefined,
         metadata?.subUnitName ?? "",
         attackCount,
         combatLog,

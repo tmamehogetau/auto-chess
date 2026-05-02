@@ -150,32 +150,38 @@ describe("battle-simulator", () => {
 
   test("standard unit skills use cooldown timing instead of attack count", () => {
     const simulator = new BattleSimulator();
-    const vanguard = createTestBattleUnit(
-      { cell: 3, unitType: "vanguard", unitLevel: 1 },
-      "left",
-      0,
-    );
-    vanguard.attackPower = 1;
-    vanguard.attackSpeed = 10;
-    vanguard.attackRange = 4;
-    vanguard.movementSpeed = 0;
+    const createVanguard = () => {
+      const vanguard = createTestBattleUnit(
+        { cell: 3, unitType: "vanguard", unitLevel: 1 },
+        "left",
+        0,
+      );
+      vanguard.attackPower = 1;
+      vanguard.attackSpeed = 10;
+      vanguard.attackRange = 4;
+      vanguard.movementSpeed = 0;
+      return vanguard;
+    };
 
-    const enemy = createTestBattleUnit(
-      { cell: 0, unitType: "vanguard", unitLevel: 1 },
-      "right",
-      0,
-    );
-    enemy.attackPower = 0;
-    enemy.attackSpeed = 0;
-    enemy.attackRange = 4;
-    enemy.movementSpeed = 0;
-    enemy.hp = 5000;
-    enemy.maxHp = 5000;
+    const createEnemy = () => {
+      const enemy = createTestBattleUnit(
+        { cell: 0, unitType: "vanguard", unitLevel: 1 },
+        "right",
+        0,
+      );
+      enemy.attackPower = 0;
+      enemy.attackSpeed = 0;
+      enemy.attackRange = 4;
+      enemy.movementSpeed = 0;
+      enemy.hp = 5000;
+      enemy.maxHp = 5000;
+      return enemy;
+    };
 
-    const beforeCooldown = simulator.simulateBattle([vanguard], [enemy], [], [], 2_900);
+    const beforeCooldown = simulator.simulateBattle([createVanguard()], [createEnemy()], [], [], 2_900);
     expect(beforeCooldown.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(false);
 
-    const afterCooldown = simulator.simulateBattle([vanguard], [enemy], [], [], 3_100);
+    const afterCooldown = simulator.simulateBattle([createVanguard()], [createEnemy()], [], [], 3_100);
     expect(afterCooldown.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(true);
   });
 

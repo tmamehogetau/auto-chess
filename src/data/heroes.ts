@@ -102,7 +102,7 @@ export const HEROES: Hero[] = [
     },
     skill: {
       name: '夢符「二重結界」',
-      description: '味方全体に防御バフを付与し、範囲2の敵に中ダメージを与える。',
+      description: '味方全体に防御バフを付与する。',
       effect: (caster, allies, _enemies, log) => {
         for (const ally of allies) {
           if (!ally.isDead) {
@@ -146,7 +146,15 @@ export const HEROES: Hero[] = [
       name: '恋符「マスタースパーク」',
       description: '最もHPが高い敵を狙い、直線上の敵へ高ダメージを与える。',
       effect: (caster, _allies, enemies, log) => {
-        const primaryTarget = enemies.find((enemy) => !enemy.isDead);
+        const primaryTarget = enemies.reduce<BattleUnit | null>((highest, enemy) => {
+          if (enemy.isDead) {
+            return highest;
+          }
+          if (highest === null || enemy.hp > highest.hp) {
+            return enemy;
+          }
+          return highest;
+        }, null);
         if (!primaryTarget) {
           return;
         }
@@ -329,11 +337,11 @@ export const HEROES: Hero[] = [
         summary: "Lv7で範囲妨害がさらに強化される",
         skillScore: 20,
       },
-      skillImplementationState: 'implemented',
+      skillImplementationState: 'provisional',
     },
     skill: {
       name: '虚構「ディスコミュニケーション」',
-      description: '範囲2の敵に攻撃速度低下と防御低下を与える。crowd_control 免疫には無効。',
+      description: '最もHPが低い敵に攻撃速度低下を与える。crowd_control 免疫には無効。',
       effect: (caster, _allies, enemies, log) => {
         const livingEnemies = enemies.filter((enemy) => !enemy.isDead);
         const target = livingEnemies.reduce<BattleUnit | null>((lowest, enemy) => {

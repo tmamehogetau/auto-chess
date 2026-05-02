@@ -2453,10 +2453,30 @@ export class BattleSimulator {
         combatLog.push(`${generateUnitName(target)} gains ${Math.floor(amount)} shield from ${sourceId}`);
       };
 
+      const dealDamage = (
+        _caster: BattleUnit,
+        target: BattleUnit,
+        amount: number,
+        _sourceId: string,
+      ): number => {
+        if (!Number.isFinite(amount) || amount <= 0 || target.isDead) {
+          return 0;
+        }
+
+        const scaledDamage = Math.max(0, Math.floor(amount * (target.damageTakenMultiplier ?? 1)));
+        const shieldBeforeHit = target.shieldAmount ?? 0;
+        const shieldAbsorbed = Math.min(shieldBeforeHit, scaledDamage);
+        const damageAfterShield = scaledDamage - shieldAbsorbed;
+        target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+        target.hp -= damageAfterShield;
+        return damageAfterShield;
+      };
+
       const buildSkillExecutionContext = (): SkillExecutionContext => ({
         currentTimeMs: currentTime,
         applyTimedModifier,
         applyShield,
+        dealDamage,
         findCurrentOrNearestTarget,
         executePairSkillsOnMainSkillActivated,
       });
@@ -2574,6 +2594,11 @@ export class BattleSimulator {
       };
 
       const scheduleNextSubUnitSkill = (unit: BattleUnit, subUnitSkillId: string) => {
+        if (unit.isDead) {
+          nextScheduledSubUnitSkillAtByKey.delete(subUnitSkillScheduleKey(unit, subUnitSkillId));
+          return;
+        }
+
         const timing = resolveSubUnitSkillTiming(unit, subUnitSkillId);
         if (!timing) {
           nextScheduledSubUnitSkillAtByKey.delete(subUnitSkillScheduleKey(unit, subUnitSkillId));
@@ -2877,7 +2902,7 @@ export class BattleSimulator {
           combatLog.push(message);
           break;
         }
-      const action = actionQueue.shift();
+        const action = actionQueue.shift();
 
       if (!action) {
         if (rehydrateActionQueueForLivingUnits()) {
@@ -3170,6 +3195,11 @@ export class BattleSimulator {
           scheduleNextMove(moveAction.unit);
         }
       } else if (action.type === "skill") {
+        if (action.unit.isDead) {
+          nextScheduledSkillAtByUnitId.delete(action.unit.id);
+          continue;
+        }
+
         if (nextScheduledSkillAtByUnitId.get(action.unit.id) !== action.actionTime) {
           continue;
         }
@@ -3273,6 +3303,11 @@ export class BattleSimulator {
       } else if (action.type === "sub-unit-skill") {
         const subUnitSkillId = action.subUnitSkillId ?? "";
         const scheduleKey = subUnitSkillScheduleKey(action.unit, subUnitSkillId);
+        if (action.unit.isDead) {
+          nextScheduledSubUnitSkillAtByKey.delete(scheduleKey);
+          continue;
+        }
+
         if (nextScheduledSubUnitSkillAtByKey.get(scheduleKey) !== action.actionTime) {
           continue;
         }
@@ -3281,7 +3316,9 @@ export class BattleSimulator {
 
         if (subUnitSkillId === "okina-back") {
           executeOkinaBackSkill(action.unit);
-          scheduleNextSubUnitSkill(action.unit, subUnitSkillId);
+          if (!action.unit.isDead) {
+            scheduleNextSubUnitSkill(action.unit, subUnitSkillId);
+          }
         }
       }
 

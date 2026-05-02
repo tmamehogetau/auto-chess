@@ -456,7 +456,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper fills a durable third unit in early rounds", () => {
+  test("prep phase boss helper upgrades Remilia over a fragile third unit in early rounds", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -478,7 +478,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { bossShopBuySlotIndex: 0 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -1773,7 +1773,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { benchSellIndex: 6 },
+        payload: { benchSellIndex: 4 },
         type: "prep_command",
       },
     ]);
@@ -1803,7 +1803,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { benchSellIndex: 6 },
+        payload: { benchSellIndex: 4 },
         type: "prep_command",
       },
     ]);

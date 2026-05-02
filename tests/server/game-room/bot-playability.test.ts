@@ -916,6 +916,7 @@ const buildTrackedBattleUnitIdsForPlayer = (
 };
 
 const didPlayerLoseAllBattleUnitsForReport = (
+  playerId: string,
   battleResult: BotOnlyTestAccess["battleResultsByPlayer"] extends Map<string, infer TValue>
     ? TValue | undefined
     : never,
@@ -938,9 +939,44 @@ const didPlayerLoseAllBattleUnitsForReport = (
     };
   }
 
+  const survivorSnapshots = battleResult.survivorSnapshots as Array<{
+    ownerPlayerId?: string;
+    unitId?: string;
+    battleUnitId?: string;
+  }>;
+  const hasOwnerAwareSnapshots = survivorSnapshots.some(
+    (snapshot) => typeof snapshot?.ownerPlayerId === "string" && snapshot.ownerPlayerId.trim().length > 0,
+  );
+  if (hasOwnerAwareSnapshots) {
+    const survivingBattleUnitKeys = new Set(
+      survivorSnapshots
+        .flatMap((snapshot) => [
+          buildPlayerBattleUnitKey(snapshot?.ownerPlayerId, snapshot?.unitId),
+          buildPlayerBattleUnitKey(snapshot?.ownerPlayerId, snapshot?.battleUnitId),
+        ])
+        .filter((battleUnitKey) => battleUnitKey !== null),
+    );
+
+    for (const unitId of trackedUnitIds) {
+      const trackedBattleUnitKey = buildPlayerBattleUnitKey(playerId, unitId);
+      if (trackedBattleUnitKey && survivingBattleUnitKeys.has(trackedBattleUnitKey)) {
+        return {
+          battleStartUnitCount: trackedUnitIds.length,
+          playerWipedOut: false,
+        };
+      }
+    }
+
+    return {
+      battleStartUnitCount: trackedUnitIds.length,
+      playerWipedOut: true,
+    };
+  }
+
   const survivingUnitIds = new Set(
-    battleResult.survivorSnapshots
-      .map((snapshot) => typeof snapshot.unitId === "string" ? snapshot.unitId.trim() : "")
+    survivorSnapshots
+      .flatMap((snapshot) => [snapshot.unitId, snapshot.battleUnitId])
+      .map((unitId) => typeof unitId === "string" ? unitId.trim() : "")
       .filter((unitId) => unitId.length > 0),
   );
 
@@ -959,6 +995,19 @@ const didPlayerLoseAllBattleUnitsForReport = (
   };
 };
 
+const buildPlayerBattleUnitKey = (
+  playerId: string | undefined,
+  battleUnitId: string | undefined,
+): string | null => {
+  const normalizedPlayerId = typeof playerId === "string" ? playerId.trim() : "";
+  const normalizedBattleUnitId = typeof battleUnitId === "string" ? battleUnitId.trim() : "";
+  if (normalizedPlayerId.length === 0 || normalizedBattleUnitId.length === 0) {
+    return null;
+  }
+
+  return `${normalizedPlayerId}:${normalizedBattleUnitId}`;
+};
+
 const buildPlayerBattleOutcomes = (
   serverRoom: BotOnlyServerRoom,
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
@@ -966,6 +1015,7 @@ const buildPlayerBattleOutcomes = (
   playersAtBattleStart.map((playerAtBattleStart) => {
     const testAccess = getTestAccess(serverRoom);
     const battleOutcome = didPlayerLoseAllBattleUnitsForReport(
+      playerAtBattleStart.playerId,
       testAccess?.battleResultsByPlayer.get(playerAtBattleStart.playerId),
       playerAtBattleStart.trackedBattleUnitIds,
     );
@@ -1992,7 +2042,7 @@ const buildUnitBattleOutcomesForBattle = (
       const sourceUnitDuplicateCount = sourceUnitCountById.get(sourceUnitId) ?? 1;
       const basicSkillActivationCount = resolveBasicSkillActivationCountForBattleUnit(
         sourceUnitId,
-        metadata?.unitType ?? unit.displayName ?? undefined,
+        metadata?.unitType ?? undefined,
         metadata?.subUnitName ?? "",
         attackCount,
         combatLog,
@@ -3093,6 +3143,114 @@ test("buildPlayerConsequences keeps battle-start tracked units after controller 
     remainingLivesBefore: 2,
     remainingLivesAfter: 1,
     eliminatedAfter: false,
+  }]);
+});
+
+test("buildPlayerBattleOutcomes keeps duplicate unit ids scoped to their owner", () => {
+  const battleResultsByPlayer = new Map([
+    ["p1", {
+      survivors: 1,
+      survivorSnapshots: [{
+        unitId: "nazrin",
+        ownerPlayerId: "p2",
+      }],
+    }],
+  ]);
+  const fakeRoom = {
+    state: {
+      players: new Map(),
+    },
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer,
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(buildPlayerBattleOutcomes(fakeRoom, [{
+    playerId: "p1",
+    role: "raid",
+    hp: 100,
+    remainingLives: 2,
+    eliminated: false,
+    boardUnits: [{
+      cell: 31,
+      unitName: "ナズーリン",
+      unitType: "ranger",
+      unitId: "nazrin",
+      unitLevel: 1,
+      subUnitName: "",
+    }],
+    trackedBattleUnitIds: ["nazrin"],
+    benchUnits: [],
+    lastBattle: {
+      battleId: null,
+      opponentId: "",
+      won: false,
+      damageDealt: 0,
+      damageTaken: 0,
+      survivors: 0,
+      opponentSurvivors: 0,
+      survivorUnitTypes: [],
+      timeline: [],
+    },
+  }])).toEqual([{
+    playerId: "p1",
+    role: "raid",
+    battleStartUnitCount: 1,
+    playerWipedOut: true,
+  }]);
+});
+
+test("buildPlayerBattleOutcomes treats surviving hero battleUnitId as alive", () => {
+  const battleResultsByPlayer = new Map([
+    ["p1", {
+      survivors: 1,
+      survivorSnapshots: [{
+        unitId: "reimu",
+        battleUnitId: "hero-p1",
+        ownerPlayerId: "p1",
+      }],
+    }],
+  ]);
+  const fakeRoom = {
+    state: {
+      players: new Map(),
+    },
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer,
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(buildPlayerBattleOutcomes(fakeRoom, [{
+    playerId: "p1",
+    role: "raid",
+    hp: 100,
+    remainingLives: 2,
+    eliminated: false,
+    boardUnits: [],
+    trackedBattleUnitIds: ["hero-p1"],
+    benchUnits: [],
+    lastBattle: {
+      battleId: null,
+      opponentId: "",
+      won: false,
+      damageDealt: 0,
+      damageTaken: 0,
+      survivors: 0,
+      opponentSurvivors: 0,
+      survivorUnitTypes: [],
+      timeline: [],
+    },
+  }])).toEqual([{
+    playerId: "p1",
+    role: "raid",
+    battleStartUnitCount: 1,
+    playerWipedOut: false,
   }]);
 });
 

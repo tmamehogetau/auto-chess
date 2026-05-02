@@ -1521,10 +1521,10 @@ export class MatchRoomController {
     if (hasOwnerAwareSnapshots) {
       const survivingBattleUnitKeys = new Set(
         battleResult.survivorSnapshots
-          .map((snapshot) => this.buildRaidPlayerBattleUnitKey(
-            snapshot?.ownerPlayerId,
-            snapshot?.unitId,
-          ))
+          .flatMap((snapshot) => [
+            this.buildRaidPlayerBattleUnitKey(snapshot?.ownerPlayerId, snapshot?.unitId),
+            this.buildRaidPlayerBattleUnitKey(snapshot?.ownerPlayerId, snapshot?.battleUnitId),
+          ])
           .filter((battleUnitKey) => battleUnitKey !== null),
       );
 
@@ -1540,7 +1540,8 @@ export class MatchRoomController {
 
     const survivingUnitIds = new Set(
       battleResult.survivorSnapshots
-        .map((snapshot) => typeof snapshot.unitId === "string" ? snapshot.unitId.trim() : "")
+        .flatMap((snapshot) => [snapshot.unitId, snapshot.battleUnitId])
+        .map((unitId) => typeof unitId === "string" ? unitId.trim() : "")
         .filter((unitId) => unitId.length > 0),
     );
 
@@ -1584,6 +1585,7 @@ export class MatchRoomController {
     const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
     if (selectedHeroId.length > 0) {
       trackedUnitIds.add(selectedHeroId);
+      trackedUnitIds.add(`hero-${playerId}`);
     }
 
     return trackedUnitIds;

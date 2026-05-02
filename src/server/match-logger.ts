@@ -138,7 +138,10 @@ export interface PlayerActionLog {
     | "shop_refresh"
     | "upgrade_special_unit"
     | "buy_boss_unit"
-    | "shop_lock";
+    | "shop_lock"
+    | "prep_income"
+    | "raid_phase_success_bonus"
+    | "battle_economy_bonus";
   timestamp: number;
   details: {
     unitType?: string;

@@ -42,6 +42,9 @@ const hpIconAssetPath = resolve(
   process.cwd(),
   "src/client/mock-assets/battle-icon-hp.svg",
 );
+
+const readContractText = (path: string): string =>
+  readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 const levelIconAssetPath = resolve(
   process.cwd(),
   "src/client/mock-assets/battle-icon-level.svg",
@@ -87,7 +90,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("uses mansion-stage illustration motifs instead of temporary target ornaments", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const remiliaStageSvg = readFileSync(remiliaStageAssetPath, "utf8");
     const remiliaOrnamentsSvg = readFileSync(remiliaOrnamentsAssetPath, "utf8");
 
@@ -104,7 +107,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("uses a desktop-first board-dominant frame instead of the old dashboard layout", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
 
     expect(css).toContain(".battle-mock-stage");
     expect(css).toContain(".battle-mock-board-frame");
@@ -118,7 +121,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("adds image-faithful atmosphere layers and a rail-style bench hud", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const html = readFileSync(battleMockHtmlPath, "utf8");
     const js = readFileSync(battleMockJsPath, "utf8");
 
@@ -135,7 +138,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("keeps hud gutters outside the board playfield at the desktop target", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
 
     expect(css).toContain("--panel-rail:");
     expect(css).toContain("--panel-glass:");
@@ -157,7 +160,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("pushes the 80 point visual pass with stage depth and connected hud wings", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
 
     expect(css).toContain("--stage-fog:");
     expect(css).toContain("--board-aura:");
@@ -177,7 +180,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("moves the battle mock away from rounded web cards into Koumakan stage panels", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const js = readFileSync(battleMockJsPath, "utf8");
 
     expect(js).toContain("stageIllustrationAsset");
@@ -200,7 +203,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("embeds the central board into the mansion floor instead of a floating glass plate", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const html = readFileSync(battleMockHtmlPath, "utf8");
 
     expect(html).toContain("data-battle-mock-board-floor");
@@ -214,7 +217,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("mounts the top hud and side huds as mansion architecture instead of web overlays", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
 
     expect(css).toContain("--curtain-red:");
     expect(css).toContain("--top-hud-window-cutout:");
@@ -232,7 +235,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("adds side wall architecture that locks the hud panels into the stage", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const html = readFileSync(battleMockHtmlPath, "utf8");
 
     expect(html).toContain("data-battle-mock-side-architecture");
@@ -246,7 +249,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("compresses the top status into segmented battle tabs", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const js = readFileSync(battleMockJsPath, "utf8");
     const html = readFileSync(battleMockHtmlPath, "utf8");
 
@@ -266,7 +269,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("renders board units as standees instead of rounded portrait cards", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const portraitRule = css.slice(
       css.indexOf(".battle-mock-cell-portrait"),
       css.indexOf(".battle-mock-unit-combat-hud"),
@@ -283,7 +286,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("keeps the battle banner as transient feedback instead of persistent board chrome", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const html = readFileSync(battleMockHtmlPath, "utf8");
     const js = readFileSync(battleMockJsPath, "utf8");
 
@@ -302,7 +305,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("pushes the battle board toward the reference illustration with perspective and unit status plates", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const js = readFileSync(battleMockJsPath, "utf8");
 
     expect(css).toContain("transform: perspective(920px) rotateX(7deg) translateY(-6px);");
@@ -322,7 +325,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("removes redundant lane plaques while keeping the bottom battle log readable", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const html = readFileSync(battleMockHtmlPath, "utf8");
     const js = readFileSync(battleMockJsPath, "utf8");
 
@@ -344,7 +347,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("connects the board and battle log as one mansion floor plane", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
 
     expect(css).toContain("bottom: -122px;");
     expect(css).toContain("height: 206px;");
@@ -363,7 +366,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("trims duplicate combat HUD copy and makes boss/player portraits primary", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const js = readFileSync(battleMockJsPath, "utf8");
 
     expect(js).not.toContain("フェーズHP を削り切る準備中");
@@ -383,7 +386,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("pushes the stage toward the red-moon courtyard and stone battlefield reference", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const html = readFileSync(battleMockHtmlPath, "utf8");
 
     expect(html).toContain("data-battle-mock-skyline");
@@ -422,7 +425,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("keeps the battlefield readable by removing noisy cell labels and separating the log", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const js = readFileSync(battleMockJsPath, "utf8");
 
     expect(js).not.toContain("cellElement.append(createZoneTag");
@@ -447,7 +450,7 @@ describe("battle mock task 3 contract", () => {
   });
 
   test("uses a theme board-floor image while keeping board gameplay data in DOM", () => {
-    const css = readFileSync(battleMockCssPath, "utf8");
+    const css = readContractText(battleMockCssPath);
     const js = readFileSync(battleMockJsPath, "utf8");
     const html = readFileSync(battleMockHtmlPath, "utf8");
 

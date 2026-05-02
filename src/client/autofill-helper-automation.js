@@ -1471,7 +1471,7 @@ export function buildOkinaHeroSubDecisionDiagnostic(player) {
       bestToFrontRatio: null,
       bestToCurrentRatio: null,
       decision: currentHostPlacement ? "keep_current" : "keep_front",
-      reason: "no_candidate",
+      reason: currentHostPlacement ? "current_host_only" : "no_candidate",
     };
   }
 

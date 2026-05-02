@@ -767,14 +767,14 @@ describe("GameRoom Integration with Feature Flags", () => {
           expect(resolvedRin.unitType).toBe("vanguard");
           expect(resolvedRin.unitId).toBe("rin");
           expect(resolvedRin.factionId).toBe("chireiden");
-          expect(resolvedRin.hp).toBe(620);
+          expect(resolvedRin.hp).toBe(680);
           expect(resolvedRin.attack).toBe(36);
           expect(resolvedRin.attackSpeed).toBe(0.85);
           expect(resolvedRin.movementSpeed).toBe(2);
           expect(resolvedRin.range).toBe(1);
           expect(resolvedRin.critRate).toBe(0);
           expect(resolvedRin.critDamageMultiplier).toBe(1.5);
-          expect(resolvedRin.damageReduction).toBe(5);
+          expect(resolvedRin.damageReduction).toBe(8);
 
           expect(resolvedZanmu.unitType).toBe("mage");
           expect(resolvedZanmu.unitId).toBe("zanmu");
@@ -817,11 +817,13 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           controller.boardPlacementsByPlayer.set(sessionId, [
             { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 3, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
+            { cell: 4, unitType: "vanguard", unitId: "byakuren", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
-            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+            { unitType: "ranger", unitId: "tojiko", rarity: 2, cost: 2 },
           ]);
 
           const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;
@@ -865,11 +867,13 @@ describe("GameRoom Integration with Feature Flags", () => {
 
           controller.boardPlacementsByPlayer.set(sessionId, [
             { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
-            { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
-            { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
+            { cell: 1, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 2, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
+            { cell: 3, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
+            { cell: 4, unitType: "vanguard", unitId: "byakuren", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
-            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+            { unitType: "ranger", unitId: "tojiko", rarity: 2, cost: 2 },
           ]);
 
           const goldBefore = serverRoom.state.players.get(sessionId)?.gold ?? 0;

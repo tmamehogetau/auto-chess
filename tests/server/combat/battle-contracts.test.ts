@@ -69,7 +69,7 @@ describe("battle contracts", () => {
     const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
     target.damageReduction = 50;
 
-    expect(calculateAttackDamage(attacker, target, false, false)).toBe(10);
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(5);
 
     target.damageReduction = 99;
     expect(calculateAttackDamage(attacker, target, false, false)).toBe(1);
@@ -80,10 +80,10 @@ describe("battle contracts", () => {
     const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
     target.damageReduction = 20;
 
-    expect(calculateAttackDamage(attacker, target, false, false)).toBe(16);
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(8);
 
     target.buffModifiers.defenseMultiplier = 1.25;
-    expect(calculateAttackDamage(attacker, target, false, false)).toBe(12);
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(6);
   });
 
   test("damage helper applies temporary incoming damage modifiers", () => {
@@ -91,10 +91,23 @@ describe("battle contracts", () => {
     const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
 
     target.damageTakenMultiplier = 1.1;
-    expect(calculateAttackDamage(attacker, target, false, false)).toBe(22);
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(11);
 
     target.damageTakenMultiplier = 0.75;
-    expect(calculateAttackDamage(attacker, target, false, false)).toBe(15);
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(7);
+  });
+
+  test("damage helper applies low HP target bonus only below half health", () => {
+    const attacker = createTestBattleUnit({ cell: 0, unitType: "ranger", unitLevel: 1, attack: 100 }, "left", 0);
+    const target = createTestBattleUnit({ cell: 0, unitType: "vanguard", unitLevel: 1 }, "right", 0);
+    (attacker as BattleUnit & { bonusDamageVsLowHpTarget: number }).bonusDamageVsLowHpTarget = 0.2;
+    target.maxHp = 1000;
+
+    target.hp = 500;
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(50);
+
+    target.hp = 499;
+    expect(calculateAttackDamage(attacker, target, false, false)).toBe(60);
   });
 
   test("hero-exclusive placements resolve their dedicated combat stats instead of generic melee defaults", () => {
@@ -207,7 +220,7 @@ describe("battle contracts", () => {
     const simulator = new BattleSimulator();
     const createDurableUnit = (side: "left" | "right", index: number): BattleUnit => {
       const unit = createTestBattleUnit(
-        { cell: index, unitType: "ranger", unitLevel: 1, attack: 1, attackSpeed: 1, range: 99 },
+        { cell: index, unitType: "ranger", unitLevel: 1, attack: side === "left" ? 4 : 1, attackSpeed: 1, range: 99 },
         side,
         index,
       );

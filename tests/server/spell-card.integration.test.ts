@@ -65,9 +65,9 @@ describe("SpellCard Integration", () => {
       expect(spell?.name).toBe("紅符「スカーレットシュート」");
       expect(spell?.roundRange).toEqual([1, 4]);
       expect(spell?.category).toBe("instantLaser");
-      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.type).toBe("bossSkill");
       expect(spell?.effect.target).toBe("raid");
-      expect(spell?.effect.value).toBe(50);
+      expect(spell?.effect.value).toBe(2.1);
     });
 
     it("必殺「ハートブレイク」が定義されている", () => {
@@ -76,9 +76,9 @@ describe("SpellCard Integration", () => {
       expect(spell?.name).toBe("必殺「ハートブレイク」");
       expect(spell?.roundRange).toEqual([5, 8]);
       expect(spell?.category).toBe("instantLaser");
-      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.type).toBe("bossSkill");
       expect(spell?.effect.target).toBe("raid");
-      expect(spell?.effect.value).toBe(65);
+      expect(spell?.effect.value).toBe(2.5);
     });
 
     it("神槍「スピア・ザ・グングニル」が定義されている", () => {
@@ -87,9 +87,9 @@ describe("SpellCard Integration", () => {
       expect(spell?.name).toBe("神槍「スピア・ザ・グングニル」");
       expect(spell?.roundRange).toEqual([9, 11]);
       expect(spell?.category).toBe("instantLaser");
-      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.type).toBe("bossSkill");
       expect(spell?.effect.target).toBe("raid");
-      expect(spell?.effect.value).toBe(80);
+      expect(spell?.effect.value).toBe(3.0);
     });
 
     it("「紅色の幻想郷」が定義されている", () => {
@@ -98,9 +98,9 @@ describe("SpellCard Integration", () => {
       expect(spell?.name).toBe("「紅色の幻想郷」");
       expect(spell?.roundRange).toEqual([12, 12]);
       expect(spell?.category).toBe("lastWord");
-      expect(spell?.effect.type).toBe("damage");
+      expect(spell?.effect.type).toBe("bossSkill");
       expect(spell?.effect.target).toBe("raid");
-      expect(spell?.effect.value).toBe(100);
+      expect(spell?.effect.value).toBe(0.07);
     });
 
     // 追加のスペルカード定義確認テスト
@@ -113,39 +113,45 @@ describe("SpellCard Integration", () => {
       expect(area1).toBeDefined();
       expect(area1?.name).toBe("紅符「不夜城レッド」");
       expect(area1?.category).toBe("areaAttack");
-      expect(area1?.effect.value).toBe(40);
+      expect(area1?.effect.type).toBe("bossSkill");
+      expect(area1?.effect.value).toBe(1.6);
 
       const area2 = SPELL_CARDS.find((s) => s.id === "area-2");
       expect(area2).toBeDefined();
       expect(area2?.name).toBe("紅魔「スカーレットデビル」");
       expect(area2?.category).toBe("areaAttack");
-      expect(area2?.effect.value).toBe(55);
+      expect(area2?.effect.type).toBe("bossSkill");
+      expect(area2?.effect.value).toBe(2.0);
 
       const area3 = SPELL_CARDS.find((s) => s.id === "area-3");
       expect(area3).toBeDefined();
       expect(area3?.name).toBe("魔符「全世界ナイトメア」");
       expect(area3?.category).toBe("areaAttack");
-      expect(area3?.effect.value).toBe(70);
+      expect(area3?.effect.type).toBe("bossSkill");
+      expect(area3?.effect.value).toBe(1.5);
     });
 
     it("突進系スペルが定義されている", () => {
       const rush1 = SPELL_CARDS.find((s) => s.id === "rush-1");
       expect(rush1).toBeDefined();
-      expect(rush1?.name).toBe("神鬼「レミリアストーカー」");
+      expect(rush1?.name).toBe("夜符「デーモンキングクレイドル」");
       expect(rush1?.category).toBe("rush");
-      expect(rush1?.effect.value).toBe(45);
+      expect(rush1?.effect.type).toBe("bossSkill");
+      expect(rush1?.effect.value).toBe(1.9);
 
       const rush2 = SPELL_CARDS.find((s) => s.id === "rush-2");
       expect(rush2).toBeDefined();
-      expect(rush2?.name).toBe("夜符「デーモンキングクレイドル」");
+      expect(rush2?.name).toBe("夜符「バッドレディスクランブル」");
       expect(rush2?.category).toBe("rush");
-      expect(rush2?.effect.value).toBe(60);
+      expect(rush2?.effect.type).toBe("bossSkill");
+      expect(rush2?.effect.value).toBe(2.2);
 
       const rush3 = SPELL_CARDS.find((s) => s.id === "rush-3");
       expect(rush3).toBeDefined();
       expect(rush3?.name).toBe("夜王「ドラキュラクレイドル」");
       expect(rush3?.category).toBe("rush");
-      expect(rush3?.effect.value).toBe(75);
+      expect(rush3?.effect.type).toBe("bossSkill");
+      expect(rush3?.effect.value).toBe(2.6);
     });
 
     it("R5以降のスペルが未実装値0ではない", () => {
@@ -225,7 +231,7 @@ describe("SpellCard Integration", () => {
       expect(declaredSpell?.id).toBe("instant-1");
     });
 
-    it("戦闘フェーズ終了時にスペル効果が適用される", () => {
+    it("Lv1ボススペルは戦闘フェーズ終了時のプレイヤーHPダメージを発生させない", () => {
       // Prep → Battleへ遷移してスペルを宣言
       const prepDeadline = controller.prepDeadlineAtMs;
       expect(prepDeadline).not.toBeNull();
@@ -247,14 +253,11 @@ describe("SpellCard Integration", () => {
         controller.advanceByTime(controller.phaseDeadlineAtMs + 100);
       }
 
-      // スペル効果（ダメージ）が適用されているか確認
       const hpAfterBattle1 = controller.getPlayerHp(PLAYER1);
       const hpAfterBattle2 = controller.getPlayerHp(PLAYER2);
 
-      // 注: 実際には戦闘ダメージも加算されるため、完全なテストにはモックが必要
-      // ここではHPが減少していることを確認
-      expect(hpAfterBattle1).toBeLessThan(hpBeforeBattle1);
-      expect(hpAfterBattle2).toBeLessThan(hpBeforeBattle2);
+      expect(hpAfterBattle1).toBe(hpBeforeBattle1);
+      expect(hpAfterBattle2).toBe(hpBeforeBattle2);
     });
 
     it("効果適用後は使用済みスペルIDを保持する", () => {

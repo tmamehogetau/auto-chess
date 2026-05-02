@@ -30,7 +30,7 @@ const DEFAULT_STANDARD_UNIT_PROGRESSION_BONUS: UnitProgressionBonusConfig = {
 const STANDARD_UNIT_PROGRESSION_BONUS_OVERRIDES: Readonly<Partial<Record<UnitId, UnitProgressionBonusConfig>>> = {};
 
 export const TOUHOU_UNITS: readonly TouhouUnit[] = [
-  { unitId: "rin", displayName: "火焔猫燐", unitType: "vanguard", cost: 1, hp: 620, attack: 36, attackSpeed: 0.85, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 5, factionId: "chireiden" },
+  { unitId: "rin", displayName: "火焔猫燐", unitType: "vanguard", cost: 1, hp: 680, attack: 36, attackSpeed: 0.85, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 8, factionId: "chireiden" },
   { unitId: "satori", displayName: "古明地さとり", unitType: "mage", cost: 3, hp: 820, attack: 70, attackSpeed: 0.9, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 3, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "chireiden" },
   { unitId: "koishi", displayName: "古明地こいし", unitType: "assassin", cost: 2, hp: 580, attack: 68, attackSpeed: 1.05, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "chireiden" },
   { unitId: "utsuho", displayName: "霊烏路空", unitType: "mage", cost: 4, hp: 960, attack: 108, attackSpeed: 0.8, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 4, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "chireiden" },
@@ -51,9 +51,9 @@ export const TOUHOU_UNITS: readonly TouhouUnit[] = [
   { unitId: "sekibanki", displayName: "赤蛮奇", unitType: "assassin", cost: 2, hp: 520, attack: 64, attackSpeed: 1.1, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "grassroot_network" },
   { unitId: "kagerou", displayName: "今泉影狼", unitType: "vanguard", cost: 2, hp: 740, attack: 56, attackSpeed: 0.95, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 5, factionId: "grassroot_network" },
 
-  { unitId: "tsukasa", displayName: "菅牧典", unitType: "mage", cost: 2, hp: 580, attack: 55, attackSpeed: 0.95, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 4, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kou_ryuudou" },
-  { unitId: "megumu", displayName: "飯綱丸龍", unitType: "ranger", cost: 3, hp: 680, attack: 76, attackSpeed: 1.05, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 4, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kou_ryuudou" },
-  { unitId: "chimata", displayName: "天弓千亦", unitType: "mage", cost: 4, hp: 900, attack: 84, attackSpeed: 0.95, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 3, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kou_ryuudou" },
+  { unitId: "tsukasa", displayName: "菅牧典", unitType: "mage", cost: 3, hp: 580, attack: 55, attackSpeed: 0.95, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 4, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kou_ryuudou" },
+  { unitId: "megumu", displayName: "飯綱丸龍", unitType: "ranger", cost: 4, hp: 680, attack: 76, attackSpeed: 1.05, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 4, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kou_ryuudou" },
+  { unitId: "chimata", displayName: "天弓千亦", unitType: "mage", cost: 2, hp: 670, attack: 62, attackSpeed: 0.95, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 3, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kou_ryuudou" },
   { unitId: "momoyo", displayName: "姫虫百々世", unitType: "vanguard", cost: 2, hp: 740, attack: 54, attackSpeed: 0.9, movementSpeed: DEFAULT_MELEE_MOVEMENT_SPEED, range: 1, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 5, factionId: "kou_ryuudou" },
 
   { unitId: "clownpiece", displayName: "クラウンピース", unitType: "ranger", cost: 2, hp: 580, attack: 53, attackSpeed: 1.1, movementSpeed: DEFAULT_MOVEMENT_SPEED, range: 4, critRate: 0, critDamageMultiplier: 1.5, damageReduction: 0, factionId: "kanjuden" },

@@ -37,10 +37,20 @@ export interface TouhouFactionTierEffect {
   };
   special?: {
     reflectRatio?: number;
+    factionDamageTakenMultiplier?: number;
+    reflectPreventedDamage?: boolean;
+    damageDealtMultiplier?: number;
     ultimateDamageMultiplier?: number;
     bonusDamageVsDebuffedTarget?: number;
+    bonusDamageVsLowHpTarget?: number;
     shopCostReduction?: number;
+    battleStartShieldMaxHpRatio?: number;
     firstFreeRefreshes?: number;
+    battleEndGoldBonus?: number;
+    initialManaBonus?: number;
+    battleStartAttackSpeedMultiplier?: number;
+    battleStartAttackSpeedDurationMs?: number;
+    manaGainMultiplier?: number;
     debuffImmunityCategories?: string[];
   };
 }
@@ -92,7 +102,35 @@ export const SYNERGY_DEFINITIONS: Record<BoardUnitType, SynergyDefinition> = {
   },
 };
 
-export const SCARLET_MANSION_ARCHETYPES = ["meiling", "sakuya", "patchouli"] as const;
+export interface RemiliaBossPassiveValues {
+  bossSideDamageTakenMultiplier: number;
+  highHpAttackMultiplier: number;
+  lifestealRatio: number;
+}
+
+export function resolveRemiliaBossPassiveValues(unitLevel: number = 1): RemiliaBossPassiveValues {
+  if (unitLevel >= 7) {
+    return {
+      bossSideDamageTakenMultiplier: 0.78,
+      highHpAttackMultiplier: 1.10,
+      lifestealRatio: 0.10,
+    };
+  }
+
+  if (unitLevel >= 4) {
+    return {
+      bossSideDamageTakenMultiplier: 0.84,
+      highHpAttackMultiplier: 1.06,
+      lifestealRatio: 0.06,
+    };
+  }
+
+  return {
+    bossSideDamageTakenMultiplier: 0.90,
+    highHpAttackMultiplier: 1.03,
+    lifestealRatio: 0.03,
+  };
+}
 
 export const TOUHOU_FACTION_THRESHOLDS: Record<TouhouFactionId, readonly number[]> = {
   chireiden: [2, 4],
@@ -106,15 +144,12 @@ export const TOUHOU_FACTION_THRESHOLDS: Record<TouhouFactionId, readonly number[
 export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, SynergyDefinition>> = {
   chireiden: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.chireiden,
-    effects: {
-      defense: [0, 1],
-    },
+    effects: {},
   },
   myourenji: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.myourenji,
     effects: {
-      hpMultiplier: [1.05, 1.1, 1.15],
-      attackPower: [0, 1, 2],
+      hpMultiplier: [1.06, 1.1, 1.15],
     },
   },
   shinreibyou: {
@@ -124,7 +159,7 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
   grassroot_network: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.grassroot_network,
     effects: {
-      attackPower: [1, 1],
+      attackSpeedMultiplier: [1.1, 1.15],
     },
   },
   kou_ryuudou: {
@@ -133,9 +168,7 @@ export const TOUHOU_FACTION_DEFINITIONS: Partial<Record<TouhouFactionId, Synergy
   },
   kanjuden: {
     thresholds: TOUHOU_FACTION_THRESHOLDS.kanjuden,
-    effects: {
-      attackPower: [1, 2],
-    },
+    effects: {},
   },
 };
 
@@ -150,26 +183,43 @@ export const TOUHOU_FACTION_EFFECT_IDS: Partial<Record<TouhouFactionId, TouhouFa
 
 const TOUHOU_FACTION_SPECIAL_EFFECTS: Partial<Record<TouhouFactionId, Array<TouhouFactionTierEffect['special'] | undefined>>> = {
   chireiden: [
-    { reflectRatio: 0.1 },
-    { reflectRatio: 0.2 },
+    { factionDamageTakenMultiplier: 0.94, reflectPreventedDamage: true },
+    { factionDamageTakenMultiplier: 0.88, reflectPreventedDamage: true },
   ],
   myourenji: [
-    undefined,
-    { shopCostReduction: 1 },
-    { shopCostReduction: 1 },
+    { battleStartShieldMaxHpRatio: 0.06 },
+    { battleStartShieldMaxHpRatio: 0.1 },
+    { battleStartShieldMaxHpRatio: 0.14, shopCostReduction: 1 },
   ],
   shinreibyou: [
-    { ultimateDamageMultiplier: 1.1 },
-    { ultimateDamageMultiplier: 1.2, bonusDamageVsDebuffedTarget: 0.12 },
-    { ultimateDamageMultiplier: 1.35, bonusDamageVsDebuffedTarget: 0.18 },
+    { ultimateDamageMultiplier: 1.1, initialManaBonus: 10 },
+    { ultimateDamageMultiplier: 1.18, initialManaBonus: 20, bonusDamageVsDebuffedTarget: 0.12 },
+    { ultimateDamageMultiplier: 1.3, initialManaBonus: 35, bonusDamageVsDebuffedTarget: 0.18, manaGainMultiplier: 1.15 },
+  ],
+  grassroot_network: [
+    undefined,
+    { bonusDamageVsLowHpTarget: 0.2 },
   ],
   kou_ryuudou: [
-    { shopCostReduction: 1 },
-    { shopCostReduction: 1, firstFreeRefreshes: 1 },
+    { battleEndGoldBonus: 1, initialManaBonus: 10 },
+    {
+      battleEndGoldBonus: 2,
+      initialManaBonus: 20,
+      battleStartAttackSpeedMultiplier: 1.15,
+      battleStartAttackSpeedDurationMs: 6000,
+    },
   ],
   kanjuden: [
-    { debuffImmunityCategories: ['crowd_control'] },
-    { debuffImmunityCategories: ['crowd_control', 'stat_down', 'dot'] },
+    {
+      damageDealtMultiplier: 1.12,
+      initialManaBonus: 15,
+      debuffImmunityCategories: ['crowd_control'],
+    },
+    {
+      damageDealtMultiplier: 1.25,
+      initialManaBonus: 35,
+      debuffImmunityCategories: ['crowd_control', 'stat_down', 'dot'],
+    },
   ],
 };
 
@@ -218,22 +268,8 @@ export function getTouhouFactionTierEffect(
   return result;
 }
 
-export function calculateScarletMansionSynergy(
-  boardPlacements: BoardUnitPlacement[],
-): boolean {
-  const scarletCount = boardPlacements.filter((placement) =>
-    placement.archetype !== undefined
-    && (SCARLET_MANSION_ARCHETYPES as readonly string[]).includes(placement.archetype),
-  ).length;
-
-  return scarletCount >= 2;
-}
-
-export function applyScarletMansionSynergyToBoss(
-  unit: BattleUnit,
-  synergyActive: boolean,
-): void {
-  if (!synergyActive || !unit.isBoss) {
+export function applyRemiliaBossPassiveToBoss(unit: BattleUnit): void {
+  if (!unit.isBoss) {
     return;
   }
 
@@ -241,14 +277,7 @@ export function applyScarletMansionSynergyToBoss(
     return;
   }
 
-  unit.buffModifiers.attackMultiplier *= 1.1;
-}
-
-export function hasScarletMansionBossLifesteal(
-  boardPlacements: BoardUnitPlacement[],
-): boolean {
-  return calculateScarletMansionSynergy(boardPlacements)
-    && boardPlacements.some((placement) => placement.archetype === "remilia");
+  unit.buffModifiers.attackMultiplier *= resolveRemiliaBossPassiveValues(unit.unitLevel).highHpAttackMultiplier;
 }
 
 /**

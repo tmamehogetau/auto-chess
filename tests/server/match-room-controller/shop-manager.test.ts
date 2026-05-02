@@ -35,6 +35,8 @@ type ShopManagerHarness = {
   sharedPool: SharedPool | null;
 };
 
+type TouhouLevelUpGoldBonusClaimKey = string;
+
 function createHarness(options?: {
   rosterFlags?: FeatureFlags;
   enableSharedPool?: boolean;
@@ -48,6 +50,8 @@ function createHarness(options?: {
   benchUnits?: ShopManagerBenchUnit[];
   ownedUnits?: ShopManagerOwnedUnits;
   gold?: number;
+  touhouLevelUpGoldBonusClaimKeys?: Set<TouhouLevelUpGoldBonusClaimKey>;
+  touhouBonusFreeRefreshCount?: number;
 }): ShopManagerHarness {
   const state = new GameLoopState(["p1", "p2"]);
   const rosterFlags = options?.rosterFlags ?? BASE_FLAGS;
@@ -69,6 +73,10 @@ function createHarness(options?: {
     shopPurchaseCountByPlayer: new Map([["p1", 0]]),
     shopLockedByPlayer: new Map([["p1", false]]),
     kouRyuudouFreeRefreshConsumedByPlayer: new Map([["p1", false]]),
+    touhouBonusFreeRefreshCountByPlayer: new Map([["p1", options?.touhouBonusFreeRefreshCount ?? 0]]),
+    touhouLevelUpGoldBonusClaimKeysByPlayer: new Map([
+      ["p1", options?.touhouLevelUpGoldBonusClaimKeys ?? new Set<TouhouLevelUpGoldBonusClaimKey>()],
+    ]),
     rumorInfluenceEligibleByPlayer: new Map([["p1", false]]),
     shopOffersByPlayer: new Map([["p1", options?.initialOffers ?? []]]),
     bossShopOffersByPlayer: new Map([["p1", options?.bossOffers ?? []]]),
@@ -141,6 +149,120 @@ describe("ShopManager", () => {
       assassin: 0,
     });
     expect(sharedPool.getAvailableByUnitId("nazrin", 1)).toBe(before - 1);
+  });
+
+  it("does not grant gold when buying Chimata without a level up", () => {
+    const touhouRosterFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+    };
+    const { manager, deps } = createHarness({
+      rosterFlags: touhouRosterFlags,
+      gold: 5,
+      initialOffers: [{ unitType: "mage", unitId: "chimata", rarity: 2, cost: 2 }],
+    });
+
+    manager.buyShopOfferBySlot("p1", 0);
+
+    expect(deps.goldByPlayer.get("p1")).toBe(5);
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual([
+      { unitType: "mage", unitId: "chimata", cost: 2, unitLevel: 1, unitCount: 1 },
+    ]);
+  });
+
+  it("grants Chimata gold only when a purchase raises Chimata's level", () => {
+    const touhouRosterFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+    };
+    const { manager, deps } = createHarness({
+      rosterFlags: touhouRosterFlags,
+      gold: 5,
+      initialOffers: [{ unitType: "mage", unitId: "chimata", rarity: 2, cost: 2 }],
+      replacementOffer: { unitType: "mage", unitId: "chimata", rarity: 2, cost: 2 },
+    });
+
+    manager.buyShopOfferBySlot("p1", 0);
+    manager.buyShopOfferBySlot("p1", 0);
+
+    expect(deps.goldByPlayer.get("p1")).toBe(6);
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual([
+      { unitType: "mage", unitId: "chimata", cost: 4, unitLevel: 2, unitCount: 2 },
+    ]);
+  });
+
+  it("grants Chimata gold on each level up and bonus free refreshes at level 4 and level 7", () => {
+    const touhouRosterFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+    };
+    const { manager, deps } = createHarness({
+      rosterFlags: touhouRosterFlags,
+      gold: 5,
+      initialOffers: [{ unitType: "mage", unitId: "chimata", rarity: 2, cost: 2 }],
+      replacementOffer: { unitType: "mage", unitId: "chimata", rarity: 2, cost: 2 },
+    });
+
+    for (let index = 0; index < 8; index += 1) {
+      manager.buyShopOfferBySlot("p1", 0);
+    }
+
+    expect(deps.goldByPlayer.get("p1")).toBe(11);
+    expect(deps.touhouBonusFreeRefreshCountByPlayer.get("p1")).toBe(3);
+    expect(deps.benchUnitsByPlayer.get("p1")).toEqual([
+      { unitType: "mage", unitId: "chimata", cost: 16, unitLevel: 7, unitCount: 8 },
+    ]);
+  });
+
+  it("grants Chimata level refund when a purchase upgrades the board copy", () => {
+    const touhouRosterFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+    };
+    const { manager, deps } = createHarness({
+      rosterFlags: touhouRosterFlags,
+      gold: 5,
+      initialOffers: [{ unitType: "mage", unitId: "chimata", rarity: 2, cost: 2 }],
+      boardPlacements: [{
+        cell: 0,
+        unitType: "mage",
+        unitId: "chimata",
+        unitLevel: 3,
+        unitCount: 3,
+        sellValue: 6,
+      }],
+    });
+
+    manager.buyShopOfferBySlot("p1", 0);
+
+    expect(deps.goldByPlayer.get("p1")).toBe(6);
+    expect(deps.touhouBonusFreeRefreshCountByPlayer.get("p1")).toBe(1);
+    expect(deps.boardPlacementsByPlayer.get("p1")).toEqual([{
+      cell: 0,
+      unitType: "mage",
+      unitId: "chimata",
+      unitLevel: 4,
+      unitCount: 4,
+      sellValue: 8,
+    }]);
+  });
+
+  it("spends Chimata bonus free refreshes before charging gold for rerolls", () => {
+    const touhouRosterFlags: FeatureFlags = {
+      ...BASE_FLAGS,
+      enableTouhouRoster: true,
+    };
+    const { manager, deps } = createHarness({
+      rosterFlags: touhouRosterFlags,
+      gold: 5,
+      touhouBonusFreeRefreshCount: 2,
+    });
+
+    manager.refreshShopByCount("p1", 2);
+
+    expect(deps.goldByPlayer.get("p1")).toBe(5);
+    expect(deps.touhouBonusFreeRefreshCountByPlayer.get("p1")).toBe(0);
+    expect(deps.shopRefreshCountByPlayer.get("p1")).toBe(2);
   });
 
   it("marks boss shop offers as purchased and does not duplicate bench units on repeat buys", () => {

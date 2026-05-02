@@ -61,6 +61,7 @@ export class SpellCardHandler {
   private matchLogger: MatchLogger | null;
 
   private declaredSpell: SpellCard | null = null;
+  private declaredSpellRoundIndex: number | null = null;
   private readonly usedSpellIds: string[] = [];
   private readonly spellCombatModifiersByPlayer: Map<string, SpellCombatModifiers> =
     new Map();
@@ -96,6 +97,7 @@ export class SpellCardHandler {
    */
   public setDeclaredSpell(spell: SpellCard | null): void {
     this.declaredSpell = spell;
+    this.declaredSpellRoundIndex = null;
   }
 
   /**
@@ -103,6 +105,7 @@ export class SpellCardHandler {
    */
   public clearDeclaredSpell(): void {
     this.declaredSpell = null;
+    this.declaredSpellRoundIndex = null;
   }
 
   /**
@@ -144,15 +147,25 @@ export class SpellCardHandler {
       return;
     }
 
-    const availableSpells = getSpellCardSetForRound(roundIndex);
+    if (this.declaredSpell && this.declaredSpellRoundIndex === roundIndex) {
+      return;
+    }
+
+    const availableSpells = getSpellCardSetForRound(roundIndex)
+      .filter((spell) => !this.usedSpellIds.includes(spell.id));
 
     if (availableSpells.length === 0) {
       this.declaredSpell = null;
+      this.declaredSpellRoundIndex = roundIndex;
       return;
     }
 
     // 簡易版：最初のスペルを選択
     this.declaredSpell = availableSpells[0] ?? null;
+    this.declaredSpellRoundIndex = roundIndex;
+    if (this.declaredSpell && !this.usedSpellIds.includes(this.declaredSpell.id)) {
+      this.usedSpellIds.push(this.declaredSpell.id);
+    }
   }
 
   /**
@@ -169,11 +182,13 @@ export class SpellCardHandler {
     const availableSpells = getSpellCardSetForRound(roundIndex);
     const spell = availableSpells.find((s) => s.id === spellId);
 
-    if (!spell) {
+    if (!spell || this.usedSpellIds.includes(spell.id)) {
       return false;
     }
 
     this.declaredSpell = spell;
+    this.declaredSpellRoundIndex = roundIndex;
+    this.usedSpellIds.push(spell.id);
     return true;
   }
 

@@ -1089,6 +1089,48 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("Okina hero sub can be reattached from an early host to a stronger occupied host", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+        enableSubUnitSystem: true,
+        enableTouhouRoster: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+
+        const started = controller.startWithResolvedRoles(2_000, ["p1", "p2", "p3", "p4"], {
+          bossPlayerId: "p2",
+          selectedHeroByPlayer: new Map([
+            ["p1", "reimu"],
+            ["p3", "marisa"],
+            ["p4", "okina"],
+          ]),
+          selectedBossByPlayer: new Map([["p2", "remilia"]]),
+        });
+
+        expect(started).toBe(true);
+        expect(controller.applyPrepPlacementForPlayer("p4", [
+          { cell: 30, unitType: "vanguard", unitId: "yoshika" },
+          { cell: 31, unitType: "mage", unitId: "hecatia" },
+        ])).toMatchObject({ success: true });
+
+        expect(controller.applyHeroPlacementForPlayer("p4", 30)).toMatchObject({ success: true });
+        expect(controller.getPlayerStatus("p4").boardSubUnits).toContain("30:hero:okina");
+
+        expect(controller.applyHeroPlacementForPlayer("p4", 31)).toMatchObject({ success: true });
+        expect(controller.getPlayerStatus("p4").boardSubUnits).toContain("31:hero:okina");
+        expect(controller.getPlayerStatus("p4").boardSubUnits).not.toContain("30:hero:okina");
+      },
+    );
+  });
+
   test("getPlayerStatus still rejects unknown players after resolved-role start", async () => {
     await withFlags(
       {
@@ -1506,7 +1548,7 @@ describe("MatchRoomController", () => {
     expect(afterStatus.ownedUnits[firstUnitType]).toBe(1);
   });
 
-  test("myourenji tier2 では shopBuySlotIndex の購入コストが1下がる", async () => {
+  test("myourenji tier2 では shopBuySlotIndex の購入コストを下げない", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
       const controller = new MatchRoomController(
         ["p1", "p2", "p3", "p4"],
@@ -1529,6 +1571,47 @@ describe("MatchRoomController", () => {
         { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
         { cell: 1, unitType: "mage", unitLevel: 1, unitId: "toramaru", factionId: "myourenji" },
         { cell: 2, unitType: "assassin", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 2);
+    });
+  });
+
+  test("myourenji tier3 では shopBuySlotIndex の購入コストが1下がる", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "mage", unitLevel: 1, unitId: "ichirin", factionId: "myourenji" },
+        { cell: 2, unitType: "assassin", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 3, unitType: "mage", unitLevel: 1, unitId: "shou", factionId: "myourenji" },
+        { cell: 4, unitType: "vanguard", unitLevel: 1, unitId: "byakuren", factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1583,7 +1666,7 @@ describe("MatchRoomController", () => {
     });
   });
 
-  test("kou_ryuudou tier1 の shop cost reduction は cost floor 1 を守る", async () => {
+  test("kou_ryuudou tier1 は shop cost reduction を適用しない", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
       const controller = new MatchRoomController(
         ["p1", "p2", "p3", "p4"],
@@ -1603,46 +1686,8 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
-      ]);
-      internals.shopOffersByPlayer.set("p1", [
-        { unitType: "vanguard", unitId: "kisume", rarity: 1, cost: 1 },
-      ]);
-
-      const beforeGold = controller.getPlayerStatus("p1").gold;
-      const result = controller.submitPrepCommand("p1", 1, 3_000, {
-        shopBuySlotIndex: 0,
-      });
-      const afterStatus = controller.getPlayerStatus("p1");
-
-      expect(result).toEqual({ accepted: true });
-      expect(afterStatus.gold).toBe(beforeGold - 1);
-    });
-  });
-
-  test("kou_ryuudou tier1 では eligible Touhou unit の shopBuySlotIndex 購入コストが1下がる", async () => {
-    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
-      const controller = new MatchRoomController(
-        ["p1", "p2", "p3", "p4"],
-        1_000,
-        controllerOptions,
-      );
-
-      controller.setReady("p1", true);
-      controller.setReady("p2", true);
-      controller.setReady("p3", true);
-      controller.setReady("p4", true);
-      controller.startIfReady(2_000);
-
-      const internals = controller as unknown as {
-        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
-        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
-      };
-
-      internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "mage", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
         { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
@@ -1655,7 +1700,45 @@ describe("MatchRoomController", () => {
       const afterStatus = controller.getPlayerStatus("p1");
 
       expect(result).toEqual({ accepted: true });
-      expect(afterStatus.gold).toBe(beforeGold - 1);
+      expect(afterStatus.gold).toBe(beforeGold - 2);
+    });
+  });
+
+  test("kou_ryuudou tier1 は eligible Touhou unit でも購入コストを下げない", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+        shopOffersByPlayer: Map<string, Array<{ unitType: "vanguard" | "ranger" | "mage" | "assassin"; unitId?: string; rarity: number; cost: number }>>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "mage", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
+      ]);
+      internals.shopOffersByPlayer.set("p1", [
+        { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+      ]);
+
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+      const result = controller.submitPrepCommand("p1", 1, 3_000, {
+        shopBuySlotIndex: 0,
+      });
+      const afterStatus = controller.getPlayerStatus("p1");
+
+      expect(result).toEqual({ accepted: true });
+      expect(afterStatus.gold).toBe(beforeGold - 2);
     });
   });
 
@@ -1737,7 +1820,7 @@ describe("MatchRoomController", () => {
     });
   });
 
-  test("kou_ryuudou tier2 では最初の shopRefresh が無料になる", async () => {
+  test("kou_ryuudou tier2 は最初の shopRefresh を無料にしない", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
       const controller = new MatchRoomController(
         ["p1", "p2", "p3", "p4"],
@@ -1759,7 +1842,7 @@ describe("MatchRoomController", () => {
         { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
         { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
         { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
-        { cell: 3, unitType: "assassin", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "vanguard", unitLevel: 1, unitId: "momoyo", factionId: "kou_ryuudou" },
       ]);
       const beforeGold = controller.getPlayerStatus("p1").gold;
 
@@ -1769,11 +1852,11 @@ describe("MatchRoomController", () => {
       const afterStatus = controller.getPlayerStatus("p1");
 
       expect(result).toEqual({ accepted: true });
-      expect(afterStatus.gold).toBe(beforeGold);
+      expect(afterStatus.gold).toBe(beforeGold - 2);
     });
   });
 
-  test("kou_ryuudou tier2 では2回目の shopRefresh は無料にならない", async () => {
+  test("kou_ryuudou tier2 は2回目の shopRefresh も通常コストにする", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
       const controller = new MatchRoomController(
         ["p1", "p2", "p3", "p4"],
@@ -1795,7 +1878,7 @@ describe("MatchRoomController", () => {
         { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
         { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
         { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
-        { cell: 3, unitType: "assassin", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "vanguard", unitLevel: 1, unitId: "momoyo", factionId: "kou_ryuudou" },
       ]);
       const beforeGold = controller.getPlayerStatus("p1").gold;
 
@@ -1809,11 +1892,11 @@ describe("MatchRoomController", () => {
 
       expect(firstResult).toEqual({ accepted: true });
       expect(secondResult).toEqual({ accepted: true });
-      expect(afterStatus.gold).toBe(beforeGold - 2);
+      expect(afterStatus.gold).toBe(beforeGold - 4);
     });
   });
 
-  test("kou_ryuudou tier2 の無料リロール権は1 Prep で1回だけ", async () => {
+  test("kou_ryuudou tier2 は複数回 shopRefresh しても無料枠を持たない", async () => {
     await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
       const controller = new MatchRoomController(
         ["p1", "p2", "p3", "p4"],
@@ -1835,7 +1918,7 @@ describe("MatchRoomController", () => {
         { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
         { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
         { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
-        { cell: 3, unitType: "assassin", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "vanguard", unitLevel: 1, unitId: "momoyo", factionId: "kou_ryuudou" },
       ]);
       const beforeGold = controller.getPlayerStatus("p1").gold;
 
@@ -1849,7 +1932,107 @@ describe("MatchRoomController", () => {
 
       expect(firstResult).toEqual({ accepted: true });
       expect(secondResult).toEqual({ accepted: true });
-      expect(afterStatus.gold).toBe(beforeGold - 4);
+      expect(afterStatus.gold).toBe(beforeGold - 6);
+    });
+  });
+
+  test("kou_ryuudou tier1 は戦闘解決時に配置プレイヤーへ1goldを付与する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "mage", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
+      ]);
+      internals.boardPlacementsByPlayer.set("p2", [
+        { cell: 7, unitType: "vanguard", unitLevel: 1 },
+      ]);
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+
+      controller.advanceByTime(32_000);
+
+      expect(controller.getPlayerStatus("p1").gold).toBe(beforeGold + 1);
+    });
+  });
+
+  test("kou_ryuudou tier2 は戦闘解決時に配置プレイヤーへ2goldを付与する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "mage", unitLevel: 1, unitId: "tsukasa", factionId: "kou_ryuudou" },
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "megumu", factionId: "kou_ryuudou" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "chimata", factionId: "kou_ryuudou" },
+        { cell: 3, unitType: "vanguard", unitLevel: 1, unitId: "momoyo", factionId: "kou_ryuudou" },
+      ]);
+      internals.boardPlacementsByPlayer.set("p2", [
+        { cell: 7, unitType: "vanguard", unitLevel: 1 },
+      ]);
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+
+      controller.advanceByTime(32_000);
+
+      expect(controller.getPlayerStatus("p1").gold).toBe(beforeGold + 2);
+    });
+  });
+
+  test("Nazrin Lv7 はトレジャーマーク対象撃破時に配置プレイヤーへ2goldを付与する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2", "p3", "p4"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.setReady("p3", true);
+      controller.setReady("p4", true);
+      controller.startIfReady(2_000);
+
+      const internals = controller as unknown as {
+        boardPlacementsByPlayer: Map<string, BoardUnitPlacement[]>;
+      };
+
+      internals.boardPlacementsByPlayer.set("p1", [
+        { cell: 0, unitType: "ranger", unitLevel: 7, unitId: "nazrin", factionId: "myourenji" },
+      ]);
+      internals.boardPlacementsByPlayer.set("p4", [
+        { cell: 1, unitType: "ranger", unitLevel: 1, unitId: "wakasagihime", factionId: "grassroot_network" },
+      ]);
+      const beforeGold = controller.getPlayerStatus("p1").gold;
+
+      controller.advanceByTime(32_000);
+
+      expect(controller.getPlayerStatus("p1").gold).toBe(beforeGold + 2);
     });
   });
 
@@ -1876,9 +2059,11 @@ describe("MatchRoomController", () => {
         { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
         { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
         { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
+        { cell: 3, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+        { cell: 4, unitType: "vanguard", unitId: "byakuren", unitLevel: 1, factionId: "myourenji" },
       ]);
       internals.shopOffersByPlayer.set("p1", [
-        { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+        { unitType: "ranger", unitId: "tojiko", rarity: 2, cost: 2 },
       ]);
 
       const goldBefore = controller.getPlayerStatus("p1").gold;
@@ -2114,13 +2299,16 @@ describe("MatchRoomController", () => {
       };
 
       internals.boardPlacementsByPlayer.set("p1", [
-        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "ranger", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "vanguard", unitLevel: 1, unitId: "ichirin", factionId: "myourenji" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 3, unitType: "mage", unitLevel: 1, unitId: "shou", factionId: "myourenji" },
+        { cell: 4, unitType: "vanguard", unitLevel: 1, unitId: "byakuren", factionId: "myourenji" },
       ]);
 
       for (const cmdSeq of [1, 2, 3, 4]) {
         internals.shopOffersByPlayer.set("p1", [
-          { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+          { unitType: "ranger", unitId: "tojiko", rarity: 2, cost: 2 },
         ]);
 
         expect(controller.submitPrepCommand("p1", cmdSeq, 3_000 + cmdSeq, {
@@ -2879,6 +3067,64 @@ describe("MatchRoomController", () => {
         } finally {
           randomSpy.mockRestore();
         }
+      },
+    );
+  });
+
+  test("raid wipe detection treats surviving hero battle units as alive", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+        expect(controller.startWithResolvedRoles(
+          2_000,
+          ["p1", "p2", "p3", "p4"],
+          {
+            bossPlayerId: "p2",
+            selectedBossByPlayer: new Map([["p2", "remilia"]]),
+            selectedHeroByPlayer: new Map([
+              ["p1", "reimu"],
+              ["p3", "marisa"],
+              ["p4", "okina"],
+            ]),
+          },
+        )).toBe(true);
+
+        const { battleInputSnapshotByPlayer, battleResultsByPlayer } = controller.getTestAccess();
+        for (const raidPlayerId of ["p1", "p3", "p4"]) {
+          battleInputSnapshotByPlayer.set(raidPlayerId, []);
+          battleResultsByPlayer.set(raidPlayerId, {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+            survivorSnapshots: [{
+              unitId: `hero-${raidPlayerId}`,
+              ownerPlayerId: raidPlayerId,
+              displayName: raidPlayerId,
+              unitType: "hero",
+              hp: 1,
+              maxHp: 1,
+              sharedBoardCellIndex: 8,
+            }],
+          });
+        }
+
+        const didRaidSideLoseAllBattleUnits = (
+          controller as unknown as { didRaidSideLoseAllBattleUnits: () => boolean }
+        ).didRaidSideLoseAllBattleUnits.bind(controller);
+
+        expect(didRaidSideLoseAllBattleUnits()).toBe(false);
       },
     );
   });
@@ -4733,7 +4979,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(89);
+    expect(controller.getPlayerHp("p4")).toBe(91);
   });
 
   test("後列ranger2体の援護射撃 fixture は shared-index pathing では押し切られる", () => {
@@ -4865,7 +5111,7 @@ describe("MatchRoomController", () => {
     controller.advanceByTime(42_000);
 
     expect(controller.getPlayerHp("p1")).toBe(100);
-    expect(controller.getPlayerHp("p4")).toBe(93);
+    expect(controller.getPlayerHp("p4")).toBe(89);
   });
 
   test("boardPlacementsで不正セル重複はDUPLICATE_CELLで却下される", () => {

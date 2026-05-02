@@ -5,7 +5,6 @@ import type {
 import type { FeatureFlags } from "../../shared/feature-flags";
 import { resolveBattlePlacements } from "../unit-id-resolver";
 import {
-  calculateScarletMansionSynergy,
   calculateSynergyDetails,
 } from "../combat/synergy-definitions";
 
@@ -56,10 +55,6 @@ export function calculateActiveSynergyList(
         ] ?? 0,
       });
     }
-  }
-
-  if (calculateScarletMansionSynergy(placements)) {
-    result.push({ unitType: "scarletMansion", count: 2, tier: 1 });
   }
 
   return result;

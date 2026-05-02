@@ -8,6 +8,7 @@ import type { FeatureFlags } from "../shared/feature-flags";
 
 type ResolvedUnitMetadata = {
   unitType: BoardUnitType;
+  combatClass?: BoardUnitType;
   cost?: number;
   archetype?: string;
   factionId?: TouhouFactionId | null;
@@ -24,6 +25,7 @@ type ResolvedUnitMetadata = {
 const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
   SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, {
     unitType: unit.unitType,
+    combatClass: unit.combatClass ?? unit.unitType,
     cost: unit.cost,
     archetype: unit.id,
     hp: unit.hp,
@@ -40,6 +42,7 @@ const scarletUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
 const heroExclusiveUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
   HERO_EXCLUSIVE_UNITS.map((unit) => [unit.unitId, {
     unitType: unit.unitType,
+    combatClass: unit.combatClass ?? unit.unitType,
     cost: unit.cost,
     archetype: unit.id,
     hp: unit.hp,
@@ -87,6 +90,7 @@ function getResolvedUnitMetadata(
   if (rosterUnit) {
     const resolvedMetadata: ResolvedUnitMetadata = {
       unitType: rosterUnit.type,
+      combatClass: rosterUnit.type,
       cost: rosterUnit.cost,
     };
 
@@ -137,6 +141,7 @@ export function resolveBattlePlacement(
   const resolvedPlacement: BoardUnitPlacement = {
     ...placement,
     unitType: resolvedMetadata.unitType,
+    combatClass: resolvedMetadata.combatClass ?? resolvedMetadata.unitType,
     ...(resolvedMetadata.archetype !== undefined ? { archetype: resolvedMetadata.archetype } : {}),
   };
 

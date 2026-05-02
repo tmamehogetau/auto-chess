@@ -4,7 +4,11 @@
  * with dependency injection for testability
  */
 
-import type { BattleUnit, BattleResult as SimulatorBattleResult } from "../combat/battle-simulator";
+import type {
+  BattleUnit,
+  BattleResult as SimulatorBattleResult,
+  BossSpellBattleMetric,
+} from "../combat/battle-simulator";
 import type { BattleTimelineEvent, BoardUnitPlacement } from "../../shared/room-messages";
 import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
@@ -56,6 +60,7 @@ export interface PlayerBattleResult {
   timeline?: BattleTimelineEvent[];
   rawTimeline?: BattleTimelineEvent[];
   combatLog?: string[];
+  bossSpellMetrics?: BossSpellBattleMetric[];
 }
 
 /**
@@ -71,6 +76,7 @@ export interface BattleResolutionResult {
   };
   bossDamageToBoss?: number;
   phaseDamageToBossSide?: number;
+  goldRewardsByPlayerId?: Record<string, number>;
 }
 
 /**
@@ -251,6 +257,10 @@ export class BattleResolutionService {
     const combatLogField: Partial<Pick<PlayerBattleResult, "combatLog">> = battleResult.combatLog.length > 0
       ? { combatLog: [...battleResult.combatLog] }
       : {};
+    const bossSpellMetricsField: Partial<Pick<PlayerBattleResult, "bossSpellMetrics">> =
+      Array.isArray(battleResult.bossSpellMetrics) && battleResult.bossSpellMetrics.length > 0
+        ? { bossSpellMetrics: battleResult.bossSpellMetrics.map((metric) => ({ ...metric })) }
+        : {};
 
     // Process results based on winner
     let outcome: MatchupOutcome;
@@ -274,6 +284,7 @@ export class BattleResolutionService {
         ...timelineField,
         ...rawTimelineField,
         ...combatLogField,
+        ...bossSpellMetricsField,
       };
 
       rightBattleResult = {
@@ -287,6 +298,7 @@ export class BattleResolutionService {
         ...timelineField,
         ...rawTimelineField,
         ...combatLogField,
+        ...bossSpellMetricsField,
       };
 
       outcome = {
@@ -326,6 +338,7 @@ export class BattleResolutionService {
         ...timelineField,
         ...rawTimelineField,
         ...combatLogField,
+        ...bossSpellMetricsField,
       };
 
       rightBattleResult = {
@@ -339,6 +352,7 @@ export class BattleResolutionService {
         ...timelineField,
         ...rawTimelineField,
         ...combatLogField,
+        ...bossSpellMetricsField,
       };
 
       outcome = {
@@ -374,6 +388,7 @@ export class BattleResolutionService {
         ...timelineField,
         ...rawTimelineField,
         ...combatLogField,
+        ...bossSpellMetricsField,
       };
 
       rightBattleResult = {
@@ -387,6 +402,7 @@ export class BattleResolutionService {
         ...timelineField,
         ...rawTimelineField,
         ...combatLogField,
+        ...bossSpellMetricsField,
       };
 
       outcome = {
@@ -423,6 +439,9 @@ export class BattleResolutionService {
     }
     if (typeof battleResult.phaseDamageToBossSide === "number") {
       resolutionResult.phaseDamageToBossSide = battleResult.phaseDamageToBossSide;
+    }
+    if (battleResult.goldRewardsByPlayerId && Object.keys(battleResult.goldRewardsByPlayerId).length > 0) {
+      resolutionResult.goldRewardsByPlayerId = { ...battleResult.goldRewardsByPlayerId };
     }
 
     return resolutionResult;
@@ -535,6 +554,7 @@ export class BattleResolutionService {
       sourceUnitId: hero.id,
       battleSide,
       type: hero.unitType,
+      combatClass: hero.combatClass,
       unitLevel: heroUnitLevel,
       hp: hero.hp * unitMultiplier,
       maxHp: hero.hp * unitMultiplier,
@@ -564,6 +584,7 @@ export class BattleResolutionService {
     bossHpOverride?: number,
     battleSide: "left" | "right" = "right",
     bossUnitLevel: number = 1,
+    activeBossSpellId?: string | null,
   ): BattleUnit | null {
     if (!bossId) return null;
 
@@ -585,6 +606,7 @@ export class BattleResolutionService {
       sourceUnitId: boss.id,
       battleSide,
       type: "vanguard" as BoardUnitType,
+      combatClass: boss.combatClass,
       unitLevel: bossUnitLevel,
       hp: resolvedBossHp,
       maxHp: resolvedBossHp,
@@ -603,6 +625,9 @@ export class BattleResolutionService {
         defenseMultiplier: 1,
         attackSpeedMultiplier: 1,
       },
+      ...(typeof activeBossSpellId === "string" && activeBossSpellId.length > 0
+        ? { activeBossSpellId }
+        : {}),
     };
   }
 

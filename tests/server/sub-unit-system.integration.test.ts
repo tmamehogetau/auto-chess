@@ -746,6 +746,36 @@ describe("Sub Unit System Integration", () => {
     });
   });
 
+  test("摩多羅隠岐奈subはBattle snapshotでhostのattached subとして扱われる", () => {
+    withSubUnitHeroMode(() => {
+      const controller = createStartedHeroModeController("okina");
+
+      expect(controller.applyPrepPlacementForPlayer("p1", [
+        { cell: 24, unitType: "vanguard" },
+      ])).toMatchObject({ success: true });
+      expect(controller.applyHeroPlacementForPlayer("p1", 24)).toMatchObject({ success: true });
+
+      controller.advanceByTime(32_000);
+
+      const hostSnapshot = controller.getTestAccess().battleInputSnapshotByPlayer
+        .get("p1")
+        ?.find((placement) => placement.cell === 24);
+
+      expect(hostSnapshot?.subUnit).toMatchObject({
+        unitType: "mage",
+        combatClass: "mage",
+        unitId: "okina",
+        unitLevel: 1,
+      });
+      const battleResult = controller.getTestAccess().battleResultsByPlayer.get("p1") as
+        | { combatLog?: string[] }
+        | undefined;
+      expect(battleResult?.combatLog?.some((entry: string) =>
+        entry.includes("gains sub equipment bonus (摩多羅隠岐奈): +18 ATK, Skill x1.1")
+      )).toBe(true);
+    });
+  });
+
   test("摩多羅隠岐奈subはhostのboard-to-board moveに追従する", () => {
     withSubUnitHeroMode(() => {
       const controller = createStartedHeroModeController("okina");

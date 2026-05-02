@@ -11,6 +11,13 @@ import {
   resolveUnitSkillDefinition,
   type SkillExecutionContext,
 } from "../../../src/server/combat/skill-definitions";
+import {
+  MAIN_SUB_PAIR_SKILL_BINDINGS,
+  SUB_UNIT_EFFECT_BINDINGS,
+  resolveMainSubPairSkillLevel,
+  resolveSubUnitEffectLevel,
+  resolveSubUnitEquipmentBonus,
+} from "../../../src/server/combat/pair-sub-bindings";
 
 function createBattleUnit(overrides: Partial<BattleUnit>): BattleUnit {
   return {
@@ -68,6 +75,7 @@ function createTestSkillContext(): SkillExecutionContext {
       ?? enemies.find((enemy) => !enemy.isDead)
       ?? null
     ),
+    scheduleSkillTicks: () => undefined,
     executePairSkillsOnMainSkillActivated: () => undefined,
   };
 }
@@ -141,7 +149,7 @@ describe("hero-exclusive unit skills", () => {
 
     expect(healthyEnemy.buffModifiers.attackMultiplier).toBe(1);
     expect(currentEnemy.buffModifiers.attackMultiplier).toBe(0.8);
-    expect(currentEnemy.hp).toBe(135);
+    expect(currentEnemy.hp).toBe(168);
     expect(log[0]).toContain("貧符「超貧乏玉」");
   });
 
@@ -170,6 +178,159 @@ describe("hero-exclusive unit skills", () => {
       "最凶最悪の双子神",
       "埴輪「アイドルクリーチャー」",
     ]);
+  });
+
+  test("pair and sub effect binding registries expose the existing relationships", () => {
+    expect(MAIN_SUB_PAIR_SKILL_BINDINGS.map((binding) => ({
+      id: binding.id,
+      mainHeroId: binding.mainHeroId,
+      mainUnitId: binding.mainUnitId,
+      subUnitId: binding.subUnitId,
+      pairSkillId: binding.pairSkillId,
+    }))).toEqual([
+      {
+        id: "keiki-mayumi-pair",
+        mainHeroId: "keiki",
+        mainUnitId: undefined,
+        subUnitId: "mayumi",
+        pairSkillId: "mayumi-pair",
+      },
+      {
+        id: "jyoon-shion-pair",
+        mainHeroId: "jyoon",
+        mainUnitId: undefined,
+        subUnitId: "shion",
+        pairSkillId: "shion-pair",
+      },
+      {
+        id: "yoshika-seiga-pair",
+        mainHeroId: undefined,
+        mainUnitId: "yoshika",
+        subUnitId: "seiga",
+        pairSkillId: "tongling-yoshika-pair",
+      },
+      {
+        id: "koishi-satori-perfect-mind-control-pair",
+        mainHeroId: undefined,
+        mainUnitId: "koishi",
+        subUnitId: "satori",
+        pairSkillId: "perfect-mind-control-pair",
+      },
+      {
+        id: "satori-koishi-heartbreaker-pair",
+        mainHeroId: undefined,
+        mainUnitId: "satori",
+        subUnitId: "koishi",
+        pairSkillId: "komeiji-heartbreaker-pair",
+      },
+      {
+        id: "junko-hecatia-nameless-danmaku-pair",
+        mainHeroId: undefined,
+        mainUnitId: "junko",
+        subUnitId: "hecatia",
+        pairSkillId: "nameless-danmaku-pair",
+      },
+      {
+        id: "hecatia-junko-nameless-danmaku-pair",
+        mainHeroId: undefined,
+        mainUnitId: "hecatia",
+        subUnitId: "junko",
+        pairSkillId: "nameless-danmaku-pair",
+      },
+      {
+        id: "megumu-tsukasa-delayed-kudagitsune-pair",
+        mainHeroId: undefined,
+        mainUnitId: "megumu",
+        subUnitId: "tsukasa",
+        pairSkillId: "delayed-kudagitsune-shot-pair",
+      },
+      {
+        id: "shou-nazrin-greatest-treasure-pair",
+        mainHeroId: undefined,
+        mainUnitId: "shou",
+        subUnitId: "nazrin",
+        pairSkillId: "greatest-treasure-pair",
+      },
+      {
+        id: "miko-futo-gouzoku-ranbu-mononobe-pair",
+        mainHeroId: undefined,
+        mainUnitId: "miko",
+        subUnitId: "futo",
+        pairSkillId: "gouzoku-ranbu-mononobe-pair",
+      },
+      {
+        id: "miko-tojiko-gouzoku-ranbu-soga-pair",
+        mainHeroId: undefined,
+        mainUnitId: "miko",
+        subUnitId: "tojiko",
+        pairSkillId: "gouzoku-ranbu-soga-pair",
+      },
+    ]);
+
+    const mayumiPair = MAIN_SUB_PAIR_SKILL_BINDINGS.find((binding) => binding.id === "keiki-mayumi-pair")!;
+    const tonglingPair = MAIN_SUB_PAIR_SKILL_BINDINGS.find((binding) => binding.id === "yoshika-seiga-pair")!;
+    const perfectMindPair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "koishi-satori-perfect-mind-control-pair")!;
+    const heartbreakerPair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "satori-koishi-heartbreaker-pair")!;
+    const junkoNamelessPair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "junko-hecatia-nameless-danmaku-pair")!;
+    const hecatiaNamelessPair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "hecatia-junko-nameless-danmaku-pair")!;
+    const delayedKudagitsunePair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "megumu-tsukasa-delayed-kudagitsune-pair")!;
+    const greatestTreasurePair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "shou-nazrin-greatest-treasure-pair")!;
+    const gouzokuRanbuMononobePair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "miko-futo-gouzoku-ranbu-mononobe-pair")!;
+    const gouzokuRanbuSogaPair = MAIN_SUB_PAIR_SKILL_BINDINGS
+      .find((binding) => binding.id === "miko-tojiko-gouzoku-ranbu-soga-pair")!;
+    expect(resolveMainSubPairSkillLevel(mayumiPair, 3)).toBe(0);
+    expect(resolveMainSubPairSkillLevel(mayumiPair, 4)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(mayumiPair, 7)).toBe(2);
+    expect(resolveMainSubPairSkillLevel(tonglingPair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(tonglingPair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(tonglingPair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(perfectMindPair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(perfectMindPair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(perfectMindPair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(heartbreakerPair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(heartbreakerPair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(heartbreakerPair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(junkoNamelessPair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(junkoNamelessPair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(junkoNamelessPair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(hecatiaNamelessPair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(hecatiaNamelessPair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(hecatiaNamelessPair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(delayedKudagitsunePair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(delayedKudagitsunePair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(delayedKudagitsunePair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(greatestTreasurePair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(greatestTreasurePair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(greatestTreasurePair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(gouzokuRanbuMononobePair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(gouzokuRanbuMononobePair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(gouzokuRanbuMononobePair, 7)).toBe(7);
+    expect(resolveMainSubPairSkillLevel(gouzokuRanbuSogaPair, 1)).toBe(1);
+    expect(resolveMainSubPairSkillLevel(gouzokuRanbuSogaPair, 4)).toBe(4);
+    expect(resolveMainSubPairSkillLevel(gouzokuRanbuSogaPair, 7)).toBe(7);
+    expect(SUB_UNIT_EFFECT_BINDINGS.map((binding) => ({
+      id: binding.id,
+      mainUnitId: binding.mainUnitId,
+      subUnitId: binding.subUnitId,
+      subUnitEffectId: binding.subUnitEffectId,
+    }))).toEqual([
+      {
+        id: "okina-back-sub-effect",
+        mainUnitId: undefined,
+        subUnitId: "okina",
+        subUnitEffectId: "okina-back",
+      },
+    ]);
+    expect(resolveSubUnitEffectLevel(SUB_UNIT_EFFECT_BINDINGS[0]!, 1)).toBe(1);
+    expect(resolveSubUnitEffectLevel(SUB_UNIT_EFFECT_BINDINGS[0]!, 4)).toBe(4);
+    expect(resolveSubUnitEffectLevel(SUB_UNIT_EFFECT_BINDINGS[0]!, 7)).toBe(7);
   });
 
   test("battle simulator schedules mayumi basic skill instead of the default vanguard skill", () => {
@@ -204,14 +365,41 @@ describe("hero-exclusive unit skills", () => {
     expect(result.combatLog.some((entry) => entry.includes("Shield Wall"))).toBe(false);
   });
 
-  test("hero-exclusive basic skills wait for their initial cooldown", () => {
+  test("hero-exclusive basic skills expose the approved mana timing", () => {
+    expect(HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS["mayumi-basic"]?.activationModel).toBe("mana");
+    expect(HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS["mayumi-basic"]?.mana).toEqual({
+      maxMana: 100,
+      initialMana: 40,
+      manaCost: 100,
+      manaGainOnAttack: 9,
+      manaGainOnDamageTakenRatio: 55,
+    });
+    expect(HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS["shion-basic"]?.activationModel).toBe("mana");
+    expect(HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS["shion-basic"]?.mana).toEqual({
+      maxMana: 100,
+      initialMana: 35,
+      manaCost: 100,
+      manaGainOnAttack: 9,
+      manaGainOnDamageTakenRatio: 25,
+    });
+    expect(HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS["ariya-basic"]?.activationModel).toBe("mana");
+    expect(HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS["ariya-basic"]?.mana).toEqual({
+      maxMana: 100,
+      initialMana: 40,
+      manaCost: 100,
+      manaGainOnAttack: 12,
+      manaGainOnDamageTakenRatio: 35,
+    });
+  });
+
+  test("hero-exclusive basic skills do not cast from timer alone without mana", () => {
     const simulator = new BattleSimulator();
     const mayumi = createBattleUnit({
       id: "left-mayumi",
       sourceUnitId: "mayumi",
       type: "vanguard",
-      attackPower: 20,
-      attackSpeed: 10,
+      attackPower: 0,
+      attackSpeed: 0,
       attackRange: 4,
       movementSpeed: 0,
       cell: 0,
@@ -229,7 +417,7 @@ describe("hero-exclusive unit skills", () => {
       cell: 3,
     });
 
-    const result = simulator.simulateBattle([mayumi], [enemy], [], [], 6900);
+    const result = simulator.simulateBattle([mayumi], [enemy], [], [], 20000);
 
     expect(result.combatLog.some((entry) => entry.includes("埴輪「熟練剣士埴輪」"))).toBe(false);
   });
@@ -296,7 +484,7 @@ describe("hero-exclusive unit skills", () => {
       type: "vanguard",
       unitLevel: 4,
       attackPower: 20,
-      attackSpeed: 0,
+      attackSpeed: 20,
       attackRange: 1,
       movementSpeed: 0,
       cell: 0,
@@ -325,7 +513,7 @@ describe("hero-exclusive unit skills", () => {
       },
     }];
 
-    const result = simulator.simulateBattle([jyoon], [enemy], leftPlacements, [], 6100);
+    const result = simulator.simulateBattle([jyoon], [enemy], leftPlacements, [], 700);
 
     expect(jyoon.buffModifiers.attackMultiplier).toBeCloseTo(1.35 * 1.1);
     expect(enemy.buffModifiers.attackMultiplier).toBe(0.85);
@@ -340,7 +528,7 @@ describe("hero-exclusive unit skills", () => {
       type: "vanguard",
       unitLevel: 7,
       attackPower: 20,
-      attackSpeed: 0,
+      attackSpeed: 20,
       attackRange: 1,
       movementSpeed: 0,
       cell: 0,
@@ -369,7 +557,7 @@ describe("hero-exclusive unit skills", () => {
       },
     }];
 
-    const result = simulator.simulateBattle([jyoon], [enemy], leftPlacements, [], 6100);
+    const result = simulator.simulateBattle([jyoon], [enemy], leftPlacements, [], 700);
 
     expect(jyoon.buffModifiers.attackMultiplier).toBeCloseTo(1.65 * 1.2);
     expect(enemy.buffModifiers.attackMultiplier).toBe(0.70);
@@ -386,8 +574,8 @@ describe("hero-exclusive unit skills", () => {
       hp: 1000,
       maxHp: 1000,
       attackPower: 20,
-      attackSpeed: 0,
-      attackRange: 2,
+      attackSpeed: 20,
+      attackRange: 4,
       movementSpeed: 0,
       cell: 0,
     });
@@ -397,8 +585,8 @@ describe("hero-exclusive unit skills", () => {
       battleSide: "right",
       hp: 500,
       maxHp: 500,
-      attackPower: 40,
-      attackSpeed: 2,
+      attackPower: 0,
+      attackSpeed: 0,
       attackRange: 4,
       movementSpeed: 0,
       cell: 3,
@@ -415,10 +603,10 @@ describe("hero-exclusive unit skills", () => {
       },
     }];
 
-    const result = simulator.simulateBattle([keiki], [enemy], leftPlacements, [], 11100);
+    const result = simulator.simulateBattle([keiki], [enemy], leftPlacements, [], 700);
 
     expect(keiki.shieldAmount).toBeCloseTo(150);
-    expect(keiki.buffModifiers.attackMultiplier).toBeCloseTo(1.2 * 1.15);
+    expect(keiki.buffModifiers.attackMultiplier).toBeCloseTo(1.24 * 1.15);
     expect(result.combatLog.some((entry) => entry.includes("埴輪「アイドルクリーチャー」 Lv1"))).toBe(true);
   });
 
@@ -432,8 +620,8 @@ describe("hero-exclusive unit skills", () => {
       hp: 1000,
       maxHp: 1000,
       attackPower: 20,
-      attackSpeed: 0,
-      attackRange: 2,
+      attackSpeed: 20,
+      attackRange: 4,
       movementSpeed: 0,
       cell: 0,
       attachedSubUnit: {
@@ -448,20 +636,20 @@ describe("hero-exclusive unit skills", () => {
       battleSide: "right",
       hp: 500,
       maxHp: 500,
-      attackPower: 40,
-      attackSpeed: 2,
+      attackPower: 0,
+      attackSpeed: 0,
       attackRange: 4,
       movementSpeed: 0,
       cell: 3,
     });
 
-    const result = simulator.simulateBattle([keiki], [enemy], [], [], 11100);
+    const result = simulator.simulateBattle([keiki], [enemy], [], [], 700);
 
     expect(keiki.shieldAmount).toBeCloseTo(150);
     expect(result.combatLog.some((entry) => entry.includes("埴輪「アイドルクリーチャー」 Lv1"))).toBe(true);
   });
 
-  test("hero-attached okina schedules the back-side sub skill", () => {
+  test("hero-attached okina schedules the back-side sub effect", () => {
     const simulator = new BattleSimulator();
     const host = createBattleUnit({
       id: "hero-reimu",
@@ -497,6 +685,57 @@ describe("hero-exclusive unit skills", () => {
     expect(result.combatLog.some((entry) => entry.includes("秘神「裏表の逆転:裏」"))).toBe(true);
   });
 
+  test("hero-attached okina applies the common sub equipment bonus", () => {
+    const simulator = new BattleSimulator();
+    const host = createBattleUnit({
+      id: "host-unit",
+      sourceUnitId: "host-unit",
+      type: "vanguard",
+      hp: 1000,
+      maxHp: 1000,
+      attackPower: 50,
+      attackSpeed: 0,
+      attackRange: 1,
+      movementSpeed: 0,
+      cell: 0,
+      attachedSubUnit: {
+        unitType: "mage",
+        combatClass: "mage",
+        unitLevel: 4,
+        unitId: "okina",
+      },
+    });
+    const enemy = createBattleUnit({
+      id: "right-dummy",
+      sourceUnitId: "enemy-1",
+      battleSide: "right",
+      hp: 1000,
+      maxHp: 1000,
+      attackPower: 0,
+      attackSpeed: 0,
+      movementSpeed: 0,
+      cell: 1,
+    });
+
+    const resolvedBonus = resolveSubUnitEquipmentBonus("okina", 4);
+    const resolvedLevel7Bonus = resolveSubUnitEquipmentBonus("okina", 7);
+    const result = simulator.simulateBattle([host], [enemy], [], [], 100);
+
+    expect(resolvedBonus?.bonus).toEqual({
+      attackBonus: 34,
+      skillDamageMultiplier: 1.17,
+    });
+    expect(resolvedLevel7Bonus?.bonus).toEqual({
+      attackBonus: 56,
+      skillDamageMultiplier: 1.28,
+    });
+    expect(host.attackPower).toBe(84);
+    expect(host.ultimateDamageMultiplier).toBeCloseTo(1.17);
+    expect(result.combatLog.some((entry) =>
+      entry.includes("gains sub equipment bonus (摩多羅隠岐奈): +34 ATK, Skill x1.17")
+    )).toBe(true);
+  });
+
   test("mayumi pair skill gets stronger at level 7", () => {
     const simulator = new BattleSimulator();
     const keiki = createBattleUnit({
@@ -507,8 +746,8 @@ describe("hero-exclusive unit skills", () => {
       hp: 1000,
       maxHp: 1000,
       attackPower: 20,
-      attackSpeed: 0,
-      attackRange: 2,
+      attackSpeed: 20,
+      attackRange: 4,
       movementSpeed: 0,
       cell: 0,
     });
@@ -518,8 +757,8 @@ describe("hero-exclusive unit skills", () => {
       battleSide: "right",
       hp: 500,
       maxHp: 500,
-      attackPower: 40,
-      attackSpeed: 2,
+      attackPower: 0,
+      attackSpeed: 0,
       attackRange: 4,
       movementSpeed: 0,
       cell: 3,
@@ -536,10 +775,10 @@ describe("hero-exclusive unit skills", () => {
       },
     }];
 
-    const result = simulator.simulateBattle([keiki], [enemy], leftPlacements, [], 11100);
+    const result = simulator.simulateBattle([keiki], [enemy], leftPlacements, [], 700);
 
     expect(keiki.shieldAmount).toBeCloseTo(250);
-    expect(keiki.buffModifiers.attackMultiplier).toBeCloseTo(1.3 * 1.25);
+    expect(keiki.buffModifiers.attackMultiplier).toBeCloseTo(1.38 * 1.25);
     expect(result.combatLog.some((entry) => entry.includes("埴輪「アイドルクリーチャー」 Lv2"))).toBe(true);
   });
 
@@ -563,7 +802,7 @@ describe("hero-exclusive unit skills", () => {
       battleSide: "right",
       hp: 500,
       maxHp: 500,
-      attackPower: 40,
+      attackPower: 0,
       attackSpeed: 2,
       attackRange: 4,
       movementSpeed: 0,

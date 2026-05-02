@@ -15,6 +15,7 @@ import { isHeroExclusiveUnitId } from "../../data/hero-exclusive-units";
 import { calculateDiscountedShopOfferCost } from "./shop-cost-reduction";
 import { resolveBattlePlacements, resolveSharedPoolCost } from "../unit-id-resolver";
 import { calculateSynergyDetails, getTouhouFactionTierEffect } from "../combat/synergy-definitions";
+import { getTouhouLevelUpGoldBonuses } from "../touhou-economy-effects";
 import {
   calculateSellValue,
   getMinimumPurchaseCountForUnitLevel,
@@ -50,6 +51,13 @@ export interface ShopManagerOwnedUnits {
   assassin: number;
 }
 
+export type TouhouLevelUpGoldBonusClaimKey = string;
+
+interface InventoryUpgradeResult {
+  previousUnitLevel: number;
+  nextUnitLevel: number;
+}
+
 export interface ShopManagerDeps<TBattleResult = unknown> {
   ensureStarted(): GameLoopState;
   buildShopOffers(
@@ -70,6 +78,8 @@ export interface ShopManagerDeps<TBattleResult = unknown> {
   shopPurchaseCountByPlayer: Map<string, number>;
   shopLockedByPlayer: Map<string, boolean>;
   kouRyuudouFreeRefreshConsumedByPlayer: Map<string, boolean>;
+  touhouBonusFreeRefreshCountByPlayer: Map<string, number>;
+  touhouLevelUpGoldBonusClaimKeysByPlayer: Map<string, Set<TouhouLevelUpGoldBonusClaimKey>>;
   rumorInfluenceEligibleByPlayer: Map<string, boolean>;
   shopOffersByPlayer: Map<string, ShopManagerShopOffer[]>;
   bossShopOffersByPlayer: Map<string, ShopManagerShopOffer[]>;
@@ -151,6 +161,8 @@ export class ShopManager<TBattleResult = unknown> {
       enableRumorInfluence: this.deps.enableRumorInfluence,
       getAvailableFreeRefreshes: (targetPlayerId) =>
         this.getAvailableKouRyuudouFreeRefreshes(targetPlayerId),
+      consumeFreeRefreshes: (targetPlayerId, refreshCount) =>
+        this.consumeAvailableKouRyuudouFreeRefreshes(targetPlayerId, refreshCount),
     });
   }
 
@@ -210,7 +222,8 @@ export class ShopManager<TBattleResult = unknown> {
     this.deps.shopPurchaseCountByPlayer.set(playerId, purchaseCount);
     this.deps.shopOffersByPlayer.set(playerId, offers);
 
-    this.addPurchasedUnitToInventory(playerId, purchasedBenchUnit);
+    const upgradeResult = this.addPurchasedUnitToInventory(playerId, purchasedBenchUnit);
+    this.grantTouhouEconomyGoldBonuses(playerId, boughtOffer.unitId, upgradeResult);
 
     const nextOwnedUnits: ShopManagerOwnedUnits = {
       vanguard: ownedUnits.vanguard,
@@ -552,7 +565,10 @@ export class ShopManager<TBattleResult = unknown> {
     }
   }
 
-  private addPurchasedUnitToInventory(playerId: string, purchasedUnit: ShopManagerBenchUnit): void {
+  private addPurchasedUnitToInventory(
+    playerId: string,
+    purchasedUnit: ShopManagerBenchUnit,
+  ): InventoryUpgradeResult {
     const benchUnits = [...(this.deps.benchUnitsByPlayer.get(playerId) ?? [])];
     const boardPlacements = [...(this.deps.boardPlacementsByPlayer.get(playerId) ?? [])];
 
@@ -560,31 +576,37 @@ export class ShopManager<TBattleResult = unknown> {
     if (matchingBenchIndex >= 0) {
       const targetBenchUnit = benchUnits[matchingBenchIndex];
       if (targetBenchUnit) {
-        this.applyPurchasedUnitToBenchUnit(targetBenchUnit, purchasedUnit);
+        const upgradeResult = this.applyPurchasedUnitToBenchUnit(targetBenchUnit, purchasedUnit);
         this.deps.benchUnitsByPlayer.set(playerId, benchUnits);
+        return upgradeResult;
       }
-      return;
+      return { previousUnitLevel: UNIT_LEVEL_MIN, nextUnitLevel: UNIT_LEVEL_MIN };
     }
 
     const matchingBoardIndex = this.findUpgradeableBoardPlacementIndex(boardPlacements, purchasedUnit);
     if (matchingBoardIndex >= 0) {
       const targetPlacement = boardPlacements[matchingBoardIndex];
       if (targetPlacement) {
-        this.applyPurchasedUnitToBoardPlacement(targetPlacement, purchasedUnit);
+        const upgradeResult = this.applyPurchasedUnitToBoardPlacement(targetPlacement, purchasedUnit);
         this.deps.boardPlacementsByPlayer.set(playerId, boardPlacements);
+        return upgradeResult;
       }
-      return;
+      return { previousUnitLevel: UNIT_LEVEL_MIN, nextUnitLevel: UNIT_LEVEL_MIN };
     }
 
     const matchingSubUnitLocation = this.findUpgradeableAttachedSubUnitLocation(boardPlacements, purchasedUnit);
     if (matchingSubUnitLocation) {
-      this.applyPurchasedUnitToAttachedSubUnit(matchingSubUnitLocation, purchasedUnit);
+      const upgradeResult = this.applyPurchasedUnitToAttachedSubUnit(matchingSubUnitLocation, purchasedUnit);
       this.deps.boardPlacementsByPlayer.set(playerId, boardPlacements);
-      return;
+      return upgradeResult;
     }
 
     benchUnits.push(purchasedUnit);
     this.deps.benchUnitsByPlayer.set(playerId, benchUnits);
+    return {
+      previousUnitLevel: 0,
+      nextUnitLevel: purchasedUnit.unitLevel ?? UNIT_LEVEL_MIN,
+    };
   }
 
   private wouldPurchasedUnitMergeIntoInventory(playerId: string, purchasedUnit: ShopManagerBenchUnit): boolean {
@@ -633,33 +655,104 @@ export class ShopManager<TBattleResult = unknown> {
   private applyPurchasedUnitToBenchUnit(
     targetUnit: ShopManagerBenchUnit,
     purchasedUnit: ShopManagerBenchUnit,
-  ): void {
+  ): InventoryUpgradeResult {
+    const previousUnitLevel = targetUnit.unitLevel ?? UNIT_LEVEL_MIN;
     const nextPurchaseCount = this.getTrackedPurchaseCount(targetUnit.unitLevel, targetUnit.unitCount) + purchasedUnit.unitCount;
     targetUnit.cost += purchasedUnit.cost;
     targetUnit.unitCount = nextPurchaseCount;
     targetUnit.unitLevel = getUnitLevelForPurchaseCount(nextPurchaseCount);
+    return { previousUnitLevel, nextUnitLevel: targetUnit.unitLevel };
   }
 
   private applyPurchasedUnitToBoardPlacement(
     targetPlacement: BoardUnitPlacement,
     purchasedUnit: ShopManagerBenchUnit,
-  ): void {
+  ): InventoryUpgradeResult {
+    const previousUnitLevel = targetPlacement.unitLevel ?? UNIT_LEVEL_MIN;
     const nextPurchaseCount = this.getTrackedPurchaseCount(targetPlacement.unitLevel, targetPlacement.unitCount) + purchasedUnit.unitCount;
     const currentSellValue = targetPlacement.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[targetPlacement.unitType] ?? 1;
     targetPlacement.sellValue = currentSellValue + purchasedUnit.cost;
     targetPlacement.unitCount = nextPurchaseCount;
     targetPlacement.unitLevel = getUnitLevelForPurchaseCount(nextPurchaseCount);
+    return { previousUnitLevel, nextUnitLevel: targetPlacement.unitLevel };
   }
 
   private applyPurchasedUnitToAttachedSubUnit(
     targetSubUnit: AttachedSubUnitPlacement,
     purchasedUnit: ShopManagerBenchUnit,
-  ): void {
+  ): InventoryUpgradeResult {
+    const previousUnitLevel = targetSubUnit.unitLevel ?? UNIT_LEVEL_MIN;
     const nextPurchaseCount = this.getTrackedPurchaseCount(targetSubUnit.unitLevel, targetSubUnit.unitCount) + purchasedUnit.unitCount;
     const currentSellValue = targetSubUnit.sellValue ?? UNIT_SELL_VALUE_BY_TYPE[targetSubUnit.unitType] ?? 1;
     targetSubUnit.sellValue = currentSellValue + purchasedUnit.cost;
     targetSubUnit.unitCount = nextPurchaseCount;
     targetSubUnit.unitLevel = getUnitLevelForPurchaseCount(nextPurchaseCount);
+    return { previousUnitLevel, nextUnitLevel: targetSubUnit.unitLevel };
+  }
+
+  private grantTouhouEconomyGoldBonuses(
+    playerId: string,
+    unitId: string | undefined,
+    upgradeResult: InventoryUpgradeResult,
+  ): void {
+    const totalGoldBonus = this.claimTouhouLevelUpGoldBonus(playerId, unitId, upgradeResult);
+    if (totalGoldBonus <= 0) {
+      return;
+    }
+
+    const currentGold = this.deps.goldByPlayer.get(playerId) ?? this.deps.initialGold;
+    this.deps.goldByPlayer.set(playerId, currentGold + totalGoldBonus);
+  }
+
+  private claimTouhouLevelUpGoldBonus(
+    playerId: string,
+    unitId: string | undefined,
+    upgradeResult: InventoryUpgradeResult,
+  ): number {
+    const bonuses = getTouhouLevelUpGoldBonuses(
+      unitId,
+      upgradeResult.previousUnitLevel,
+      upgradeResult.nextUnitLevel,
+      this.deps.rosterFlags,
+    );
+    if (unitId === undefined || bonuses.length === 0) {
+      return 0;
+    }
+
+    const claimedKeys = this.getTouhouLevelUpGoldBonusClaimKeys(playerId);
+    let totalGoldBonus = 0;
+    for (const bonus of bonuses) {
+      const claimKey = `${unitId}:${bonus.unitLevel}`;
+      if (claimedKeys.has(claimKey)) {
+        continue;
+      }
+
+      claimedKeys.add(claimKey);
+      totalGoldBonus += bonus.gold;
+      this.addTouhouBonusFreeRefreshes(playerId, bonus.freeRefreshes);
+    }
+
+    return totalGoldBonus;
+  }
+
+  private getTouhouLevelUpGoldBonusClaimKeys(playerId: string): Set<TouhouLevelUpGoldBonusClaimKey> {
+    const existing = this.deps.touhouLevelUpGoldBonusClaimKeysByPlayer.get(playerId);
+    if (existing) {
+      return existing;
+    }
+
+    const claimKeys = new Set<TouhouLevelUpGoldBonusClaimKey>();
+    this.deps.touhouLevelUpGoldBonusClaimKeysByPlayer.set(playerId, claimKeys);
+    return claimKeys;
+  }
+
+  private addTouhouBonusFreeRefreshes(playerId: string, freeRefreshes: number): void {
+    if (freeRefreshes <= 0) {
+      return;
+    }
+
+    const currentCount = this.deps.touhouBonusFreeRefreshCountByPlayer.get(playerId) ?? 0;
+    this.deps.touhouBonusFreeRefreshCountByPlayer.set(playerId, currentCount + freeRefreshes);
   }
 
   private getTrackedPurchaseCount(unitLevel: number | undefined, unitCount: number | undefined): number {
@@ -728,12 +821,13 @@ export class ShopManager<TBattleResult = unknown> {
   }
 
   private getAvailableKouRyuudouFreeRefreshes(playerId: string): number {
+    const bonusFreeRefreshes = this.deps.touhouBonusFreeRefreshCountByPlayer.get(playerId) ?? 0;
     if (!this.deps.rosterFlags.enableTouhouFactions) {
-      return 0;
+      return bonusFreeRefreshes;
     }
 
     if (this.deps.kouRyuudouFreeRefreshConsumedByPlayer.get(playerId)) {
-      return 0;
+      return bonusFreeRefreshes;
     }
 
     const placements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
@@ -745,7 +839,45 @@ export class ShopManager<TBattleResult = unknown> {
     );
     const tier = synergyDetails.factionActiveTiers.kou_ryuudou ?? 0;
     const factionEffect = getTouhouFactionTierEffect("kou_ryuudou", tier);
-    return factionEffect?.special?.firstFreeRefreshes ?? 0;
+    return bonusFreeRefreshes + (factionEffect?.special?.firstFreeRefreshes ?? 0);
+  }
+
+  private consumeAvailableKouRyuudouFreeRefreshes(playerId: string, refreshCount: number): void {
+    let remainingRefreshes = Math.max(0, refreshCount);
+    const bonusFreeRefreshes = this.deps.touhouBonusFreeRefreshCountByPlayer.get(playerId) ?? 0;
+    const consumedBonusRefreshes = Math.min(bonusFreeRefreshes, remainingRefreshes);
+    if (consumedBonusRefreshes > 0) {
+      this.deps.touhouBonusFreeRefreshCountByPlayer.set(
+        playerId,
+        bonusFreeRefreshes - consumedBonusRefreshes,
+      );
+      remainingRefreshes -= consumedBonusRefreshes;
+    }
+
+    if (remainingRefreshes > 0 && this.hasAvailableFactionFreeRefresh(playerId)) {
+      this.deps.kouRyuudouFreeRefreshConsumedByPlayer.set(playerId, true);
+    }
+  }
+
+  private hasAvailableFactionFreeRefresh(playerId: string): boolean {
+    if (!this.deps.rosterFlags.enableTouhouFactions) {
+      return false;
+    }
+
+    if (this.deps.kouRyuudouFreeRefreshConsumedByPlayer.get(playerId)) {
+      return false;
+    }
+
+    const placements = this.deps.boardPlacementsByPlayer.get(playerId) ?? [];
+    const resolvedPlacements = resolveBattlePlacements(placements, this.deps.rosterFlags);
+    const synergyDetails = calculateSynergyDetails(
+      resolvedPlacements,
+      null,
+      { enableTouhouFactions: true },
+    );
+    const tier = synergyDetails.factionActiveTiers.kou_ryuudou ?? 0;
+    const factionEffect = getTouhouFactionTierEffect("kou_ryuudou", tier);
+    return (factionEffect?.special?.firstFreeRefreshes ?? 0) > 0;
   }
 }
 

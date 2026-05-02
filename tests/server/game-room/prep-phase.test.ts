@@ -715,13 +715,16 @@ describeGameRoomIntegration("GameRoom integration / prep phase", (context) => {
       }
 
       internalController.boardPlacementsByPlayer.set(targetClient.sessionId, [
-        { cell: 0, unitType: "vanguard", unitLevel: 1, unitId: "yamame", factionId: "kou_ryuudou" },
-        { cell: 1, unitType: "assassin", unitLevel: 1, unitId: "parsee", factionId: "kou_ryuudou" },
+        { cell: 0, unitType: "ranger", unitLevel: 1, unitId: "nazrin", factionId: "myourenji" },
+        { cell: 1, unitType: "vanguard", unitLevel: 1, unitId: "ichirin", factionId: "myourenji" },
+        { cell: 2, unitType: "mage", unitLevel: 1, unitId: "murasa", factionId: "myourenji" },
+        { cell: 3, unitType: "mage", unitLevel: 1, unitId: "shou", factionId: "myourenji" },
+        { cell: 4, unitType: "vanguard", unitLevel: 1, unitId: "byakuren", factionId: "myourenji" },
       ]);
 
       for (const cmdSeq of [1, 2, 3, 4]) {
         internalController.shopOffersByPlayer.set(targetClient.sessionId, [
-          { unitType: "mage", unitId: "ichirin", rarity: 2, cost: 2 },
+          { unitType: "ranger", unitId: "tojiko", rarity: 2, cost: 2 },
         ]);
 
         targetClient.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {

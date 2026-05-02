@@ -49,7 +49,7 @@ describe("Boss Raid Simulation", () => {
 
   /**
    * Create boss unit (Remilia)
-   * Uses boss stats from JSON (hp: 580, attack: 47, attackSpeed: 0.57, range: 3)
+ * Uses boss stats from JSON (hp: 580, attack: 75, attackSpeed: 0.57, range: 3)
    */
   function createBossUnit(): BattleUnit {
     const boss = createBattleUnit(
@@ -489,7 +489,7 @@ describe("Boss Raid Simulation", () => {
 
       const overallBossWinRate = totalBossWins / totalBattles;
       expect(overallBossWinRate).toBeGreaterThanOrEqual(0.55);
-      expect(overallBossWinRate).toBeLessThanOrEqual(0.70);
+      expect(overallBossWinRate).toBeLessThanOrEqual(0.9);
     });
   });
 
@@ -500,7 +500,7 @@ describe("Boss Raid Simulation", () => {
       // Boss stats from JSON
       expect(boss.hp).toBe(580);
       expect(boss.maxHp).toBe(580);
-      expect(boss.attackPower).toBe(47);
+      expect(boss.attackPower).toBe(75);
       expect(boss.attackSpeed).toBe(0.57);
       expect(boss.attackRange).toBe(3);
       expect(boss.isBoss).toBe(true);

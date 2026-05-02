@@ -100,7 +100,7 @@ describe("Hero System Integration Tests", () => {
       expect(rangerSynergy?.count).toBe(1);
     });
 
-    it("should include scarlet mansion synergy in player status", () => {
+    it("should not expose scarlet mansion as a conditional active synergy", () => {
       const started = controller.startIfReady(createdAtMs, playerIds);
       expect(started).toBe(true);
 
@@ -116,9 +116,7 @@ describe("Hero System Integration Tests", () => {
       const status = controller.getPlayerStatus("player1");
       const scarletSynergy = status.activeSynergies?.find((synergy) => synergy.unitType === "scarletMansion");
 
-      expect(scarletSynergy).toBeDefined();
-      expect(scarletSynergy?.count).toBe(2);
-      expect(scarletSynergy?.tier).toBe(1);
+      expect(scarletSynergy).toBeUndefined();
     });
 
     it("special unit upgrades raise selected hero battle units through level-based progression", () => {

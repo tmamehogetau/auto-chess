@@ -7,6 +7,7 @@ export interface HeroExclusiveUnit extends CombatStats {
   unitId: UnitId;
   displayName: string;
   unitType: BoardUnitType;
+  combatClass?: BoardUnitType;
   cost: 3;
   exclusiveHeroId: string;
   skillId: string;
@@ -22,6 +23,7 @@ export const HERO_EXCLUSIVE_UNITS: Readonly<HeroExclusiveUnit[]> = [
     unitId: "mayumi",
     displayName: "杖刀偶磨弓",
     unitType: "vanguard",
+    combatClass: "vanguard",
     cost: 3,
     hp: 1240,
     attack: 104,
@@ -56,6 +58,7 @@ export const HERO_EXCLUSIVE_UNITS: Readonly<HeroExclusiveUnit[]> = [
     unitId: "shion",
     displayName: "依神紫苑",
     unitType: "assassin",
+    combatClass: "assassin",
     cost: 3,
     hp: 860,
     attack: 148,
@@ -90,10 +93,11 @@ export const HERO_EXCLUSIVE_UNITS: Readonly<HeroExclusiveUnit[]> = [
     unitId: "ariya",
     displayName: "磐永阿梨夜",
     unitType: "vanguard",
+    combatClass: "vanguard",
     cost: 3,
     hp: 1040,
     attack: 176,
-    attackSpeed: 1.2,
+    attackSpeed: 0.8,
     movementSpeed: DEFAULT_MOVEMENT_SPEED,
     range: 1,
     critRate: 0,

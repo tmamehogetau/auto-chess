@@ -942,6 +942,7 @@ const didPlayerLoseAllBattleUnitsForReport = (
   const survivorSnapshots = battleResult.survivorSnapshots as Array<{
     ownerPlayerId?: string;
     unitId?: string;
+    battleUnitId?: string;
   }>;
   const hasOwnerAwareSnapshots = survivorSnapshots.some(
     (snapshot) => typeof snapshot?.ownerPlayerId === "string" && snapshot.ownerPlayerId.trim().length > 0,
@@ -949,10 +950,10 @@ const didPlayerLoseAllBattleUnitsForReport = (
   if (hasOwnerAwareSnapshots) {
     const survivingBattleUnitKeys = new Set(
       survivorSnapshots
-        .map((snapshot) => buildPlayerBattleUnitKey(
-          snapshot?.ownerPlayerId,
-          snapshot?.unitId,
-        ))
+        .flatMap((snapshot) => [
+          buildPlayerBattleUnitKey(snapshot?.ownerPlayerId, snapshot?.unitId),
+          buildPlayerBattleUnitKey(snapshot?.ownerPlayerId, snapshot?.battleUnitId),
+        ])
         .filter((battleUnitKey) => battleUnitKey !== null),
     );
 
@@ -974,7 +975,8 @@ const didPlayerLoseAllBattleUnitsForReport = (
 
   const survivingUnitIds = new Set(
     survivorSnapshots
-      .map((snapshot) => typeof snapshot.unitId === "string" ? snapshot.unitId.trim() : "")
+      .flatMap((snapshot) => [snapshot.unitId, snapshot.battleUnitId])
+      .map((unitId) => typeof unitId === "string" ? unitId.trim() : "")
       .filter((unitId) => unitId.length > 0),
   );
 
@@ -3198,6 +3200,57 @@ test("buildPlayerBattleOutcomes keeps duplicate unit ids scoped to their owner",
     role: "raid",
     battleStartUnitCount: 1,
     playerWipedOut: true,
+  }]);
+});
+
+test("buildPlayerBattleOutcomes treats surviving hero battleUnitId as alive", () => {
+  const battleResultsByPlayer = new Map([
+    ["p1", {
+      survivors: 1,
+      survivorSnapshots: [{
+        unitId: "reimu",
+        battleUnitId: "hero-p1",
+        ownerPlayerId: "p1",
+      }],
+    }],
+  ]);
+  const fakeRoom = {
+    state: {
+      players: new Map(),
+    },
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>(),
+        battleResultsByPlayer,
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(buildPlayerBattleOutcomes(fakeRoom, [{
+    playerId: "p1",
+    role: "raid",
+    hp: 100,
+    remainingLives: 2,
+    eliminated: false,
+    boardUnits: [],
+    trackedBattleUnitIds: ["hero-p1"],
+    benchUnits: [],
+    lastBattle: {
+      battleId: null,
+      opponentId: "",
+      won: false,
+      damageDealt: 0,
+      damageTaken: 0,
+      survivors: 0,
+      opponentSurvivors: 0,
+      survivorUnitTypes: [],
+      timeline: [],
+    },
+  }])).toEqual([{
+    playerId: "p1",
+    role: "raid",
+    battleStartUnitCount: 1,
+    playerWipedOut: false,
   }]);
 });
 

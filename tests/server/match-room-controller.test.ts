@@ -3071,6 +3071,64 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("raid wipe detection treats surviving hero battle units as alive", async () => {
+    await withFlags(
+      {
+        ...FLAG_CONFIGURATIONS.ALL_DISABLED,
+        enableBossExclusiveShop: true,
+        enableHeroSystem: true,
+      },
+      async () => {
+        const controller = new MatchRoomController(
+          ["p1", "p2", "p3", "p4"],
+          1_000,
+          controllerOptions,
+        );
+        expect(controller.startWithResolvedRoles(
+          2_000,
+          ["p1", "p2", "p3", "p4"],
+          {
+            bossPlayerId: "p2",
+            selectedBossByPlayer: new Map([["p2", "remilia"]]),
+            selectedHeroByPlayer: new Map([
+              ["p1", "reimu"],
+              ["p3", "marisa"],
+              ["p4", "okina"],
+            ]),
+          },
+        )).toBe(true);
+
+        const { battleInputSnapshotByPlayer, battleResultsByPlayer } = controller.getTestAccess();
+        for (const raidPlayerId of ["p1", "p3", "p4"]) {
+          battleInputSnapshotByPlayer.set(raidPlayerId, []);
+          battleResultsByPlayer.set(raidPlayerId, {
+            opponentId: "p2",
+            won: true,
+            damageDealt: 10,
+            damageTaken: 0,
+            survivors: 1,
+            opponentSurvivors: 0,
+            survivorSnapshots: [{
+              unitId: `hero-${raidPlayerId}`,
+              ownerPlayerId: raidPlayerId,
+              displayName: raidPlayerId,
+              unitType: "hero",
+              hp: 1,
+              maxHp: 1,
+              sharedBoardCellIndex: 8,
+            }],
+          });
+        }
+
+        const didRaidSideLoseAllBattleUnits = (
+          controller as unknown as { didRaidSideLoseAllBattleUnits: () => boolean }
+        ).didRaidSideLoseAllBattleUnits.bind(controller);
+
+        expect(didRaidSideLoseAllBattleUnits()).toBe(false);
+      },
+    );
+  });
+
   test("raid wipe status follows the 2 -> 1 -> 0 lives baseline", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },

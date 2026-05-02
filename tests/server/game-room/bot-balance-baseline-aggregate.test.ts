@@ -1448,9 +1448,9 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       averageFirstAttackMs: 90,
       zeroDamageBattleRate: 0,
     });
-    expect(aggregate.rangeDamageEfficiencyMetrics[0]?.totalTheoreticalBaseDamage).toBeCloseTo(47 * 0.57 * 0.4);
+    expect(aggregate.rangeDamageEfficiencyMetrics[0]?.totalTheoreticalBaseDamage).toBeCloseTo(75 * 0.57 * 0.4);
     expect(aggregate.rangeDamageEfficiencyMetrics[0]?.normalizedDamageEfficiency)
-      .toBeCloseTo(300 / (47 * 0.57 * 0.4));
+      .toBeCloseTo(300 / (75 * 0.57 * 0.4));
     expect(aggregate.rangeActionDiagnosticsMetrics).toEqual([
       expect.objectContaining({
         side: "boss",

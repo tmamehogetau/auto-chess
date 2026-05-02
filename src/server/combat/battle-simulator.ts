@@ -2994,10 +2994,30 @@ export class BattleSimulator {
         );
       };
 
+      const dealDamage = (
+        _caster: BattleUnit,
+        target: BattleUnit,
+        amount: number,
+        _sourceId: string,
+      ): number => {
+        if (!Number.isFinite(amount) || amount <= 0 || target.isDead) {
+          return 0;
+        }
+
+        const scaledDamage = Math.max(0, Math.floor(amount * (target.damageTakenMultiplier ?? 1)));
+        const shieldBeforeHit = target.shieldAmount ?? 0;
+        const shieldAbsorbed = Math.min(shieldBeforeHit, scaledDamage);
+        const damageAfterShield = scaledDamage - shieldAbsorbed;
+        target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+        target.hp -= damageAfterShield;
+        return damageAfterShield;
+      };
+
       const buildSkillExecutionContext = (): SkillExecutionContext => ({
         currentTimeMs: currentTime,
         applyTimedModifier,
         applyShield,
+        dealDamage,
         findCurrentOrNearestTarget,
         scheduleSkillTicks,
         executePairSkillsOnMainSkillActivated,
@@ -3326,6 +3346,11 @@ export class BattleSimulator {
       };
 
       const scheduleNextSubUnitEffect = (unit: BattleUnit, subUnitEffectId: string) => {
+        if (unit.isDead) {
+          nextScheduledSubUnitEffectAtByKey.delete(subUnitEffectScheduleKey(unit, subUnitEffectId));
+          return;
+        }
+
         const timing = resolveSubUnitEffectTiming(unit, subUnitEffectId);
         if (!timing) {
           nextScheduledSubUnitEffectAtByKey.delete(subUnitEffectScheduleKey(unit, subUnitEffectId));
@@ -3727,7 +3752,7 @@ export class BattleSimulator {
           combatLog.push(message);
           break;
         }
-      const action = actionQueue.shift();
+        const action = actionQueue.shift();
 
       if (!action) {
         if (rehydrateActionQueueForLivingUnits()) {
@@ -4180,6 +4205,11 @@ export class BattleSimulator {
           scheduleNextMove(moveAction.unit);
         }
       } else if (action.type === "skill") {
+        if (action.unit.isDead) {
+          nextScheduledSkillAtByUnitId.delete(action.unit.id);
+          continue;
+        }
+
         if (nextScheduledSkillAtByUnitId.get(action.unit.id) !== action.actionTime) {
           continue;
         }
@@ -4310,6 +4340,11 @@ export class BattleSimulator {
       } else if (action.type === "sub-unit-effect") {
         const subUnitEffectId = action.subUnitEffectId ?? "";
         const scheduleKey = subUnitEffectScheduleKey(action.unit, subUnitEffectId);
+        if (action.unit.isDead) {
+          nextScheduledSubUnitEffectAtByKey.delete(scheduleKey);
+          continue;
+        }
+
         if (nextScheduledSubUnitEffectAtByKey.get(scheduleKey) !== action.actionTime) {
           continue;
         }
@@ -4318,7 +4353,9 @@ export class BattleSimulator {
 
         if (subUnitEffectId === "okina-back") {
           executeOkinaBackSkill(action.unit);
-          scheduleNextSubUnitEffect(action.unit, subUnitEffectId);
+          if (!action.unit.isDead) {
+            scheduleNextSubUnitEffect(action.unit, subUnitEffectId);
+          }
         }
       }
 

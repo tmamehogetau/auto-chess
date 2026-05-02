@@ -11,12 +11,17 @@ import {
   test,
   waitForCondition,
 } from "./helpers";
-import { AUTO_FILL_HERO_IDS } from "../../../src/client/autofill-helper-automation.js";
+import {
+  AUTO_FILL_HERO_IDS,
+  buildBoardRefitDecision,
+  buildOkinaHeroSubDecisionDiagnostic,
+} from "../../../src/client/autofill-helper-automation.js";
 import { HERO_EXCLUSIVE_UNITS } from "../../../src/data/hero-exclusive-units";
 import { HEROES } from "../../../src/data/heroes";
 import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 import type { MatchLogger } from "../../../src/server/match-logger";
+import type { BossSpellBattleMetric } from "../../../src/server/combat/battle-simulator";
 import type {
   AttackStartEvent,
   BattleEndEvent,
@@ -43,9 +48,11 @@ import {
   type BotOnlyBaselineAggregateReport,
   type BotOnlyBaselineBattleEndReason,
   type BotOnlyBaselineBattleSummary,
+  type BotOnlyBaselineBoardRefitDecisionSnapshot,
   type BotOnlyBaselineFinalPlayer,
   type BotOnlyBaselineMatchSummary,
   type BotOnlyBaselineObservedShopOffer,
+  type BotOnlyBaselineOkinaHeroSubDecisionSnapshot,
   type BotOnlyBaselinePurchase,
   type BotOnlyBaselineRoundSummary,
   type BotOnlyReportMetadata,
@@ -54,7 +61,10 @@ import {
   createBotBalanceBaselineHelperConfigs,
   createBotBalanceBaselineRoomTimings,
   resolveBotBalanceBaselineHelperPolicy,
+  resolveBotBalanceBaselineOptimizationVariant,
+  resolveBotBalanceBaselineRaidHeroIds,
   resolveBotBalanceBaselineRaidPolicies,
+  type BotBalanceBaselineOptimizationVariant,
 } from "./bot-balance-baseline-runner";
 
 type BotOnlyServerRoom = Awaited<ReturnType<typeof createRoomWithForcedFlags>>;
@@ -64,6 +74,21 @@ type BotOnlyTestClient = {
   send: (type: string, message?: unknown) => void;
   onStateChange: (handler: (state: unknown) => void) => void;
   onMessage: (type: string, handler: (_message: unknown) => void) => void;
+};
+
+type AutoFillHelperAutomationTestHandle = ReturnType<typeof attachAutoFillHelperAutomationForTest>;
+
+const resolveLastBoardRefitRoundIndexForPlayer = (
+  clients: BotOnlyTestClient[],
+  helperAutomationHandles: AutoFillHelperAutomationTestHandle[],
+  playerId: string,
+): number | null => {
+  const helperIndex = clients.findIndex((client) => client.sessionId === playerId);
+  if (helperIndex < 0) {
+    return null;
+  }
+
+  return helperAutomationHandles[helperIndex]?.getLastBoardRefitRoundIndex() ?? null;
 };
 
 type BotOnlyMatchRoundReport = {
@@ -97,6 +122,20 @@ type BotOnlyMatchRoundReport = {
     selectedBossId: string;
     totalGoldEarned?: number;
     totalGoldSpent?: number;
+    economyBreakdown?: {
+      fixedPrepIncome: number;
+      raidPhaseSuccessBonusIncome: number;
+      sellIncome: number;
+      specialEconomyIncome: number;
+      normalShopSpend: number;
+      bossShopSpend: number;
+      refreshSpend: number;
+      specialUnitUpgradeSpend: number;
+      otherSpend: number;
+      loggedGoldGain: number;
+      loggedGoldSpent: number;
+      finalUnusedGold: number;
+    };
     purchaseCount?: number;
     refreshCount?: number;
     sellCount?: number;
@@ -141,8 +180,14 @@ type BotOnlyMatchRoundReport = {
       hp: number;
       remainingLives: number;
       eliminated: boolean;
+      selectedHeroId?: string;
+      selectedBossId?: string;
+      specialUnitLevel?: number;
       boardUnits: ReportBoardUnit[];
+      boardSubUnits?: string[];
       benchUnits: string[];
+      benchUnitIds?: string[];
+      lastBoardRefitRoundIndex?: number | null;
     }>;
     playerConsequences: Array<{
       playerId: string;
@@ -161,8 +206,13 @@ type BotOnlyMatchRoundReport = {
       hp: number;
       remainingLives: number;
       eliminated: boolean;
+      selectedHeroId?: string;
+      selectedBossId?: string;
+      specialUnitLevel?: number;
       boardUnits: ReportBoardUnit[];
+      boardSubUnits?: string[];
       benchUnits: string[];
+      benchUnitIds?: string[];
       lastBattle: {
         opponentId: string;
         opponentLabel: string;
@@ -197,6 +247,7 @@ type BotOnlyRoundBattleReport = {
   rightSurvivors: number;
   unitDamageBreakdown: ReportUnitDamageContribution[];
   unitOutcomes: ReportUnitBattleOutcome[];
+  bossSpellMetrics?: BossSpellBattleMetric[];
 };
 
 type ReportUnitDamageContribution = {
@@ -298,9 +349,15 @@ type BotOnlyRoundSnapshot = {
     hp: number;
     remainingLives: number;
     eliminated: boolean;
+    selectedHeroId?: string;
+    selectedBossId?: string;
+    specialUnitLevel?: number;
     boardUnits: ReportBoardUnit[];
+    boardSubUnits?: string[];
     trackedBattleUnitIds: string[];
     benchUnits: string[];
+    benchUnitIds?: string[];
+    lastBoardRefitRoundIndex?: number | null;
     lastBattle: {
       battleId: string | null;
       opponentId: string;
@@ -334,8 +391,13 @@ type BotOnlyRoundSnapshot = {
     hp: number;
     remainingLives: number;
     eliminated: boolean;
+    selectedHeroId?: string;
+    selectedBossId?: string;
+    specialUnitLevel?: number;
     boardUnits: ReportBoardUnit[];
+    boardSubUnits?: string[];
     benchUnits: string[];
+    benchUnitIds?: string[];
     lastBattle: {
       battleId: string | null;
       opponentId: string;
@@ -368,6 +430,7 @@ type BotOnlyTestAccess = {
     timeline?: BattleTimelineEvent[];
     rawTimeline?: BattleTimelineEvent[];
     combatLog?: string[];
+    bossSpellMetrics?: BossSpellBattleMetric[];
     survivorSnapshots?: Array<{
       unitId: string;
     }>;
@@ -398,11 +461,22 @@ type BotOnlyBaselineMatchArtifacts = {
   battles: BotOnlyBaselineBattleSummary[];
   rounds: BotOnlyBaselineRoundSummary[];
   observedShopOffers: BotOnlyBaselineObservedShopOffer[];
+  okinaHeroSubDecisionSnapshots: BotOnlyBaselineOkinaHeroSubDecisionSnapshot[];
+  boardRefitDecisionSnapshots: BotOnlyBaselineBoardRefitDecisionSnapshot[];
 };
 
 type BotOnlyFinalPlayerEconomySnapshot = {
   totalGoldEarned: number;
   totalGoldSpent: number;
+  fixedPrepIncome: number;
+  raidPhaseSuccessBonusIncome: number;
+  sellIncome: number;
+  specialEconomyIncome: number;
+  normalShopSpend: number;
+  bossShopSpend: number;
+  refreshSpend: number;
+  specialUnitUpgradeSpend: number;
+  otherSpend: number;
   purchaseCount: number;
   refreshCount: number;
   sellCount: number;
@@ -815,6 +889,9 @@ const captureRoundPlayers = (
     const lastBattleResultWithTimeline = player.lastBattleResult as typeof player.lastBattleResult & {
       timeline?: BattleTimelineEvent[];
     };
+    const playerWithBenchIds = player as typeof player & {
+      benchUnitIds?: Iterable<string>;
+    };
 
     return {
       playerId,
@@ -822,8 +899,13 @@ const captureRoundPlayers = (
       hp: player.hp,
       remainingLives: player.remainingLives,
       eliminated: player.eliminated,
+      selectedHeroId: player.selectedHeroId,
+      selectedBossId: player.selectedBossId,
+      specialUnitLevel: player.specialUnitLevel ?? 1,
       boardUnits: readBoardUnits(serverRoom, playerId),
+      boardSubUnits: Array.from(player.boardSubUnits ?? []),
       benchUnits: Array.from(player.benchUnits ?? []),
+      benchUnitIds: Array.from(playerWithBenchIds.benchUnitIds ?? []),
       lastBattle: {
         battleId: resolveBattleIdFromTimeline(lastBattleResultWithTimeline.timeline),
         opponentId: player.lastBattleResult.opponentId,
@@ -2329,6 +2411,7 @@ const buildRoundBattleReport = (
   const battleDurationMs = battleDurationOverrideMs ?? resolveBattleDurationMsFromTimeline(timeline);
   const battleEndReason = resolveBattleEndReasonFromTimeline(timeline);
   const combatLog = resolveBattleCombatLogForReportBattle(serverRoom, battle);
+  const bossSpellMetrics = resolveBattleBossSpellMetricsForReportBattle(serverRoom, battle);
   const bossIsLeft = battle.leftPlayerId === serverRoom.state.bossPlayerId;
   return {
     battleIndex: battle.battleIndex,
@@ -2364,6 +2447,7 @@ const buildRoundBattleReport = (
       playerLabels,
       combatLog,
     ),
+    ...(bossSpellMetrics.length > 0 ? { bossSpellMetrics } : {}),
   };
 };
 
@@ -2444,6 +2528,25 @@ const resolveBattleCombatLogForReportBattle = (
     const combatLog = testAccess?.battleResultsByPlayer.get(playerId)?.combatLog;
     if (Array.isArray(combatLog) && combatLog.length > 0) {
       return [...combatLog];
+    }
+  }
+
+  return [];
+};
+
+const resolveBattleBossSpellMetricsForReportBattle = (
+  serverRoom: BotOnlyServerRoom,
+  battle: {
+    leftPlayerId: string;
+    rightPlayerId: string;
+  },
+): BossSpellBattleMetric[] => {
+  const testAccess = getTestAccess(serverRoom);
+
+  for (const playerId of [battle.leftPlayerId, battle.rightPlayerId]) {
+    const metrics = testAccess?.battleResultsByPlayer.get(playerId)?.bossSpellMetrics;
+    if (Array.isArray(metrics) && metrics.length > 0) {
+      return metrics.map((metric) => ({ ...metric }));
     }
   }
 
@@ -5333,7 +5436,7 @@ const runBotOnlyHelperMatch = async (
   connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
   createRoom: () => Promise<BotOnlyServerRoom>,
   damageTargets?: Record<number, number>,
-  helperConfigs?: Array<{ wantsBoss: boolean; policy: "strength" | "growth" }>,
+  helperConfigs?: Array<{ wantsBoss: boolean; policy: "strength" | "growth"; optimizationVariant?: BotBalanceBaselineOptimizationVariant }>,
 ): Promise<BotOnlyMatchArtifacts> => {
   const serverRoom = await createRoom();
   const clients = await Promise.all([
@@ -5345,9 +5448,16 @@ const runBotOnlyHelperMatch = async (
   const playerLabels = getPlayerLabelMap(clients);
   const roundSnapshots: BotOnlyRoundSnapshot[] = [];
 
-    clients.forEach((client, helperIndex) => {
-      attachAutoFillHelperAutomationForTest(client, helperIndex);
+  const helperAutomationHandles = clients.map((client, helperIndex) => {
+    const helperConfig = helperConfigs?.[helperIndex];
+    return attachAutoFillHelperAutomationForTest(client, helperIndex, {
+      ...(helperConfig ? {
+        policy: helperConfig.policy,
+        wantsBoss: helperConfig.wantsBoss,
+        ...(helperConfig.optimizationVariant ? { optimizationVariant: helperConfig.optimizationVariant } : {}),
+      } : {}),
     });
+  });
 
   await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000, {
     timeoutMessage: `Timed out while waiting for initial Prep phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
@@ -5370,13 +5480,22 @@ const runBotOnlyHelperMatch = async (
       serverRoom,
       clients,
       getReportBattleStartUnitsForPlayer,
-    ).map((player) => ({
-      ...player,
-      trackedBattleUnitIds: getTrackedBattleUnitIdsForPlayerAtBattleStart(
-        serverRoom,
+    ).map((player) => {
+      const lastBoardRefitRoundIndex = resolveLastBoardRefitRoundIndexForPlayer(
+        clients,
+        helperAutomationHandles,
         player.playerId,
-      ),
-    }));
+      );
+
+      return {
+        ...player,
+        ...(lastBoardRefitRoundIndex !== null ? { lastBoardRefitRoundIndex } : {}),
+        trackedBattleUnitIds: getTrackedBattleUnitIdsForPlayerAtBattleStart(
+          serverRoom,
+          player.playerId,
+        ),
+      };
+    });
 
     const phaseDamage = damageTargets?.[serverRoom.state.roundIndex];
     if (typeof phaseDamage === "number") {
@@ -5480,6 +5599,15 @@ const buildBotOnlyFinalPlayers = (
     const economy = finalPlayerEconomyByPlayer.get(client.sessionId) ?? {
       totalGoldEarned: 0,
       totalGoldSpent: 0,
+      fixedPrepIncome: 0,
+      raidPhaseSuccessBonusIncome: 0,
+      sellIncome: 0,
+      specialEconomyIncome: 0,
+      normalShopSpend: 0,
+      bossShopSpend: 0,
+      refreshSpend: 0,
+      specialUnitUpgradeSpend: 0,
+      otherSpend: 0,
       purchaseCount: 0,
       refreshCount: 0,
       sellCount: 0,
@@ -5499,6 +5627,20 @@ const buildBotOnlyFinalPlayers = (
       selectedBossId: player.selectedBossId,
       totalGoldEarned: economy.totalGoldEarned,
       totalGoldSpent: economy.totalGoldSpent,
+      economyBreakdown: {
+        fixedPrepIncome: economy.fixedPrepIncome,
+        raidPhaseSuccessBonusIncome: economy.raidPhaseSuccessBonusIncome,
+        sellIncome: economy.sellIncome,
+        specialEconomyIncome: economy.specialEconomyIncome,
+        normalShopSpend: economy.normalShopSpend,
+        bossShopSpend: economy.bossShopSpend,
+        refreshSpend: economy.refreshSpend,
+        specialUnitUpgradeSpend: economy.specialUnitUpgradeSpend,
+        otherSpend: economy.otherSpend,
+        loggedGoldGain: economy.totalGoldEarned,
+        loggedGoldSpent: economy.totalGoldSpent,
+        finalUnusedGold: player.gold ?? 0,
+      },
       purchaseCount: economy.purchaseCount,
       refreshCount: economy.refreshCount,
       sellCount: economy.sellCount,
@@ -5517,6 +5659,15 @@ const buildBotOnlyFinalPlayerEconomyByPlayer = (
     const current = economyByPlayer.get(actionLog.playerId) ?? {
       totalGoldEarned: 0,
       totalGoldSpent: 0,
+      fixedPrepIncome: 0,
+      raidPhaseSuccessBonusIncome: 0,
+      sellIncome: 0,
+      specialEconomyIncome: 0,
+      normalShopSpend: 0,
+      bossShopSpend: 0,
+      refreshSpend: 0,
+      specialUnitUpgradeSpend: 0,
+      otherSpend: 0,
       purchaseCount: 0,
       refreshCount: 0,
       sellCount: 0,
@@ -5524,17 +5675,39 @@ const buildBotOnlyFinalPlayerEconomyByPlayer = (
     };
 
     if (actionLog.details.goldAfter > actionLog.details.goldBefore) {
-      current.totalGoldEarned += actionLog.details.goldAfter - actionLog.details.goldBefore;
+      const gainedGold = actionLog.details.goldAfter - actionLog.details.goldBefore;
+      current.totalGoldEarned += gainedGold;
+      if (actionLog.actionType === "sell_unit" || actionLog.actionType === "board_sell") {
+        current.sellIncome += gainedGold;
+      } else if (actionLog.actionType === "prep_income") {
+        current.fixedPrepIncome += gainedGold;
+      } else if (actionLog.actionType === "raid_phase_success_bonus") {
+        current.raidPhaseSuccessBonusIncome += gainedGold;
+      } else if (actionLog.actionType !== "buy_unit") {
+        current.specialEconomyIncome += gainedGold;
+      }
     } else if (actionLog.details.goldAfter < actionLog.details.goldBefore) {
       current.totalGoldSpent += actionLog.details.goldBefore - actionLog.details.goldAfter;
     }
 
     switch (actionLog.actionType) {
-      case "buy_unit":
+      case "buy_unit": {
+        const cost = typeof actionLog.details.cost === "number" ? actionLog.details.cost : 0;
+        current.normalShopSpend += cost;
+        const acquisitionBonus = Math.max(
+          0,
+          actionLog.details.goldAfter - (actionLog.details.goldBefore - cost),
+        );
+        current.specialEconomyIncome += acquisitionBonus;
+        current.purchaseCount += 1;
+        break;
+      }
       case "buy_boss_unit":
+        current.bossShopSpend += typeof actionLog.details.cost === "number" ? actionLog.details.cost : 0;
         current.purchaseCount += 1;
         break;
       case "shop_refresh":
+        current.refreshSpend += Math.max(0, actionLog.details.goldBefore - actionLog.details.goldAfter);
         current.refreshCount += 1;
         break;
       case "sell_unit":
@@ -5542,11 +5715,13 @@ const buildBotOnlyFinalPlayerEconomyByPlayer = (
         current.sellCount += 1;
         break;
       case "upgrade_special_unit":
+        current.specialUnitUpgradeSpend += Math.max(0, actionLog.details.goldBefore - actionLog.details.goldAfter);
         current.specialUnitUpgradeCount += typeof actionLog.details.itemCount === "number"
           ? actionLog.details.itemCount
           : 1;
         break;
       default:
+        current.otherSpend += Math.max(0, actionLog.details.goldBefore - actionLog.details.goldAfter);
         break;
     }
 
@@ -5572,6 +5747,7 @@ const buildBotOnlyBaselinePurchases = (
     };
 
     purchases.push({
+      roundIndex: actionLog.roundIndex,
       playerId: actionLog.playerId,
       label: getPlayerLabel(playerLabels, actionLog.playerId),
       actionType: actionLog.actionType,
@@ -5585,11 +5761,150 @@ const buildBotOnlyBaselinePurchases = (
   return purchases;
 };
 
+const buildOkinaHeroSubDecisionSnapshots = (
+  rounds: BotOnlyMatchRoundReport["rounds"],
+): BotOnlyBaselineOkinaHeroSubDecisionSnapshot[] =>
+  rounds.flatMap((round) =>
+    round.playersAtBattleStart.flatMap((player) => {
+      if (player.role !== "raid" || player.selectedHeroId !== "okina") {
+        return [];
+      }
+      const diagnostic = buildOkinaHeroSubDecisionDiagnostic({
+        role: player.role,
+        selectedBossId: player.selectedBossId ?? "",
+        selectedHeroId: player.selectedHeroId ?? "",
+        specialUnitLevel: player.specialUnitLevel ?? 1,
+        boardUnits: player.boardUnits,
+        boardSubUnits: player.boardSubUnits ?? [],
+      });
+      if (!diagnostic) {
+        return [];
+      }
+
+      return [{
+        roundIndex: round.roundIndex,
+        playerId: player.playerId,
+        label: player.label,
+        specialUnitStage: diagnostic.specialUnitStage,
+        candidateCount: diagnostic.candidateCount,
+        bestHostUnitId: diagnostic.bestHostUnitId,
+        bestHostUnitType: diagnostic.bestHostUnitType,
+        bestHostUnitName: diagnostic.bestHostUnitName,
+        bestHostLevel: diagnostic.bestHostLevel,
+        bestHostCurrentPowerScore: diagnostic.bestHostOptimizationCandidate?.currentPowerScore ?? null,
+        bestHostFutureValueScore: diagnostic.bestHostOptimizationCandidate?.futureValueScore ?? null,
+        bestHostTransitionReadinessScore:
+          diagnostic.bestHostOptimizationCandidate?.transitionReadinessScore ?? null,
+        bestHostProtectionScore: diagnostic.bestHostOptimizationCandidate?.protectionScore ?? null,
+        bestHostGain: diagnostic.bestHostGain,
+        frontEquivalentValue: diagnostic.frontEquivalentValue,
+        bestToFrontRatio: diagnostic.bestToFrontRatio,
+        bestToCurrentRatio: diagnostic.bestToCurrentRatio,
+        decision: diagnostic.decision,
+        reason: diagnostic.reason,
+      }];
+    }));
+
+const resolveBoardRefitIncomingReason = (
+  candidate: ReturnType<typeof buildBoardRefitDecision>["incomingCandidate"],
+): string | null => {
+  if (candidate === null) {
+    return null;
+  }
+  if (candidate.transitionReadinessScore >= 260) {
+    return "transition_ready";
+  }
+  if (candidate.futureValueScore > candidate.currentPowerScore) {
+    return "future_candidate";
+  }
+  return "current_power";
+};
+
+const resolveBoardRefitOutgoingReason = (
+  candidate: ReturnType<typeof buildBoardRefitDecision>["outgoingCandidate"],
+): string | null => {
+  if (candidate === null) {
+    return null;
+  }
+  if (candidate.protectionReasons.length > 0) {
+    return "protected_outgoing";
+  }
+  return "lowest_value";
+};
+
+const buildBoardRefitDecisionSnapshots = (
+  rounds: BotOnlyMatchRoundReport["rounds"],
+): BotOnlyBaselineBoardRefitDecisionSnapshot[] =>
+  rounds.flatMap((round) =>
+    round.playersAtBattleStart.flatMap((player) => {
+      if (player.role !== "boss" && player.role !== "raid") {
+        return [];
+      }
+      const diagnostic = buildBoardRefitDecision({
+        role: player.role,
+        selectedBossId: player.selectedBossId ?? "",
+        selectedHeroId: player.selectedHeroId ?? "",
+        specialUnitLevel: player.specialUnitLevel ?? 1,
+        boardUnits: player.boardUnits,
+        boardSubUnits: player.boardSubUnits ?? [],
+        benchUnits: player.benchUnits,
+        benchUnitIds: player.benchUnitIds ?? [],
+        lastBoardRefitRoundIndex: player.lastBoardRefitRoundIndex ?? null,
+      }, {
+        roundIndex: round.roundIndex,
+      });
+      const committed = Number.isFinite(player.lastBoardRefitRoundIndex)
+        && Math.trunc(player.lastBoardRefitRoundIndex ?? 0) === round.roundIndex;
+      const incoming = diagnostic.incomingCandidate;
+      const outgoing = diagnostic.outgoingCandidate;
+
+      return [{
+        roundIndex: round.roundIndex,
+        playerId: player.playerId,
+        label: player.label,
+        role: player.role,
+        boardAtCapacity: diagnostic.boardAtCapacity,
+        boardUnitCount: diagnostic.boardUnitCount,
+        benchUnitCount: diagnostic.benchUnitCount,
+        benchPressure: diagnostic.benchPressure,
+        candidateCount: diagnostic.candidateCount,
+        outgoingCandidateCount: diagnostic.outgoingCandidateCount,
+        decision: diagnostic.decision,
+        reason: diagnostic.reason,
+        committed,
+        replacementScore: diagnostic.replacementScore,
+        incomingUnitId: incoming?.unitId || null,
+        incomingUnitType: incoming?.unitType || null,
+        incomingUnitCost: incoming?.cost ?? null,
+        incomingUnitLevel: incoming?.unitLevel ?? null,
+        incomingReason: resolveBoardRefitIncomingReason(incoming),
+        incomingCurrentPowerScore: incoming?.currentPowerScore ?? null,
+        incomingFutureValueScore: incoming?.futureValueScore ?? null,
+        incomingTransitionReadinessScore: incoming?.transitionReadinessScore ?? null,
+        incomingProtectionScore: incoming?.protectionScore ?? null,
+        outgoingUnitId: outgoing?.unitId || null,
+        outgoingUnitType: outgoing?.unitType || null,
+        outgoingUnitCost: outgoing?.cost ?? null,
+        outgoingUnitLevel: outgoing?.unitLevel ?? null,
+        outgoingCell: outgoing?.cell ?? null,
+        outgoingReason: resolveBoardRefitOutgoingReason(outgoing),
+        outgoingCurrentPowerScore: outgoing?.currentPowerScore ?? null,
+        outgoingFutureValueScore: outgoing?.futureValueScore ?? null,
+        outgoingTransitionReadinessScore: outgoing?.transitionReadinessScore ?? null,
+        outgoingProtectionScore: outgoing?.protectionScore ?? null,
+      }];
+    }));
+
 const runBotOnlyHelperMatchForBaseline = async (
   connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
   createRoom: () => Promise<BotOnlyServerRoom>,
   damageTargets?: Record<number, number>,
-  helperConfigs?: Array<{ wantsBoss: boolean; policy: "strength" | "growth" }>,
+  helperConfigs?: Array<{
+    wantsBoss: boolean;
+    policy: "strength" | "growth";
+    heroId?: string;
+    optimizationVariant?: BotBalanceBaselineOptimizationVariant;
+  }>,
   matchIndex = 0,
 ): Promise<BotOnlyBaselineMatchArtifacts> => {
   const serverRoom = await createRoom();
@@ -5652,8 +5967,9 @@ const runBotOnlyHelperMatchForBaseline = async (
       }
       observedOfferKeySet.add(observationKey);
 
-      const aggregateKey = `${role}:${source}:${unitId}:${cost}`;
+      const aggregateKey = `${typedState?.roundIndex ?? 0}:${role}:${source}:${unitId}:${cost}`;
       const existing = observedOffersByKey.get(aggregateKey) ?? {
+        roundIndex: typedState?.roundIndex ?? 0,
         playerId: client.sessionId,
         label: getPlayerLabel(playerLabels, client.sessionId),
         role,
@@ -5689,14 +6005,20 @@ const runBotOnlyHelperMatchForBaseline = async (
     });
   }
 
-    clients.forEach((client, helperIndex) => {
-      const heroId = AUTO_FILL_HERO_IDS[
-        (helperIndex + Math.max(0, Math.trunc(matchIndex))) % AUTO_FILL_HERO_IDS.length
-      ];
-      attachAutoFillHelperAutomationForTest(client, helperIndex, {
-        ...(heroId ? { heroId } : {}),
-      });
+  const helperAutomationHandles = clients.map((client, helperIndex) => {
+    const helperConfig = helperConfigs?.[helperIndex];
+    const heroId = helperConfig?.heroId ?? AUTO_FILL_HERO_IDS[
+      (helperIndex + Math.max(0, Math.trunc(matchIndex))) % AUTO_FILL_HERO_IDS.length
+    ];
+    return attachAutoFillHelperAutomationForTest(client, helperIndex, {
+      ...(heroId ? { heroId } : {}),
+      ...(helperConfig ? {
+        policy: helperConfig.policy,
+        wantsBoss: helperConfig.wantsBoss,
+        ...(helperConfig.optimizationVariant ? { optimizationVariant: helperConfig.optimizationVariant } : {}),
+      } : {}),
     });
+  });
 
   await waitForCondition(() => serverRoom.state.phase === "Prep", 2_000, {
     timeoutMessage: `Timed out while waiting for initial Prep phase (phase=${serverRoom.state.phase}, round=${serverRoom.state.roundIndex})`,
@@ -5719,13 +6041,22 @@ const runBotOnlyHelperMatchForBaseline = async (
       serverRoom,
       clients,
       getReportBattleStartUnitsForPlayer,
-    ).map((player) => ({
-      ...player,
-      trackedBattleUnitIds: getTrackedBattleUnitIdsForPlayerAtBattleStart(
-        serverRoom,
+    ).map((player) => {
+      const lastBoardRefitRoundIndex = resolveLastBoardRefitRoundIndexForPlayer(
+        clients,
+        helperAutomationHandles,
         player.playerId,
-      ),
-    }));
+      );
+
+      return {
+        ...player,
+        ...(lastBoardRefitRoundIndex !== null ? { lastBoardRefitRoundIndex } : {}),
+        trackedBattleUnitIds: getTrackedBattleUnitIdsForPlayerAtBattleStart(
+          serverRoom,
+          player.playerId,
+        ),
+      };
+    });
 
     const phaseDamage = damageTargets?.[serverRoom.state.roundIndex];
     if (typeof phaseDamage === "number") {
@@ -5768,6 +6099,9 @@ const runBotOnlyHelperMatchForBaseline = async (
         ...(typeof battle.raidSurvivors === "number" ? { raidSurvivors: battle.raidSurvivors } : {}),
         unitDamageBreakdown: battle.unitDamageBreakdown.map((unit) => ({ ...unit })),
         unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+        ...(battle.bossSpellMetrics ? {
+          bossSpellMetrics: battle.bossSpellMetrics.map((metric) => ({ ...metric })),
+        } : {}),
       });
     }
 
@@ -5822,6 +6156,8 @@ const runBotOnlyHelperMatchForBaseline = async (
     battles,
     rounds: roundReport.rounds,
     observedShopOffers: Array.from(observedOffersByKey.values()),
+    okinaHeroSubDecisionSnapshots: buildOkinaHeroSubDecisionSnapshots(roundReport.rounds),
+    boardRefitDecisionSnapshots: buildBoardRefitDecisionSnapshots(roundReport.rounds),
   };
 };
 
@@ -5839,6 +6175,8 @@ const buildBotOnlyBaselineMatchSummary = (
     playerLabels: Object.fromEntries(playerLabels),
     purchases: buildBotOnlyBaselinePurchases(artifacts.serverRoom, playerLabels),
     observedShopOffers: artifacts.observedShopOffers.map((offer) => ({ ...offer })),
+    okinaHeroSubDecisionSnapshots: artifacts.okinaHeroSubDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
+    boardRefitDecisionSnapshots: artifacts.boardRefitDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
     rounds: artifacts.rounds.map((round) => ({
       roundIndex: round.roundIndex,
       phase: round.phase,
@@ -5860,6 +6198,9 @@ const buildBotOnlyBaselineMatchSummary = (
         leftDamageDealt: battle.leftDamageDealt,
         rightDamageDealt: battle.rightDamageDealt,
         unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+        ...(battle.bossSpellMetrics ? {
+          bossSpellMetrics: battle.bossSpellMetrics.map((metric) => ({ ...metric })),
+        } : {}),
       })),
       eliminations: [...round.eliminations],
     })),
@@ -5872,6 +6213,9 @@ const buildBotOnlyBaselineMatchSummary = (
       ...battle,
       unitDamageBreakdown: battle.unitDamageBreakdown.map((unit) => ({ ...unit })),
       unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
+      ...(battle.bossSpellMetrics ? {
+        bossSpellMetrics: battle.bossSpellMetrics.map((metric) => ({ ...metric })),
+      } : {}),
     })),
   };
 };
@@ -6017,9 +6361,17 @@ const buildBotOnlyMatchRoundReport = (
           hp: player.hp,
           remainingLives: player.remainingLives,
           eliminated: player.eliminated,
-          boardUnits: player.boardUnits.map((unit) => ({ ...unit })),
-          benchUnits: [...player.benchUnits],
-        })),
+        selectedHeroId: player.selectedHeroId ?? "",
+        selectedBossId: player.selectedBossId ?? "",
+        specialUnitLevel: player.specialUnitLevel ?? 1,
+        boardUnits: player.boardUnits.map((unit) => ({ ...unit })),
+        boardSubUnits: [...(player.boardSubUnits ?? [])],
+        benchUnits: [...player.benchUnits],
+        benchUnitIds: [...(player.benchUnitIds ?? [])],
+        ...(player.lastBoardRefitRoundIndex !== undefined
+          ? { lastBoardRefitRoundIndex: player.lastBoardRefitRoundIndex }
+          : {}),
+      })),
         playerConsequences: (snapshot?.playerConsequences ?? []).map((player) => ({
           playerId: player.playerId,
           label: getPlayerLabel(playerLabels, player.playerId),
@@ -6037,8 +6389,13 @@ const buildBotOnlyMatchRoundReport = (
           hp: player.hp,
           remainingLives: player.remainingLives,
           eliminated: player.eliminated,
+          selectedHeroId: player.selectedHeroId ?? "",
+          selectedBossId: player.selectedBossId ?? "",
+          specialUnitLevel: player.specialUnitLevel ?? 1,
           boardUnits: player.boardUnits.map((unit) => ({ ...unit })),
+          boardSubUnits: [...(player.boardSubUnits ?? [])],
           benchUnits: [...player.benchUnits],
+          benchUnitIds: [...(player.benchUnitIds ?? [])],
           lastBattle: {
             opponentId: player.lastBattle.opponentId,
             opponentLabel: getPlayerLabel(playerLabels, player.lastBattle.opponentId),
@@ -6436,6 +6793,52 @@ test("buildBotOnlyHumanReadableRoundReport omits phase hp only on the R12 final 
 
   expect(finalJudgmentText).toContain("R12リザルト\n最終判定ラウンド");
   expect(finalJudgmentText).not.toContain("R12リザルト\nフェーズHP 900/1150");
+});
+
+test("buildBoardRefitDecisionSnapshots marks same-round board refit execution as committed", () => {
+  const snapshots = buildBoardRefitDecisionSnapshots([{
+    roundIndex: 9,
+    phase: "Elimination",
+    durationMs: 100,
+    battles: [],
+    hpChanges: [],
+    purchases: [],
+    deploys: [],
+    phaseHpTarget: 600,
+    phaseDamageDealt: 450,
+    phaseResult: "success",
+    phaseCompletionRate: 0.75,
+    playersAtBattleStart: [{
+      playerId: "raid-1",
+      label: "P2",
+      role: "raid",
+      hp: 100,
+      remainingLives: 2,
+      eliminated: false,
+      selectedHeroId: "reimu",
+      specialUnitLevel: 3,
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitName: "Reimu", unitLevel: 3, subUnitName: "" },
+        { cell: 31, unitId: "momoyo", unitType: "assassin", unitName: "Momoyo", unitLevel: 1, subUnitName: "" },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitName: "Yoshika", unitLevel: 1, subUnitName: "" },
+      ],
+      boardSubUnits: [],
+      benchUnits: ["mage"],
+      benchUnitIds: ["hecatia"],
+      lastBoardRefitRoundIndex: 9,
+    }],
+    playerConsequences: [],
+    playersAfterRound: [],
+    eliminations: [],
+  }] as BotOnlyMatchRoundReport["rounds"]);
+
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]).toEqual(expect.objectContaining({
+    playerId: "raid-1",
+    decision: "replace",
+    reason: "replacement_ready",
+    committed: true,
+  }));
 });
 
 test("buildBotOnlyHumanReadableRoundReport prefers player wipe status for raid outcome labels", () => {
@@ -7077,6 +7480,7 @@ const runBotOnlyBaselineMatches = async (
   requestedMatchCount: number,
   runMatch: (matchIndex: number) => Promise<BotOnlyBaselineMatchSummary>,
   cleanupAfterMatch: () => Promise<void>,
+  matchStartIndex = 0,
 ): Promise<{
   reports: BotOnlyBaselineMatchSummary[];
   failures: Array<{ matchIndex: number; message: string }>;
@@ -7086,7 +7490,7 @@ const runBotOnlyBaselineMatches = async (
 
   for (let matchIndex = 0; matchIndex < requestedMatchCount; matchIndex += 1) {
     try {
-      reports.push(await runMatch(matchIndex));
+      reports.push(await runMatch(matchStartIndex + matchIndex));
     } catch (error) {
       failures.push({
         matchIndex,
@@ -7611,6 +8015,113 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         averageSpecialUnitUpgradeCount: 0,
       },
     },
+    heroTeamMetrics: [{
+      heroId: "marisa",
+      heroName: "霧雨魔理沙",
+      matchesPresent: 2,
+      raidTeamWins: 1,
+      raidTeamWinRate: 0.5,
+      firstPlaceRate: 0,
+      averagePlacement: 3,
+      averageRemainingLives: 0,
+      averageFinalGold: 0,
+      averageGoldEarned: 0,
+      averageGoldSpent: 0,
+      averageSpecialUnitUpgradeCount: 0,
+    }, {
+      heroId: "okina",
+      heroName: "摩多羅隠岐奈",
+      matchesPresent: 2,
+      raidTeamWins: 1,
+      raidTeamWinRate: 0.5,
+      firstPlaceRate: 0,
+      averagePlacement: 4,
+      averageRemainingLives: 0.5,
+      averageFinalGold: 0,
+      averageGoldEarned: 0,
+      averageGoldSpent: 0,
+      averageSpecialUnitUpgradeCount: 0,
+    }, {
+      heroId: "reimu",
+      heroName: "博麗霊夢",
+      matchesPresent: 2,
+      raidTeamWins: 1,
+      raidTeamWinRate: 0.5,
+      firstPlaceRate: 0.5,
+      averagePlacement: 1.5,
+      averageRemainingLives: 0.5,
+      averageFinalGold: 0,
+      averageGoldEarned: 0,
+      averageGoldSpent: 0,
+      averageSpecialUnitUpgradeCount: 0,
+    }],
+    heroCompositionMetrics: [{
+      compositionKey: "reimu / marisa / okina",
+      heroIds: ["reimu", "marisa", "okina"],
+      heroNames: ["博麗霊夢", "霧雨魔理沙", "摩多羅隠岐奈"],
+      matchesPresent: 2,
+      raidWins: 1,
+      raidWinRate: 0.5,
+      averageRounds: 4.5,
+    }],
+    playerEconomyBreakdowns: {
+      P1: {
+        fixedPrepIncome: 31.5,
+        raidPhaseSuccessBonusIncome: 0,
+        sellIncome: 0,
+        specialEconomyIncome: 0,
+        normalShopSpend: 0,
+        bossShopSpend: 0,
+        refreshSpend: 0,
+        specialUnitUpgradeSpend: 0,
+        otherSpend: 0,
+        loggedGoldGain: 0,
+        loggedGoldSpent: 0,
+        finalUnusedGold: 0,
+      },
+      P2: {
+        fixedPrepIncome: 17.5,
+        raidPhaseSuccessBonusIncome: 0,
+        sellIncome: 0,
+        specialEconomyIncome: 0,
+        normalShopSpend: 0,
+        bossShopSpend: 0,
+        refreshSpend: 0,
+        specialUnitUpgradeSpend: 0,
+        otherSpend: 0,
+        loggedGoldGain: 0,
+        loggedGoldSpent: 0,
+        finalUnusedGold: 0,
+      },
+      P3: {
+        fixedPrepIncome: 17.5,
+        raidPhaseSuccessBonusIncome: 0,
+        sellIncome: 0,
+        specialEconomyIncome: 0,
+        normalShopSpend: 0,
+        bossShopSpend: 0,
+        refreshSpend: 0,
+        specialUnitUpgradeSpend: 0,
+        otherSpend: 0,
+        loggedGoldGain: 0,
+        loggedGoldSpent: 0,
+        finalUnusedGold: 0,
+      },
+      P4: {
+        fixedPrepIncome: 17.5,
+        raidPhaseSuccessBonusIncome: 0,
+        sellIncome: 0,
+        specialEconomyIncome: 0,
+        normalShopSpend: 0,
+        bossShopSpend: 0,
+        refreshSpend: 0,
+        specialUnitUpgradeSpend: 0,
+        otherSpend: 0,
+        loggedGoldGain: 0,
+        loggedGoldSpent: 0,
+        finalUnusedGold: 0,
+      },
+    },
     bossBattleUnitMetrics: [
       {
         unitId: "remilia",
@@ -7725,6 +8236,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-marisa-2",
@@ -7734,6 +8249,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-okina-1",
@@ -7743,6 +8262,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-reimu-1",
@@ -7752,6 +8275,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-reimu-2",
@@ -7761,6 +8288,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-remilia-1",
@@ -7770,6 +8301,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-remilia-2",
@@ -7779,6 +8314,10 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
       },
       {
         unitId: "unit-sakuya-1",
@@ -7788,6 +8327,48 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
         matchesPresent: 1,
         averageCopiesPerMatch: 0.5,
         adoptionRate: 0.5,
+        averageFinalUnitLevel: 1,
+        maxFinalUnitLevel: 1,
+        finalLevel4Rate: 0,
+        finalLevel7Rate: 0,
+      },
+    ],
+    finalPlayerBoardMetrics: [
+      {
+        label: "P1",
+        role: "boss",
+        matchesPresent: 2,
+        averageDeployedUnitCount: 1,
+        averageDeployedAssetValue: 0,
+        averageSpecialUnitCount: 0,
+        averageStandardUnitCount: 1,
+      },
+      {
+        label: "P2",
+        role: "raid",
+        matchesPresent: 2,
+        averageDeployedUnitCount: 1,
+        averageDeployedAssetValue: 0,
+        averageSpecialUnitCount: 0,
+        averageStandardUnitCount: 1,
+      },
+      {
+        label: "P3",
+        role: "raid",
+        matchesPresent: 2,
+        averageDeployedUnitCount: 1,
+        averageDeployedAssetValue: 0,
+        averageSpecialUnitCount: 0,
+        averageStandardUnitCount: 1,
+      },
+      {
+        label: "P4",
+        role: "raid",
+        matchesPresent: 2,
+        averageDeployedUnitCount: 1,
+        averageDeployedAssetValue: 0,
+        averageSpecialUnitCount: 0,
+        averageStandardUnitCount: 1,
       },
     ],
     topDamageUnits: [
@@ -7826,7 +8407,13 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
       finalBoardAdoptionRate: 0,
     },
     highCostOfferMetrics: [],
+    bossExclusiveRoundLevelMetrics: [],
+    highCostRoundMetrics: [],
     shopOfferMetrics: [],
+    roundDamageEfficiencyMetrics: [],
+    unitDamageEfficiencyMetrics: [],
+    roundSurvivalDiagnostics: [],
+    roundUnitSurvivalDiagnostics: [],
     rangeDamageEfficiencyMetrics: [
       {
         side: "boss",
@@ -8059,12 +8646,46 @@ test("runBotOnlyBaselineMatches cleans up after every match attempt", async () =
   expect(cleanupAfterMatch).toHaveBeenCalledTimes(3);
 });
 
+test("runBotOnlyBaselineMatches passes global match index while recording local failures", async () => {
+  const cleanupAfterMatch = vi.fn(async () => {});
+  const seenMatchIndexes: number[] = [];
+
+  const { failures } = await runBotOnlyBaselineMatches(
+    3,
+    async (matchIndex) => {
+      seenMatchIndexes.push(matchIndex);
+      if (matchIndex === 12) {
+        throw new Error("global failure");
+      }
+
+      return {
+        totalRounds: matchIndex,
+        bossPlayerId: "boss",
+        ranking: ["boss"],
+        playerLabels: { boss: "Boss" },
+        finalPlayers: [],
+        battles: [],
+      };
+    },
+    cleanupAfterMatch,
+    10,
+  );
+
+  expect(seenMatchIndexes).toEqual([10, 11, 12]);
+  expect(failures).toEqual([{ matchIndex: 2, message: "global failure" }]);
+  expect(cleanupAfterMatch).toHaveBeenCalledTimes(3);
+});
+
 describeGameRoomIntegration("GameRoom integration / bot playability", (context) => {
   const getTestServer = () => context.testServer;
   const runBotBalanceBaseline = process.env.RUN_BOT_BALANCE_BASELINE === "true";
   const baselineMatchCount = Math.max(
     1,
     Number.parseInt(process.env.BOT_BASELINE_MATCH_COUNT ?? "10", 10) || 10,
+  );
+  const baselineMatchStartIndex = Math.max(
+    0,
+    Number.parseInt(process.env.BOT_BASELINE_MATCH_START_INDEX ?? "0", 10) || 0,
   );
   const baselineTimeoutMs = Math.max(
     30_000,
@@ -8076,9 +8697,17 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
   const baselineRaidPolicies = resolveBotBalanceBaselineRaidPolicies(
     process.env.BOT_BASELINE_RAID_POLICIES,
   );
+  const baselineRaidHeroIds = resolveBotBalanceBaselineRaidHeroIds(
+    process.env.BOT_BASELINE_RAID_HERO_IDS,
+  );
+  const baselineOptimizationVariant = resolveBotBalanceBaselineOptimizationVariant(
+    process.env.BOT_BASELINE_OPTIMIZATION_VARIANT,
+  );
   const baselineHelperConfigs = createBotBalanceBaselineHelperConfigs({
     bossPolicy: baselineBossPolicy,
     raidPolicies: baselineRaidPolicies,
+    raidHeroIds: baselineRaidHeroIds,
+    optimizationVariant: baselineOptimizationVariant,
   });
   const baselineTest = runBotBalanceBaseline ? test : test.skip;
   const BOT_ONLY_FAST_PARITY_ROOM_TIMINGS = createFastParityGameRoomOptions({
@@ -8233,7 +8862,8 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
             raidPlayers.length > 0 && raidPlayers.every((player) => player.playerWipedOut);
 
           return (
-            round.phaseDamageDealt < round.phaseHpTarget
+            round.phaseHpTarget <= 0
+            || round.phaseDamageDealt < round.phaseHpTarget
             || round.phaseResult === "success"
             || (round.phaseResult === "failed" && allRaidPlayersWipedOut)
           );
@@ -8333,6 +8963,40 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
   );
 
   baselineTest(
+    "bot-only baseline helper configs pin P1 as boss",
+    async () => {
+      const artifacts = await runBotOnlyHelperMatchForBaseline(
+        (room) => getTestServer().connectTo(room) as unknown as Promise<BotOnlyTestClient>,
+        () => createRoomWithForcedFlags(getTestServer(), {
+          enableBossExclusiveShop: true,
+          enableHeroSystem: true,
+          enableSpellCard: true,
+          enableSubUnitSystem: true,
+          enableTouhouRoster: true,
+        }, BOT_ONLY_BASELINE_ROOM_TIMINGS),
+        BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
+        baselineHelperConfigs,
+        0,
+      );
+      const report = buildBotOnlyBaselineMatchSummary(artifacts);
+
+      expect(report.finalPlayers.map((player) => [player.label, player.role])).toEqual([
+        ["P1", "boss"],
+        ["P2", "raid"],
+        ["P3", "raid"],
+        ["P4", "raid"],
+      ]);
+      expect(
+        artifacts.clients.map((client) =>
+          artifacts.serverRoom.state.players.get(client.sessionId)?.wantsBoss),
+      ).toEqual([true, false, false, false]);
+      expect(report.metadata?.timeScale).toBe(BOT_ONLY_BASELINE_ROOM_TIMINGS.battleTimelineTimeScale);
+      expect(artifacts.serverRoom.state.featureFlagsEnableSpellCard).toBe(true);
+    },
+    baselineTimeoutMs,
+  );
+
+  baselineTest(
     "bot-only baseline report aggregates multiple helper matches",
     async () => {
       const { reports, failures } = await runBotOnlyBaselineMatches(
@@ -8343,6 +9007,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
             () => createRoomWithForcedFlags(getTestServer(), {
               enableBossExclusiveShop: true,
               enableHeroSystem: true,
+              enableSpellCard: true,
               enableSubUnitSystem: true,
               enableTouhouRoster: true,
             }, BOT_ONLY_BASELINE_ROOM_TIMINGS),
@@ -8355,6 +9020,7 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
         async () => {
           await getTestServer().cleanup();
         },
+        baselineMatchStartIndex,
       );
 
       const aggregate = buildBotOnlyBaselineAggregateReportFromSummaries(reports, baselineMatchCount);

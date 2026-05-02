@@ -27,6 +27,179 @@ export function resolveAutoFillHelperPlayerPhase(
   nowMs?: number,
 ): string;
 
+export type OptimizationUnitEntry = {
+  source?: "board" | "bench" | string | null;
+  index?: number | null;
+  cell?: number | null;
+  unitId?: string | null;
+  unitType?: string | null;
+  unitLevel?: number | null;
+  cost?: number | null;
+  subUnit?: unknown;
+};
+
+export type OptimizationCandidate = {
+  source: "board" | "bench";
+  index: number | null;
+  cell: number | null;
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  cost: number;
+  unitLevel: number;
+  currentPowerScore: number;
+  futureValueScore: number;
+  transitionReadinessScore: number;
+  protectionScore: number;
+  protectionReasons: string[];
+};
+
+export type BoardRefitPlayerLike = {
+  role?: string | null;
+  selectedBossId?: string | null;
+  selectedHeroId?: string | null;
+  helperStrategy?: "upgrade" | "highCost" | string | null;
+  lastBoardRefitRoundIndex?: number | null;
+  boardSubUnits?: unknown[] | Iterable<unknown> | null;
+  specialUnitLevel?: number | null;
+  level?: number | null;
+  benchUnits?: unknown[] | Iterable<unknown> | null;
+  benchUnitIds?: unknown[] | Iterable<unknown> | null;
+  boardUnits?:
+    | Array<OptimizationUnitEntry | unknown>
+    | Iterable<OptimizationUnitEntry | unknown>
+    | null;
+};
+
+export type BoardRefitDecisionDiagnostic = {
+  roundIndex: number | null;
+  role: "boss" | "raid" | "";
+  boardAtCapacity: boolean;
+  boardUnitCount: number;
+  benchUnitCount: number;
+  benchPressure: number;
+  candidateCount: number;
+  outgoingCandidateCount: number;
+  incomingCandidate: OptimizationCandidate | null;
+  outgoingCandidate: OptimizationCandidate | null;
+  replacementScore: number | null;
+  committed: boolean;
+  decision: "replace" | "hold" | "no_candidate";
+  reason:
+    | "replacement_ready"
+    | "insufficient_margin"
+    | "unsupported_role"
+    | "open_slot_available"
+    | "no_incoming_candidate"
+    | "no_outgoing_candidate";
+};
+
+export function getBoardCurrentPowerScore(
+  entry?: OptimizationUnitEntry | null,
+  context?: {
+    player?: BoardRefitPlayerLike | null;
+    state?: { roundIndex?: number | null } | null;
+    strategy?: "upgrade" | "highCost" | string | null;
+    role?: string | null;
+  } | null,
+): number;
+
+export function getFutureValueScore(
+  entry?: OptimizationUnitEntry | null,
+  context?: {
+    player?: BoardRefitPlayerLike | null;
+    state?: { roundIndex?: number | null } | null;
+    strategy?: "upgrade" | "highCost" | string | null;
+    role?: string | null;
+  } | null,
+): number;
+
+export function getTransitionReadinessScore(
+  entry?: OptimizationUnitEntry | null,
+  context?: {
+    player?: BoardRefitPlayerLike | null;
+    state?: { roundIndex?: number | null } | null;
+    strategy?: "upgrade" | "highCost" | string | null;
+    role?: string | null;
+  } | null,
+): number;
+
+export function getReplacementProtectionScore(
+  entry?: OptimizationUnitEntry | null,
+  context?: {
+    player?: BoardRefitPlayerLike | null;
+    state?: { roundIndex?: number | null } | null;
+    strategy?: "upgrade" | "highCost" | string | null;
+    role?: string | null;
+  } | null,
+): { score: number; reasons: string[] };
+
+export function buildOptimizationCandidate(
+  entry?: OptimizationUnitEntry | null,
+  context?: {
+    player?: BoardRefitPlayerLike | null;
+    state?: { roundIndex?: number | null } | null;
+    strategy?: "upgrade" | "highCost" | string | null;
+    role?: string | null;
+  } | null,
+): OptimizationCandidate;
+
+export function buildBoardRefitDecision(
+  player?: BoardRefitPlayerLike | null,
+  state?: { roundIndex?: number | null } | null,
+  options?: { strategy?: "upgrade" | "highCost" | string | null } | null,
+): BoardRefitDecisionDiagnostic;
+
+export type OkinaHeroSubDecisionDiagnostic = {
+  specialUnitStage: 1 | 4 | 7;
+  candidateCount: number;
+  attachedHostCell: number | null;
+  currentHostUnitId: string | null;
+  currentHostGain: number | null;
+  bestHostCell: number | null;
+  bestHostUnitId: string | null;
+  bestHostUnitType: string | null;
+  bestHostUnitName: string | null;
+  bestHostLevel: number | null;
+  bestHostOptimizationCandidate: OptimizationCandidate | null;
+  bestHostGain: number | null;
+  frontEquivalentValue: number;
+  bestToFrontRatio: number | null;
+  bestToCurrentRatio: number | null;
+  decision: "attach" | "reattach" | "keep_front" | "keep_current";
+  reason:
+    | "attach_best_host"
+    | "reattach_stronger_host"
+    | "front_value_preferred"
+    | "current_host_margin_preferred"
+    | "no_candidate";
+};
+
+export function buildOkinaHeroSubDecisionDiagnostic(player?: {
+  role?: string | null;
+  selectedBossId?: string | null;
+  selectedHeroId?: string | null;
+  boardSubUnits?: unknown[] | Iterable<unknown> | null;
+  specialUnitLevel?: number | null;
+  level?: number | null;
+  boardUnits?:
+    | Array<{
+        cell?: number | null;
+        unitId?: string | null;
+        unitType?: string | null;
+        subUnit?: unknown;
+        unitLevel?: number | null;
+      } | unknown>
+    | Iterable<{
+        cell?: number | null;
+        unitId?: string | null;
+        unitType?: string | null;
+        subUnit?: unknown;
+        unitLevel?: number | null;
+      } | unknown>
+    | null;
+} | null): OkinaHeroSubDecisionDiagnostic | null;
+
 export type AutoFillHelperAction =
   | {
       type: "boss_preference";
@@ -69,6 +242,18 @@ export function buildAutoFillHelperActions(input: {
   sessionId?: string | null;
   policy?: "strength" | "growth";
   strategy?: "upgrade" | "highCost";
+  optimizationVariant?:
+    | "full"
+    | "raid-optimization-off"
+    | "boss-optimization-off"
+    | "all-optimization-off"
+    | "board-refit-off"
+    | "raid-board-refit-off"
+    | "boss-board-refit-off"
+    | "future-shop-off"
+    | "okina-host-off"
+    | string
+    | null;
   wantsBoss?: boolean | null;
   player?: {
     isSpectator?: boolean;
@@ -83,6 +268,7 @@ export function buildAutoFillHelperActions(input: {
     benchUnitIds?: unknown[] | Iterable<unknown> | null;
     boardSubUnits?: unknown[] | Iterable<unknown> | null;
     specialUnitLevel?: number | null;
+    lastBoardRefitRoundIndex?: number | null;
     level?: number | null;
     ownedUnits?: Record<string, number> | null;
     activeSynergies?:

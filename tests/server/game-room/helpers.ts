@@ -368,6 +368,13 @@ const buildOptimisticBoardPlacement = (cell: number, unitType: unknown, unitId: 
   ...(typeof unitId === "string" && unitId.length > 0 ? { unitId } : {}),
 });
 
+const getAutoFillStateRoundIndex = (state: AutoFillHelperState | null | undefined): number | null => {
+  const roundIndex = state?.roundIndex;
+  return typeof roundIndex === "number" && Number.isFinite(roundIndex)
+    ? Math.trunc(roundIndex)
+    : null;
+};
+
 const applyOptimisticPrepCommandToPlayer = (
   player: AutoFillHelperPlayer | null,
   payload: Record<string, unknown>,
@@ -474,6 +481,24 @@ const applyOptimisticPrepCommandToPlayer = (
     return null;
   }
 
+  if (typeof payload.boardSellIndex === "number") {
+    const sellCell = Number(payload.boardSellIndex);
+    const boardUnits = Array.from(nextPlayer.boardUnits ?? []);
+    const sellIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === sellCell);
+    if (!Number.isInteger(sellCell) || sellIndex < 0) {
+      return nextPlayer;
+    }
+
+    boardUnits.splice(sellIndex, 1);
+    nextPlayer.boardUnits = boardUnits;
+    nextPlayer.boardSubUnits = Array.from((nextPlayer as { boardSubUnits?: string[] }).boardSubUnits ?? [])
+      .filter((token) => !token.startsWith(`${sellCell}:`));
+    if (typeof nextPlayer.gold === "number") {
+      nextPlayer.gold += 1;
+    }
+    return nextPlayer;
+  }
+
   const benchToBoardCell = payload.benchToBoardCell as
     | { benchIndex?: number; cell?: number; slot?: "main" | "sub" }
     | undefined;
@@ -543,16 +568,28 @@ export const attachAutoFillHelperAutomationForTest = (
   options: {
     policy?: "strength" | "growth";
     strategy?: "upgrade" | "highCost";
+    optimizationVariant?:
+      | "full"
+      | "raid-optimization-off"
+      | "boss-optimization-off"
+      | "all-optimization-off"
+      | "board-refit-off"
+      | "raid-board-refit-off"
+      | "boss-board-refit-off"
+      | "future-shop-off"
+      | "okina-host-off";
     wantsBoss?: boolean;
     heroId?: string;
   } = {},
 ): {
   getResults: () => unknown[];
+  getLastBoardRefitRoundIndex: () => number | null;
 } => {
   let helperCmdSeq = 1;
   let lastAutomationStateKey = "";
   let optimisticHelperPlayer: AutoFillHelperPlayer | null = null;
   let pendingPrepCommand: { cmdSeq: number; payload: Record<string, unknown> } | null = null;
+  let lastBoardRefitRoundIndex: number | null = null;
   const results: unknown[] = [];
 
   const buildAutomationStateKey = (
@@ -573,6 +610,7 @@ export const attachAutoFillHelperAutomationForTest = (
       boardSubUnits: Array.from((helperPlayer as { boardSubUnits?: unknown[] } | null)?.boardSubUnits ?? []),
       featureFlagsEnableTouhouRoster: state?.featureFlagsEnableTouhouRoster === true,
       gold: Number.isFinite(helperGold) ? helperGold : null,
+      lastBoardRefitRoundIndex,
       lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
       lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
       phase: typeof state?.phase === "string" ? state.phase : "",
@@ -601,7 +639,10 @@ export const attachAutoFillHelperAutomationForTest = (
       optimisticHelperPlayer = null;
     }
     const helperPlayer = optimisticHelperPlayer ?? syncedHelperPlayer;
-    const automationStateKey = buildAutomationStateKey(helperState, helperPlayer);
+    const helperPlayerForAutomation = helperPlayer && lastBoardRefitRoundIndex !== null
+      ? { ...helperPlayer, lastBoardRefitRoundIndex }
+      : helperPlayer;
+    const automationStateKey = buildAutomationStateKey(helperState, helperPlayerForAutomation);
 
     if (automationStateKey === lastAutomationStateKey) {
       return;
@@ -617,12 +658,13 @@ export const attachAutoFillHelperAutomationForTest = (
 
     const actions = buildAutoFillHelperActions({
       helperIndex,
-      player: helperPlayer,
+      player: helperPlayerForAutomation,
       sessionId: helperRoom.sessionId,
       state: helperState,
       ...(options.heroId ? { heroId: options.heroId } : {}),
       ...(options.policy ? { policy: options.policy } : {}),
       ...(options.strategy ? { strategy: options.strategy } : {}),
+      ...(options.optimizationVariant ? { optimizationVariant: options.optimizationVariant } : {}),
       ...(typeof options.wantsBoss === "boolean" ? { wantsBoss: options.wantsBoss } : {}),
     });
 
@@ -677,6 +719,9 @@ export const attachAutoFillHelperAutomationForTest = (
     results.push(message);
     const commandResult = message as { accepted?: boolean } | null;
     if (commandResult?.accepted === true && pendingPrepCommand) {
+      if (typeof pendingPrepCommand.payload.boardSellIndex === "number") {
+        lastBoardRefitRoundIndex = getAutoFillStateRoundIndex(helperRoom.state as AutoFillHelperState | null);
+      }
       const basePlayer = optimisticHelperPlayer
         ?? (helperRoom.state
           ? mapGetStatePlayer((helperRoom.state as AutoFillHelperState)?.players, helperRoom.sessionId)
@@ -706,6 +751,7 @@ export const attachAutoFillHelperAutomationForTest = (
 
   return {
     getResults: () => [...results],
+    getLastBoardRefitRoundIndex: () => lastBoardRefitRoundIndex,
   };
 };
 

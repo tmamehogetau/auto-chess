@@ -24,7 +24,7 @@ function getRealisticKpiSimulationTestServerPort(): number {
 
 const FAST_TEST_ROOM_TIMINGS = {
   readyAutoStartMs: 150,
-  prepDurationMs: 80,
+  prepDurationMs: 300,
   battleDurationMs: 60,
   settleDurationMs: 35,
   eliminationDurationMs: 35,
@@ -154,9 +154,12 @@ async function buildCompositionViaPrepActions(
     ]);
     const buyResult = await sendPrepCommand(client, cmdSeq++, { shopBuySlotIndex: 0 });
     if (buyResult.accepted) {
-      await sendPrepCommand(client, cmdSeq++, {
+      const deployResult = await sendPrepCommand(client, cmdSeq++, {
         benchToBoardCell: { benchIndex: 0, cell }
       });
+      expect(deployResult).toMatchObject({ accepted: true });
+    } else {
+      expect(buyResult).toMatchObject({ accepted: true });
     }
   }
 

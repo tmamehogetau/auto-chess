@@ -41,6 +41,7 @@ const heroExclusiveUnitMetadataById = new Map<string, ResolvedUnitMetadata>(
   HERO_EXCLUSIVE_UNITS.map((unit) => [unit.unitId, {
     unitType: unit.unitType,
     cost: unit.cost,
+    archetype: unit.id,
     hp: unit.hp,
     attack: unit.attack,
     attackSpeed: unit.attackSpeed,

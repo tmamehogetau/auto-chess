@@ -50,6 +50,15 @@ function createTestSkillContext(): SkillExecutionContext {
     applyShield: (target, amount) => {
       target.shieldAmount = (target.shieldAmount ?? 0) + amount;
     },
+    dealDamage: (_caster, target, amount) => {
+      const shieldBeforeHit = target.shieldAmount ?? 0;
+      const damage = Math.max(0, Math.floor(amount * (target.damageTakenMultiplier ?? 1)));
+      const shieldAbsorbed = Math.min(shieldBeforeHit, damage);
+      const damageAfterShield = damage - shieldAbsorbed;
+      target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+      target.hp -= damageAfterShield;
+      return damageAfterShield;
+    },
     findCurrentOrNearestTarget: (caster, enemies) => (
       enemies.find((enemy) => enemy.id === caster.currentTargetId && !enemy.isDead)
       ?? enemies.find((enemy) => !enemy.isDead)
@@ -158,7 +167,7 @@ describe("hero skill regressions", () => {
           summary: "Lv7で範囲妨害がさらに強化される",
           skillScore: 20,
         },
-        skillImplementationState: "implemented",
+        skillImplementationState: "provisional",
       },
     ]);
     expect(Object.keys(HERO_SKILL_DEFINITIONS).sort()).toEqual([
@@ -252,8 +261,7 @@ describe("hero skill regressions", () => {
   });
 
   test("sourceUnitId-based heroes schedule cooldown skills", () => {
-    const simulator = new BattleSimulator();
-    const marisa = createBattleUnit({
+    const createMarisa = () => createBattleUnit({
       id: "left-mage-0",
       sourceUnitId: "marisa",
       battleSide: "left",
@@ -263,7 +271,7 @@ describe("hero skill regressions", () => {
       movementSpeed: 0,
       cell: 0,
     });
-    const enemy = createBattleUnit({
+    const createEnemy = () => createBattleUnit({
       id: "right-vanguard-0",
       sourceUnitId: "enemy-1",
       battleSide: "right",
@@ -276,10 +284,10 @@ describe("hero skill regressions", () => {
       cell: 3,
     });
 
-    const beforeInitialDelay = simulator.simulateBattle([marisa], [enemy], [], [], 9_900);
+    const beforeInitialDelay = new BattleSimulator().simulateBattle([createMarisa()], [createEnemy()], [], [], 9_900);
     expect(beforeInitialDelay.combatLog.some((entry) => entry.includes("マスタースパーク"))).toBe(false);
 
-    const afterInitialDelay = simulator.simulateBattle([marisa], [enemy], [], [], 10_100);
+    const afterInitialDelay = new BattleSimulator().simulateBattle([createMarisa()], [createEnemy()], [], [], 10_100);
     expect(afterInitialDelay.combatLog.some((entry) => entry.includes("マスタースパーク"))).toBe(true);
   });
 

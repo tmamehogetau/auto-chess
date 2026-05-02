@@ -25,6 +25,7 @@ export interface SkillExecutionContext {
   currentTimeMs: number;
   applyTimedModifier: (target: BattleUnit, modifier: TimedCombatModifier) => void;
   applyShield: (target: BattleUnit, amount: number, sourceId: string) => void;
+  dealDamage: (caster: BattleUnit, target: BattleUnit, amount: number, sourceId: string) => number;
   findCurrentOrNearestTarget: (caster: BattleUnit, enemies: BattleUnit[]) => BattleUnit | null;
   executePairSkillsOnMainSkillActivated: (
     main: BattleUnit,
@@ -162,6 +163,18 @@ function createImmediateSkillContext(_log: string[]): SkillExecutionContext {
     applyShield: (target, amount) => {
       target.shieldAmount = (target.shieldAmount ?? 0) + amount;
     },
+    dealDamage: (_caster, target, amount) => {
+      if (!Number.isFinite(amount) || amount <= 0 || target.isDead) {
+        return 0;
+      }
+      const scaledDamage = Math.max(0, Math.floor(amount * (target.damageTakenMultiplier ?? 1)));
+      const shieldBeforeHit = target.shieldAmount ?? 0;
+      const shieldAbsorbed = Math.min(shieldBeforeHit, scaledDamage);
+      const damageAfterShield = scaledDamage - shieldAbsorbed;
+      target.shieldAmount = shieldBeforeHit - shieldAbsorbed;
+      target.hp -= damageAfterShield;
+      return damageAfterShield;
+    },
     findCurrentOrNearestTarget: (caster, enemies) => {
       const currentTarget = enemies.find(
         (enemy) => enemy.id === caster.currentTargetId && !enemy.isDead,
@@ -298,7 +311,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     name: 'Precise Shot',
     initialSkillDelayMs: 3000,
     skillCooldownMs: 6000,
-    execute: (caster, _allies, enemies, log) => {
+    execute: (caster, _allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
       const target = selectLowestHpTarget(caster, enemies);
       if (target) {
         const damage = calculateUltimateDamage(
@@ -306,7 +320,7 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
           caster.attackPower * caster.buffModifiers.attackMultiplier * 2,
           target,
         );
-        target.hp -= damage;
+        skillContext.dealDamage(caster, target, damage, "Precise Shot");
         log.push(`${caster.type} activates Precise Shot! Deals ${damage} damage to ${target.type}`);
       }
     }
@@ -315,7 +329,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     name: 'Arcane Burst',
     initialSkillDelayMs: 4000,
     skillCooldownMs: 8000,
-    execute: (caster, _allies, enemies, log) => {
+    execute: (caster, _allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
       for (const enemy of enemies) {
         if (!enemy.isDead) {
           const damage = calculateUltimateDamage(
@@ -323,7 +338,7 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
             caster.attackPower * caster.buffModifiers.attackMultiplier * 1.5,
             enemy,
           );
-          enemy.hp -= damage;
+          skillContext.dealDamage(caster, enemy, damage, "Arcane Burst");
         }
       }
       const sampleTarget = enemies.find((enemy) => !enemy.isDead);
@@ -341,7 +356,8 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
     name: 'Backstab',
     initialSkillDelayMs: 2500,
     skillCooldownMs: 5000,
-    execute: (caster, _allies, enemies, log) => {
+    execute: (caster, _allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
       const target = selectLowestHpTarget(caster, enemies);
       if (target) {
         const damage = calculateUltimateDamage(
@@ -349,7 +365,7 @@ export const SKILL_DEFINITIONS: Record<BoardUnitType, SkillEffect> = {
           caster.attackPower * caster.buffModifiers.attackMultiplier * 3,
           target,
         );
-        target.hp -= damage;
+        skillContext.dealDamage(caster, target, damage, "Backstab");
         log.push(`${caster.type} activates Backstab! Deals ${damage} damage to ${target.type}`);
       }
     }
@@ -391,7 +407,7 @@ export const HERO_EXCLUSIVE_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEff
         caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
         target,
       );
-      target.hp -= damage;
+      skillContext.dealDamage(caster, target, damage, "貧符「超貧乏玉」");
       skillContext.applyTimedModifier(target, {
         id: "shion-poverty-orb",
         durationMs: 6000,
@@ -431,7 +447,8 @@ export const SCARLET_MANSION_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEf
     name: "火水木金土符「賢者の石」",
     initialSkillDelayMs: 5000,
     skillCooldownMs: 9000,
-    execute: (caster, _allies, enemies, log) => {
+    execute: (caster, _allies, enemies, log, context) => {
+      const skillContext = resolveSkillContext(context, log);
       const stage = resolveSkillStage(caster);
       const damageMultiplier = stage >= 7 ? 1.5 : stage >= 4 ? 1.35 : 1.2;
       const targets = enemies
@@ -447,7 +464,7 @@ export const SCARLET_MANSION_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEf
           caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
           target,
         );
-        target.hp -= damage;
+        skillContext.dealDamage(caster, target, damage, "火水木金土符「賢者の石」");
       }
 
       log.push(`${caster.sourceUnitId ?? caster.type} activates 火水木金土符「賢者の石」`);
@@ -565,7 +582,7 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
           caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
           enemy,
         );
-        enemy.hp -= damage;
+        skillContext.dealDamage(caster, enemy, damage, "夢符「二重結界」");
       }
 
       log.push(`${caster.sourceUnitId ?? caster.type} activates 夢符「二重結界」`);
@@ -592,7 +609,7 @@ export const HERO_SKILL_DEFINITIONS: Record<string, HeroSkillEffect> = {
           caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
           target,
         );
-        target.hp -= damage;
+        skillContext.dealDamage(caster, target, damage, "恋符「マスタースパーク」");
       }
 
       log.push(`${caster.sourceUnitId ?? caster.type} activates 恋符「マスタースパーク」`);

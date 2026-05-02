@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="820" viewBox="0 0 1480 820" preserveAspectRatio="none" data-shop-remilia-shelves="true">
+  <defs>
+    <linearGradient id="shelfGold" x1="0" x2="1">
+      <stop offset="0" stop-color="#4b3019"/>
+      <stop offset=".48" stop-color="#f4cf8c"/>
+      <stop offset="1" stop-color="#4b3019"/>
+    </linearGradient>
+    <linearGradient id="shelfRed" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#5a1628" stop-opacity=".74"/>
+      <stop offset=".52" stop-color="#0a101b" stop-opacity=".44"/>
+      <stop offset="1" stop-color="#070a11" stop-opacity=".9"/>
+    </linearGradient>
+  </defs>
+  <rect width="1480" height="820" fill="none"/>
+  <path d="M0 0h304v820H0Z" fill="url(#shelfRed)" opacity=".78"/>
+  <path d="M1176 0h304v820h-304Z" fill="url(#shelfRed)" opacity=".78"/>
+  <path d="M304 0h1v820h-1M1175 0h1v820h-1" stroke="url(#shelfGold)" stroke-width="5" opacity=".44"/>
+  <g opacity=".44" stroke="url(#shelfGold)" stroke-width="1.4">
+    <path d="M30 90h232M34 208h222M30 326h232M34 444h222M30 562h232M34 680h222"/>
+    <path d="M1218 90h232M1224 208h222M1218 326h232M1224 444h222M1218 562h232M1224 680h222"/>
+  </g>
+  <g opacity=".22" fill="#f4cf8c">
+    <path d="M74 126h28v52H74zM138 114h18v64h-18zM184 136h34v42h-34z"/>
+    <path d="M70 484h36v50H70zM144 466h22v68h-22zM198 492h24v42h-24z"/>
+    <path d="M1252 124h28v52h-28zM1310 112h20v64h-20zM1360 134h34v42h-34z"/>
+    <path d="M1250 484h36v50h-36zM1326 466h22v68h-22zM1378 492h24v42h-24z"/>
+  </g>
+  <g fill="none" stroke="#d94461" stroke-opacity=".22" stroke-width="2">
+    <path d="M18 38c80 42 192 42 272 0M1190 38c80 42 192 42 272 0"/>
+    <path d="M18 774c80-42 192-42 272 0M1190 774c80-42 192-42 272 0"/>
+  </g>
+</svg>

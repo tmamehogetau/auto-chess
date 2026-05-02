@@ -167,6 +167,100 @@ describe("bot balance baseline analysis report", () => {
     });
   });
 
+  test("summarizes early Remilia body focus from R1-R3 details", () => {
+    const summary = createSummary({
+      aggregate: createSampleAggregate({
+        completedMatches: 2,
+        roundDetails: [{
+          matchIndex: 0,
+          matchWinnerRole: "boss",
+          totalRounds: 4,
+          roundIndex: 1,
+          battleEndTimeMs: 5000,
+          phaseHpTarget: 1200,
+          phaseDamageDealt: 1200,
+          phaseCompletionRate: 1,
+          phaseHpPowerIndex: 8,
+          phaseResult: "success",
+          allRaidPlayersWipedOut: false,
+          raidPlayersWipedOut: 0,
+          raidPlayersEliminatedAfterRound: 0,
+          bossSurvivors: 0,
+          raidSurvivors: 8,
+          bossTotalDamage: 100,
+          raidTotalDamage: 1200,
+          raidPhaseContributionDamage: 1200,
+          battleEndReasons: ["phase_hp_depleted"],
+          battleWinnerRoles: ["raid"],
+          raidPlayerConsequences: [],
+          bossBodyFocus: {
+            unitId: "remilia",
+            unitName: "レミリア",
+            cell: 2,
+            x: 2,
+            y: 0,
+            unitLevel: 4,
+            damageTaken: 800,
+            directPhaseDamage: 800,
+            firstDamageAtMs: null,
+            defeated: true,
+            finalHp: 0,
+          },
+          topBossUnits: [],
+          topRaidUnits: [],
+        }, {
+          matchIndex: 1,
+          matchWinnerRole: "boss",
+          totalRounds: 4,
+          roundIndex: 3,
+          battleEndTimeMs: 30_000,
+          phaseHpTarget: 1800,
+          phaseDamageDealt: 900,
+          phaseCompletionRate: 0.5,
+          phaseHpPowerIndex: 0.5,
+          phaseResult: "failed",
+          allRaidPlayersWipedOut: true,
+          raidPlayersWipedOut: 3,
+          raidPlayersEliminatedAfterRound: 0,
+          bossSurvivors: 3,
+          raidSurvivors: 0,
+          bossTotalDamage: 1200,
+          raidTotalDamage: 900,
+          raidPhaseContributionDamage: 900,
+          battleEndReasons: ["annihilation"],
+          battleWinnerRoles: ["boss"],
+          raidPlayerConsequences: [],
+          bossBodyFocus: {
+            unitId: "remilia",
+            unitName: "レミリア",
+            cell: 2,
+            x: 2,
+            y: 0,
+            unitLevel: 6,
+            damageTaken: 200,
+            directPhaseDamage: 200,
+            firstDamageAtMs: null,
+            defeated: false,
+            finalHp: 1600,
+          },
+          topBossUnits: [],
+          topRaidUnits: [],
+        }],
+      }),
+    });
+
+    const analysis = buildBotBalanceBaselineAnalysis(summary);
+
+    expect(analysis.bossBodyFocus).toMatchObject({
+      earlyRoundCount: 2,
+      earlyDefeatCount: 1,
+      earlyDefeatRate: 0.5,
+      averageEarlyDamageTaken: 500,
+      averageEarlyDirectPhaseDamage: 500,
+      averageEarlyFirstDamageAtMs: null,
+    });
+  });
+
   test("marks R12 phase HP resolution as an integrity failure", () => {
     const summary = createSummary({
       aggregate: createSampleAggregate({
@@ -464,6 +558,7 @@ describe("bot balance baseline analysis report", () => {
           phaseHpTarget: 600,
           phaseDamageDealt: 600,
           phaseCompletionRate: 1,
+          phaseHpPowerIndex: 16,
           phaseResult: "success",
           allRaidPlayersWipedOut: false,
           raidPlayersWipedOut: 0,
@@ -488,6 +583,7 @@ describe("bot balance baseline analysis report", () => {
       roundIndex: 1,
       averageBattleEndSeconds: 0.05,
       averageBattleEndRealPlaySeconds: 5,
+      averagePhaseHpPowerIndex: 16,
     });
     expect(analysis.shop.mostOffered).toContainEqual(expect.objectContaining({
       unitId: "patchouli",

@@ -1,5 +1,6 @@
 import { HERO_EXCLUSIVE_UNITS } from "../data/hero-exclusive-units";
 import { HEROES } from "../data/heroes";
+import { getScarletMansionUnitById } from "../data/scarlet-mansion-units";
 import { getTouhouUnitById } from "../data/touhou-units";
 import { BOSS_CHARACTERS } from "../shared/boss-characters";
 import {
@@ -31,6 +32,8 @@ const AUTO_FILL_BOSS_DEPLOY_SEQUENCES = [
   [1, 7, 13, 0, 6, 12, 2, 8, 14, 3, 9, 15, 4, 10, 16, 5, 11, 17],
   [5, 11, 17, 4, 10, 16, 3, 9, 15, 2, 8, 14, 1, 7, 13, 0, 6, 12],
 ];
+const SHARED_BOARD_WIDTH = 6;
+const DEFAULT_BOSS_BODY_CELL = 2;
 const AUTO_FILL_RAID_DEPLOY_SEQUENCES = [
   [31, 25, 19, 30, 24, 18, 32, 26, 20, 33, 27, 21, 34, 28, 22, 35, 29, 23],
   [33, 27, 21, 32, 26, 20, 34, 28, 22, 31, 25, 19, 35, 29, 23, 30, 24, 18],
@@ -66,6 +69,13 @@ const BOSS_DUPLICATE_OWNED_BONUS_CAP = 440;
 const BOSS_HIGH_COST_STRATEGY_COST_WEIGHT = 100;
 const BOSS_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT = 0.45;
 const BOSS_HIGH_COST_STRATEGY_DUPLICATE_WEIGHT = 0.25;
+const BOSS_ROSTER_WIDTH_PRIORITY_BONUS = 360;
+const BOSS_FRONTLINE_SCREEN_PRIORITY_BONUS = 520;
+const BOSS_BACKLINE_CORE_PRIORITY_BONUS = 120;
+const BOSS_THIN_ROSTER_EXPENSIVE_OFFER_PENALTY = 160;
+const BOSS_LOW_DURABILITY_ESCORT_PENALTY = 240;
+const BOSS_EARLY_FRAGILE_THIRD_SLOT_PENALTY = 180;
+const BOSS_MIN_RESERVE_BUY_SCORE = 80;
 const RAID_OFFER_PRIORITY_BY_UNIT_ID = {
   nazrin: 220,
   yoshika: 210,
@@ -317,11 +327,60 @@ function buildFrontlinePreferredDeploySequence(deploySequence) {
   return preferredSequence;
 }
 
-function sortDeployCellsForUnitType(role, helperIndex, unitType, deployCells) {
+function getBoardCellCoordinate(cell) {
+  return {
+    x: cell % SHARED_BOARD_WIDTH,
+    y: Math.floor(cell / SHARED_BOARD_WIDTH),
+  };
+}
+
+function resolveBossBodyCell(boardUnits, selectedBossId = "") {
+  const normalizedSelectedBossId = normalizeUnitId(selectedBossId) || AUTO_FILL_BOSS_ID;
+  const bossPlacement = toArray(boardUnits)
+    .map((unit) => parseBoardPlacement(unit))
+    .filter((placement) => placement !== null)
+    .find((placement) => normalizeUnitId(placement.unitId) === normalizedSelectedBossId);
+
+  return bossPlacement?.cell ?? DEFAULT_BOSS_BODY_CELL;
+}
+
+function buildBossFrontlineGuardDeploySequence(deploySequence, boardUnits, selectedBossId = "") {
+  const bossCell = resolveBossBodyCell(boardUnits, selectedBossId);
+  const bossCoordinate = getBoardCellCoordinate(bossCell);
+  const originalOrderByCell = new Map(deploySequence.map((cell, index) => [cell, index]));
+
+  return [...deploySequence].sort((leftCell, rightCell) => {
+    const scoreCell = (cell) => {
+      const coordinate = getBoardCellCoordinate(cell);
+      const forwardSteps = coordinate.y - bossCoordinate.y;
+      const laneDistance = Math.abs(coordinate.x - bossCoordinate.x);
+      const originalOrder = originalOrderByCell.get(cell) ?? deploySequence.length;
+
+      if (forwardSteps <= 0) {
+        return 10_000 + laneDistance * 100 + Math.abs(forwardSteps) * 10 + originalOrder;
+      }
+
+      return laneDistance * 100 + (forwardSteps - 1) + originalOrder / 100;
+    };
+
+    return scoreCell(leftCell) - scoreCell(rightCell);
+  });
+}
+
+function sortDeployCellsForUnitType(
+  role,
+  helperIndex,
+  unitType,
+  deployCells,
+  boardUnits = [],
+  selectedBossId = "",
+) {
   const deploySequence = getDeploySequence(role, helperIndex) ?? [];
   const availableCells = new Set(deployCells);
   const normalizedUnitType = normalizeUnitType(unitType);
-  const preferredSequence = isFrontlineUnitType(normalizedUnitType)
+  const preferredSequence = role === "boss" && isFrontlineUnitType(normalizedUnitType)
+    ? buildBossFrontlineGuardDeploySequence(deploySequence, boardUnits, selectedBossId)
+    : isFrontlineUnitType(normalizedUnitType)
     ? buildFrontlinePreferredDeploySequence(deploySequence)
     : deploySequence;
 
@@ -407,6 +466,56 @@ function getAvailableSubDeployCells(
   }
 
   return availableCells;
+}
+
+function isOkinaHeroSubToken(token) {
+  if (typeof token !== "string" || token.length === 0) {
+    return false;
+  }
+
+  const [, unitType = "", unitId = ""] = token.split(":");
+  return normalizeUnitType(unitType) === "hero"
+    && normalizeUnitId(unitId) === "okina";
+}
+
+function isOkinaAlreadyAttachedAsSub(boardSubUnits) {
+  return toArray(boardSubUnits).some((token) => isOkinaHeroSubToken(token));
+}
+
+function buildOkinaHeroSubDeployAction(player) {
+  if (
+    player?.role !== "raid"
+    || normalizeUnitId(player?.selectedHeroId) !== "okina"
+    || isOkinaAlreadyAttachedAsSub(player?.boardSubUnits)
+  ) {
+    return null;
+  }
+
+  const occupiedSubHostCells = getBoardSubUnitHostCells(player?.boardSubUnits);
+  const specialUnitIds = new Set(AUTO_FILL_SPECIAL_UNIT_IDS);
+  for (const value of [player?.selectedHeroId, player?.selectedBossId]) {
+    const normalizedValue = normalizeUnitId(value);
+    if (normalizedValue) {
+      specialUnitIds.add(normalizedValue);
+    }
+  }
+
+  const hostPlacement = toArray(player?.boardUnits)
+    .map((unit) => parseBoardPlacement(unit))
+    .filter((placement) => placement !== null)
+    .find((placement) =>
+      !specialUnitIds.has(normalizeUnitId(placement.unitId))
+      && placement.subUnit === undefined
+      && !occupiedSubHostCells.has(placement.cell));
+
+  if (!hostPlacement) {
+    return null;
+  }
+
+  return {
+    type: "prep_command",
+    payload: { heroPlacementCell: hostPlacement.cell },
+  };
 }
 
 function getNonSpecialBoardUnitCount(boardUnits, selectedHeroId = "", selectedBossId = "") {
@@ -553,6 +662,116 @@ function getFormationBalanceBonus(
   return 0;
 }
 
+function getBossDesiredStandardUnitCount(roundIndex) {
+  if (!Number.isFinite(roundIndex)) {
+    return 3;
+  }
+
+  if (roundIndex >= 9) {
+    return 5;
+  }
+
+  if (roundIndex >= 6) {
+    return 4;
+  }
+
+  if (roundIndex >= 3) {
+    return 3;
+  }
+
+  return 3;
+}
+
+function getBossDesiredFrontlineCount(roundIndex) {
+  if (!Number.isFinite(roundIndex) || roundIndex < 3) {
+    return 2;
+  }
+
+  return getBossDesiredStandardUnitCount(roundIndex) >= 4 ? 2 : 1;
+}
+
+function getBossFormationPlanBonus(
+  offer,
+  player = null,
+  state = null,
+) {
+  if (player?.role !== "boss") {
+    return 0;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  const ownedStandardUnitCount = getNonSpecialBoardUnitCount(
+    player?.boardUnits,
+    player?.selectedHeroId,
+    player?.selectedBossId,
+  ) + toArray(player?.benchUnits).length;
+  const desiredStandardUnitCount = getBossDesiredStandardUnitCount(roundIndex);
+  const offerCost = getOfferCost(offer) ?? 0;
+  const offerUnitType = normalizeOfferUnitType(offer);
+  const { frontlineCount, backlineCount } = getFormationTypeCounts(
+    player?.boardUnits,
+    player?.benchUnits,
+    player?.selectedHeroId,
+    player?.selectedBossId,
+  );
+  const desiredFrontlineCount = getBossDesiredFrontlineCount(roundIndex);
+  const effectiveHp = getOfferEffectiveHp(offer);
+  const durableEscort = effectiveHp === null || effectiveHp >= 700;
+  let bonus = 0;
+
+  if (ownedStandardUnitCount < desiredStandardUnitCount) {
+    if (durableEscort || ownedStandardUnitCount === 0) {
+      bonus += BOSS_ROSTER_WIDTH_PRIORITY_BONUS - Math.min(offerCost, 5) * 45;
+    } else {
+      bonus -= BOSS_LOW_DURABILITY_ESCORT_PENALTY;
+    }
+  }
+
+  if (isFrontlineUnitType(offerUnitType) && frontlineCount < desiredFrontlineCount) {
+    bonus += BOSS_FRONTLINE_SCREEN_PRIORITY_BONUS
+      - Math.max(0, frontlineCount) * 120
+      - Math.min(offerCost, 5) * 30;
+  }
+
+  if (effectiveHp !== null && effectiveHp >= 850) {
+    bonus += 180;
+  } else if (effectiveHp !== null && effectiveHp >= 700) {
+    bonus += 100;
+  } else if (effectiveHp !== null && effectiveHp < 550) {
+    bonus -= 140;
+  }
+
+  if (
+    isBacklineUnitType(offerUnitType)
+    && frontlineCount >= desiredFrontlineCount
+    && backlineCount === 0
+  ) {
+    bonus += BOSS_BACKLINE_CORE_PRIORITY_BONUS;
+  }
+
+  if (
+    ownedStandardUnitCount < desiredStandardUnitCount
+    && offerCost >= 3
+    && !isFrontlineUnitType(offerUnitType)
+  ) {
+    bonus -= BOSS_THIN_ROSTER_EXPENSIVE_OFFER_PENALTY;
+  }
+
+  if (
+    Number.isFinite(roundIndex)
+    && roundIndex < 3
+    && ownedStandardUnitCount >= 2
+    && ownedStandardUnitCount < desiredStandardUnitCount
+    && !isFrontlineUnitType(offerUnitType)
+    && effectiveHp !== null
+    && effectiveHp < 700
+  ) {
+    bonus -= BOSS_EARLY_FRAGILE_THIRD_SLOT_PENALTY;
+  }
+
+  return bonus;
+}
+
 function buildDeployActions(
   role,
   helperIndex,
@@ -611,6 +830,8 @@ function buildDeployActions(
       helperIndex,
       deployEntry.unitType,
       availableDeployCells,
+      boardUnits,
+      selectedBossId,
     );
     const targetCell = preferredCells.find((cell) => !usedDeployCells.has(cell));
     if (targetCell === undefined) {
@@ -674,6 +895,8 @@ function buildDeployActions(
       helperIndex,
       extraMainEntry.unitType,
       remainingMainDeployCells,
+      boardUnits,
+      selectedBossId,
     );
     const targetCell = preferredCells[0];
     if (targetCell === undefined) {
@@ -728,6 +951,27 @@ function getKnownTouhouUnit(unitId) {
   return normalizedUnitId
     ? getTouhouUnitById(normalizedUnitId)
     : null;
+}
+
+function getKnownOfferCombatStats(offer) {
+  const unitId = normalizeOfferUnitId(offer);
+  if (!unitId) {
+    return null;
+  }
+
+  return getScarletMansionUnitById(unitId) ?? getKnownTouhouUnit(unitId);
+}
+
+function getOfferEffectiveHp(offer) {
+  const knownUnit = getKnownOfferCombatStats(offer);
+  if (!knownUnit || !Number.isFinite(knownUnit.hp)) {
+    return null;
+  }
+
+  const damageReduction = Number.isFinite(knownUnit.damageReduction)
+    ? Math.max(0, Math.min(90, knownUnit.damageReduction))
+    : 0;
+  return knownUnit.hp / Math.max(0.1, 1 - damageReduction / 100);
 }
 
 function buildOwnedUnitSnapshot(unitType, unitId, factionId = "") {
@@ -850,9 +1094,17 @@ function getBossOfferDuplicateOwnedBonus(offer, boardUnits, benchUnitIds) {
   );
 }
 
-function getBossUpgradeOfferPriorityScore(offer, boardUnits = [], benchUnitIds = [], benchUnits = []) {
+function getBossUpgradeOfferPriorityScore(
+  offer,
+  boardUnits = [],
+  benchUnitIds = [],
+  benchUnits = [],
+  state = null,
+  player = null,
+) {
   const unitId = normalizeOfferUnitId(offer);
   const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, benchUnits);
+  const formationPlanBonus = getBossFormationPlanBonus(offer, player, state);
   const duplicateOwnedBonus = getBossOfferDuplicateOwnedBonus(
     offer,
     boardUnits,
@@ -860,23 +1112,31 @@ function getBossUpgradeOfferPriorityScore(offer, boardUnits = [], benchUnitIds =
   );
   const bossExclusiveScore = BOSS_OFFER_PRIORITY_BY_UNIT_ID[unitId];
   if (bossExclusiveScore !== undefined) {
-    return bossExclusiveScore + duplicateOwnedBonus + formationBalanceBonus;
+    return bossExclusiveScore + duplicateOwnedBonus + formationBalanceBonus + formationPlanBonus;
   }
 
   const commonOfferScore = BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_ID[unitId];
   if (commonOfferScore !== undefined) {
-    return commonOfferScore + duplicateOwnedBonus + formationBalanceBonus;
+    return commonOfferScore + duplicateOwnedBonus + formationBalanceBonus + formationPlanBonus;
   }
 
   const cost = getOfferCost(offer) ?? 0;
   const typeScore =
     BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_TYPE[normalizeOfferUnitType(offer)] ?? 0;
-  return cost * 40 + typeScore + duplicateOwnedBonus + formationBalanceBonus;
+  return cost * 40 + typeScore + duplicateOwnedBonus + formationBalanceBonus + formationPlanBonus;
 }
 
-function getBossHighCostOfferPriorityScore(offer, boardUnits = [], benchUnitIds = [], benchUnits = []) {
+function getBossHighCostOfferPriorityScore(
+  offer,
+  boardUnits = [],
+  benchUnitIds = [],
+  benchUnits = [],
+  state = null,
+  player = null,
+) {
   const unitId = normalizeOfferUnitId(offer);
   const formationBalanceBonus = getFormationBalanceBonus(offer, boardUnits, benchUnits);
+  const formationPlanBonus = getBossFormationPlanBonus(offer, player, state);
   const duplicateOwnedBonus = getBossOfferDuplicateOwnedBonus(
     offer,
     boardUnits,
@@ -892,7 +1152,7 @@ function getBossHighCostOfferPriorityScore(offer, boardUnits = [], benchUnitIds 
   const cost = getOfferCost(offer) ?? 0;
 
   return cost * BOSS_HIGH_COST_STRATEGY_COST_WEIGHT
-    + (baseScore + formationBalanceBonus) * BOSS_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT
+    + (baseScore + formationBalanceBonus + formationPlanBonus) * BOSS_HIGH_COST_STRATEGY_BASE_SCORE_WEIGHT
     + duplicateOwnedBonus * BOSS_HIGH_COST_STRATEGY_DUPLICATE_WEIGHT;
 }
 
@@ -902,12 +1162,14 @@ function getBossOfferPriorityScore(
   benchUnitIds = [],
   strategy = "upgrade",
   benchUnits = [],
+  state = null,
+  player = null,
 ) {
   if (strategy === "highCost") {
-    return getBossHighCostOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits);
+    return getBossHighCostOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits, state, player);
   }
 
-  return getBossUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits);
+  return getBossUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits, state, player);
 }
 
 function getFactionCounts(boardUnits) {
@@ -1012,9 +1274,18 @@ function getRaidOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy, be
   return getRaidUpgradeOfferPriorityScore(offer, boardUnits, benchUnitIds, benchUnits);
 }
 
-function getOfferPriorityScore(role, offer, boardUnits, benchUnitIds, strategy, benchUnits = []) {
+function getOfferPriorityScore(
+  role,
+  offer,
+  boardUnits,
+  benchUnitIds,
+  strategy,
+  benchUnits = [],
+  state = null,
+  player = null,
+) {
   if (role === "boss") {
-    return getBossOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy, benchUnits);
+    return getBossOfferPriorityScore(offer, boardUnits, benchUnitIds, strategy, benchUnits, state, player);
   }
 
   if (role === "raid") {
@@ -1058,6 +1329,8 @@ function pickAffordableOfferIndex(
         benchUnitIds,
         strategy,
         benchUnits,
+        state,
+        player,
       ) + getMidgamePivotOfferAdjustment(
         offerList[index],
         player,
@@ -1074,7 +1347,7 @@ function pickAffordableOfferIndex(
   return bestOfferIndex;
 }
 
-function buildBossShopReserveBuyAction(player) {
+function buildBossShopReserveBuyAction(player, state = null) {
   const affordableBossSlotIndex = pickAffordableOfferIndex(
     player?.bossShopOffers,
     player?.gold,
@@ -1083,7 +1356,7 @@ function buildBossShopReserveBuyAction(player) {
     player?.benchUnitIds,
     player?.helperStrategy ?? "upgrade",
     player?.benchUnits,
-    null,
+    state,
     player,
   );
   if (affordableBossSlotIndex === null) {
@@ -1102,11 +1375,13 @@ function buildBossShopReserveBuyAction(player) {
       player?.benchUnitIds,
       player?.helperStrategy ?? "upgrade",
       player?.benchUnits,
+      state,
+      player,
     ),
   };
 }
 
-function buildBossNormalReserveBuyAction(player) {
+function buildBossNormalReserveBuyAction(player, state = null) {
   const affordableShopSlotIndex = pickAffordableOfferIndex(
     player?.shopOffers,
     player?.gold,
@@ -1115,7 +1390,7 @@ function buildBossNormalReserveBuyAction(player) {
     player?.benchUnitIds,
     player?.helperStrategy ?? "upgrade",
     player?.benchUnits,
-    null,
+    state,
     player,
   );
   if (affordableShopSlotIndex === null) {
@@ -1134,6 +1409,8 @@ function buildBossNormalReserveBuyAction(player) {
       player?.benchUnitIds,
       player?.helperStrategy ?? "upgrade",
       player?.benchUnits,
+      state,
+      player,
     ),
   };
 }
@@ -1181,6 +1458,8 @@ function getReserveTargetOfferScore(targetOffer, player, strategy = "upgrade", s
     player?.benchUnitIds,
     strategy,
     player?.benchUnits,
+    state,
+    player,
   ) + getMidgamePivotOfferAdjustment(
     targetOffer,
     player,
@@ -1267,17 +1546,24 @@ function buildRaidHeroExclusiveReserveBuyAction(player, strategy, state = null) 
   };
 }
 
-function buildBossReserveBuyDecision(player) {
-  const bossShopBuy = buildBossShopReserveBuyAction(player);
-  const normalShopBuy = buildBossNormalReserveBuyAction(player);
+function buildBossReserveBuyDecision(player, state = null) {
+  const bossShopBuy = buildBossShopReserveBuyAction(player, state);
+  const normalShopBuy = buildBossNormalReserveBuyAction(player, state);
+  const bestDecision = (() => {
+    if (bossShopBuy && normalShopBuy) {
+      return normalShopBuy.score > bossShopBuy.score
+        ? normalShopBuy
+        : bossShopBuy;
+    }
 
-  if (bossShopBuy && normalShopBuy) {
-    return normalShopBuy.score > bossShopBuy.score
-      ? normalShopBuy
-      : bossShopBuy;
+    return bossShopBuy ?? normalShopBuy ?? null;
+  })();
+
+  if (!bestDecision || bestDecision.score < BOSS_MIN_RESERVE_BUY_SCORE) {
+    return null;
   }
 
-  return bossShopBuy ?? normalShopBuy ?? null;
+  return bestDecision;
 }
 
 function buildRaidReserveBuyDecision(player, strategy, state = null) {
@@ -1295,7 +1581,7 @@ function buildRaidReserveBuyDecision(player, strategy, state = null) {
 
 function buildReserveBuyDecision(player, strategy, state = null) {
   if (player?.role === "boss") {
-    return buildBossReserveBuyDecision(player);
+    return buildBossReserveBuyDecision(player, state);
   }
 
   if (player?.role === "raid") {
@@ -1416,10 +1702,6 @@ function buildSpecialUnitUpgradeAction(player, playerPhase) {
     playerPhase !== "purchase"
     || (player?.role !== "boss" && player?.role !== "raid")
   ) {
-    return null;
-  }
-
-  if (player?.role === "boss" && hasUnits(player?.benchUnits)) {
     return null;
   }
 
@@ -1644,16 +1926,19 @@ function hasDeployedSpecialUnit(player) {
     : player.role === "boss"
       ? player.selectedBossId
       : "";
-  if (!specialUnitId) {
-    return false;
-  }
 
   if (player.role === "raid") {
-    return HEROES.some((hero) => hero.id === specialUnitId);
+    return specialUnitId
+      ? HEROES.some((hero) => hero.id === specialUnitId)
+      : toArray(player?.boardUnits).some((unit) =>
+        HEROES.some((hero) => hero.id === normalizeUnitId(resolveSpecialCheckUnitId(unit))));
   }
 
   if (player.role === "boss") {
-    return BOSS_CHARACTERS.some((boss) => boss.id === specialUnitId);
+    return specialUnitId
+      ? BOSS_CHARACTERS.some((boss) => boss.id === specialUnitId)
+      : toArray(player?.boardUnits).some((unit) =>
+        BOSS_CHARACTERS.some((boss) => boss.id === normalizeUnitId(resolveSpecialCheckUnitId(unit))));
   }
 
   // Real room state does not serialize the selected hero/boss into boardUnits tokens.
@@ -2178,6 +2463,7 @@ export function buildAutoFillHelperActions({
         helperPlayer.selectedBossId,
       )
       : [];
+    const okinaHeroSubDeployAction = buildOkinaHeroSubDeployAction(helperPlayer);
 
     if (shouldPreferBossSpecialUnitUpgrade || shouldPreferSpecialUnitUpgrade) {
       return [specialUnitUpgradeDecision.action];
@@ -2198,6 +2484,10 @@ export function buildAutoFillHelperActions({
 
       if (specialUnitUpgradeDecision) {
         return [specialUnitUpgradeDecision.action];
+      }
+
+      if (okinaHeroSubDeployAction) {
+        return [okinaHeroSubDeployAction];
       }
 
       if (
@@ -2236,6 +2526,10 @@ export function buildAutoFillHelperActions({
     }
 
     if (playerPhase === "deploy") {
+      if (okinaHeroSubDeployAction) {
+        return [okinaHeroSubDeployAction];
+      }
+
       if (hasUnits(helperPlayer.benchUnits)) {
         if (deployActions.length === 0) {
           return helperPlayer.ready !== true
@@ -2290,6 +2584,10 @@ export function buildAutoFillHelperActions({
 
     if (specialUnitUpgradeDecision) {
       return [specialUnitUpgradeDecision.action];
+    }
+
+    if (okinaHeroSubDeployAction) {
+      return [okinaHeroSubDeployAction];
     }
 
     if (

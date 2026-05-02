@@ -705,7 +705,7 @@ describe("battle-simulator", () => {
         type: "vanguard",
         hp: 620,
         maxHp: 620,
-        attackPower: 40,
+        attackPower: 36,
         attackSpeed: 0.85,
         movementSpeed: 2,
         attackRange: 1,
@@ -1098,6 +1098,47 @@ describe("battle-simulator", () => {
 
       const target = findTarget(attacker, [higherCellEnemy, lowerCellEnemy]);
       expect(target?.id).toBe(lowerCellEnemy.id);
+    });
+
+    test("ボス本体が近ければ護衛が生存していても通常ターゲットにできる", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "ranger", unitLevel: 1, range: 4 },
+        "left",
+        0,
+      );
+      const bossBody = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+      const guard = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 0, y: 2 }), unitType: "vanguard", unitLevel: 1 },
+        "right",
+        1,
+      );
+
+      const target = findTarget(attacker, [bossBody, guard]);
+
+      expect(target?.id).toBe(bossBody.id);
+    });
+
+    test("護衛がいなければボス本体を対象にできる", () => {
+      const attacker = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 2 }), unitType: "ranger", unitLevel: 1, range: 4 },
+        "left",
+        0,
+      );
+      const bossBody = createTestBattleUnit(
+        { cell: sharedBoardCoordinateToIndex({ x: 2, y: 1 }), unitType: "vanguard", unitLevel: 1, archetype: "remilia" },
+        "right",
+        0,
+        true,
+      );
+
+      const target = findTarget(attacker, [bossBody]);
+
+      expect(target?.id).toBe(bossBody.id);
     });
 
     test("射程外の敵は対象にならない", () => {
@@ -2230,7 +2271,7 @@ describe("BattleSimulator", () => {
         },
       );
 
-      expect(leftUnits[0]?.attackPower).toBe(45);
+      expect(leftUnits[0]?.attackPower).toBe(41);
       expect(leftUnits[1]?.attackPower).toBe(64);
     });
 

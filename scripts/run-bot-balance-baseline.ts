@@ -13,6 +13,7 @@ import {
 import {
   buildBotBalanceBaselineJapaneseJson,
   buildBotBalanceBaselineJapaneseMarkdown,
+  buildBotBalanceBaselineRoundDetailsJapaneseMarkdown,
   type BotBalanceBaselineSummary,
 } from "../tests/server/game-room/bot-balance-baseline-human-report";
 import {
@@ -418,6 +419,7 @@ async function main(): Promise<void> {
   const summaryPath = join(options.outputDir, "summary.json");
   const analysisJsonPath = join(options.outputDir, "summary.analysis.json");
   const humanMarkdownPath = join(options.outputDir, "summary.ja.md");
+  const roundDetailsMarkdownPath = join(options.outputDir, "round-details.ja.md");
   const humanJsonPath = join(options.outputDir, "summary.ja.json");
   const helperConfigs = createBotBalanceBaselineHelperConfigs({
     bossPolicy: options.bossPolicy,
@@ -452,11 +454,13 @@ async function main(): Promise<void> {
   const analysisReport = buildBotBalanceBaselineAnalysis(summary);
   const japaneseJsonReport = buildBotBalanceBaselineJapaneseJson(summary);
   const japaneseMarkdownReport = buildBotBalanceBaselineJapaneseMarkdown(summary);
+  const roundDetailsMarkdownReport = buildBotBalanceBaselineRoundDetailsJapaneseMarkdown(summary);
 
   writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   writeFileSync(analysisJsonPath, `${JSON.stringify(analysisReport, null, 2)}\n`, "utf8");
   writeFileSync(humanJsonPath, `${JSON.stringify(japaneseJsonReport, null, 2)}\n`, "utf8");
   writeFileSync(humanMarkdownPath, japaneseMarkdownReport, "utf8");
+  writeFileSync(roundDetailsMarkdownPath, roundDetailsMarkdownReport, "utf8");
   console.log(JSON.stringify({
     type: "bot_balance_baseline_summary",
     data: {
@@ -464,6 +468,7 @@ async function main(): Promise<void> {
       analysisJsonPath,
       humanJsonPath,
       humanMarkdownPath,
+      roundDetailsMarkdownPath,
       outputDir: options.outputDir,
       completedMatches: aggregate.completedMatches,
       abortedMatches: aggregate.abortedMatches,

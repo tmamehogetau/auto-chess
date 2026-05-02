@@ -4,6 +4,7 @@ import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
 import { getUnitLevelCombatMultiplier } from "../../../src/server/unit-level-config";
 import { BOSS_CHARACTERS } from "../../../src/shared/boss-characters";
+import { sharedBoardCoordinateToIndex } from "../../../src/shared/shared-board-config";
 import { getMvpPhase1Boss } from "../../../src/shared/types";
 
 export type BotOnlyReportMetadata = {
@@ -60,6 +61,9 @@ export type BotOnlyBaselineBattleUnitMetrics = {
   subUnitBattleAppearances?: number;
   subUnitMatchesPresent?: number;
   subUnitAdoptionRate?: number;
+  hostedSubUnitBattleAppearances?: number;
+  hostedSubUnitMatchesPresent?: number;
+  hostedSubUnitAdoptionRate?: number;
 };
 
 export type BotOnlyBaselineBattleEndReason =
@@ -335,6 +339,9 @@ export type BotOnlyBaselineBattleUnitOutcome = {
   alive: boolean;
   unitLevel: number;
   subUnitName: string;
+  attachedSubUnitId?: string;
+  attachedSubUnitName?: string;
+  attachedSubUnitType?: string;
   isSpecialUnit: boolean;
   attackCount?: number;
   basicSkillActivationCount?: number;
@@ -464,6 +471,7 @@ export type BotOnlyBaselineMatchRoundDetail = {
   phaseHpTarget: number;
   phaseDamageDealt: number;
   phaseCompletionRate: number;
+  phaseHpPowerIndex?: number | null;
   phaseResult: "pending" | "success" | "failed";
   allRaidPlayersWipedOut: boolean;
   raidPlayersWipedOut: number;
@@ -476,8 +484,23 @@ export type BotOnlyBaselineMatchRoundDetail = {
   battleEndReasons: BotOnlyBaselineBattleEndReason[];
   battleWinnerRoles: Array<"boss" | "raid" | "draw">;
   raidPlayerConsequences: BotOnlyBaselineRoundPlayerConsequence[];
+  bossBodyFocus?: BotOnlyBaselineBossBodyFocusDetail | null;
   topBossUnits: BotOnlyBaselineRoundUnitDetail[];
   topRaidUnits: BotOnlyBaselineRoundUnitDetail[];
+};
+
+export type BotOnlyBaselineBossBodyFocusDetail = {
+  unitId: string;
+  unitName: string;
+  cell: number | null;
+  x: number | null;
+  y: number | null;
+  unitLevel: number | null;
+  damageTaken: number;
+  directPhaseDamage: number;
+  firstDamageAtMs: number | null;
+  defeated: boolean;
+  finalHp: number | null;
 };
 
 export type BotOnlyBaselineMatchSummary = {
@@ -663,6 +686,8 @@ type BattleUnitAggregateAccumulator = {
   ownerWins: number;
   subUnitBattleAppearances?: number;
   subUnitMatchesPresent?: number;
+  hostedSubUnitBattleAppearances?: number;
+  hostedSubUnitMatchesPresent?: number;
 };
 
 type RangeDamageEfficiencyAccumulator = {
@@ -894,9 +919,15 @@ function createBattleUnitAggregateAccumulator(
       ? {
         subUnitBattleAppearances: 0,
         subUnitMatchesPresent: 0,
+        hostedSubUnitBattleAppearances: 0,
+        hostedSubUnitMatchesPresent: 0,
       }
       : {}),
   };
+}
+
+function divideOrZero(numerator: number, denominator: number): number {
+  return denominator > 0 ? numerator / denominator : 0;
 }
 
 function resolveRangeBand(range: number): BotOnlyBaselineRangeBand {
@@ -959,6 +990,57 @@ function toRoundUnitDetail(
   };
 }
 
+function calculatePhaseHpPowerIndex(input: {
+  phaseHpTarget: number;
+  phaseDamageDealt: number;
+  targetReached: boolean;
+  battleEndTimeMs: number;
+  battleDurationMs: number;
+}): number | null {
+  if (!(input.phaseHpTarget > 0)) {
+    return null;
+  }
+
+  if (
+    input.targetReached
+    && input.battleEndTimeMs > 0
+    && input.battleDurationMs > 0
+  ) {
+    return input.battleDurationMs / input.battleEndTimeMs;
+  }
+
+  return input.phaseDamageDealt / input.phaseHpTarget;
+}
+
+function buildBossBodyFocusDetail(
+  bossUnitOutcomes: BotOnlyBaselineBattleUnitOutcome[],
+): BotOnlyBaselineBossBodyFocusDetail | null {
+  const bossBody = bossUnitOutcomes.find((unit) => unit.unitId === "remilia");
+  if (!bossBody) {
+    return null;
+  }
+
+  const hasCoordinate = typeof bossBody.initialColumn === "number" && typeof bossBody.initialRow === "number";
+  const cell = hasCoordinate
+    ? sharedBoardCoordinateToIndex({ x: bossBody.initialColumn!, y: bossBody.initialRow! })
+    : null;
+  const damageTaken = Math.max(0, bossBody.damageTaken ?? 0);
+
+  return {
+    unitId: bossBody.unitId,
+    unitName: resolveBaselineUnitName(bossBody.unitId, bossBody.unitName),
+    cell,
+    x: hasCoordinate ? bossBody.initialColumn! : null,
+    y: hasCoordinate ? bossBody.initialRow! : null,
+    unitLevel: Number.isFinite(bossBody.unitLevel) ? bossBody.unitLevel : null,
+    damageTaken,
+    directPhaseDamage: damageTaken,
+    firstDamageAtMs: null,
+    defeated: !bossBody.alive || bossBody.finalHp <= 0,
+    finalHp: Number.isFinite(bossBody.finalHp) ? bossBody.finalHp : null,
+  };
+}
+
 function buildRoundDetailsForMatch(
   report: BotOnlyBaselineMatchSummary,
   matchIndex: number,
@@ -992,6 +1074,10 @@ function buildRoundDetailsForMatch(
         .filter((duration): duration is number =>
           typeof duration === "number" && Number.isFinite(duration)),
     );
+    const battleDurationBudgetMs = report.metadata?.timings.battleDurationMs
+      ?? battleEndTimeMs;
+    const targetReached = round.phaseResult === "success"
+      || (round.phaseHpTarget > 0 && round.phaseDamageDealt >= round.phaseHpTarget);
 
     return {
       matchIndex,
@@ -1002,6 +1088,13 @@ function buildRoundDetailsForMatch(
       phaseHpTarget: round.phaseHpTarget,
       phaseDamageDealt: round.phaseDamageDealt,
       phaseCompletionRate: round.phaseCompletionRate,
+      phaseHpPowerIndex: calculatePhaseHpPowerIndex({
+        phaseHpTarget: round.phaseHpTarget,
+        phaseDamageDealt: round.phaseDamageDealt,
+        targetReached,
+        battleEndTimeMs,
+        battleDurationMs: battleDurationBudgetMs,
+      }),
       phaseResult: round.phaseResult,
       allRaidPlayersWipedOut,
       raidPlayersWipedOut: raidPlayerConsequences.filter((player) => player.playerWipedOut).length,
@@ -1020,6 +1113,7 @@ function buildRoundDetailsForMatch(
           ? "draw"
           : resolveBattleWinnerRole(battle, playerById, report.bossPlayerId) ?? "draw"),
       raidPlayerConsequences,
+      bossBodyFocus: buildBossBodyFocusDetail(bossUnitOutcomes),
       topBossUnits: bossUnitOutcomes
         .map((unit) => toRoundUnitDetail(unit))
         .sort((left, right) =>
@@ -1538,13 +1632,14 @@ function buildBattleUnitMetrics(
   entry: BattleUnitAggregateAccumulator,
   completedMatches: number,
 ): BotOnlyBaselineBattleUnitMetrics {
+  const hostedSubUnitMatchesPresent = entry.hostedSubUnitMatchesPresent ?? 0;
   return {
     unitId: entry.unitId,
     unitType: entry.unitType,
     unitName: entry.unitName,
     battleAppearances: entry.battleAppearances,
     matchesPresent: entry.matchesPresent,
-    averageunitLevel: entry.totalunitLevel / entry.battleAppearances,
+    averageunitLevel: divideOrZero(entry.totalunitLevel, entry.battleAppearances),
     maxUnitLevel: entry.maxUnitLevel,
     level4ReachRate: entry.matchesPresent > 0
       ? entry.level4Matches / entry.matchesPresent
@@ -1552,19 +1647,19 @@ function buildBattleUnitMetrics(
     level7ReachRate: entry.matchesPresent > 0
       ? entry.level7Matches / entry.matchesPresent
       : 0,
-    averageDamagePerBattle: entry.totalDamage / entry.battleAppearances,
+    averageDamagePerBattle: divideOrZero(entry.totalDamage, entry.battleAppearances),
     averageDamagePerMatch: entry.totalDamage / completedMatches,
-    activeBattleRate: entry.activeBattles / entry.battleAppearances,
-    averageAttackCountPerBattle: entry.totalAttackCount / entry.battleAppearances,
-    averageHitCountPerBattle: entry.totalHitCount / entry.battleAppearances,
-    averageDamageTakenPerBattle: entry.totalDamageTaken / entry.battleAppearances,
+    activeBattleRate: divideOrZero(entry.activeBattles, entry.battleAppearances),
+    averageAttackCountPerBattle: divideOrZero(entry.totalAttackCount, entry.battleAppearances),
+    averageHitCountPerBattle: divideOrZero(entry.totalHitCount, entry.battleAppearances),
+    averageDamageTakenPerBattle: divideOrZero(entry.totalDamageTaken, entry.battleAppearances),
     averageFirstAttackMs: entry.firstAttackSamples > 0
       ? entry.totalFirstAttackMs / entry.firstAttackSamples
       : null,
-    averageLifetimeMs: entry.totalLifetimeMs / entry.battleAppearances,
-    zeroDamageBattleRate: entry.zeroDamageBattles / entry.battleAppearances,
-    survivalRate: entry.survivedBattles / entry.battleAppearances,
-    ownerWinRate: entry.ownerWins / entry.battleAppearances,
+    averageLifetimeMs: divideOrZero(entry.totalLifetimeMs, entry.battleAppearances),
+    zeroDamageBattleRate: divideOrZero(entry.zeroDamageBattles, entry.battleAppearances),
+    survivalRate: divideOrZero(entry.survivedBattles, entry.battleAppearances),
+    ownerWinRate: divideOrZero(entry.ownerWins, entry.battleAppearances),
     adoptionRate: entry.matchesPresent / completedMatches,
     ...(entry.totalBasicSkillActivations > 0
       ? {
@@ -1585,6 +1680,15 @@ function buildBattleUnitMetrics(
       ? {
         subUnitMatchesPresent: entry.subUnitMatchesPresent,
         subUnitAdoptionRate: entry.subUnitMatchesPresent / completedMatches,
+      }
+      : {}),
+    ...((entry.hostedSubUnitBattleAppearances ?? 0) > 0
+      ? { hostedSubUnitBattleAppearances: entry.hostedSubUnitBattleAppearances }
+      : {}),
+    ...(hostedSubUnitMatchesPresent > 0
+      ? {
+        hostedSubUnitMatchesPresent,
+        hostedSubUnitAdoptionRate: hostedSubUnitMatchesPresent / completedMatches,
       }
       : {}),
   };
@@ -2310,11 +2414,32 @@ export function buildBotOnlyBaselineAggregateReport(
           Math.max(raidMaxUnitLevelByMatch.get(resolvedUnitId) ?? 0, outcome.unitLevel),
         );
         if (outcome.subUnitName.length > 0) {
-          existing.subUnitBattleAppearances = (existing.subUnitBattleAppearances ?? 0) + 1;
-          if (!seenRaidSubUnitsInMatch.has(resolvedUnitId)) {
-            existing.subUnitMatchesPresent = (existing.subUnitMatchesPresent ?? 0) + 1;
-            seenRaidSubUnitsInMatch.add(resolvedUnitId);
+          existing.hostedSubUnitBattleAppearances = (existing.hostedSubUnitBattleAppearances ?? 0) + 1;
+          const hostKey = `host::${resolvedUnitId}`;
+          if (!seenRaidSubUnitsInMatch.has(hostKey)) {
+            existing.hostedSubUnitMatchesPresent = (existing.hostedSubUnitMatchesPresent ?? 0) + 1;
+            seenRaidSubUnitsInMatch.add(hostKey);
           }
+        }
+        if (outcome.attachedSubUnitId && outcome.attachedSubUnitId.length > 0) {
+          const subUnitId = outcome.attachedSubUnitId;
+          const subUnitName = outcome.attachedSubUnitName
+            ?? resolveBaselineUnitName(subUnitId, outcome.subUnitName);
+          const subUnitType = outcome.attachedSubUnitType ?? subUnitId;
+          const subUnitEntry = raidBattleUnitsById.get(subUnitId)
+            ?? createBattleUnitAggregateAccumulator(
+              subUnitId,
+              subUnitType,
+              subUnitName,
+              true,
+            );
+          subUnitEntry.subUnitBattleAppearances = (subUnitEntry.subUnitBattleAppearances ?? 0) + 1;
+          const subKey = `sub::${subUnitId}`;
+          if (!seenRaidSubUnitsInMatch.has(subKey)) {
+            subUnitEntry.subUnitMatchesPresent = (subUnitEntry.subUnitMatchesPresent ?? 0) + 1;
+            seenRaidSubUnitsInMatch.add(subKey);
+          }
+          raidBattleUnitsById.set(subUnitId, subUnitEntry);
         }
         raidBattleUnitsById.set(resolvedUnitId, existing);
       }
@@ -2673,6 +2798,9 @@ export function mergeBotOnlyBaselineAggregateReports(
         raidPlayerConsequences: detail.raidPlayerConsequences.map((player) => ({ ...player })),
         topBossUnits: detail.topBossUnits.map((unit) => ({ ...unit })),
         topRaidUnits: detail.topRaidUnits.map((unit) => ({ ...unit })),
+        ...(detail.bossBodyFocus !== undefined
+          ? { bossBodyFocus: detail.bossBodyFocus ? { ...detail.bossBodyFocus } : null }
+          : {}),
         battleEndReasons: [...detail.battleEndReasons],
         battleWinnerRoles: [...detail.battleWinnerRoles],
       });
@@ -2822,6 +2950,10 @@ export function mergeBotOnlyBaselineAggregateReports(
         + (entry.subUnitBattleAppearances ?? 0);
       existing.subUnitMatchesPresent = (existing.subUnitMatchesPresent ?? 0)
         + (entry.subUnitMatchesPresent ?? 0);
+      existing.hostedSubUnitBattleAppearances = (existing.hostedSubUnitBattleAppearances ?? 0)
+        + (entry.hostedSubUnitBattleAppearances ?? 0);
+      existing.hostedSubUnitMatchesPresent = (existing.hostedSubUnitMatchesPresent ?? 0)
+        + (entry.hostedSubUnitMatchesPresent ?? 0);
       raidBattleUnitsById.set(entry.unitId, existing);
     }
 

@@ -349,8 +349,8 @@ describe("Hero System Integration Tests", () => {
               battleUnitId: "boss-p2",
               x: 2,
               y: 0,
-              currentHp: 600,
-              maxHp: 600,
+              currentHp: 1200,
+              maxHp: 1200,
             }),
           ]));
         });

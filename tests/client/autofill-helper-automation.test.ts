@@ -259,6 +259,59 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("raid helper deploys Okina as a hero sub-unit during deploy phase", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 31, unitId: "front-a", unitType: "vanguard" },
+          { cell: 32, unitId: "front-b", unitType: "vanguard" },
+        ],
+        boardSubUnits: [],
+        selectedHeroId: "okina",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: { heroPlacementCell: 31 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("raid helper can attach Okina to an existing host before explicit deploy phase", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      player: {
+        ready: false,
+        role: "raid",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 31, unitId: "front-a", unitType: "vanguard" },
+        ],
+        boardSubUnits: [],
+        selectedHeroId: "okina",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { heroPlacementCell: 31 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase boss helper buys from boss shop before readying", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -308,6 +361,39 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("midgame boss helper can keep leveling Remilia while a bench unit waits for deploy", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 4,
+        specialUnitLevel: 4,
+        benchUnits: ["mage"],
+        benchUnitIds: ["patchouli"],
+        boardUnits: [
+          "2:remilia",
+          { cell: 4, unitType: "vanguard", unitId: "meiling" },
+          { cell: 10, unitType: "assassin", unitId: "sakuya" },
+          { cell: 16, unitType: "mage", unitId: "patchouli" },
+        ],
+        bossShopOffers: [],
+        shopOffers: [],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame boss helper upgrades Remilia before another reserve carry", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -343,7 +429,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper no longer over-prioritizes Patchouli on an empty board", () => {
+  test("prep phase boss helper opens an empty board with Meiling as a frontline guard", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -364,7 +450,62 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { bossShopBuySlotIndex: 2 },
+        payload: { bossShopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper fills a durable third unit in early rounds", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "14:yoshika"],
+        bossShopOffers: [
+          { unitId: "sakuya", unitType: "assassin", cost: 3 },
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 1,
+      },
+    })).toEqual([
+      {
+        payload: { bossShopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper avoids a fragile backline-only third unit in early rounds", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "14:yoshika"],
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 1,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -405,9 +546,9 @@ describe("autofill helper automation", () => {
         role: "boss",
         gold: 8,
         benchUnits: [],
-        boardUnits: [],
+        boardUnits: ["2:remilia", "8:meiling", "10:patchouli", "14:sakuya"],
         bossShopOffers: [
-          { unitId: "meiling", unitType: "vanguard", cost: 2 },
+          { unitId: "patchouli", unitType: "mage", cost: 2 },
         ],
         shopOffers: [
           { unitId: "junko", unitType: "vanguard", cost: 4 },
@@ -1205,7 +1346,7 @@ describe("autofill helper automation", () => {
         payload: {
           benchToBoardCell: {
             benchIndex: 0,
-            cell: 16,
+            cell: 8,
           },
         },
         type: "prep_command",
@@ -1213,7 +1354,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper places a bench unit into the upper half", () => {
+  test("prep phase boss helper places a frontline bench unit in front of Remilia", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -1230,7 +1371,7 @@ describe("autofill helper automation", () => {
         payload: {
           benchToBoardCell: {
             benchIndex: 0,
-            cell: 16,
+            cell: 8,
           },
         },
         type: "prep_command",
@@ -1255,7 +1396,7 @@ describe("autofill helper automation", () => {
         payload: {
           benchToBoardCell: {
             benchIndex: 0,
-            cell: 16,
+            cell: 8,
           },
         },
         type: "prep_command",
@@ -1781,7 +1922,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper places vanguards in front of backliners", () => {
+  test("prep phase boss helper places vanguards in front of Remilia", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -1798,7 +1939,32 @@ describe("autofill helper automation", () => {
         payload: {
           benchToBoardCell: {
             benchIndex: 0,
-            cell: 16,
+            cell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper extends Remilia's guard lane when the direct guard cell is occupied", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: ["vanguard"],
+        boardUnits: ["2:remilia", { cell: 8, unitType: "vanguard", unitId: "meiling" }],
+      },
+      state: {
+        phase: "Prep",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 14,
           },
         },
         type: "prep_command",

@@ -86,20 +86,20 @@ const applyMinimalRaidBattlePlacements = (controller: MatchRoomController): void
 // 各ラウンドのフェーズHP目標値を取得
 function getPhaseHpTarget(roundIndex: number): number {
   const targets: Record<number, number> = {
-    1: 600,
-    2: 750,
-    3: 900,
-    4: 1050,
-    5: 1250,
-    6: 1450,
-    7: 1650,
-    8: 1850,
-    9: 2100,
-    10: 2400,
-    11: 2700,
+    1: 1200,
+    2: 1500,
+    3: 1800,
+    4: 2100,
+    5: 2500,
+    6: 2900,
+    7: 3300,
+    8: 3550,
+    9: 3800,
+    10: 4100,
+    11: 4400,
     12: 0,
   };
-  return targets[roundIndex] ?? 600;
+  return targets[roundIndex] ?? 1200;
 }
 
 describe("MatchRoomController", () => {
@@ -903,7 +903,7 @@ describe("MatchRoomController", () => {
 
           expect(controller.phase).toBe("Settle");
           expect(controller.getPhaseProgress()).toMatchObject({
-            targetHp: 600,
+            targetHp: 1200,
             damageDealt: 180,
             result: "failed",
           });
@@ -2869,7 +2869,7 @@ describe("MatchRoomController", () => {
           controller.advanceByTime(47_000);
 
           expect(controller.getPhaseProgress()).toMatchObject({
-            targetHp: 600,
+            targetHp: 1200,
             damageDealt: 100,
             result: "failed",
           });
@@ -4135,7 +4135,7 @@ describe("MatchRoomController", () => {
           controller.startIfReady(0);
 
           controller.advanceByTime(1);
-          controller.setPendingPhaseDamageForTest(600);
+          controller.setPendingPhaseDamageForTest(1200);
           const { battleResultsByPlayer } = controller.getTestAccess();
           for (const raidPlayerId of ["p1", "p3", "p4"]) {
             battleResultsByPlayer.set(raidPlayerId, {
@@ -4247,7 +4247,7 @@ describe("MatchRoomController", () => {
           controller.startIfReady(0);
 
           controller.advanceByTime(1);
-          controller.setPendingPhaseDamageForTest(600);
+          controller.setPendingPhaseDamageForTest(1200);
           const { battleResultsByPlayer, battleInputSnapshotByPlayer } = controller.getTestAccess();
           for (const raidPlayerId of ["p1", "p3", "p4"]) {
             battleInputSnapshotByPlayer.set(raidPlayerId, [{
@@ -4277,8 +4277,8 @@ describe("MatchRoomController", () => {
 
           expect(controller.phase).toBe("Settle");
           expect(controller.getPhaseProgress()).toMatchObject({
-            targetHp: 600,
-            damageDealt: 600,
+            targetHp: 1200,
+            damageDealt: 1200,
             result: "failed",
           });
         } finally {
@@ -4341,10 +4341,10 @@ describe("MatchRoomController", () => {
     const phaseProgress = controller.getPhaseProgress();
 
     expect(controller.phase).toBe("Settle");
-    expect(phaseProgress.targetHp).toBe(600);
+    expect(phaseProgress.targetHp).toBe(1200);
     expect(phaseProgress.damageDealt).toBe(400);
     expect(phaseProgress.result).toBe("failed");
-    expect(phaseProgress.completionRate).toBeCloseTo(400 / 600);
+    expect(phaseProgress.completionRate).toBeCloseTo(400 / 1200);
   });
 
   test("phase HP未達時はfailedになり次ラウンドPrepでリセットされる", () => {
@@ -4370,10 +4370,10 @@ describe("MatchRoomController", () => {
 
     const failedPhaseProgress = controller.getPhaseProgress();
 
-    expect(failedPhaseProgress.targetHp).toBe(600);
+    expect(failedPhaseProgress.targetHp).toBe(1200);
     expect(failedPhaseProgress.damageDealt).toBe(150);
     expect(failedPhaseProgress.result).toBe("failed");
-    expect(failedPhaseProgress.completionRate).toBeCloseTo(0.25);
+    expect(failedPhaseProgress.completionRate).toBeCloseTo(150 / 1200);
 
     controller.advanceByTime(47_000);
     controller.advanceByTime(49_000);
@@ -4382,7 +4382,7 @@ describe("MatchRoomController", () => {
 
     expect(controller.phase).toBe("Prep");
     expect(controller.roundIndex).toBe(2);
-    expect(nextRoundProgress.targetHp).toBe(750);
+    expect(nextRoundProgress.targetHp).toBe(1500);
     expect(nextRoundProgress.damageDealt).toBe(0);
     expect(nextRoundProgress.result).toBe("pending");
     expect(nextRoundProgress.completionRate).toBe(0);

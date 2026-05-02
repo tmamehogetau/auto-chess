@@ -165,6 +165,8 @@ const BASE_STATS: Readonly<Record<BoardUnitType, BaseUnitStats>> = {
 };
 
 const MELEE_POST_MOVE_ATTACK_DELAY_MS = 250;
+const DEFAULT_MAX_SIMULATION_ITERATIONS = 10_000;
+const NO_TIMEOUT_MAX_SIMULATION_ITERATIONS = 100_000;
 const ACTION_PRIORITY: Readonly<Record<Action["type"], number>> = {
   "timed-effect-expire": -1,
   attack: 0,
@@ -2661,6 +2663,48 @@ export class BattleSimulator {
         }
       };
 
+      const rehydrateActionQueueForLivingUnits = (): boolean => {
+        let scheduledAction = false;
+
+        for (const unit of allUnits) {
+          if (unit.isDead) {
+            continue;
+          }
+
+          if (getAttackIntervalMs(unit) !== null) {
+            scheduleAttackAt(unit, currentTime);
+            scheduledAction = true;
+          }
+
+          if (getMoveIntervalMs(unit) !== null) {
+            scheduleMoveAt(unit, currentTime);
+            scheduledAction = true;
+          }
+
+          const skillTiming = resolveSkillTiming(unit);
+          if (skillTiming) {
+            scheduleSkillAt(unit, currentTime + skillTiming.skillCooldownMs);
+            scheduledAction = true;
+          }
+
+          for (const subUnitSkillId of unit.subUnitSkillIds ?? []) {
+            const subUnitSkillTiming = resolveSubUnitSkillTiming(unit, subUnitSkillId);
+            if (!subUnitSkillTiming) {
+              continue;
+            }
+            scheduleSubUnitSkillAt(unit, subUnitSkillId, currentTime + subUnitSkillTiming.skillCooldownMs);
+            scheduledAction = true;
+          }
+        }
+
+        if (scheduledAction) {
+          combatLog.push("Battle action queue was empty and has been rehydrated from living units");
+          actionQueue.sort(compareActionOrder);
+        }
+
+        return scheduledAction;
+      };
+
       const resolveAttackDamage = (
         attacker: BattleUnit,
         target: BattleUnit,
@@ -2845,18 +2889,26 @@ export class BattleSimulator {
 
       // Bug #3 fix: Add iteration counter to prevent infinite loops
       let iterationCount = 0;
-      const MAX_ITERATIONS = 10000;
+      const maxIterations = timeoutEnabled
+        ? DEFAULT_MAX_SIMULATION_ITERATIONS
+        : NO_TIMEOUT_MAX_SIMULATION_ITERATIONS;
 
       // 戦闘ループ
       while (currentTime < effectiveMaxDurationMs && hasLivingUnits(leftUnits) && hasLivingUnits(rightUnits)) {
         iterationCount++;
-        if (timeoutEnabled && iterationCount > MAX_ITERATIONS) {
-          console.error("Battle simulation exceeded max iterations");
+        if (iterationCount > maxIterations) {
+          const message = `Battle simulation exceeded max iterations (${maxIterations})`;
+          console.error(message);
+          combatLog.push(message);
           break;
         }
-      const action = actionQueue.shift();
+        const action = actionQueue.shift();
 
       if (!action) {
+        if (rehydrateActionQueueForLivingUnits()) {
+          continue;
+        }
+        combatLog.push("Battle action queue emptied with living units remaining");
         break;
       }
 

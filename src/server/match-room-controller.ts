@@ -157,17 +157,17 @@ const BOSS_SHOP_SIZE = 2;
 const MIN_BOARD_CELL_INDEX = COMBAT_CELL_MIN_INDEX;
 const MAX_BOARD_CELL_INDEX = COMBAT_CELL_MAX_INDEX;
 const PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
-  1: 600,
-  2: 750,
-  3: 900,
-  4: 1050,
-  5: 1250,
-  6: 1450,
-  7: 1650,
-  8: 1850,
-  9: 2100,
-  10: 2400,
-  11: 2700,
+  1: 1200,
+  2: 1500,
+  3: 1800,
+  4: 2100,
+  5: 2500,
+  6: 2900,
+  7: 3300,
+  8: 3550,
+  9: 3800,
+  10: 4100,
+  11: 4400,
   12: 0,
 };
 
@@ -187,17 +187,17 @@ const PHASE_EXPANSION_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
 };
 
 const RAID_PHASE_HP_TARGET_BY_ROUND: Readonly<Record<number, number>> = {
-  1: 600,
-  2: 750,
-  3: 900,
-  4: 1050,
-  5: 1250,
-  6: 1450,
-  7: 1650,
-  8: 1850,
-  9: 2100,
-  10: 2400,
-  11: 2700,
+  1: 1200,
+  2: 1500,
+  3: 1800,
+  4: 2100,
+  5: 2500,
+  6: 2900,
+  7: 3300,
+  8: 3550,
+  9: 3800,
+  10: 4100,
+  11: 4400,
   12: 0,
 };
 

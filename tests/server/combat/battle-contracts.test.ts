@@ -203,7 +203,41 @@ describe("battle contracts", () => {
     expect(result.rightSurvivors).toHaveLength(0);
   });
 
-  test("boss defeat ends the battle immediately even if escorts survive", () => {
+  test("R12 no-timeout battle does not stop at the normal simulation iteration budget", () => {
+    const simulator = new BattleSimulator();
+    const createDurableUnit = (side: "left" | "right", index: number): BattleUnit => {
+      const unit = createTestBattleUnit(
+        { cell: index, unitType: "ranger", unitLevel: 1, attack: 1, attackSpeed: 1, range: 99 },
+        side,
+        index,
+      );
+      unit.hp = 800;
+      unit.maxHp = 800;
+      unit.movementSpeed = 0;
+      return unit;
+    };
+    const leftUnits = Array.from({ length: 8 }, (_, index) => createDurableUnit("left", index));
+    const rightUnits = Array.from({ length: 8 }, (_, index) => createDurableUnit("right", index));
+
+    const result = simulator.simulateBattle(
+      leftUnits,
+      rightUnits,
+      [],
+      [],
+      100,
+      null,
+      null,
+      null,
+      DEFAULT_FLAGS,
+      12,
+    );
+
+    expect(result.endReason).not.toBe("unexpected");
+    expect(result.winner).not.toBe("draw");
+    expect(result.durationMs).toBeGreaterThan(100);
+  });
+
+  test("boss body remains targetable during phase objective battles", () => {
     const simulator = new BattleSimulator();
     const raidAttacker = createTestBattleUnit(
       { cell: 0, unitType: "ranger", unitLevel: 3, attack: 999 },
@@ -228,6 +262,9 @@ describe("battle contracts", () => {
     const result = simulator.simulateBattle([raidAttacker], [boss, escort], [], [], 5_000);
 
     expect(result.winner).toBe("left");
+    expect(result.endReason).toBe("phase_hp_depleted");
+    expect(result.bossDamage).toBeGreaterThan(0);
+    expect(result.phaseDamageToBossSide).toBeGreaterThan(0);
     expect(result.rightSurvivors.some((unit) => unit.id === escort.id)).toBe(true);
     expect(result.combatLog.some((entry) => entry.includes("phase HP depleted"))).toBe(true);
   });

@@ -76,6 +76,7 @@ export type RoundPhaseAnalysis = {
   phaseSuccessRate?: number;
   averagePhaseDamage?: number;
   averageCompletionRate?: number;
+  averagePhaseHpPowerIndex?: number;
   raidWipeRate: number;
   bossWipeRate: number;
   timeoutRate: number;
@@ -105,6 +106,15 @@ export type FinalBattleAnalysis = {
     finalBattleWinner: "boss" | "raid";
     matchWinnerRole: "boss" | "raid";
   }>;
+};
+
+export type BossBodyFocusAnalysis = {
+  earlyRoundCount: number;
+  earlyDefeatCount: number;
+  earlyDefeatRate: number;
+  averageEarlyDamageTaken: number;
+  averageEarlyDirectPhaseDamage: number;
+  averageEarlyFirstDamageAtMs: number | null;
 };
 
 export type EconomyMetrics = {
@@ -190,6 +200,7 @@ export type BotBaselineAnalysisReport = {
   balance: BalanceAnalysis;
   rounds: RoundPhaseAnalysis[];
   finalBattle: FinalBattleAnalysis;
+  bossBodyFocus: BossBodyFocusAnalysis;
   economy: EconomyAnalysis;
   progression: ProgressionAnalysis;
   shop: ShopAnalysis;
@@ -392,6 +403,10 @@ function buildRounds(aggregate: BotOnlyBaselineAggregateReport): RoundPhaseAnaly
             phaseSuccessRate: phaseSuccessCount / rounds.length,
             averagePhaseDamage: average(rounds.map((round) => round.phaseDamageDealt)),
             averageCompletionRate: average(rounds.map((round) => round.phaseCompletionRate)),
+            averagePhaseHpPowerIndex: average(rounds
+              .map((round) => round.phaseHpPowerIndex)
+              .filter((value): value is number =>
+                typeof value === "number" && Number.isFinite(value))),
           }
           : {}),
         raidWipeRate: rounds.filter((round) => round.allRaidPlayersWipedOut).length / rounds.length,
@@ -451,6 +466,27 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
     averageBattleEndSeconds: average(rounds.map((round) => secondsFromMs(round.battleEndTimeMs))),
     endReasonCounts,
     samples,
+  };
+}
+
+function buildBossBodyFocus(aggregate: BotOnlyBaselineAggregateReport): BossBodyFocusAnalysis {
+  const earlyFocusDetails = (aggregate.roundDetails ?? [])
+    .filter((round) => round.roundIndex >= 1 && round.roundIndex <= 3)
+    .map((round) => round.bossBodyFocus)
+    .filter((focus): focus is NonNullable<typeof focus> => Boolean(focus));
+  const earlyDefeatCount = earlyFocusDetails.filter((focus) => focus.defeated).length;
+  const firstDamageSamples = earlyFocusDetails
+    .map((focus) => focus.firstDamageAtMs)
+    .filter((value): value is number =>
+      typeof value === "number" && Number.isFinite(value));
+
+  return {
+    earlyRoundCount: earlyFocusDetails.length,
+    earlyDefeatCount,
+    earlyDefeatRate: earlyFocusDetails.length > 0 ? earlyDefeatCount / earlyFocusDetails.length : 0,
+    averageEarlyDamageTaken: average(earlyFocusDetails.map((focus) => focus.damageTaken)),
+    averageEarlyDirectPhaseDamage: average(earlyFocusDetails.map((focus) => focus.directPhaseDamage)),
+    averageEarlyFirstDamageAtMs: firstDamageSamples.length > 0 ? average(firstDamageSamples) : null,
   };
 }
 
@@ -824,6 +860,7 @@ export function buildBotBalanceBaselineAnalysis(
   const integrity = buildIntegrity(summary);
   const rounds = buildRounds(aggregate);
   const finalBattle = buildFinalBattle(aggregate);
+  const bossBodyFocus = buildBossBodyFocus(aggregate);
   const balance = buildBalance(aggregate, integrity, finalBattle);
   const r12MatchCount = countR12Matches(aggregate);
   const diagnosticIssues = [...integrity.issues, ...balance.issues];
@@ -855,6 +892,7 @@ export function buildBotBalanceBaselineAnalysis(
     balance,
     rounds,
     finalBattle,
+    bossBodyFocus,
     economy: buildEconomy(aggregate),
     progression: buildProgression(aggregate),
     shop: buildShop(aggregate),

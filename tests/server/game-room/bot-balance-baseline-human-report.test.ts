@@ -5,6 +5,7 @@ import { buildBotBalanceBaselineAnalysis } from "./bot-balance-baseline-analysis
 import {
   buildBotBalanceBaselineJapaneseJson,
   buildBotBalanceBaselineJapaneseMarkdown,
+  buildBotBalanceBaselineRoundDetailsJapaneseMarkdown,
   type BotBalanceBaselineSummary,
 } from "./bot-balance-baseline-human-report";
 
@@ -65,6 +66,7 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       phaseHpTarget: 600,
       phaseDamageDealt: 600,
       phaseCompletionRate: 1,
+      phaseHpPowerIndex: 800 / 57,
       phaseResult: "failed",
       allRaidPlayersWipedOut: true,
       raidPlayersWipedOut: 3,
@@ -86,6 +88,19 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         remainingLivesAfter: 1,
         eliminatedAfter: false,
       }],
+      bossBodyFocus: {
+        unitId: "remilia",
+        unitName: "レミリア",
+        cell: 2,
+        x: 2,
+        y: 0,
+        unitLevel: 1,
+        damageTaken: 600,
+        directPhaseDamage: 600,
+        firstDamageAtMs: null,
+        defeated: false,
+        finalHp: 1200,
+      },
       topBossUnits: [{
         playerId: "boss-1",
         label: "P1",
@@ -667,6 +682,13 @@ describe("bot balance baseline human report", () => {
         "終了時間(実プレイ秒)": 5.7,
         "フェーズHP目標": 600,
         "フェーズHPダメージ": 600,
+        "推定フェーズHP火力指数": 800 / 57,
+        "レミリア本体集中": expect.objectContaining({
+          "配置": "cell 2 (x=2, y=0)",
+          "被ダメージ": 600,
+          "直接フェーズ貢献": 600,
+          "撃破": false,
+        }),
         "ラウンド結果": "failed",
         "レイド全員撃破": true,
       }),
@@ -905,9 +927,10 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| フェーズHP削り切り | phase_hp_depleted | 1 | 11.1% |");
     expect(markdown).toContain("## ラウンド分布");
     expect(markdown).toContain("## 各ラウンド詳細");
-    expect(markdown).toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | レイド全滅 |");
+    expect(markdown).toContain("- 詳細なラウンド別明細は `round-details.ja.md` に分離しています。");
+    expect(markdown).not.toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | レイド全滅 |");
     expect(markdown).not.toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | フェーズHP |");
-    expect(markdown).toContain("| 0 | 1 | 5.7 | boss | failed | 600/600 | 100.0% | YES | 3 | 1 | 0 | フェーズHP削り切り | raid | P2:撃破 2->1 | 霧雨魔理沙 Lv1 dmg=600(phase 600) hp=0 撃破 | レミリア Lv1 dmg=240 hp=1200 生存 |");
+    expect(markdown).not.toContain("| 0 | 1 | 5.7 | boss | failed | 600/600 | 100.0% | YES | 3 | 1 | 0 | フェーズHP削り切り | raid | P2:撃破 2->1 | 霧雨魔理沙 Lv1 dmg=600(phase 600) hp=0 撃破 | レミリア Lv1 dmg=240 hp=1200 生存 |");
     expect(markdown).toContain("## プレイヤー別成績");
     expect(markdown).toContain("| プレイヤー | 平均順位 | 1位率 | 平均残HP | 平均残機 | 平均最終所持Gold | 平均獲得Gold | 平均消費Gold | 平均購入回数 | 平均リロール回数 | 平均売却回数 |");
     expect(markdown).toContain("| P1 | 1.8 | 30.0% | 100 | 2.1 | 8.4 | 1.2 | 13.7 | 5.6 | 2.4 | 0.2 |");
@@ -965,5 +988,13 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| 火焔猫燐 | rin | rin | 75.0% | 2.1 | 1.4 | 220.3 | 240.8 | 610.5 | 20.0% |");
     expect(markdown).toContain("| 姫虫百々世 | momoyo | vanguard | 30 | 9 | 3.33 | 100.0% |");
     expect(markdown).toContain("| 1 | 7 | 2 | sample failure |");
+  });
+
+  test("builds round detail markdown separately from the summary report", () => {
+    const markdown = buildBotBalanceBaselineRoundDetailsJapaneseMarkdown(createSampleSummary());
+
+    expect(markdown).toContain("# Bot Balance Baseline ラウンド詳細");
+    expect(markdown).toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | レイド全滅 |");
+    expect(markdown).toContain("| 0 | 1 | 5.7 | boss | failed | 600/600 | 100.0% | 14.04 | cell 2 (x=2, y=0), dmg=600, phase=600, hp=1200, 生存 | YES | 3 | 1 | 0 | フェーズHP削り切り | raid | P2:撃破 2->1 | 霧雨魔理沙 Lv1 dmg=600(phase 600) hp=0 撃破 | レミリア Lv1 dmg=240 hp=1200 生存 |");
   });
 });

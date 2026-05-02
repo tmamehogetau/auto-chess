@@ -221,6 +221,9 @@ type ReportUnitBattleOutcome = {
   alive: boolean;
   unitLevel: number;
   subUnitName: string;
+  attachedSubUnitId?: string;
+  attachedSubUnitName?: string;
+  attachedSubUnitType?: string;
   isSpecialUnit: boolean;
   attackCount?: number;
   basicSkillActivationCount?: number;
@@ -378,6 +381,9 @@ type ReportBoardUnit = {
   unitId: string;
   unitLevel: number;
   subUnitName: string;
+  attachedSubUnitId?: string;
+  attachedSubUnitName?: string;
+  attachedSubUnitType?: string;
 };
 
 type BotOnlyMatchArtifacts = {
@@ -594,6 +600,18 @@ const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
       placement.unitType,
     )?.displayName;
 
+  const attachedSubUnitName =
+    (placement.subUnit?.unitType == null
+      ? undefined
+      : resolveSharedBoardUnitPresentation(
+        placement.subUnit?.unitId,
+        placement.subUnit?.unitType,
+      )?.displayName)
+    ?? placement.subUnit?.archetype
+    ?? placement.subUnit?.unitId
+    ?? placement.subUnit?.unitType
+    ?? "";
+
   return {
     cell: placement.cell,
     unitName:
@@ -604,18 +622,62 @@ const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
     unitType: placement.unitType,
     unitId: placement.unitId ?? "",
     unitLevel: placement.unitLevel ?? 1,
-    subUnitName:
-      (placement.subUnit?.unitType == null
-        ? undefined
-        : resolveSharedBoardUnitPresentation(
-          placement.subUnit?.unitId,
-          placement.subUnit?.unitType,
-        )?.displayName)
-      ?? placement.subUnit?.archetype
-      ?? placement.subUnit?.unitId
-      ?? placement.subUnit?.unitType
-      ?? "",
+    subUnitName: attachedSubUnitName,
+    ...(placement.subUnit?.unitId ? { attachedSubUnitId: placement.subUnit.unitId } : {}),
+    ...(attachedSubUnitName.length > 0 ? { attachedSubUnitName } : {}),
+    ...(placement.subUnit?.unitType ? { attachedSubUnitType: placement.subUnit.unitType } : {}),
   };
+};
+
+const parseHeroSubUnitTokensByCell = (
+  boardSubUnits: Iterable<unknown> | undefined,
+): Map<number, { unitId: string; unitName: string; unitType: "hero" }> => {
+  const result = new Map<number, { unitId: string; unitName: string; unitType: "hero" }>();
+
+  for (const token of boardSubUnits ?? []) {
+    if (typeof token !== "string") {
+      continue;
+    }
+
+    const [cellText = "", unitType = "", unitId = ""] = token.split(":");
+    const cell = Number.parseInt(cellText, 10);
+    if (!Number.isInteger(cell) || unitType !== "hero" || unitId.length === 0) {
+      continue;
+    }
+
+    result.set(cell, {
+      unitId,
+      unitName: resolveSharedBoardHeroPresentation(unitId)?.displayName ?? unitId,
+      unitType: "hero",
+    });
+  }
+
+  return result;
+};
+
+const attachHeroSubUnitReportMetadata = (
+  boardUnits: ReportBoardUnit[],
+  boardSubUnits: Iterable<unknown> | undefined,
+): ReportBoardUnit[] => {
+  const heroSubUnitsByCell = parseHeroSubUnitTokensByCell(boardSubUnits);
+  if (heroSubUnitsByCell.size === 0) {
+    return boardUnits;
+  }
+
+  return boardUnits.map((unit) => {
+    const heroSubUnit = heroSubUnitsByCell.get(unit.cell);
+    if (!heroSubUnit) {
+      return unit;
+    }
+
+    return {
+      ...unit,
+      subUnitName: heroSubUnit.unitName,
+      attachedSubUnitId: heroSubUnit.unitId,
+      attachedSubUnitName: heroSubUnit.unitName,
+      attachedSubUnitType: heroSubUnit.unitType,
+    };
+  });
 };
 
 const getReportBoardUnitsForPlayer = (
@@ -627,7 +689,11 @@ const getReportBoardUnitsForPlayer = (
     return [];
   }
 
-  return reader.getBoardPlacementsForPlayer(playerId).map(toReportBoardUnit);
+  const player = serverRoom.state.players.get(playerId);
+  return attachHeroSubUnitReportMetadata(
+    reader.getBoardPlacementsForPlayer(playerId).map(toReportBoardUnit),
+    player?.boardSubUnits,
+  );
 };
 
 const getSpecialBattleUnitsForPlayers = (
@@ -692,8 +758,13 @@ const getReportBattleStartUnitsForPlayer = (
     return battleStartUnits;
   }
 
+  const battleStartUnitsWithHeroSubMetadata = attachHeroSubUnitReportMetadata(
+    battleStartUnits,
+    player.boardSubUnits,
+  );
+
   if (typeof player.selectedHeroId === "string" && player.selectedHeroId.length > 0) {
-    battleStartUnits.push({
+    battleStartUnitsWithHeroSubMetadata.push({
       cell: 8,
       unitName:
         resolveSharedBoardHeroPresentation(player.selectedHeroId)?.displayName
@@ -710,7 +781,7 @@ const getReportBattleStartUnitsForPlayer = (
     && typeof player.selectedBossId === "string"
     && player.selectedBossId.length > 0
   ) {
-    battleStartUnits.push({
+    battleStartUnitsWithHeroSubMetadata.push({
       cell: 2,
       unitName:
         resolveSharedBoardBossPresentation(player.selectedBossId)?.displayName
@@ -722,7 +793,7 @@ const getReportBattleStartUnitsForPlayer = (
     });
   }
 
-  return battleStartUnits;
+  return battleStartUnitsWithHeroSubMetadata;
 };
 
 const getTrackedBattleUnitIdsForPlayerAtBattleStart = (
@@ -2009,6 +2080,7 @@ const buildUnitBattleOutcomesForBattle = (
         label: getPlayerLabel(playerLabels, playerId),
         unitId: sourceUnitId,
         unitName: metadata?.unitName ?? unit.displayName ?? sourceUnitId,
+        ...(metadata?.unitType ? { unitType: metadata.unitType } : {}),
         side: ownerPlayer?.role === "boss" ? "boss" : "raid",
         totalDamage: damageByBattleUnitId.get(unit.battleUnitId) ?? 0,
         phaseContributionDamage: phaseContributionByBattleUnitId.get(unit.battleUnitId) ?? 0,
@@ -2016,6 +2088,9 @@ const buildUnitBattleOutcomesForBattle = (
         alive,
         unitLevel: metadata?.unitLevel ?? 1,
         subUnitName: metadata?.subUnitName ?? "",
+        ...(metadata?.attachedSubUnitId ? { attachedSubUnitId: metadata.attachedSubUnitId } : {}),
+        ...(metadata?.attachedSubUnitName ? { attachedSubUnitName: metadata.attachedSubUnitName } : {}),
+        ...(metadata?.attachedSubUnitType ? { attachedSubUnitType: metadata.attachedSubUnitType } : {}),
         isSpecialUnit: isReportSpecialBattleUnit(sourceUnitId, unit.battleUnitId, metadata),
         attackCount,
         basicSkillActivationCount,
@@ -2897,6 +2972,51 @@ test("getReportBattleStartUnitsForPlayer includes special unit metadata for hero
       unitType: "boss",
       unitId: "remilia",
       unitLevel: 5,
+      subUnitName: "",
+    },
+  ]);
+});
+
+test("getReportBattleStartUnitsForPlayer marks Okina hero sub metadata on the host", () => {
+  const fakeRoom = {
+    state: {
+      players: new Map([
+        ["raid-1", {
+          role: "raid",
+          selectedHeroId: "okina",
+          selectedBossId: "",
+          specialUnitLevel: 4,
+          boardSubUnits: ["31:hero:okina"],
+        }],
+      ]),
+    },
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>([
+          ["raid-1", [{ cell: 31, unitType: "ranger", unitId: "nazrin", unitLevel: 2 }]],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(getReportBattleStartUnitsForPlayer(fakeRoom, "raid-1")).toEqual([
+    {
+      cell: 31,
+      unitName: "ナズーリン",
+      unitType: "ranger",
+      unitId: "nazrin",
+      unitLevel: 2,
+      subUnitName: "摩多羅隠岐奈",
+      attachedSubUnitId: "okina",
+      attachedSubUnitName: "摩多羅隠岐奈",
+      attachedSubUnitType: "hero",
+    },
+    {
+      cell: 8,
+      unitName: "摩多羅隠岐奈",
+      unitType: "hero",
+      unitId: "okina",
+      unitLevel: 4,
       subUnitName: "",
     },
   ]);
@@ -8090,14 +8210,14 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
     ...createBotBalanceBaselineRoomTimings(0.02),
   };
   const BOT_ONLY_DAMAGE_TARGETS: Record<number, number> = {
-    1: 600,
-    2: 750,
-    3: 900,
-    4: 1_050,
-    5: 1_250,
-    6: 1_450,
-    7: 1_650,
-    8: 1_850,
+    1: 1200,
+    2: 1500,
+    3: 1800,
+    4: 2_100,
+    5: 2_500,
+    6: 2_900,
+    7: 3_300,
+    8: 3_550,
   };
   const BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS: Record<number, number> = {};
 

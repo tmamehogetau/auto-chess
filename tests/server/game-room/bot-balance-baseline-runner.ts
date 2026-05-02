@@ -5,6 +5,7 @@ import {
   createFastParityGameRoomOptions,
   type GameRoomTimingOptions,
 } from "../../../src/server/rooms/game-room-config";
+import { AUTO_FILL_HERO_IDS } from "../../../src/client/autofill-helper-automation.js";
 
 const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MIN = 4;
 const BOT_BALANCE_BASELINE_AUTO_PARALLELISM_MAX = 16;
@@ -12,6 +13,7 @@ export const DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM = 12;
 export const BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE = 500;
 export const DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE = 10_000;
 export const DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY = "strength";
+export const DEFAULT_BOT_BALANCE_BASELINE_OPTIMIZATION_VARIANT = "full";
 const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_BASE = 2_570;
 const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_HASH_RANGE = 200;
 const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_MAX = 65_535;
@@ -22,10 +24,24 @@ const BOT_BALANCE_BASELINE_SELECTION_TIMEOUT_MS = 200;
 const BOT_BALANCE_BASELINE_BATTLE_TIMELINE_TIME_SCALE = 0.01;
 
 export type BotBalanceBaselineHelperPolicy = "strength" | "growth";
+export type BotBalanceBaselineOptimizationVariant =
+  | "full"
+  | "raid-optimization-off"
+  | "boss-optimization-off"
+  | "all-optimization-off"
+  | "board-refit-off"
+  | "raid-board-refit-off"
+  | "boss-board-refit-off"
+  | "future-shop-off"
+  | "okina-host-off";
 export type BotBalanceBaselineHelperConfig = {
   wantsBoss: boolean;
   policy: BotBalanceBaselineHelperPolicy;
+  heroId?: string;
+  optimizationVariant?: BotBalanceBaselineOptimizationVariant;
 };
+
+export type BotBalanceBaselineRaidHeroIds = [string, string, string];
 
 export type BaselineChunkDefinition = {
   chunkIndex: number;
@@ -43,6 +59,8 @@ export type BaselineChunkConfigSnapshot = {
     BotBalanceBaselineHelperPolicy,
     BotBalanceBaselineHelperPolicy,
   ];
+  raidHeroIds: BotBalanceBaselineRaidHeroIds | null;
+  optimizationVariant: BotBalanceBaselineOptimizationVariant;
 };
 
 export function resolveBotBalanceBaselineHelperPolicy(
@@ -67,19 +85,74 @@ export function resolveBotBalanceBaselineRaidPolicies(
     parsedPolicies[index] ?? DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY);
 }
 
+export function resolveBotBalanceBaselineRaidHeroIds(
+  rawValue: string | undefined | null,
+): BotBalanceBaselineRaidHeroIds | null {
+  const parsedHeroIds = String(rawValue ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  if (parsedHeroIds.length === 0) {
+    return null;
+  }
+  if (parsedHeroIds.length !== 3) {
+    throw new Error("Fixed raid hero baseline requires exactly 3 hero ids");
+  }
+
+  for (const heroId of parsedHeroIds) {
+    if (!AUTO_FILL_HERO_IDS.includes(heroId)) {
+      throw new Error(`Unknown raid hero for baseline: ${heroId}`);
+    }
+  }
+
+  return [
+    parsedHeroIds[0]!,
+    parsedHeroIds[1]!,
+    parsedHeroIds[2]!,
+  ];
+}
+
+export function resolveBotBalanceBaselineOptimizationVariant(
+  rawValue: string | undefined | null,
+): BotBalanceBaselineOptimizationVariant {
+  return rawValue === "raid-optimization-off"
+    || rawValue === "boss-optimization-off"
+    || rawValue === "all-optimization-off"
+    || rawValue === "board-refit-off"
+    || rawValue === "raid-board-refit-off"
+    || rawValue === "boss-board-refit-off"
+    || rawValue === "future-shop-off"
+    || rawValue === "okina-host-off"
+    || rawValue === "full"
+    ? rawValue
+    : DEFAULT_BOT_BALANCE_BASELINE_OPTIMIZATION_VARIANT;
+}
+
 export function createBotBalanceBaselineHelperConfigs(options: {
   bossPolicy?: BotBalanceBaselineHelperPolicy;
   raidPolicies?: BotBalanceBaselineHelperPolicy[];
+  raidHeroIds?: BotBalanceBaselineRaidHeroIds | null;
+  optimizationVariant?: BotBalanceBaselineOptimizationVariant;
 } = {}): BotBalanceBaselineHelperConfig[] {
   const bossPolicy = resolveBotBalanceBaselineHelperPolicy(options.bossPolicy);
   const raidPolicies = Array.from({ length: 3 }, (_, index) =>
     resolveBotBalanceBaselineHelperPolicy(
       options.raidPolicies?.[index] ?? DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY,
     ));
+  const optimizationVariant = resolveBotBalanceBaselineOptimizationVariant(options.optimizationVariant);
+  const optimizationVariantPatch = optimizationVariant === DEFAULT_BOT_BALANCE_BASELINE_OPTIMIZATION_VARIANT
+    ? {}
+    : { optimizationVariant };
 
   return [
-    { wantsBoss: true, policy: bossPolicy },
-    ...raidPolicies.map((policy) => ({ wantsBoss: false, policy })),
+    { wantsBoss: true, policy: bossPolicy, ...optimizationVariantPatch },
+    ...raidPolicies.map((policy, index) => ({
+      wantsBoss: false,
+      policy,
+      ...(options.raidHeroIds?.[index] ? { heroId: options.raidHeroIds[index] } : {}),
+      ...optimizationVariantPatch,
+    })),
   ];
 }
 
@@ -87,6 +160,8 @@ export function createBaselineChunkConfigSnapshot(options: {
   requestedMatchCount: number;
   bossPolicy: BotBalanceBaselineHelperPolicy;
   raidPolicies: BotBalanceBaselineHelperPolicy[];
+  raidHeroIds?: BotBalanceBaselineRaidHeroIds | null;
+  optimizationVariant?: BotBalanceBaselineOptimizationVariant;
 }): BaselineChunkConfigSnapshot {
   return {
     requestedMatchCount: Math.max(0, Math.trunc(options.requestedMatchCount)),
@@ -96,6 +171,8 @@ export function createBaselineChunkConfigSnapshot(options: {
       resolveBotBalanceBaselineHelperPolicy(options.raidPolicies[1]),
       resolveBotBalanceBaselineHelperPolicy(options.raidPolicies[2]),
     ],
+    raidHeroIds: options.raidHeroIds ?? null,
+    optimizationVariant: resolveBotBalanceBaselineOptimizationVariant(options.optimizationVariant),
   };
 }
 
@@ -110,7 +187,10 @@ export function baselineChunkConfigMatches(
   return actual.requestedMatchCount === expected.requestedMatchCount
     && actual.bossPolicy === expected.bossPolicy
     && actual.raidPolicies.length === expected.raidPolicies.length
-    && actual.raidPolicies.every((policy, index) => policy === expected.raidPolicies[index]);
+    && actual.raidPolicies.every((policy, index) => policy === expected.raidPolicies[index])
+    && JSON.stringify(actual.raidHeroIds ?? null) === JSON.stringify(expected.raidHeroIds ?? null)
+    && resolveBotBalanceBaselineOptimizationVariant(actual.optimizationVariant)
+      === resolveBotBalanceBaselineOptimizationVariant(expected.optimizationVariant);
 }
 
 function resolveRuntimeAvailableParallelism(): number {

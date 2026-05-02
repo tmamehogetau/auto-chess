@@ -2,7 +2,9 @@ import { HERO_EXCLUSIVE_UNITS } from "../../../src/data/hero-exclusive-units";
 import { HEROES } from "../../../src/data/heroes";
 import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
+import { calculateSpecialUnitUpgradeCost } from "../../../src/server/special-unit-level-config";
 import { getUnitLevelCombatMultiplier } from "../../../src/server/unit-level-config";
+import type { BossSpellBattleMetric } from "../../../src/server/combat/battle-simulator";
 import { BOSS_CHARACTERS } from "../../../src/shared/boss-characters";
 import { sharedBoardCoordinateToIndex } from "../../../src/shared/shared-board-config";
 import { getMvpPhase1Boss } from "../../../src/shared/types";
@@ -32,6 +34,21 @@ export type BotOnlyBaselinePlayerMetrics = {
   averageRefreshCount: number;
   averageSellCount: number;
   averageSpecialUnitUpgradeCount?: number;
+};
+
+export type BotOnlyBaselinePlayerEconomyBreakdown = {
+  fixedPrepIncome: number;
+  raidPhaseSuccessBonusIncome: number;
+  sellIncome: number;
+  specialEconomyIncome: number;
+  normalShopSpend: number;
+  bossShopSpend: number;
+  refreshSpend: number;
+  specialUnitUpgradeSpend: number;
+  otherSpend: number;
+  loggedGoldGain: number;
+  loggedGoldSpent: number;
+  finalUnusedGold: number;
 };
 
 export type BotOnlyBaselineBattleUnitMetrics = {
@@ -94,6 +111,10 @@ export type BotOnlyBaselineFinalBoardUnitMetrics = {
   matchesPresent: number;
   averageCopiesPerMatch: number;
   adoptionRate: number;
+  averageFinalUnitLevel: number;
+  maxFinalUnitLevel: number;
+  finalLevel4Rate: number;
+  finalLevel7Rate: number;
 };
 
 export type BotOnlyBaselineTopDamageUnit = {
@@ -105,7 +126,81 @@ export type BotOnlyBaselineTopDamageUnit = {
   averageDamagePerMatch: number;
 };
 
+export type BotOnlyBaselineRoundDamageEfficiencyMetric = {
+  roundIndex: number;
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  averageUnitLevel: number;
+  totalDamage: number;
+  totalInvestmentCost: number;
+  averageInvestmentCostPerBattle: number;
+  damagePerInvestmentCost: number | null;
+};
+
+export type BotOnlyBaselineUnitDamageEfficiencyMetric = {
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  roundsObserved: number;
+  battleAppearances: number;
+  matchesPresent: number;
+  averageUnitLevel: number;
+  totalDamage: number;
+  totalInvestmentCost: number;
+  weightedDamagePerInvestmentCost: number | null;
+  sampleQuality: "usable" | "low";
+};
+
+export type BotOnlyBaselineRoundSurvivalDiagnosticMetric = {
+  roundIndex: number;
+  battleSamples: number;
+  averageBattleEndMs: number;
+  phaseSuccessRate: number;
+  phaseSuccessWithBossWipeRate: number;
+  phaseFailureWithRaidWipeRate: number;
+  bossWipedRate: number;
+  raidWipedRate: number;
+  bothSidesSurvivedRate: number;
+  averageBossStartUnitCount: number;
+  averageBossSurvivors: number;
+  bossUnitSurvivalRate: number;
+  averageBossFinalHp: number;
+  averageBossEstimatedMaxHp: number;
+  bossRemainingHpRate: number | null;
+  averageRaidStartUnitCount: number;
+  averageRaidSurvivors: number;
+  raidUnitSurvivalRate: number;
+  averageRaidFinalHp: number;
+  averageRaidEstimatedMaxHp: number;
+  raidRemainingHpRate: number | null;
+};
+
+export type BotOnlyBaselineRoundUnitSurvivalDiagnosticMetric = {
+  roundIndex: number;
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  averageUnitLevel: number;
+  survivalRate: number;
+  averageFinalHp: number;
+  averageEstimatedMaxHp: number;
+  remainingHpRate: number | null;
+  averageDamageTaken: number;
+  averageLifetimeMs: number;
+  averageDamagePerBattle: number;
+  zeroDamageBattleRate: number;
+};
+
 export type BotOnlyBaselinePurchase = {
+  roundIndex?: number;
   playerId: string;
   label: string;
   actionType: "buy_unit" | "buy_boss_unit";
@@ -116,6 +211,7 @@ export type BotOnlyBaselinePurchase = {
 };
 
 export type BotOnlyBaselineObservedShopOffer = {
+  roundIndex?: number;
   playerId: string;
   label: string;
   role: "boss" | "raid";
@@ -156,6 +252,41 @@ export type BotOnlyBaselineShopOfferMetric = BotOnlyBaselineHighCostOfferMetric 
   finalBoardCopies: number;
   finalBoardMatchCount: number;
   finalBoardAdoptionRate: number;
+};
+
+export type BotOnlyBaselineBossExclusiveRoundLevelMetric = {
+  roundIndex: number;
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  averageUnitLevel: number;
+  p25UnitLevel: number;
+  p50UnitLevel: number;
+  p75UnitLevel: number;
+  level4ReachRate: number;
+  level7ReachRate: number;
+  unitLevelSamples?: number[];
+};
+
+export type BotOnlyBaselineHighCostRoundMetric = {
+  roundIndex: number;
+  role: "boss" | "raid";
+  source: "shop" | "bossShop";
+  unitId: string;
+  unitName: string;
+  unitType: string;
+  cost: number;
+  offerObservationCount: number;
+  offerMatchCount: number;
+  purchaseCount: number;
+  purchaseMatchCount: number;
+  battleAppearances: number;
+  battleMatchCount: number;
+  offeredMatchRate: number;
+  purchaseRate: number;
+  battlePresenceRate: number;
 };
 
 export type BotOnlyBaselineRangeBand = "range_1" | "range_2_plus";
@@ -310,6 +441,7 @@ export type BotOnlyBaselineFinalPlayer = {
   selectedBossId: string;
   totalGoldEarned: number;
   totalGoldSpent: number;
+  economyBreakdown?: BotOnlyBaselinePlayerEconomyBreakdown;
   purchaseCount: number;
   refreshCount: number;
   sellCount: number;
@@ -409,6 +541,7 @@ export type BotOnlyBaselineBattleSummary = {
   raidSurvivors?: number;
   unitDamageBreakdown: BotOnlyBaselineBattleDamageContribution[];
   unitOutcomes: BotOnlyBaselineBattleUnitOutcome[];
+  bossSpellMetrics?: BossSpellBattleMetric[];
 };
 
 export type BotOnlyBaselineRoundUnitDetail = {
@@ -416,9 +549,14 @@ export type BotOnlyBaselineRoundUnitDetail = {
   label: string;
   unitId: string;
   unitName: string;
+  unitType?: string;
   side: "boss" | "raid";
+  cell?: number | null;
+  x?: number | null;
+  y?: number | null;
   totalDamage: number;
   phaseContributionDamage: number;
+  damageTaken?: number;
   finalHp: number;
   alive: boolean;
   unitLevel: number;
@@ -447,6 +585,7 @@ export type BotOnlyBaselineRoundBattleDetail = {
   leftDamageDealt: number;
   rightDamageDealt: number;
   unitOutcomes: BotOnlyBaselineBattleUnitOutcome[];
+  bossSpellMetrics?: BossSpellBattleMetric[];
 };
 
 export type BotOnlyBaselineRoundSummary = {
@@ -483,9 +622,11 @@ export type BotOnlyBaselineMatchRoundDetail = {
   raidPhaseContributionDamage: number;
   battleEndReasons: BotOnlyBaselineBattleEndReason[];
   battleWinnerRoles: Array<"boss" | "raid" | "draw">;
+  bossSpellMetrics?: BossSpellBattleMetric[];
   raidPlayerConsequences: BotOnlyBaselineRoundPlayerConsequence[];
   bossBodyFocus?: BotOnlyBaselineBossBodyFocusDetail | null;
   topBossUnits: BotOnlyBaselineRoundUnitDetail[];
+  topBossDamageTakenUnits?: BotOnlyBaselineRoundUnitDetail[];
   topRaidUnits: BotOnlyBaselineRoundUnitDetail[];
 };
 
@@ -514,6 +655,8 @@ export type BotOnlyBaselineMatchSummary = {
   rounds?: BotOnlyBaselineRoundSummary[];
   purchases?: BotOnlyBaselinePurchase[];
   observedShopOffers?: BotOnlyBaselineObservedShopOffer[];
+  okinaHeroSubDecisionSnapshots?: BotOnlyBaselineOkinaHeroSubDecisionSnapshot[];
+  boardRefitDecisionSnapshots?: BotOnlyBaselineBoardRefitDecisionSnapshot[];
 };
 
 export type BotOnlyBaselineAggregateReport = {
@@ -532,6 +675,9 @@ export type BotOnlyBaselineAggregateReport = {
   battleMetrics: BotOnlyBaselineBattleMetrics;
   roundHistogram: Record<string, number>;
   playerMetrics: Record<string, BotOnlyBaselinePlayerMetrics>;
+  heroTeamMetrics?: BotOnlyBaselineHeroTeamMetric[];
+  heroCompositionMetrics?: BotOnlyBaselineHeroCompositionMetric[];
+  playerEconomyBreakdowns?: Record<string, BotOnlyBaselinePlayerEconomyBreakdown>;
   bossBattleUnitMetrics: BotOnlyBaselineBattleUnitMetrics[];
   raidBattleUnitMetrics: BotOnlyBaselineBattleUnitMetrics[];
   finalBoardUnitMetrics: BotOnlyBaselineFinalBoardUnitMetrics[];
@@ -539,6 +685,19 @@ export type BotOnlyBaselineAggregateReport = {
   highCostSummary?: BotOnlyBaselineHighCostSummary;
   highCostOfferMetrics?: BotOnlyBaselineHighCostOfferMetric[];
   shopOfferMetrics?: BotOnlyBaselineShopOfferMetric[];
+  bossExclusiveRoundLevelMetrics?: BotOnlyBaselineBossExclusiveRoundLevelMetric[];
+  highCostRoundMetrics?: BotOnlyBaselineHighCostRoundMetric[];
+  roundDamageEfficiencyMetrics?: BotOnlyBaselineRoundDamageEfficiencyMetric[];
+  unitDamageEfficiencyMetrics?: BotOnlyBaselineUnitDamageEfficiencyMetric[];
+  okinaSubHostMetrics?: BotOnlyBaselineOkinaSubHostMetric[];
+  okinaSubHostRoundMetrics?: BotOnlyBaselineOkinaSubHostRoundMetric[];
+  okinaHeroSubDecisionRoundMetrics?: BotOnlyBaselineOkinaHeroSubDecisionRoundMetric[];
+  boardRefitDecisionRoundMetrics?: BotOnlyBaselineBoardRefitDecisionRoundMetric[];
+  boardRefitDecisionRoleMetrics?: BotOnlyBaselineBoardRefitDecisionRoleMetric[];
+  boardRefitDecisionRoleRoundMetrics?: BotOnlyBaselineBoardRefitDecisionRoleRoundMetric[];
+  finalPlayerBoardMetrics?: BotOnlyBaselineFinalPlayerBoardMetric[];
+  roundSurvivalDiagnostics?: BotOnlyBaselineRoundSurvivalDiagnosticMetric[];
+  roundUnitSurvivalDiagnostics?: BotOnlyBaselineRoundUnitSurvivalDiagnosticMetric[];
   rangeDamageEfficiencyMetrics: BotOnlyBaselineRangeDamageEfficiencyMetric[];
   rangeActionDiagnosticsMetrics: BotOnlyBaselineRangeActionDiagnosticsMetric[];
   rangeFormationDiagnosticsMetrics: BotOnlyBaselineRangeFormationDiagnosticsMetric[];
@@ -547,7 +706,180 @@ export type BotOnlyBaselineAggregateReport = {
   roundDetails?: BotOnlyBaselineMatchRoundDetail[];
 };
 
+export type BotOnlyBaselineOkinaSubHostMetric = {
+  hostUnitId: string;
+  hostUnitType: string;
+  hostUnitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  averageHostLevel: number;
+  averageDamagePerBattle: number;
+  averageDamageTakenPerBattle: number;
+  averageLifetimeMs: number;
+  survivalRate: number;
+  ownerWinRate: number;
+};
+
+export type BotOnlyBaselineOkinaSubHostRoundMetric =
+  BotOnlyBaselineOkinaSubHostMetric & {
+    roundIndex: number;
+  };
+
+export type BotOnlyBaselineOkinaHeroSubDecisionReason =
+  | "attach_best_host"
+  | "reattach_stronger_host"
+  | "front_value_preferred"
+  | "current_host_margin_preferred"
+  | "no_candidate";
+
+export type BotOnlyBaselineOkinaHeroSubDecisionSnapshot = {
+  roundIndex: number;
+  playerId: string;
+  label: string;
+  specialUnitStage: number;
+  candidateCount: number;
+  bestHostUnitId: string | null;
+  bestHostUnitType: string | null;
+  bestHostUnitName: string | null;
+  bestHostLevel: number | null;
+  bestHostCurrentPowerScore?: number | null;
+  bestHostFutureValueScore?: number | null;
+  bestHostTransitionReadinessScore?: number | null;
+  bestHostProtectionScore?: number | null;
+  bestHostGain: number | null;
+  frontEquivalentValue: number;
+  bestToFrontRatio: number | null;
+  bestToCurrentRatio: number | null;
+  decision: "attach" | "reattach" | "keep_front" | "keep_current";
+  reason: BotOnlyBaselineOkinaHeroSubDecisionReason;
+};
+
+export type BotOnlyBaselineOkinaHeroSubDecisionRoundMetric = {
+  roundIndex: number;
+  samples: number;
+  actionRecommendedSamples: number;
+  noCandidateSamples: number;
+  frontValuePreferredSamples: number;
+  currentHostKeptSamples: number;
+  averageCandidateCount: number;
+  averageFrontEquivalentValue: number;
+  averageBestHostGain: number | null;
+  averageBestHostCurrentPowerScore: number | null;
+  averageBestHostFutureValueScore: number | null;
+  averageBestHostTransitionReadinessScore: number | null;
+  averageBestHostProtectionScore: number | null;
+  averageBestToFrontRatio: number | null;
+  mostFrequentBestHostUnitId: string | null;
+  mostFrequentBestHostUnitName: string | null;
+  mostFrequentBestHostSamples: number;
+};
+
+export type BotOnlyBaselineBoardRefitDecisionSnapshot = {
+  roundIndex: number;
+  playerId: string;
+  label: string;
+  role: "boss" | "raid";
+  boardAtCapacity: boolean;
+  boardUnitCount: number;
+  benchUnitCount: number;
+  benchPressure: number;
+  candidateCount: number;
+  outgoingCandidateCount: number;
+  decision: "replace" | "hold" | "no_candidate";
+  reason: string;
+  committed?: boolean;
+  replacementScore: number | null;
+  incomingUnitId: string | null;
+  incomingUnitType: string | null;
+  incomingUnitCost: number | null;
+  incomingUnitLevel: number | null;
+  incomingReason: string | null;
+  incomingCurrentPowerScore: number | null;
+  incomingFutureValueScore: number | null;
+  incomingTransitionReadinessScore: number | null;
+  incomingProtectionScore: number | null;
+  outgoingUnitId: string | null;
+  outgoingUnitType: string | null;
+  outgoingUnitCost: number | null;
+  outgoingUnitLevel: number | null;
+  outgoingCell: number | null;
+  outgoingReason: string | null;
+  outgoingCurrentPowerScore: number | null;
+  outgoingFutureValueScore: number | null;
+  outgoingTransitionReadinessScore: number | null;
+  outgoingProtectionScore: number | null;
+};
+
+export type BotOnlyBaselineBoardRefitDecisionRoundMetric = {
+  roundIndex: number;
+  samples: number;
+  boardFullSamples: number;
+  attemptSamples: number;
+  recommendedReplacementSamples: number;
+  committedSamples: number;
+  futureCandidateKeptCount: number;
+  averageBenchPressure: number;
+  averageReplacementScore: number | null;
+  p25ReplacementScore: number | null;
+  p50ReplacementScore: number | null;
+  p75ReplacementScore: number | null;
+  mostFrequentIncomingUnitId: string | null;
+  mostFrequentIncomingUnitName: string | null;
+  mostFrequentIncomingSamples: number;
+  mostFrequentOutgoingUnitId: string | null;
+  mostFrequentOutgoingUnitName: string | null;
+  mostFrequentOutgoingSamples: number;
+};
+
+export type BotOnlyBaselineBoardRefitDecisionRoleMetric =
+  Omit<BotOnlyBaselineBoardRefitDecisionRoundMetric, "roundIndex"> & {
+    role: "boss" | "raid";
+  };
+
+export type BotOnlyBaselineBoardRefitDecisionRoleRoundMetric =
+  BotOnlyBaselineBoardRefitDecisionRoundMetric & {
+    role: "boss" | "raid";
+  };
+
+export type BotOnlyBaselineFinalPlayerBoardMetric = {
+  label: string;
+  role: string;
+  matchesPresent: number;
+  averageDeployedUnitCount: number;
+  averageDeployedAssetValue: number;
+  averageSpecialUnitCount: number;
+  averageStandardUnitCount: number;
+};
+
+export type BotOnlyBaselineHeroTeamMetric = {
+  heroId: string;
+  heroName: string;
+  matchesPresent: number;
+  raidTeamWins: number;
+  raidTeamWinRate: number;
+  firstPlaceRate: number;
+  averagePlacement: number;
+  averageRemainingLives: number;
+  averageFinalGold: number;
+  averageGoldEarned: number;
+  averageGoldSpent: number;
+  averageSpecialUnitUpgradeCount: number;
+};
+
+export type BotOnlyBaselineHeroCompositionMetric = {
+  compositionKey: string;
+  heroIds: string[];
+  heroNames: string[];
+  matchesPresent: number;
+  raidWins: number;
+  raidWinRate: number;
+  averageRounds: number;
+};
+
 const HIGH_COST_THRESHOLD = 4;
+const ESTIMATED_RAID_PREP_BASE_INCOME = 5;
+const ESTIMATED_BOSS_PREP_BASE_INCOME = 9;
+const ESTIMATED_RAID_PHASE_SUCCESS_BONUS = 2;
 const LATE_SINGLE_ATTACK_THRESHOLD_RATIO = 0.6;
 const BOT_ONLY_BASELINE_BATTLE_END_REASONS: BotOnlyBaselineBattleEndReason[] = [
   "annihilation",
@@ -560,7 +892,14 @@ const BOT_ONLY_BASELINE_BATTLE_END_REASONS: BotOnlyBaselineBattleEndReason[] = [
   "unexpected",
 ];
 const UNIT_COST_BY_UNIT_ID = new Map(
-  TOUHOU_UNITS.map((unit) => [unit.unitId, unit.cost] as const),
+  [
+    ...TOUHOU_UNITS.map((unit) => [unit.unitId, unit.cost] as const),
+    ...SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, unit.cost] as const),
+    ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [
+      [unit.id, unit.cost] as const,
+      [unit.unitId, unit.cost] as const,
+    ]),
+  ],
 );
 const UNIT_DISPLAY_NAME_BY_ID = new Map<string, string>([
   ...TOUHOU_UNITS.map((unit) => [unit.unitId, unit.displayName] as const),
@@ -580,6 +919,146 @@ const SPECIAL_BATTLE_UNIT_IDS = new Set<string>([
   ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [unit.id, unit.unitId]),
   ...BOSS_CHARACTERS.map((boss) => boss.id),
 ]);
+const CHARACTER_BODY_UNIT_IDS = new Set<string>([
+  ...HEROES.map((hero) => hero.id),
+  ...BOSS_CHARACTERS.map((boss) => boss.id),
+]);
+const BOSS_EXCLUSIVE_UNIT_IDS = new Set<string>([
+  ...SCARLET_MANSION_UNITS.flatMap((unit) => [unit.id, unit.unitId]),
+]);
+
+function createEmptyPlayerEconomyBreakdown(): BotOnlyBaselinePlayerEconomyBreakdown {
+  return {
+    fixedPrepIncome: 0,
+    raidPhaseSuccessBonusIncome: 0,
+    sellIncome: 0,
+    specialEconomyIncome: 0,
+    normalShopSpend: 0,
+    bossShopSpend: 0,
+    refreshSpend: 0,
+    specialUnitUpgradeSpend: 0,
+    otherSpend: 0,
+    loggedGoldGain: 0,
+    loggedGoldSpent: 0,
+    finalUnusedGold: 0,
+  };
+}
+
+function addPlayerEconomyBreakdown(
+  target: BotOnlyBaselinePlayerEconomyBreakdown,
+  source: BotOnlyBaselinePlayerEconomyBreakdown,
+): void {
+  target.fixedPrepIncome += source.fixedPrepIncome;
+  target.raidPhaseSuccessBonusIncome += source.raidPhaseSuccessBonusIncome;
+  target.sellIncome += source.sellIncome;
+  target.specialEconomyIncome += source.specialEconomyIncome;
+  target.normalShopSpend += source.normalShopSpend;
+  target.bossShopSpend += source.bossShopSpend;
+  target.refreshSpend += source.refreshSpend;
+  target.specialUnitUpgradeSpend += source.specialUnitUpgradeSpend;
+  target.otherSpend += source.otherSpend;
+  target.loggedGoldGain += source.loggedGoldGain;
+  target.loggedGoldSpent += source.loggedGoldSpent;
+  target.finalUnusedGold += source.finalUnusedGold;
+}
+
+function dividePlayerEconomyBreakdown(
+  source: BotOnlyBaselinePlayerEconomyBreakdown,
+  divisor: number,
+): BotOnlyBaselinePlayerEconomyBreakdown {
+  if (divisor <= 0) {
+    return createEmptyPlayerEconomyBreakdown();
+  }
+
+  return {
+    fixedPrepIncome: source.fixedPrepIncome / divisor,
+    raidPhaseSuccessBonusIncome: source.raidPhaseSuccessBonusIncome / divisor,
+    sellIncome: source.sellIncome / divisor,
+    specialEconomyIncome: source.specialEconomyIncome / divisor,
+    normalShopSpend: source.normalShopSpend / divisor,
+    bossShopSpend: source.bossShopSpend / divisor,
+    refreshSpend: source.refreshSpend / divisor,
+    specialUnitUpgradeSpend: source.specialUnitUpgradeSpend / divisor,
+    otherSpend: source.otherSpend / divisor,
+    loggedGoldGain: source.loggedGoldGain / divisor,
+    loggedGoldSpent: source.loggedGoldSpent / divisor,
+    finalUnusedGold: source.finalUnusedGold / divisor,
+  };
+}
+
+function estimateFixedPrepIncomeForPlayer(
+  report: BotOnlyBaselineMatchSummary,
+  player: BotOnlyBaselineFinalPlayer,
+): number {
+  const baseIncome = player.role === "boss"
+    ? ESTIMATED_BOSS_PREP_BASE_INCOME
+    : ESTIMATED_RAID_PREP_BASE_INCOME;
+  const roundsBeforeNextPrep = Math.max(0, report.totalRounds - 1);
+
+  if (!Array.isArray(report.rounds) || report.rounds.length === 0) {
+    return baseIncome * roundsBeforeNextPrep;
+  }
+
+  let eligiblePrepCount = 0;
+  for (const round of report.rounds) {
+    if (round.roundIndex >= report.totalRounds) {
+      continue;
+    }
+    if (player.role === "boss") {
+      eligiblePrepCount += 1;
+      continue;
+    }
+
+    const consequence = round.playerConsequences.find((entry) => entry.playerId === player.playerId);
+    if (!consequence || consequence.eliminatedAfter !== true) {
+      eligiblePrepCount += 1;
+    }
+  }
+
+  return baseIncome * eligiblePrepCount;
+}
+
+function estimateRaidPhaseSuccessBonusIncomeForPlayer(
+  report: BotOnlyBaselineMatchSummary,
+  player: BotOnlyBaselineFinalPlayer,
+): number {
+  if (player.role === "boss" || !Array.isArray(report.rounds)) {
+    return 0;
+  }
+
+  let successBonusCount = 0;
+  for (const round of report.rounds) {
+    if (round.roundIndex >= 12 || round.phaseResult !== "success") {
+      continue;
+    }
+    const consequence = round.playerConsequences.find((entry) => entry.playerId === player.playerId);
+    if (!consequence || consequence.eliminatedAfter !== true) {
+      successBonusCount += 1;
+    }
+  }
+
+  return ESTIMATED_RAID_PHASE_SUCCESS_BONUS * successBonusCount;
+}
+
+function buildPlayerEconomyBreakdownForMatch(
+  report: BotOnlyBaselineMatchSummary,
+  player: BotOnlyBaselineFinalPlayer,
+): BotOnlyBaselinePlayerEconomyBreakdown {
+  const base = player.economyBreakdown ?? createEmptyPlayerEconomyBreakdown();
+  const hasDirectEconomyBreakdown = player.economyBreakdown !== undefined;
+  return {
+    ...base,
+    fixedPrepIncome: hasDirectEconomyBreakdown
+      ? base.fixedPrepIncome
+      : estimateFixedPrepIncomeForPlayer(report, player),
+    raidPhaseSuccessBonusIncome: hasDirectEconomyBreakdown
+      ? base.raidPhaseSuccessBonusIncome
+      : estimateRaidPhaseSuccessBonusIncomeForPlayer(report, player),
+    loggedGoldGain: base.loggedGoldGain || player.totalGoldEarned || 0,
+    loggedGoldSpent: base.loggedGoldSpent || player.totalGoldSpent || 0,
+    finalUnusedGold: player.gold ?? base.finalUnusedGold,
+  };
+}
 
 type UnitCombatProfile = {
   attack: number;
@@ -690,6 +1169,113 @@ type BattleUnitAggregateAccumulator = {
   hostedSubUnitMatchesPresent?: number;
 };
 
+type OkinaSubHostAccumulator = {
+  hostUnitId: string;
+  hostUnitType: string;
+  hostUnitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  totalHostLevel: number;
+  totalDamage: number;
+  totalDamageTaken: number;
+  totalLifetimeMs: number;
+  survivedBattles: number;
+  ownerWins: number;
+};
+
+type OkinaSubHostRoundAccumulator = OkinaSubHostAccumulator & {
+  roundIndex: number;
+};
+
+type OkinaHeroSubDecisionRoundAccumulator = {
+  roundIndex: number;
+  samples: number;
+  actionRecommendedSamples: number;
+  noCandidateSamples: number;
+  frontValuePreferredSamples: number;
+  currentHostKeptSamples: number;
+  totalCandidateCount: number;
+  totalFrontEquivalentValue: number;
+  totalBestHostGain: number;
+  bestHostGainSamples: number;
+  totalBestHostCurrentPowerScore: number;
+  totalBestHostFutureValueScore: number;
+  totalBestHostTransitionReadinessScore: number;
+  totalBestHostProtectionScore: number;
+  bestHostOptimizationSamples: number;
+  totalBestToFrontRatio: number;
+  bestToFrontRatioSamples: number;
+  bestHostSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+};
+
+type BoardRefitDecisionRoundAccumulator = {
+  roundIndex: number;
+  samples: number;
+  boardFullSamples: number;
+  attemptSamples: number;
+  recommendedReplacementSamples: number;
+  committedSamples: number;
+  futureCandidateKeptCount: number;
+  totalBenchPressure: number;
+  replacementScores: number[];
+  incomingSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+  outgoingSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+};
+
+type BoardRefitDecisionRoleAccumulator =
+  Omit<BoardRefitDecisionRoundAccumulator, "roundIndex"> & {
+    role: "boss" | "raid";
+  };
+
+type BoardRefitDecisionRoleRoundAccumulator = BoardRefitDecisionRoundAccumulator & {
+  role: "boss" | "raid";
+};
+
+type FinalPlayerBoardAccumulator = {
+  label: string;
+  role: string;
+  matchesPresent: number;
+  totalDeployedUnitCount: number;
+  totalDeployedAssetValue: number;
+  totalSpecialUnitCount: number;
+  totalStandardUnitCount: number;
+};
+
+type HeroTeamAccumulator = {
+  heroId: string;
+  heroName: string;
+  matchesPresent: number;
+  raidTeamWins: number;
+  firstPlaces: number;
+  totalPlacement: number;
+  totalRemainingLives: number;
+  totalFinalGold: number;
+  totalGoldEarned: number;
+  totalGoldSpent: number;
+  totalSpecialUnitUpgradeCount: number;
+};
+
+type HeroCompositionAccumulator = {
+  compositionKey: string;
+  heroIds: string[];
+  heroNames: string[];
+  matchesPresent: number;
+  raidWins: number;
+  totalRounds: number;
+};
+
 type RangeDamageEfficiencyAccumulator = {
   side: "boss" | "raid";
   rangeBand: BotOnlyBaselineRangeBand;
@@ -701,6 +1287,96 @@ type RangeDamageEfficiencyAccumulator = {
   totalFirstAttackMs: number;
   firstAttackSamples: number;
   zeroDamageBattles: number;
+};
+
+type RoundDamageEfficiencyAccumulator = {
+  roundIndex: number;
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  totalUnitLevel: number;
+  totalDamage: number;
+  totalInvestmentCost: number;
+};
+
+type UnitDamageEfficiencyAccumulator = {
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  roundsObserved: number;
+  battleAppearances: number;
+  matchesPresent: number;
+  totalUnitLevel: number;
+  totalDamage: number;
+  totalInvestmentCost: number;
+};
+
+type RoundSurvivalDiagnosticAccumulator = {
+  roundIndex: number;
+  battleSamples: number;
+  totalBattleEndMs: number;
+  phaseSuccessBattles: number;
+  phaseSuccessWithBossWipeBattles: number;
+  phaseFailureWithRaidWipeBattles: number;
+  bossWipedBattles: number;
+  raidWipedBattles: number;
+  bothSidesSurvivedBattles: number;
+  totalBossStartUnitCount: number;
+  totalBossSurvivors: number;
+  totalBossFinalHp: number;
+  totalBossEstimatedMaxHp: number;
+  totalRaidStartUnitCount: number;
+  totalRaidSurvivors: number;
+  totalRaidFinalHp: number;
+  totalRaidEstimatedMaxHp: number;
+};
+
+type RoundUnitSurvivalDiagnosticAccumulator = {
+  roundIndex: number;
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  totalUnitLevel: number;
+  survivedBattles: number;
+  totalFinalHp: number;
+  totalEstimatedMaxHp: number;
+  totalDamageTaken: number;
+  totalLifetimeMs: number;
+  totalDamage: number;
+  zeroDamageBattles: number;
+};
+
+type BossExclusiveRoundLevelAccumulator = {
+  roundIndex: number;
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchKeys: Set<string>;
+  unitLevelSamples: number[];
+};
+
+type HighCostRoundAccumulator = {
+  roundIndex: number;
+  role: "boss" | "raid";
+  source: "shop" | "bossShop";
+  unitId: string;
+  unitName: string;
+  unitType: string;
+  cost: number;
+  offerObservationCount: number;
+  offerMatchKeys: Set<string>;
+  purchaseCount: number;
+  purchaseMatchKeys: Set<string>;
+  battleAppearances: number;
+  battleMatchKeys: Set<string>;
 };
 
 type RangeActionDiagnosticsAccumulator = {
@@ -886,6 +1562,35 @@ function resolveBoardUnitCost(unitId: string): number | null {
   return UNIT_COST_BY_UNIT_ID.get(unitId) ?? null;
 }
 
+function calculateCharacterBodyInvestmentCost(unitId: string, unitLevel: number): number {
+  if (!Number.isFinite(unitLevel)) {
+    return 0;
+  }
+
+  const normalizedLevel = Math.max(1, Math.floor(unitLevel));
+  if (normalizedLevel <= 1) {
+    return 0;
+  }
+
+  return calculateSpecialUnitUpgradeCost(1, normalizedLevel - 1, unitId) ?? 0;
+}
+
+function resolveBattleUnitInvestmentCost(outcome: BotOnlyBaselineBattleUnitOutcome): number {
+  if (CHARACTER_BODY_UNIT_IDS.has(outcome.unitId)) {
+    return calculateCharacterBodyInvestmentCost(outcome.unitId, outcome.unitLevel);
+  }
+
+  const unitCost = resolveBoardUnitCost(outcome.unitId);
+  if (unitCost === null) {
+    return 0;
+  }
+
+  const normalizedLevel = Number.isFinite(outcome.unitLevel)
+    ? Math.max(1, Math.floor(outcome.unitLevel))
+    : 1;
+  return unitCost * normalizedLevel;
+}
+
 function createBattleUnitAggregateAccumulator(
   unitId: string,
   unitType: string,
@@ -926,6 +1631,124 @@ function createBattleUnitAggregateAccumulator(
   };
 }
 
+function createOkinaSubHostAccumulator(
+  hostUnitId: string,
+  hostUnitType: string,
+  hostUnitName: string,
+): OkinaSubHostAccumulator {
+  return {
+    hostUnitId,
+    hostUnitType,
+    hostUnitName,
+    battleAppearances: 0,
+    matchesPresent: 0,
+    totalHostLevel: 0,
+    totalDamage: 0,
+    totalDamageTaken: 0,
+    totalLifetimeMs: 0,
+    survivedBattles: 0,
+    ownerWins: 0,
+  };
+}
+
+function createOkinaSubHostRoundAccumulator(
+  roundIndex: number,
+  hostUnitId: string,
+  hostUnitType: string,
+  hostUnitName: string,
+): OkinaSubHostRoundAccumulator {
+  return {
+    ...createOkinaSubHostAccumulator(hostUnitId, hostUnitType, hostUnitName),
+    roundIndex,
+  };
+}
+
+function createOkinaHeroSubDecisionRoundAccumulator(
+  roundIndex: number,
+): OkinaHeroSubDecisionRoundAccumulator {
+  return {
+    roundIndex,
+    samples: 0,
+    actionRecommendedSamples: 0,
+    noCandidateSamples: 0,
+    frontValuePreferredSamples: 0,
+    currentHostKeptSamples: 0,
+    totalCandidateCount: 0,
+    totalFrontEquivalentValue: 0,
+    totalBestHostGain: 0,
+    bestHostGainSamples: 0,
+    totalBestHostCurrentPowerScore: 0,
+    totalBestHostFutureValueScore: 0,
+    totalBestHostTransitionReadinessScore: 0,
+    totalBestHostProtectionScore: 0,
+    bestHostOptimizationSamples: 0,
+    totalBestToFrontRatio: 0,
+    bestToFrontRatioSamples: 0,
+    bestHostSamplesById: new Map(),
+  };
+}
+
+function createBoardRefitDecisionRoundAccumulator(
+  roundIndex: number,
+): BoardRefitDecisionRoundAccumulator {
+  return {
+    roundIndex,
+    samples: 0,
+    boardFullSamples: 0,
+    attemptSamples: 0,
+    recommendedReplacementSamples: 0,
+    committedSamples: 0,
+    futureCandidateKeptCount: 0,
+    totalBenchPressure: 0,
+    replacementScores: [],
+    incomingSamplesById: new Map(),
+    outgoingSamplesById: new Map(),
+  };
+}
+
+function createBoardRefitDecisionRoleAccumulator(
+  role: "boss" | "raid",
+): BoardRefitDecisionRoleAccumulator {
+  return {
+    role,
+    samples: 0,
+    boardFullSamples: 0,
+    attemptSamples: 0,
+    recommendedReplacementSamples: 0,
+    committedSamples: 0,
+    futureCandidateKeptCount: 0,
+    totalBenchPressure: 0,
+    replacementScores: [],
+    incomingSamplesById: new Map(),
+    outgoingSamplesById: new Map(),
+  };
+}
+
+function createBoardRefitDecisionRoleRoundAccumulator(
+  role: "boss" | "raid",
+  roundIndex: number,
+): BoardRefitDecisionRoleRoundAccumulator {
+  return {
+    role,
+    ...createBoardRefitDecisionRoundAccumulator(roundIndex),
+  };
+}
+
+function createFinalPlayerBoardAccumulator(
+  label: string,
+  role: string,
+): FinalPlayerBoardAccumulator {
+  return {
+    label,
+    role,
+    matchesPresent: 0,
+    totalDeployedUnitCount: 0,
+    totalDeployedAssetValue: 0,
+    totalSpecialUnitCount: 0,
+    totalStandardUnitCount: 0,
+  };
+}
+
 function divideOrZero(numerator: number, denominator: number): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
@@ -945,6 +1768,125 @@ function resolveUnitCombatProfile(
 
 function resolveBaselineUnitName(unitId: string, fallback: string): string {
   return UNIT_DISPLAY_NAME_BY_ID.get(unitId) ?? fallback;
+}
+
+function createHeroTeamAccumulator(heroId: string): HeroTeamAccumulator {
+  return {
+    heroId,
+    heroName: resolveBaselineUnitName(heroId, heroId),
+    matchesPresent: 0,
+    raidTeamWins: 0,
+    firstPlaces: 0,
+    totalPlacement: 0,
+    totalRemainingLives: 0,
+    totalFinalGold: 0,
+    totalGoldEarned: 0,
+    totalGoldSpent: 0,
+    totalSpecialUnitUpgradeCount: 0,
+  };
+}
+
+function buildHeroTeamMetric(entry: HeroTeamAccumulator): BotOnlyBaselineHeroTeamMetric {
+  return {
+    heroId: entry.heroId,
+    heroName: entry.heroName,
+    matchesPresent: entry.matchesPresent,
+    raidTeamWins: entry.raidTeamWins,
+    raidTeamWinRate: entry.matchesPresent > 0 ? entry.raidTeamWins / entry.matchesPresent : 0,
+    firstPlaceRate: entry.matchesPresent > 0 ? entry.firstPlaces / entry.matchesPresent : 0,
+    averagePlacement: entry.matchesPresent > 0 ? entry.totalPlacement / entry.matchesPresent : 0,
+    averageRemainingLives: entry.matchesPresent > 0 ? entry.totalRemainingLives / entry.matchesPresent : 0,
+    averageFinalGold: entry.matchesPresent > 0 ? entry.totalFinalGold / entry.matchesPresent : 0,
+    averageGoldEarned: entry.matchesPresent > 0 ? entry.totalGoldEarned / entry.matchesPresent : 0,
+    averageGoldSpent: entry.matchesPresent > 0 ? entry.totalGoldSpent / entry.matchesPresent : 0,
+    averageSpecialUnitUpgradeCount: entry.matchesPresent > 0
+      ? entry.totalSpecialUnitUpgradeCount / entry.matchesPresent
+      : 0,
+  };
+}
+
+function buildHeroCompositionMetric(
+  entry: HeroCompositionAccumulator,
+): BotOnlyBaselineHeroCompositionMetric {
+  return {
+    compositionKey: entry.compositionKey,
+    heroIds: [...entry.heroIds],
+    heroNames: [...entry.heroNames],
+    matchesPresent: entry.matchesPresent,
+    raidWins: entry.raidWins,
+    raidWinRate: entry.matchesPresent > 0 ? entry.raidWins / entry.matchesPresent : 0,
+    averageRounds: entry.matchesPresent > 0 ? entry.totalRounds / entry.matchesPresent : 0,
+  };
+}
+
+function buildHeroTeamMetrics(
+  entries: Iterable<HeroTeamAccumulator>,
+): BotOnlyBaselineHeroTeamMetric[] {
+  return Array.from(entries)
+    .map((entry) => buildHeroTeamMetric(entry))
+    .sort((left, right) =>
+      right.raidTeamWinRate - left.raidTeamWinRate
+      || right.matchesPresent - left.matchesPresent
+      || left.heroId.localeCompare(right.heroId));
+}
+
+function buildHeroCompositionMetrics(
+  entries: Iterable<HeroCompositionAccumulator>,
+): BotOnlyBaselineHeroCompositionMetric[] {
+  return Array.from(entries)
+    .map((entry) => buildHeroCompositionMetric(entry))
+    .sort((left, right) =>
+      right.raidWinRate - left.raidWinRate
+      || right.matchesPresent - left.matchesPresent
+      || left.compositionKey.localeCompare(right.compositionKey));
+}
+
+function recordHeroMatchMetrics(
+  report: BotOnlyBaselineMatchSummary,
+  heroTeamMetricsById: Map<string, HeroTeamAccumulator>,
+  heroCompositionMetricsByKey: Map<string, HeroCompositionAccumulator>,
+): void {
+  const raidPlayersWithHeroes = report.finalPlayers
+    .filter((player) =>
+      player.role === "raid"
+      && typeof player.selectedHeroId === "string"
+      && player.selectedHeroId.length > 0)
+    .sort((left, right) =>
+      (left.label || left.playerId).localeCompare(right.label || right.playerId));
+  if (raidPlayersWithHeroes.length === 0) {
+    return;
+  }
+
+  const raidTeamWon = report.ranking[0] !== report.bossPlayerId;
+  for (const player of raidPlayersWithHeroes) {
+    const existing = heroTeamMetricsById.get(player.selectedHeroId)
+      ?? createHeroTeamAccumulator(player.selectedHeroId);
+    existing.matchesPresent += 1;
+    existing.raidTeamWins += raidTeamWon ? 1 : 0;
+    existing.firstPlaces += report.ranking[0] === player.playerId ? 1 : 0;
+    existing.totalPlacement += player.rank;
+    existing.totalRemainingLives += player.remainingLives;
+    existing.totalFinalGold += player.gold ?? 0;
+    existing.totalGoldEarned += player.totalGoldEarned ?? 0;
+    existing.totalGoldSpent += player.totalGoldSpent ?? 0;
+    existing.totalSpecialUnitUpgradeCount += player.specialUnitUpgradeCount ?? 0;
+    heroTeamMetricsById.set(player.selectedHeroId, existing);
+  }
+
+  const heroIds = raidPlayersWithHeroes.map((player) => player.selectedHeroId);
+  const compositionKey = heroIds.join(" / ");
+  const existingComposition = heroCompositionMetricsByKey.get(compositionKey) ?? {
+    compositionKey,
+    heroIds,
+    heroNames: heroIds.map((heroId) => resolveBaselineUnitName(heroId, heroId)),
+    matchesPresent: 0,
+    raidWins: 0,
+    totalRounds: 0,
+  };
+  existingComposition.matchesPresent += 1;
+  existingComposition.raidWins += raidTeamWon ? 1 : 0;
+  existingComposition.totalRounds += report.totalRounds;
+  heroCompositionMetricsByKey.set(compositionKey, existingComposition);
 }
 
 function isSpecialBattleUnitOutcome(outcome: BotOnlyBaselineBattleUnitOutcome): boolean {
@@ -976,14 +1918,22 @@ function resolveBattleWinnerRole(
 function toRoundUnitDetail(
   outcome: BotOnlyBaselineBattleUnitOutcome,
 ): BotOnlyBaselineRoundUnitDetail {
+  const hasCoordinate = typeof outcome.initialColumn === "number" && typeof outcome.initialRow === "number";
   return {
     playerId: outcome.playerId,
     label: outcome.label,
     unitId: outcome.unitId,
     unitName: resolveBaselineUnitName(outcome.unitId, outcome.unitName),
+    ...(outcome.unitType ? { unitType: outcome.unitType } : {}),
     side: outcome.side,
+    cell: hasCoordinate
+      ? sharedBoardCoordinateToIndex({ x: outcome.initialColumn!, y: outcome.initialRow! })
+      : null,
+    x: hasCoordinate ? outcome.initialColumn! : null,
+    y: hasCoordinate ? outcome.initialRow! : null,
     totalDamage: outcome.totalDamage,
     phaseContributionDamage: outcome.phaseContributionDamage,
+    damageTaken: Math.max(0, outcome.damageTaken ?? 0),
     finalHp: outcome.finalHp,
     alive: outcome.alive,
     unitLevel: outcome.unitLevel,
@@ -1112,6 +2062,8 @@ function buildRoundDetailsForMatch(
         battle.winner === "draw"
           ? "draw"
           : resolveBattleWinnerRole(battle, playerById, report.bossPlayerId) ?? "draw"),
+      bossSpellMetrics: round.battles.flatMap((battle) =>
+        (battle.bossSpellMetrics ?? []).map((metric) => ({ ...metric }))),
       raidPlayerConsequences,
       bossBodyFocus: buildBossBodyFocusDetail(bossUnitOutcomes),
       topBossUnits: bossUnitOutcomes
@@ -1121,6 +2073,13 @@ function buildRoundDetailsForMatch(
           || right.finalHp - left.finalHp
           || left.unitId.localeCompare(right.unitId))
         .slice(0, 5),
+      topBossDamageTakenUnits: bossUnitOutcomes
+        .map((unit) => toRoundUnitDetail(unit))
+        .sort((left, right) =>
+          (right.damageTaken ?? 0) - (left.damageTaken ?? 0)
+          || right.totalDamage - left.totalDamage
+          || left.unitId.localeCompare(right.unitId))
+        .slice(0, 8),
       topRaidUnits: raidUnitOutcomes
         .map((unit) => toRoundUnitDetail(unit))
         .sort((left, right) =>
@@ -1148,6 +2107,348 @@ function createRangeDamageEfficiencyAccumulator(
     firstAttackSamples: 0,
     zeroDamageBattles: 0,
   };
+}
+
+function createRoundDamageEfficiencyAccumulator(
+  roundIndex: number,
+  side: "boss" | "raid",
+  unitId: string,
+  unitType: string,
+  unitName: string,
+): RoundDamageEfficiencyAccumulator {
+  return {
+    roundIndex,
+    side,
+    unitId,
+    unitType,
+    unitName,
+    battleAppearances: 0,
+    matchesPresent: 0,
+    totalUnitLevel: 0,
+    totalDamage: 0,
+    totalInvestmentCost: 0,
+  };
+}
+
+function buildRoundDamageEfficiencyMetric(
+  entry: RoundDamageEfficiencyAccumulator,
+): BotOnlyBaselineRoundDamageEfficiencyMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    side: entry.side,
+    unitId: entry.unitId,
+    unitType: entry.unitType,
+    unitName: entry.unitName,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchesPresent,
+    averageUnitLevel: divideOrZero(entry.totalUnitLevel, entry.battleAppearances),
+    totalDamage: entry.totalDamage,
+    totalInvestmentCost: entry.totalInvestmentCost,
+    averageInvestmentCostPerBattle: divideOrZero(entry.totalInvestmentCost, entry.battleAppearances),
+    damagePerInvestmentCost: entry.totalInvestmentCost > 0
+      ? entry.totalDamage / entry.totalInvestmentCost
+      : null,
+  };
+}
+
+function createRoundSurvivalDiagnosticAccumulator(
+  roundIndex: number,
+): RoundSurvivalDiagnosticAccumulator {
+  return {
+    roundIndex,
+    battleSamples: 0,
+    totalBattleEndMs: 0,
+    phaseSuccessBattles: 0,
+    phaseSuccessWithBossWipeBattles: 0,
+    phaseFailureWithRaidWipeBattles: 0,
+    bossWipedBattles: 0,
+    raidWipedBattles: 0,
+    bothSidesSurvivedBattles: 0,
+    totalBossStartUnitCount: 0,
+    totalBossSurvivors: 0,
+    totalBossFinalHp: 0,
+    totalBossEstimatedMaxHp: 0,
+    totalRaidStartUnitCount: 0,
+    totalRaidSurvivors: 0,
+    totalRaidFinalHp: 0,
+    totalRaidEstimatedMaxHp: 0,
+  };
+}
+
+function createRoundUnitSurvivalDiagnosticAccumulator(
+  roundIndex: number,
+  side: "boss" | "raid",
+  unitId: string,
+  unitType: string,
+  unitName: string,
+): RoundUnitSurvivalDiagnosticAccumulator {
+  return {
+    roundIndex,
+    side,
+    unitId,
+    unitType,
+    unitName,
+    battleAppearances: 0,
+    matchesPresent: 0,
+    totalUnitLevel: 0,
+    survivedBattles: 0,
+    totalFinalHp: 0,
+    totalEstimatedMaxHp: 0,
+    totalDamageTaken: 0,
+    totalLifetimeMs: 0,
+    totalDamage: 0,
+    zeroDamageBattles: 0,
+  };
+}
+
+function resolveOutcomeEstimatedMaxHp(outcome: BotOnlyBaselineBattleUnitOutcome): number {
+  const finalHp = Number.isFinite(outcome.finalHp) ? Math.max(0, outcome.finalHp) : 0;
+  const damageTaken = Number.isFinite(outcome.damageTaken ?? Number.NaN)
+    ? Math.max(0, outcome.damageTaken ?? 0)
+    : 0;
+  return finalHp + damageTaken;
+}
+
+function buildRoundSurvivalDiagnosticMetric(
+  entry: RoundSurvivalDiagnosticAccumulator,
+): BotOnlyBaselineRoundSurvivalDiagnosticMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    battleSamples: entry.battleSamples,
+    averageBattleEndMs: divideOrZero(entry.totalBattleEndMs, entry.battleSamples),
+    phaseSuccessRate: divideOrZero(entry.phaseSuccessBattles, entry.battleSamples),
+    phaseSuccessWithBossWipeRate: divideOrZero(entry.phaseSuccessWithBossWipeBattles, entry.battleSamples),
+    phaseFailureWithRaidWipeRate: divideOrZero(entry.phaseFailureWithRaidWipeBattles, entry.battleSamples),
+    bossWipedRate: divideOrZero(entry.bossWipedBattles, entry.battleSamples),
+    raidWipedRate: divideOrZero(entry.raidWipedBattles, entry.battleSamples),
+    bothSidesSurvivedRate: divideOrZero(entry.bothSidesSurvivedBattles, entry.battleSamples),
+    averageBossStartUnitCount: divideOrZero(entry.totalBossStartUnitCount, entry.battleSamples),
+    averageBossSurvivors: divideOrZero(entry.totalBossSurvivors, entry.battleSamples),
+    bossUnitSurvivalRate: divideOrZero(entry.totalBossSurvivors, entry.totalBossStartUnitCount),
+    averageBossFinalHp: divideOrZero(entry.totalBossFinalHp, entry.battleSamples),
+    averageBossEstimatedMaxHp: divideOrZero(entry.totalBossEstimatedMaxHp, entry.battleSamples),
+    bossRemainingHpRate: entry.totalBossEstimatedMaxHp > 0
+      ? entry.totalBossFinalHp / entry.totalBossEstimatedMaxHp
+      : null,
+    averageRaidStartUnitCount: divideOrZero(entry.totalRaidStartUnitCount, entry.battleSamples),
+    averageRaidSurvivors: divideOrZero(entry.totalRaidSurvivors, entry.battleSamples),
+    raidUnitSurvivalRate: divideOrZero(entry.totalRaidSurvivors, entry.totalRaidStartUnitCount),
+    averageRaidFinalHp: divideOrZero(entry.totalRaidFinalHp, entry.battleSamples),
+    averageRaidEstimatedMaxHp: divideOrZero(entry.totalRaidEstimatedMaxHp, entry.battleSamples),
+    raidRemainingHpRate: entry.totalRaidEstimatedMaxHp > 0
+      ? entry.totalRaidFinalHp / entry.totalRaidEstimatedMaxHp
+      : null,
+  };
+}
+
+function buildRoundUnitSurvivalDiagnosticMetric(
+  entry: RoundUnitSurvivalDiagnosticAccumulator,
+): BotOnlyBaselineRoundUnitSurvivalDiagnosticMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    side: entry.side,
+    unitId: entry.unitId,
+    unitType: entry.unitType,
+    unitName: entry.unitName,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchesPresent,
+    averageUnitLevel: divideOrZero(entry.totalUnitLevel, entry.battleAppearances),
+    survivalRate: divideOrZero(entry.survivedBattles, entry.battleAppearances),
+    averageFinalHp: divideOrZero(entry.totalFinalHp, entry.battleAppearances),
+    averageEstimatedMaxHp: divideOrZero(entry.totalEstimatedMaxHp, entry.battleAppearances),
+    remainingHpRate: entry.totalEstimatedMaxHp > 0
+      ? entry.totalFinalHp / entry.totalEstimatedMaxHp
+      : null,
+    averageDamageTaken: divideOrZero(entry.totalDamageTaken, entry.battleAppearances),
+    averageLifetimeMs: divideOrZero(entry.totalLifetimeMs, entry.battleAppearances),
+    averageDamagePerBattle: divideOrZero(entry.totalDamage, entry.battleAppearances),
+    zeroDamageBattleRate: divideOrZero(entry.zeroDamageBattles, entry.battleAppearances),
+  };
+}
+
+function createBossExclusiveRoundLevelAccumulator(
+  roundIndex: number,
+  unitId: string,
+  unitType: string,
+  unitName: string,
+): BossExclusiveRoundLevelAccumulator {
+  return {
+    roundIndex,
+    unitId,
+    unitType,
+    unitName,
+    battleAppearances: 0,
+    matchKeys: new Set<string>(),
+    unitLevelSamples: [],
+  };
+}
+
+function calculatePercentileLevel(samples: number[], ratio: number): number {
+  if (samples.length === 0) {
+    return 0;
+  }
+  const sorted = [...samples].sort((left, right) => left - right);
+  const rawIndex = (sorted.length - 1) * ratio;
+  const index = Math.min(
+    sorted.length - 1,
+    ratio > 0.5 ? Math.ceil(rawIndex) : Math.floor(rawIndex),
+  );
+  return sorted[index] ?? 0;
+}
+
+function buildBossExclusiveRoundLevelMetric(
+  entry: BossExclusiveRoundLevelAccumulator,
+): BotOnlyBaselineBossExclusiveRoundLevelMetric {
+  const level4Samples = entry.unitLevelSamples.filter((level) => level >= 4).length;
+  const level7Samples = entry.unitLevelSamples.filter((level) => level >= 7).length;
+
+  return {
+    roundIndex: entry.roundIndex,
+    unitId: entry.unitId,
+    unitType: entry.unitType,
+    unitName: entry.unitName,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchKeys.size,
+    averageUnitLevel: divideOrZero(
+      entry.unitLevelSamples.reduce((total, level) => total + level, 0),
+      entry.battleAppearances,
+    ),
+    p25UnitLevel: calculatePercentileLevel(entry.unitLevelSamples, 0.25),
+    p50UnitLevel: calculatePercentileLevel(entry.unitLevelSamples, 0.5),
+    p75UnitLevel: calculatePercentileLevel(entry.unitLevelSamples, 0.75),
+    level4ReachRate: divideOrZero(level4Samples, entry.battleAppearances),
+    level7ReachRate: divideOrZero(level7Samples, entry.battleAppearances),
+    unitLevelSamples: [...entry.unitLevelSamples],
+  };
+}
+
+function resolveHighCostRoundSource(
+  role: "boss" | "raid",
+  unitId: string,
+): "shop" | "bossShop" {
+  return role === "boss" && BOSS_EXCLUSIVE_UNIT_IDS.has(unitId) ? "bossShop" : "shop";
+}
+
+function createHighCostRoundAccumulator(
+  roundIndex: number,
+  role: "boss" | "raid",
+  source: "shop" | "bossShop",
+  unitId: string,
+  unitType: string,
+  unitName: string,
+  cost: number,
+): HighCostRoundAccumulator {
+  return {
+    roundIndex,
+    role,
+    source,
+    unitId,
+    unitName,
+    unitType,
+    cost,
+    offerObservationCount: 0,
+    offerMatchKeys: new Set<string>(),
+    purchaseCount: 0,
+    purchaseMatchKeys: new Set<string>(),
+    battleAppearances: 0,
+    battleMatchKeys: new Set<string>(),
+  };
+}
+
+function buildHighCostRoundMetric(
+  entry: HighCostRoundAccumulator,
+  completedMatches: number,
+): BotOnlyBaselineHighCostRoundMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    role: entry.role,
+    source: entry.source,
+    unitId: entry.unitId,
+    unitName: entry.unitName,
+    unitType: entry.unitType,
+    cost: entry.cost,
+    offerObservationCount: entry.offerObservationCount,
+    offerMatchCount: entry.offerMatchKeys.size,
+    purchaseCount: entry.purchaseCount,
+    purchaseMatchCount: entry.purchaseMatchKeys.size,
+    battleAppearances: entry.battleAppearances,
+    battleMatchCount: entry.battleMatchKeys.size,
+    offeredMatchRate: divideOrZero(entry.offerMatchKeys.size, completedMatches),
+    purchaseRate: divideOrZero(entry.purchaseCount, entry.offerObservationCount),
+    battlePresenceRate: divideOrZero(entry.battleMatchKeys.size, completedMatches),
+  };
+}
+
+function createUnitDamageEfficiencyAccumulator(
+  side: "boss" | "raid",
+  unitId: string,
+  unitType: string,
+  unitName: string,
+): UnitDamageEfficiencyAccumulator {
+  return {
+    side,
+    unitId,
+    unitType,
+    unitName,
+    roundsObserved: 0,
+    battleAppearances: 0,
+    matchesPresent: 0,
+    totalUnitLevel: 0,
+    totalDamage: 0,
+    totalInvestmentCost: 0,
+  };
+}
+
+function buildUnitDamageEfficiencyMetric(
+  entry: UnitDamageEfficiencyAccumulator,
+): BotOnlyBaselineUnitDamageEfficiencyMetric {
+  return {
+    side: entry.side,
+    unitId: entry.unitId,
+    unitType: entry.unitType,
+    unitName: entry.unitName,
+    roundsObserved: entry.roundsObserved,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchesPresent,
+    averageUnitLevel: divideOrZero(entry.totalUnitLevel, entry.battleAppearances),
+    totalDamage: entry.totalDamage,
+    totalInvestmentCost: entry.totalInvestmentCost,
+    weightedDamagePerInvestmentCost: entry.totalInvestmentCost > 0
+      ? entry.totalDamage / entry.totalInvestmentCost
+      : null,
+    sampleQuality: entry.battleAppearances >= 10 ? "usable" : "low",
+  };
+}
+
+function buildUnitDamageEfficiencyMetrics(
+  roundEntries: Iterable<RoundDamageEfficiencyAccumulator>,
+): BotOnlyBaselineUnitDamageEfficiencyMetric[] {
+  const byUnit = new Map<string, UnitDamageEfficiencyAccumulator>();
+  for (const entry of roundEntries) {
+    const key = `${entry.side}::${entry.unitId}`;
+    const existing = byUnit.get(key)
+      ?? createUnitDamageEfficiencyAccumulator(
+        entry.side,
+        entry.unitId,
+        entry.unitType,
+        entry.unitName,
+      );
+    existing.roundsObserved += 1;
+    existing.battleAppearances += entry.battleAppearances;
+    existing.matchesPresent += entry.matchesPresent;
+    existing.totalUnitLevel += entry.totalUnitLevel;
+    existing.totalDamage += entry.totalDamage;
+    existing.totalInvestmentCost += entry.totalInvestmentCost;
+    byUnit.set(key, existing);
+  }
+
+  return Array.from(byUnit.values())
+    .map((entry) => buildUnitDamageEfficiencyMetric(entry))
+    .sort((left, right) =>
+      left.side.localeCompare(right.side)
+      || ((right.weightedDamagePerInvestmentCost ?? -1) - (left.weightedDamagePerInvestmentCost ?? -1))
+      || right.totalDamage - left.totalDamage
+      || left.unitId.localeCompare(right.unitId));
 }
 
 function buildRangeDamageEfficiencyMetric(
@@ -1694,6 +2995,316 @@ function buildBattleUnitMetrics(
   };
 }
 
+function buildOkinaSubHostMetric(
+  entry: OkinaSubHostAccumulator,
+): BotOnlyBaselineOkinaSubHostMetric {
+  return {
+    hostUnitId: entry.hostUnitId,
+    hostUnitType: entry.hostUnitType,
+    hostUnitName: entry.hostUnitName,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchesPresent,
+    averageHostLevel: divideOrZero(entry.totalHostLevel, entry.battleAppearances),
+    averageDamagePerBattle: divideOrZero(entry.totalDamage, entry.battleAppearances),
+    averageDamageTakenPerBattle: divideOrZero(entry.totalDamageTaken, entry.battleAppearances),
+    averageLifetimeMs: divideOrZero(entry.totalLifetimeMs, entry.battleAppearances),
+    survivalRate: divideOrZero(entry.survivedBattles, entry.battleAppearances),
+    ownerWinRate: divideOrZero(entry.ownerWins, entry.battleAppearances),
+  };
+}
+
+function buildOkinaSubHostRoundMetric(
+  entry: OkinaSubHostRoundAccumulator,
+): BotOnlyBaselineOkinaSubHostRoundMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    ...buildOkinaSubHostMetric(entry),
+  };
+}
+
+function buildOkinaHeroSubDecisionRoundMetric(
+  entry: OkinaHeroSubDecisionRoundAccumulator,
+): BotOnlyBaselineOkinaHeroSubDecisionRoundMetric {
+  const mostFrequentBestHost = Array.from(entry.bestHostSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+
+  return {
+    roundIndex: entry.roundIndex,
+    samples: entry.samples,
+    actionRecommendedSamples: entry.actionRecommendedSamples,
+    noCandidateSamples: entry.noCandidateSamples,
+    frontValuePreferredSamples: entry.frontValuePreferredSamples,
+    currentHostKeptSamples: entry.currentHostKeptSamples,
+    averageCandidateCount: divideOrZero(entry.totalCandidateCount, entry.samples),
+    averageFrontEquivalentValue: divideOrZero(entry.totalFrontEquivalentValue, entry.samples),
+    averageBestHostGain: entry.bestHostGainSamples > 0
+      ? entry.totalBestHostGain / entry.bestHostGainSamples
+      : null,
+    averageBestHostCurrentPowerScore: entry.bestHostOptimizationSamples > 0
+      ? entry.totalBestHostCurrentPowerScore / entry.bestHostOptimizationSamples
+      : null,
+    averageBestHostFutureValueScore: entry.bestHostOptimizationSamples > 0
+      ? entry.totalBestHostFutureValueScore / entry.bestHostOptimizationSamples
+      : null,
+    averageBestHostTransitionReadinessScore: entry.bestHostOptimizationSamples > 0
+      ? entry.totalBestHostTransitionReadinessScore / entry.bestHostOptimizationSamples
+      : null,
+    averageBestHostProtectionScore: entry.bestHostOptimizationSamples > 0
+      ? entry.totalBestHostProtectionScore / entry.bestHostOptimizationSamples
+      : null,
+    averageBestToFrontRatio: entry.bestToFrontRatioSamples > 0
+      ? entry.totalBestToFrontRatio / entry.bestToFrontRatioSamples
+      : null,
+    mostFrequentBestHostUnitId: mostFrequentBestHost?.unitId ?? null,
+    mostFrequentBestHostUnitName: mostFrequentBestHost?.unitName ?? null,
+    mostFrequentBestHostSamples: mostFrequentBestHost?.samples ?? 0,
+  };
+}
+
+function percentile(values: number[], ratio: number): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.round((sorted.length - 1) * ratio)),
+  );
+  return sorted[index] ?? null;
+}
+
+function buildBoardRefitDecisionMetricFields(
+  entry: Omit<BoardRefitDecisionRoundAccumulator, "roundIndex">,
+): Omit<BotOnlyBaselineBoardRefitDecisionRoundMetric, "roundIndex"> {
+  const mostFrequentIncoming = Array.from(entry.incomingSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+  const mostFrequentOutgoing = Array.from(entry.outgoingSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+
+  return {
+    samples: entry.samples,
+    boardFullSamples: entry.boardFullSamples,
+    attemptSamples: entry.attemptSamples,
+    recommendedReplacementSamples: entry.recommendedReplacementSamples,
+    committedSamples: entry.committedSamples,
+    futureCandidateKeptCount: entry.futureCandidateKeptCount,
+    averageBenchPressure: divideOrZero(entry.totalBenchPressure, entry.samples),
+    averageReplacementScore: entry.replacementScores.length > 0
+      ? entry.replacementScores.reduce((sum, score) => sum + score, 0) / entry.replacementScores.length
+      : null,
+    p25ReplacementScore: percentile(entry.replacementScores, 0.25),
+    p50ReplacementScore: percentile(entry.replacementScores, 0.5),
+    p75ReplacementScore: percentile(entry.replacementScores, 0.75),
+    mostFrequentIncomingUnitId: mostFrequentIncoming?.unitId ?? null,
+    mostFrequentIncomingUnitName: mostFrequentIncoming?.unitName ?? null,
+    mostFrequentIncomingSamples: mostFrequentIncoming?.samples ?? 0,
+    mostFrequentOutgoingUnitId: mostFrequentOutgoing?.unitId ?? null,
+    mostFrequentOutgoingUnitName: mostFrequentOutgoing?.unitName ?? null,
+    mostFrequentOutgoingSamples: mostFrequentOutgoing?.samples ?? 0,
+  };
+}
+
+function buildBoardRefitDecisionRoundMetric(
+  entry: BoardRefitDecisionRoundAccumulator,
+): BotOnlyBaselineBoardRefitDecisionRoundMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    ...buildBoardRefitDecisionMetricFields(entry),
+  };
+}
+
+function buildBoardRefitDecisionRoleMetric(
+  entry: BoardRefitDecisionRoleAccumulator,
+): BotOnlyBaselineBoardRefitDecisionRoleMetric {
+  return {
+    role: entry.role,
+    ...buildBoardRefitDecisionMetricFields(entry),
+  };
+}
+
+function buildBoardRefitDecisionRoleRoundMetric(
+  entry: BoardRefitDecisionRoleRoundAccumulator,
+): BotOnlyBaselineBoardRefitDecisionRoleRoundMetric {
+  return {
+    role: entry.role,
+    roundIndex: entry.roundIndex,
+    ...buildBoardRefitDecisionMetricFields(entry),
+  };
+}
+
+function buildFinalPlayerBoardMetric(
+  entry: FinalPlayerBoardAccumulator,
+): BotOnlyBaselineFinalPlayerBoardMetric {
+  return {
+    label: entry.label,
+    role: entry.role,
+    matchesPresent: entry.matchesPresent,
+    averageDeployedUnitCount: divideOrZero(entry.totalDeployedUnitCount, entry.matchesPresent),
+    averageDeployedAssetValue: divideOrZero(entry.totalDeployedAssetValue, entry.matchesPresent),
+    averageSpecialUnitCount: divideOrZero(entry.totalSpecialUnitCount, entry.matchesPresent),
+    averageStandardUnitCount: divideOrZero(entry.totalStandardUnitCount, entry.matchesPresent),
+  };
+}
+
+function recordUnitSample(
+  samplesById: Map<string, { unitId: string; unitName: string; samples: number }>,
+  unitId: string | null,
+  unitName: string | null,
+): void {
+  if (unitId === null || unitId.length === 0) {
+    return;
+  }
+
+  const existing = samplesById.get(unitId) ?? {
+    unitId,
+    unitName: unitName ?? resolveBaselineUnitName(unitId, unitId),
+    samples: 0,
+  };
+  existing.samples += 1;
+  samplesById.set(unitId, existing);
+}
+
+function recordBoardRefitDecisionSnapshot(
+  snapshot: BotOnlyBaselineBoardRefitDecisionSnapshot,
+  decisionsByRound: Map<number, BoardRefitDecisionRoundAccumulator>,
+  decisionsByRole?: Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>,
+  decisionsByRoleRound?: Map<string, BoardRefitDecisionRoleRoundAccumulator>,
+): void {
+  const entry = decisionsByRound.get(snapshot.roundIndex)
+    ?? createBoardRefitDecisionRoundAccumulator(snapshot.roundIndex);
+  recordBoardRefitDecisionAccumulatorSample(entry, snapshot);
+  decisionsByRound.set(snapshot.roundIndex, entry);
+
+  if (decisionsByRole !== undefined) {
+    const roleEntry = decisionsByRole.get(snapshot.role)
+      ?? createBoardRefitDecisionRoleAccumulator(snapshot.role);
+    recordBoardRefitDecisionAccumulatorSample(roleEntry, snapshot);
+    decisionsByRole.set(snapshot.role, roleEntry);
+  }
+
+  if (decisionsByRoleRound !== undefined) {
+    const key = `${snapshot.role}:${snapshot.roundIndex}`;
+    const roleRoundEntry = decisionsByRoleRound.get(key)
+      ?? createBoardRefitDecisionRoleRoundAccumulator(snapshot.role, snapshot.roundIndex);
+    recordBoardRefitDecisionAccumulatorSample(roleRoundEntry, snapshot);
+    decisionsByRoleRound.set(key, roleRoundEntry);
+  }
+}
+
+function recordBoardRefitDecisionAccumulatorSample(
+  entry: Omit<BoardRefitDecisionRoundAccumulator, "roundIndex">,
+  snapshot: BotOnlyBaselineBoardRefitDecisionSnapshot,
+): void {
+  entry.samples += 1;
+  entry.boardFullSamples += snapshot.boardAtCapacity ? 1 : 0;
+  entry.attemptSamples += snapshot.incomingUnitId !== null && snapshot.outgoingUnitId !== null ? 1 : 0;
+  entry.recommendedReplacementSamples += snapshot.decision === "replace" ? 1 : 0;
+  entry.committedSamples += snapshot.committed === true ? 1 : 0;
+  entry.futureCandidateKeptCount += snapshot.decision === "hold" && snapshot.incomingReason === "future_candidate" ? 1 : 0;
+  entry.totalBenchPressure += snapshot.benchPressure;
+  if (snapshot.replacementScore !== null) {
+    entry.replacementScores.push(snapshot.replacementScore);
+  }
+  recordUnitSample(entry.incomingSamplesById, snapshot.incomingUnitId, null);
+  recordUnitSample(entry.outgoingSamplesById, snapshot.outgoingUnitId, null);
+}
+
+function mergeBoardRefitDecisionMetricIntoAccumulator(
+  entry: Omit<BotOnlyBaselineBoardRefitDecisionRoundMetric, "roundIndex">,
+  existing: Omit<BoardRefitDecisionRoundAccumulator, "roundIndex">,
+): void {
+  existing.samples += entry.samples;
+  existing.boardFullSamples += entry.boardFullSamples;
+  existing.attemptSamples += entry.attemptSamples;
+  existing.recommendedReplacementSamples += entry.recommendedReplacementSamples;
+  existing.committedSamples += entry.committedSamples;
+  existing.futureCandidateKeptCount += entry.futureCandidateKeptCount;
+  existing.totalBenchPressure += entry.averageBenchPressure * entry.samples;
+  for (const score of [
+    entry.p25ReplacementScore,
+    entry.p50ReplacementScore,
+    entry.p75ReplacementScore,
+  ]) {
+    if (score !== null) {
+      existing.replacementScores.push(score);
+    }
+  }
+  if (entry.mostFrequentIncomingUnitId !== null) {
+    const incoming = existing.incomingSamplesById.get(entry.mostFrequentIncomingUnitId) ?? {
+      unitId: entry.mostFrequentIncomingUnitId,
+      unitName: entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId,
+      samples: 0,
+    };
+    incoming.samples += entry.mostFrequentIncomingSamples;
+    existing.incomingSamplesById.set(entry.mostFrequentIncomingUnitId, incoming);
+  }
+  if (entry.mostFrequentOutgoingUnitId !== null) {
+    const outgoing = existing.outgoingSamplesById.get(entry.mostFrequentOutgoingUnitId) ?? {
+      unitId: entry.mostFrequentOutgoingUnitId,
+      unitName: entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId,
+      samples: 0,
+    };
+    outgoing.samples += entry.mostFrequentOutgoingSamples;
+    existing.outgoingSamplesById.set(entry.mostFrequentOutgoingUnitId, outgoing);
+  }
+}
+
+function recordOkinaHeroSubDecisionSnapshot(
+  snapshot: BotOnlyBaselineOkinaHeroSubDecisionSnapshot,
+  decisionsByRound: Map<number, OkinaHeroSubDecisionRoundAccumulator>,
+): void {
+  const entry = decisionsByRound.get(snapshot.roundIndex)
+    ?? createOkinaHeroSubDecisionRoundAccumulator(snapshot.roundIndex);
+  entry.samples += 1;
+  entry.actionRecommendedSamples +=
+    snapshot.decision === "attach" || snapshot.decision === "reattach" ? 1 : 0;
+  entry.noCandidateSamples += snapshot.reason === "no_candidate" ? 1 : 0;
+  entry.frontValuePreferredSamples += snapshot.reason === "front_value_preferred" ? 1 : 0;
+  entry.currentHostKeptSamples += snapshot.reason === "current_host_margin_preferred" ? 1 : 0;
+  entry.totalCandidateCount += snapshot.candidateCount;
+  entry.totalFrontEquivalentValue += snapshot.frontEquivalentValue;
+
+  if (snapshot.bestHostGain !== null) {
+    entry.totalBestHostGain += snapshot.bestHostGain;
+    entry.bestHostGainSamples += 1;
+  }
+
+  if (
+    snapshot.bestHostCurrentPowerScore !== null
+    && snapshot.bestHostCurrentPowerScore !== undefined
+    && snapshot.bestHostFutureValueScore !== null
+    && snapshot.bestHostFutureValueScore !== undefined
+    && snapshot.bestHostTransitionReadinessScore !== null
+    && snapshot.bestHostTransitionReadinessScore !== undefined
+    && snapshot.bestHostProtectionScore !== null
+    && snapshot.bestHostProtectionScore !== undefined
+  ) {
+    entry.totalBestHostCurrentPowerScore += snapshot.bestHostCurrentPowerScore;
+    entry.totalBestHostFutureValueScore += snapshot.bestHostFutureValueScore;
+    entry.totalBestHostTransitionReadinessScore += snapshot.bestHostTransitionReadinessScore;
+    entry.totalBestHostProtectionScore += snapshot.bestHostProtectionScore;
+    entry.bestHostOptimizationSamples += 1;
+  }
+
+  if (snapshot.bestToFrontRatio !== null) {
+    entry.totalBestToFrontRatio += snapshot.bestToFrontRatio;
+    entry.bestToFrontRatioSamples += 1;
+  }
+
+  if (snapshot.bestHostUnitId !== null) {
+    const existing = entry.bestHostSamplesById.get(snapshot.bestHostUnitId) ?? {
+      unitId: snapshot.bestHostUnitId,
+      unitName: snapshot.bestHostUnitName ?? snapshot.bestHostUnitId,
+      samples: 0,
+    };
+    existing.samples += 1;
+    entry.bestHostSamplesById.set(snapshot.bestHostUnitId, existing);
+  }
+
+  decisionsByRound.set(snapshot.roundIndex, entry);
+}
+
 export function buildBotOnlyBaselineAggregateReport(
   reports: BotOnlyBaselineMatchSummary[],
   requestedMatchCount = reports.length,
@@ -1715,6 +3326,9 @@ export function buildBotOnlyBaselineAggregateReport(
       battleMetrics: buildEmptyBattleMetrics(),
       roundHistogram: {},
       playerMetrics: {},
+      heroTeamMetrics: [],
+      heroCompositionMetrics: [],
+      playerEconomyBreakdowns: {},
       bossBattleUnitMetrics: [],
       raidBattleUnitMetrics: [],
       finalBoardUnitMetrics: [],
@@ -1722,6 +3336,19 @@ export function buildBotOnlyBaselineAggregateReport(
       highCostSummary: buildEmptyHighCostSummary(),
       highCostOfferMetrics: [],
       shopOfferMetrics: [],
+      bossExclusiveRoundLevelMetrics: [],
+      highCostRoundMetrics: [],
+      roundDamageEfficiencyMetrics: [],
+      unitDamageEfficiencyMetrics: [],
+      okinaSubHostMetrics: [],
+      okinaSubHostRoundMetrics: [],
+      okinaHeroSubDecisionRoundMetrics: [],
+      boardRefitDecisionRoundMetrics: [],
+      boardRefitDecisionRoleMetrics: [],
+      boardRefitDecisionRoleRoundMetrics: [],
+      finalPlayerBoardMetrics: [],
+      roundSurvivalDiagnostics: [],
+      roundUnitSurvivalDiagnostics: [],
       rangeDamageEfficiencyMetrics: [],
       rangeActionDiagnosticsMetrics: [],
       rangeFormationDiagnosticsMetrics: [],
@@ -1752,19 +3379,33 @@ export function buildBotOnlyBaselineAggregateReport(
   const finalGoldTotalsByLabel = new Map<string, number>();
   const goldEarnedTotalsByLabel = new Map<string, number>();
   const goldSpentTotalsByLabel = new Map<string, number>();
+  const economyBreakdownTotalsByLabel = new Map<string, BotOnlyBaselinePlayerEconomyBreakdown>();
   const purchaseCountTotalsByLabel = new Map<string, number>();
   const refreshCountTotalsByLabel = new Map<string, number>();
   const sellCountTotalsByLabel = new Map<string, number>();
   const specialUnitUpgradeCountTotalsByLabel = new Map<string, number>();
   const remainingLivesTotalsByLabel = new Map<string, number>();
+  const heroTeamMetricsById = new Map<string, HeroTeamAccumulator>();
+  const heroCompositionMetricsByKey = new Map<string, HeroCompositionAccumulator>();
   const bossBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
   const raidBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
+  const okinaSubHostsById = new Map<string, OkinaSubHostAccumulator>();
+  const okinaSubHostsByRoundAndId = new Map<string, OkinaSubHostRoundAccumulator>();
+  const okinaHeroSubDecisionsByRound = new Map<number, OkinaHeroSubDecisionRoundAccumulator>();
+  const boardRefitDecisionsByRound = new Map<number, BoardRefitDecisionRoundAccumulator>();
+  const boardRefitDecisionsByRole = new Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>();
+  const boardRefitDecisionsByRoleRound = new Map<string, BoardRefitDecisionRoleRoundAccumulator>();
+  const finalPlayerBoardMetricsByLabel = new Map<string, FinalPlayerBoardAccumulator>();
   const finalBoardUnitsById = new Map<string, {
     unitId: string;
     unitType: string;
     unitName: string;
     totalCopies: number;
     matchesPresent: number;
+    totalUnitLevel: number;
+    maxUnitLevel: number;
+    level4Copies: number;
+    level7Copies: number;
   }>();
   const finalBoardUnitsByRoleAndId = new Map<string, {
     unitId: string;
@@ -1802,6 +3443,11 @@ export function buildBotOnlyBaselineAggregateReport(
     purchaseCount: number;
     purchaseMatchCount: number;
   }>();
+  const roundDamageEfficiencyByKey = new Map<string, RoundDamageEfficiencyAccumulator>();
+  const roundSurvivalDiagnosticsByRound = new Map<number, RoundSurvivalDiagnosticAccumulator>();
+  const roundUnitSurvivalDiagnosticsByKey = new Map<string, RoundUnitSurvivalDiagnosticAccumulator>();
+  const bossExclusiveRoundLevelByKey = new Map<string, BossExclusiveRoundLevelAccumulator>();
+  const highCostRoundMetricsByKey = new Map<string, HighCostRoundAccumulator>();
   const rangeDamageEfficiencyByKey = new Map<string, RangeDamageEfficiencyAccumulator>();
   const rangeActionDiagnosticsByKey = new Map<string, RangeActionDiagnosticsAccumulator>();
   const rangeFormationDiagnosticsByKey = new Map<string, RangeFormationDiagnosticsAccumulator>();
@@ -1819,7 +3465,178 @@ export function buildBotOnlyBaselineAggregateReport(
     if (!areBotOnlyReportMetadataEqual(sharedMetadata, report.metadata)) {
       sharedMetadata = undefined;
     }
+    const playerById = new Map(
+      report.finalPlayers.map((player) => [player.playerId, player] as const),
+    );
+    recordHeroMatchMetrics(report, heroTeamMetricsById, heroCompositionMetricsByKey);
     roundDetails.push(...buildRoundDetailsForMatch(report, matchIndex));
+    for (const snapshot of report.okinaHeroSubDecisionSnapshots ?? []) {
+      recordOkinaHeroSubDecisionSnapshot(snapshot, okinaHeroSubDecisionsByRound);
+    }
+    for (const snapshot of report.boardRefitDecisionSnapshots ?? []) {
+      recordBoardRefitDecisionSnapshot(
+        snapshot,
+        boardRefitDecisionsByRound,
+        boardRefitDecisionsByRole,
+        boardRefitDecisionsByRoleRound,
+      );
+    }
+    const seenOkinaSubHostsByRoundInMatch = new Set<string>();
+    for (const round of report.rounds ?? []) {
+      const seenRoundDamageEfficiencyUnits = new Set<string>();
+      const seenRoundUnitSurvivalUnits = new Set<string>();
+      for (const battle of round.battles) {
+        const winnerRole = resolveBattleWinnerRole(battle, playerById, report.bossPlayerId);
+        const bossOutcomes = battle.unitOutcomes.filter((outcome) => outcome.side === "boss");
+        const raidOutcomes = battle.unitOutcomes.filter((outcome) => outcome.side === "raid");
+        const bossSurvivors = bossOutcomes.filter((outcome) => outcome.alive && outcome.finalHp > 0).length;
+        const raidSurvivors = raidOutcomes.filter((outcome) => outcome.alive && outcome.finalHp > 0).length;
+        const phaseSucceeded = round.phaseResult === "success"
+          || (round.phaseHpTarget > 0 && round.phaseDamageDealt >= round.phaseHpTarget);
+        const survivalDiagnostic = roundSurvivalDiagnosticsByRound.get(round.roundIndex)
+          ?? createRoundSurvivalDiagnosticAccumulator(round.roundIndex);
+        survivalDiagnostic.battleSamples += 1;
+        survivalDiagnostic.totalBattleEndMs += Math.max(0, battle.battleDurationMs ?? 0);
+        survivalDiagnostic.phaseSuccessBattles += phaseSucceeded ? 1 : 0;
+        survivalDiagnostic.phaseSuccessWithBossWipeBattles += phaseSucceeded && bossSurvivors === 0 ? 1 : 0;
+        survivalDiagnostic.phaseFailureWithRaidWipeBattles += !phaseSucceeded && raidSurvivors === 0 ? 1 : 0;
+        survivalDiagnostic.bossWipedBattles += bossSurvivors === 0 ? 1 : 0;
+        survivalDiagnostic.raidWipedBattles += raidSurvivors === 0 ? 1 : 0;
+        survivalDiagnostic.bothSidesSurvivedBattles += bossSurvivors > 0 && raidSurvivors > 0 ? 1 : 0;
+        survivalDiagnostic.totalBossStartUnitCount += bossOutcomes.length;
+        survivalDiagnostic.totalBossSurvivors += bossSurvivors;
+        survivalDiagnostic.totalBossFinalHp += bossOutcomes.reduce(
+          (total, outcome) => total + Math.max(0, outcome.finalHp),
+          0,
+        );
+        survivalDiagnostic.totalBossEstimatedMaxHp += bossOutcomes.reduce(
+          (total, outcome) => total + resolveOutcomeEstimatedMaxHp(outcome),
+          0,
+        );
+        survivalDiagnostic.totalRaidStartUnitCount += raidOutcomes.length;
+        survivalDiagnostic.totalRaidSurvivors += raidSurvivors;
+        survivalDiagnostic.totalRaidFinalHp += raidOutcomes.reduce(
+          (total, outcome) => total + Math.max(0, outcome.finalHp),
+          0,
+        );
+        survivalDiagnostic.totalRaidEstimatedMaxHp += raidOutcomes.reduce(
+          (total, outcome) => total + resolveOutcomeEstimatedMaxHp(outcome),
+          0,
+        );
+        roundSurvivalDiagnosticsByRound.set(round.roundIndex, survivalDiagnostic);
+
+        for (const outcome of battle.unitOutcomes) {
+          const resolvedUnitName = resolveBaselineUnitName(outcome.unitId, outcome.unitName);
+          const resolvedUnitType = outcome.unitType ?? outcome.unitId;
+          const key = `${round.roundIndex}::${outcome.side}::${outcome.unitId}`;
+          const survivalUnit = roundUnitSurvivalDiagnosticsByKey.get(key)
+            ?? createRoundUnitSurvivalDiagnosticAccumulator(
+              round.roundIndex,
+              outcome.side,
+              outcome.unitId,
+              resolvedUnitType,
+              resolvedUnitName,
+            );
+          survivalUnit.battleAppearances += 1;
+          survivalUnit.totalUnitLevel += outcome.unitLevel;
+          survivalUnit.survivedBattles += outcome.alive && outcome.finalHp > 0 ? 1 : 0;
+          survivalUnit.totalFinalHp += Math.max(0, outcome.finalHp);
+          survivalUnit.totalEstimatedMaxHp += resolveOutcomeEstimatedMaxHp(outcome);
+          survivalUnit.totalDamageTaken += Math.max(0, outcome.damageTaken ?? 0);
+          survivalUnit.totalLifetimeMs += Math.max(0, outcome.lifetimeMs ?? 0);
+          survivalUnit.totalDamage += outcome.totalDamage;
+          survivalUnit.zeroDamageBattles += outcome.totalDamage <= 0 ? 1 : 0;
+          const matchRoundSurvivalUnitKey = `${key}::${matchIndex}`;
+          if (!seenRoundUnitSurvivalUnits.has(matchRoundSurvivalUnitKey)) {
+            survivalUnit.matchesPresent += 1;
+            seenRoundUnitSurvivalUnits.add(matchRoundSurvivalUnitKey);
+          }
+          roundUnitSurvivalDiagnosticsByKey.set(key, survivalUnit);
+
+          if (outcome.side === "raid" && outcome.attachedSubUnitId === "okina") {
+            const okinaRoundKey = `${round.roundIndex}::${outcome.unitId}`;
+            const okinaHostRound = okinaSubHostsByRoundAndId.get(okinaRoundKey)
+              ?? createOkinaSubHostRoundAccumulator(
+                round.roundIndex,
+                outcome.unitId,
+                resolvedUnitType,
+                resolvedUnitName,
+              );
+            okinaHostRound.battleAppearances += 1;
+            okinaHostRound.totalHostLevel += outcome.unitLevel;
+            okinaHostRound.totalDamage += outcome.totalDamage;
+            okinaHostRound.totalDamageTaken += outcome.damageTaken ?? 0;
+            okinaHostRound.totalLifetimeMs += outcome.lifetimeMs ?? outcome.battleDurationMs ?? 0;
+            if (outcome.alive) {
+              okinaHostRound.survivedBattles += 1;
+            }
+            if (winnerRole === outcome.side) {
+              okinaHostRound.ownerWins += 1;
+            }
+            if (!seenOkinaSubHostsByRoundInMatch.has(okinaRoundKey)) {
+              okinaHostRound.matchesPresent += 1;
+              seenOkinaSubHostsByRoundInMatch.add(okinaRoundKey);
+            }
+            okinaSubHostsByRoundAndId.set(okinaRoundKey, okinaHostRound);
+          }
+
+          const existing = roundDamageEfficiencyByKey.get(key)
+            ?? createRoundDamageEfficiencyAccumulator(
+              round.roundIndex,
+              outcome.side,
+              outcome.unitId,
+              resolvedUnitType,
+              resolvedUnitName,
+            );
+          existing.battleAppearances += 1;
+          existing.totalUnitLevel += outcome.unitLevel;
+          existing.totalDamage += outcome.totalDamage;
+          existing.totalInvestmentCost += resolveBattleUnitInvestmentCost(outcome);
+
+          const matchRoundUnitKey = `${key}::${matchIndex}`;
+          if (!seenRoundDamageEfficiencyUnits.has(matchRoundUnitKey)) {
+            existing.matchesPresent += 1;
+            seenRoundDamageEfficiencyUnits.add(matchRoundUnitKey);
+          }
+          roundDamageEfficiencyByKey.set(key, existing);
+
+          if (outcome.side === "boss" && BOSS_EXCLUSIVE_UNIT_IDS.has(outcome.unitId)) {
+            const bossExclusiveKey = `${round.roundIndex}::${outcome.unitId}`;
+            const bossExclusive = bossExclusiveRoundLevelByKey.get(bossExclusiveKey)
+              ?? createBossExclusiveRoundLevelAccumulator(
+                round.roundIndex,
+                outcome.unitId,
+                resolvedUnitType,
+                resolvedUnitName,
+              );
+            bossExclusive.battleAppearances += 1;
+            bossExclusive.unitLevelSamples.push(outcome.unitLevel);
+            bossExclusive.matchKeys.add(`${matchIndex}::${round.roundIndex}`);
+            bossExclusiveRoundLevelByKey.set(bossExclusiveKey, bossExclusive);
+          }
+
+          const resolvedCost = resolveBoardUnitCost(outcome.unitId);
+          if (resolvedCost !== null && resolvedCost >= HIGH_COST_THRESHOLD) {
+            const highCostRole = outcome.side;
+            const highCostSource = resolveHighCostRoundSource(highCostRole, outcome.unitId);
+            const highCostRoundKey = `${round.roundIndex}::${highCostRole}::${highCostSource}::${outcome.unitId}`;
+            const highCostRound = highCostRoundMetricsByKey.get(highCostRoundKey)
+              ?? createHighCostRoundAccumulator(
+                round.roundIndex,
+                highCostRole,
+                highCostSource,
+                outcome.unitId,
+                resolvedUnitType,
+                resolvedUnitName,
+                resolvedCost,
+              );
+            highCostRound.battleAppearances += 1;
+            highCostRound.battleMatchKeys.add(`${matchIndex}::${round.roundIndex}`);
+            highCostRoundMetricsByKey.set(highCostRoundKey, highCostRound);
+          }
+        }
+      }
+    }
 
     if (report.ranking[0] === report.bossPlayerId) {
       bossWins += 1;
@@ -1838,9 +3655,6 @@ export function buildBotOnlyBaselineAggregateReport(
     ).length;
     totalRemainingRaidPlayers += remainingRaidPlayers;
 
-    const playerById = new Map(
-      report.finalPlayers.map((player) => [player.playerId, player] as const),
-    );
     for (const [rankIndex, playerId] of report.ranking.entries()) {
       const player = playerById.get(playerId);
       const label = player?.label ?? report.playerLabels[playerId] ?? playerId;
@@ -1860,6 +3674,7 @@ export function buildBotOnlyBaselineAggregateReport(
     const seenBossBattleUnitsInMatch = new Set<string>();
     const seenRaidBattleUnitsInMatch = new Set<string>();
     const seenRaidSubUnitsInMatch = new Set<string>();
+    const seenOkinaSubHostsInMatch = new Set<string>();
     const bossMaxUnitLevelByMatch = new Map<string, number>();
     const raidMaxUnitLevelByMatch = new Map<string, number>();
     const seenFinalBoardUnitsInMatch = new Set<string>();
@@ -1879,6 +3694,13 @@ export function buildBotOnlyBaselineAggregateReport(
         player.label,
         (goldSpentTotalsByLabel.get(player.label) ?? 0) + (player.totalGoldSpent ?? 0),
       );
+      const economyBreakdown = economyBreakdownTotalsByLabel.get(player.label)
+        ?? createEmptyPlayerEconomyBreakdown();
+      addPlayerEconomyBreakdown(
+        economyBreakdown,
+        buildPlayerEconomyBreakdownForMatch(report, player),
+      );
+      economyBreakdownTotalsByLabel.set(player.label, economyBreakdown);
       purchaseCountTotalsByLabel.set(
         player.label,
         (purchaseCountTotalsByLabel.get(player.label) ?? 0) + (player.purchaseCount ?? 0),
@@ -1899,6 +3721,36 @@ export function buildBotOnlyBaselineAggregateReport(
         player.label,
         (remainingLivesTotalsByLabel.get(player.label) ?? 0) + player.remainingLives,
       );
+      const playerBoardMetric = finalPlayerBoardMetricsByLabel.get(player.label)
+        ?? createFinalPlayerBoardAccumulator(player.label, player.role);
+      playerBoardMetric.matchesPresent += 1;
+      playerBoardMetric.totalDeployedUnitCount += player.boardUnits.length;
+      for (const boardUnit of player.boardUnits) {
+        const finalUnitLevel = Number.isFinite(boardUnit.unitLevel)
+          ? Math.max(1, Math.trunc(boardUnit.unitLevel))
+          : 1;
+        const isSpecialUnit = SPECIAL_BATTLE_UNIT_IDS.has(boardUnit.unitId)
+          || boardUnit.unitType === "hero"
+          || boardUnit.unitType === "boss";
+        playerBoardMetric.totalSpecialUnitCount += isSpecialUnit ? 1 : 0;
+        playerBoardMetric.totalStandardUnitCount += isSpecialUnit ? 0 : 1;
+        playerBoardMetric.totalDeployedAssetValue += resolveBattleUnitInvestmentCost({
+          playerId: player.playerId,
+          label: player.label,
+          unitId: boardUnit.unitId,
+          unitName: boardUnit.unitName,
+          unitType: boardUnit.unitType,
+          side: player.role === "boss" ? "boss" : "raid",
+          totalDamage: 0,
+          phaseContributionDamage: 0,
+          finalHp: 0,
+          alive: true,
+          unitLevel: finalUnitLevel,
+          subUnitName: boardUnit.subUnitName,
+          isSpecialUnit,
+        });
+      }
+      finalPlayerBoardMetricsByLabel.set(player.label, playerBoardMetric);
       for (const boardUnit of player.boardUnits) {
         const existing = finalBoardUnitsById.get(boardUnit.unitId) ?? {
           unitId: boardUnit.unitId,
@@ -1906,8 +3758,23 @@ export function buildBotOnlyBaselineAggregateReport(
           unitName: boardUnit.unitName,
           totalCopies: 0,
           matchesPresent: 0,
+          totalUnitLevel: 0,
+          maxUnitLevel: 0,
+          level4Copies: 0,
+          level7Copies: 0,
         };
+        const finalUnitLevel = Number.isFinite(boardUnit.unitLevel)
+          ? Math.max(1, Math.trunc(boardUnit.unitLevel))
+          : 1;
         existing.totalCopies += 1;
+        existing.totalUnitLevel += finalUnitLevel;
+        existing.maxUnitLevel = Math.max(existing.maxUnitLevel, finalUnitLevel);
+        if (finalUnitLevel >= 4) {
+          existing.level4Copies += 1;
+        }
+        if (finalUnitLevel >= 7) {
+          existing.level7Copies += 1;
+        }
         if (!seenFinalBoardUnitsInMatch.has(boardUnit.unitId)) {
           existing.matchesPresent += 1;
           seenFinalBoardUnitsInMatch.add(boardUnit.unitId);
@@ -1979,6 +3846,22 @@ export function buildBotOnlyBaselineAggregateReport(
 
       highCostPurchaseCount += 1;
       matchHasHighCostPurchase = true;
+      if (purchase.roundIndex !== undefined && purchaseUnitId.length > 0) {
+        const highCostRoundKey = `${purchase.roundIndex}::${purchaseRole}::${purchaseSource}::${purchaseUnitId}`;
+        const highCostRound = highCostRoundMetricsByKey.get(highCostRoundKey)
+          ?? createHighCostRoundAccumulator(
+            purchase.roundIndex,
+            purchaseRole,
+            purchaseSource,
+            purchaseUnitId,
+            purchase.unitType,
+            purchase.unitName ?? resolveBaselineUnitName(purchaseUnitId, purchase.unitType),
+            purchase.cost,
+          );
+        highCostRound.purchaseCount += 1;
+        highCostRound.purchaseMatchKeys.add(`${matchIndex}::${purchase.roundIndex}`);
+        highCostRoundMetricsByKey.set(highCostRoundKey, highCostRound);
+      }
     }
     if (matchHasHighCostPurchase) {
       highCostPurchaseMatchCount += 1;
@@ -1986,6 +3869,7 @@ export function buildBotOnlyBaselineAggregateReport(
 
     let matchHasHighCostOffer = false;
     const seenShopOfferMetricKeysInMatch = new Set<string>();
+    const seenHighCostOfferMetricKeysInMatch = new Set<string>();
     for (const offer of report.observedShopOffers ?? []) {
       const shopMetricKey = `${offer.role}::${offer.source}::${offer.unitId}`;
       const shopMetric = shopOfferMetricsByKey.get(shopMetricKey) ?? {
@@ -2025,8 +3909,27 @@ export function buildBotOnlyBaselineAggregateReport(
         matchesPresent: 0,
       };
       existing.observationCount += offer.observationCount;
-      existing.matchesPresent += 1;
+      if (!seenHighCostOfferMetricKeysInMatch.has(key)) {
+        existing.matchesPresent += 1;
+        seenHighCostOfferMetricKeysInMatch.add(key);
+      }
       highCostOfferMetricsByKey.set(key, existing);
+      if (offer.roundIndex !== undefined) {
+        const highCostRoundKey = `${offer.roundIndex}::${offer.role}::${offer.source}::${offer.unitId}`;
+        const highCostRound = highCostRoundMetricsByKey.get(highCostRoundKey)
+          ?? createHighCostRoundAccumulator(
+            offer.roundIndex,
+            offer.role,
+            offer.source,
+            offer.unitId,
+            offer.unitType,
+            offer.unitName,
+            offer.cost,
+          );
+        highCostRound.offerObservationCount += offer.observationCount;
+        highCostRound.offerMatchKeys.add(`${matchIndex}::${offer.roundIndex}`);
+        highCostRoundMetricsByKey.set(highCostRoundKey, highCostRound);
+      }
     }
     if (matchHasHighCostOffer) {
       highCostOfferMatchCount += 1;
@@ -2426,6 +4329,31 @@ export function buildBotOnlyBaselineAggregateReport(
           const subUnitName = outcome.attachedSubUnitName
             ?? resolveBaselineUnitName(subUnitId, outcome.subUnitName);
           const subUnitType = outcome.attachedSubUnitType ?? subUnitId;
+          if (subUnitId === "okina") {
+            const okinaHost = okinaSubHostsById.get(resolvedUnitId)
+              ?? createOkinaSubHostAccumulator(
+                resolvedUnitId,
+                resolvedUnitType,
+                resolvedUnitName,
+              );
+            okinaHost.battleAppearances += 1;
+            okinaHost.totalHostLevel += outcome.unitLevel;
+            okinaHost.totalDamage += outcome.totalDamage;
+            okinaHost.totalDamageTaken += outcome.damageTaken ?? 0;
+            okinaHost.totalLifetimeMs += outcome.lifetimeMs ?? outcome.battleDurationMs ?? 0;
+            if (outcome.alive) {
+              okinaHost.survivedBattles += 1;
+            }
+            if (ownerWon) {
+              okinaHost.ownerWins += 1;
+            }
+            const okinaHostKey = `okina-host::${resolvedUnitId}`;
+            if (!seenOkinaSubHostsInMatch.has(okinaHostKey)) {
+              okinaHost.matchesPresent += 1;
+              seenOkinaSubHostsInMatch.add(okinaHostKey);
+            }
+            okinaSubHostsById.set(resolvedUnitId, okinaHost);
+          }
           const subUnitEntry = raidBattleUnitsById.get(subUnitId)
             ?? createBattleUnitAggregateAccumulator(
               subUnitId,
@@ -2542,6 +4470,20 @@ export function buildBotOnlyBaselineAggregateReport(
         }];
       }),
     ),
+    heroTeamMetrics: buildHeroTeamMetrics(heroTeamMetricsById.values()),
+    heroCompositionMetrics: buildHeroCompositionMetrics(heroCompositionMetricsByKey.values()),
+    playerEconomyBreakdowns: Object.fromEntries(
+      sortedLabels.map((label) => {
+        const appearanceCount = labelAppearanceCounts.get(label) ?? completedMatches;
+        return [
+          label,
+          dividePlayerEconomyBreakdown(
+            economyBreakdownTotalsByLabel.get(label) ?? createEmptyPlayerEconomyBreakdown(),
+            appearanceCount,
+          ),
+        ];
+      }),
+    ),
     bossBattleUnitMetrics: Array.from(bossBattleUnitsById.values())
       .sort((left, right) =>
         right.matchesPresent - left.matchesPresent
@@ -2554,6 +4496,60 @@ export function buildBotOnlyBaselineAggregateReport(
         || right.totalDamage - left.totalDamage
         || left.unitId.localeCompare(right.unitId))
       .map((entry) => buildBattleUnitMetrics(entry, completedMatches)),
+    ...(okinaSubHostsById.size > 0
+      ? {
+        okinaSubHostMetrics: Array.from(okinaSubHostsById.values())
+          .sort((left, right) =>
+            right.battleAppearances - left.battleAppearances
+            || right.totalDamage - left.totalDamage
+            || left.hostUnitId.localeCompare(right.hostUnitId))
+          .map((entry) => buildOkinaSubHostMetric(entry)),
+      }
+      : {}),
+    ...(okinaSubHostsByRoundAndId.size > 0
+      ? {
+        okinaSubHostRoundMetrics: Array.from(okinaSubHostsByRoundAndId.values())
+          .sort((left, right) =>
+            left.roundIndex - right.roundIndex
+            || right.battleAppearances - left.battleAppearances
+            || right.totalDamage - left.totalDamage
+            || left.hostUnitId.localeCompare(right.hostUnitId))
+          .map((entry) => buildOkinaSubHostRoundMetric(entry)),
+      }
+      : {}),
+    ...(okinaHeroSubDecisionsByRound.size > 0
+      ? {
+        okinaHeroSubDecisionRoundMetrics: Array.from(okinaHeroSubDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildOkinaHeroSubDecisionRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardRefitDecisionsByRound.size > 0
+      ? {
+        boardRefitDecisionRoundMetrics: Array.from(boardRefitDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildBoardRefitDecisionRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardRefitDecisionsByRole.size > 0
+      ? {
+        boardRefitDecisionRoleMetrics: Array.from(boardRefitDecisionsByRole.values())
+          .sort((left, right) => left.role.localeCompare(right.role))
+          .map((entry) => buildBoardRefitDecisionRoleMetric(entry)),
+      }
+      : {}),
+    ...(boardRefitDecisionsByRoleRound.size > 0
+      ? {
+        boardRefitDecisionRoleRoundMetrics: Array.from(boardRefitDecisionsByRoleRound.values())
+          .sort((left, right) =>
+            left.role.localeCompare(right.role)
+            || left.roundIndex - right.roundIndex)
+          .map((entry) => buildBoardRefitDecisionRoleRoundMetric(entry)),
+      }
+      : {}),
+    finalPlayerBoardMetrics: Array.from(finalPlayerBoardMetricsByLabel.values())
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .map((entry) => buildFinalPlayerBoardMetric(entry)),
     finalBoardUnitMetrics: Array.from(finalBoardUnitsById.values())
       .sort((left, right) =>
         right.matchesPresent - left.matchesPresent
@@ -2567,6 +4563,10 @@ export function buildBotOnlyBaselineAggregateReport(
         matchesPresent: entry.matchesPresent,
         averageCopiesPerMatch: entry.totalCopies / completedMatches,
         adoptionRate: entry.matchesPresent / completedMatches,
+        averageFinalUnitLevel: entry.totalCopies > 0 ? entry.totalUnitLevel / entry.totalCopies : 0,
+        maxFinalUnitLevel: entry.maxUnitLevel,
+        finalLevel4Rate: entry.totalCopies > 0 ? entry.level4Copies / entry.totalCopies : 0,
+        finalLevel7Rate: entry.totalCopies > 0 ? entry.level7Copies / entry.totalCopies : 0,
       })),
     topDamageUnits: Array.from(damageByUnit.values())
       .sort((left, right) =>
@@ -2596,6 +4596,36 @@ export function buildBotOnlyBaselineAggregateReport(
         ...entry,
         offeredMatchRate: entry.matchesPresent / completedMatches,
       })),
+    bossExclusiveRoundLevelMetrics: Array.from(bossExclusiveRoundLevelByKey.values())
+      .map((entry) => buildBossExclusiveRoundLevelMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.unitId.localeCompare(right.unitId)),
+    highCostRoundMetrics: Array.from(highCostRoundMetricsByKey.values())
+      .map((entry) => buildHighCostRoundMetric(entry, completedMatches))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.role.localeCompare(right.role)
+        || left.source.localeCompare(right.source)
+        || left.unitId.localeCompare(right.unitId)),
+    roundDamageEfficiencyMetrics: Array.from(roundDamageEfficiencyByKey.values())
+      .map((entry) => buildRoundDamageEfficiencyMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.side.localeCompare(right.side)
+        || ((right.damagePerInvestmentCost ?? -1) - (left.damagePerInvestmentCost ?? -1))
+        || right.totalDamage - left.totalDamage
+        || left.unitId.localeCompare(right.unitId)),
+    unitDamageEfficiencyMetrics: buildUnitDamageEfficiencyMetrics(roundDamageEfficiencyByKey.values()),
+    roundSurvivalDiagnostics: Array.from(roundSurvivalDiagnosticsByRound.values())
+      .map((entry) => buildRoundSurvivalDiagnosticMetric(entry))
+      .sort((left, right) => left.roundIndex - right.roundIndex),
+    roundUnitSurvivalDiagnostics: Array.from(roundUnitSurvivalDiagnosticsByKey.values())
+      .map((entry) => buildRoundUnitSurvivalDiagnosticMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.side.localeCompare(right.side)
+        || left.unitId.localeCompare(right.unitId)),
     shopOfferMetrics: Array.from(shopOfferMetricsByKey.values())
       .sort((left, right) =>
         right.matchesPresent - left.matchesPresent
@@ -2690,6 +4720,9 @@ export function mergeBotOnlyBaselineAggregateReports(
       battleMetrics: buildEmptyBattleMetrics(),
       roundHistogram: {},
       playerMetrics: {},
+      heroTeamMetrics: [],
+      heroCompositionMetrics: [],
+      playerEconomyBreakdowns: {},
       bossBattleUnitMetrics: [],
       raidBattleUnitMetrics: [],
       finalBoardUnitMetrics: [],
@@ -2697,6 +4730,19 @@ export function mergeBotOnlyBaselineAggregateReports(
       highCostSummary: buildEmptyHighCostSummary(),
       highCostOfferMetrics: [],
       shopOfferMetrics: [],
+      bossExclusiveRoundLevelMetrics: [],
+      highCostRoundMetrics: [],
+      roundDamageEfficiencyMetrics: [],
+      unitDamageEfficiencyMetrics: [],
+      okinaSubHostMetrics: [],
+      okinaSubHostRoundMetrics: [],
+      okinaHeroSubDecisionRoundMetrics: [],
+      boardRefitDecisionRoundMetrics: [],
+      boardRefitDecisionRoleMetrics: [],
+      boardRefitDecisionRoleRoundMetrics: [],
+      finalPlayerBoardMetrics: [],
+      roundSurvivalDiagnostics: [],
+      roundUnitSurvivalDiagnostics: [],
       rangeDamageEfficiencyMetrics: [],
       rangeActionDiagnosticsMetrics: [],
       rangeFormationDiagnosticsMetrics: [],
@@ -2726,20 +4772,34 @@ export function mergeBotOnlyBaselineAggregateReports(
   const finalGoldTotalsByLabel = new Map<string, number>();
   const goldEarnedTotalsByLabel = new Map<string, number>();
   const goldSpentTotalsByLabel = new Map<string, number>();
+  const economyBreakdownTotalsByLabel = new Map<string, BotOnlyBaselinePlayerEconomyBreakdown>();
   const purchaseCountTotalsByLabel = new Map<string, number>();
   const refreshCountTotalsByLabel = new Map<string, number>();
   const sellCountTotalsByLabel = new Map<string, number>();
   const specialUnitUpgradeCountTotalsByLabel = new Map<string, number>();
   const remainingLivesTotalsByLabel = new Map<string, number>();
   const appearanceCountsByLabel = new Map<string, number>();
+  const heroTeamMetricsById = new Map<string, HeroTeamAccumulator>();
+  const heroCompositionMetricsByKey = new Map<string, HeroCompositionAccumulator>();
   const bossBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
   const raidBattleUnitsById = new Map<string, BattleUnitAggregateAccumulator>();
+  const okinaSubHostsById = new Map<string, OkinaSubHostAccumulator>();
+  const okinaSubHostsByRoundAndId = new Map<string, OkinaSubHostRoundAccumulator>();
+  const okinaHeroSubDecisionsByRound = new Map<number, OkinaHeroSubDecisionRoundAccumulator>();
+  const boardRefitDecisionsByRound = new Map<number, BoardRefitDecisionRoundAccumulator>();
+  const boardRefitDecisionsByRole = new Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>();
+  const boardRefitDecisionsByRoleRound = new Map<string, BoardRefitDecisionRoleRoundAccumulator>();
+  const finalPlayerBoardMetricsByLabel = new Map<string, FinalPlayerBoardAccumulator>();
   const finalBoardUnitsById = new Map<string, {
     unitId: string;
     unitType: string;
     unitName: string;
     totalCopies: number;
     matchesPresent: number;
+    totalUnitLevel: number;
+    maxUnitLevel: number;
+    level4Copies: number;
+    level7Copies: number;
   }>();
   const topDamageUnitsByKey = new Map<string, {
     unitId: string;
@@ -2772,6 +4832,11 @@ export function mergeBotOnlyBaselineAggregateReports(
     finalBoardCopies: number;
     finalBoardMatchCount: number;
   }>();
+  const roundDamageEfficiencyByKey = new Map<string, RoundDamageEfficiencyAccumulator>();
+  const roundSurvivalDiagnosticsByRound = new Map<number, RoundSurvivalDiagnosticAccumulator>();
+  const roundUnitSurvivalDiagnosticsByKey = new Map<string, RoundUnitSurvivalDiagnosticAccumulator>();
+  const bossExclusiveRoundLevelByKey = new Map<string, BossExclusiveRoundLevelAccumulator>();
+  const highCostRoundMetricsByKey = new Map<string, HighCostRoundAccumulator>();
   const rangeDamageEfficiencyByKey = new Map<string, RangeDamageEfficiencyAccumulator>();
   const rangeActionDiagnosticsByKey = new Map<string, RangeActionDiagnosticsAccumulator>();
   const rangeFormationDiagnosticsByKey = new Map<string, RangeFormationDiagnosticsAccumulator>();
@@ -2797,6 +4862,9 @@ export function mergeBotOnlyBaselineAggregateReports(
         matchIndex: detail.matchIndex + roundDetailMatchOffset,
         raidPlayerConsequences: detail.raidPlayerConsequences.map((player) => ({ ...player })),
         topBossUnits: detail.topBossUnits.map((unit) => ({ ...unit })),
+        ...(detail.topBossDamageTakenUnits !== undefined
+          ? { topBossDamageTakenUnits: detail.topBossDamageTakenUnits.map((unit) => ({ ...unit })) }
+          : {}),
         topRaidUnits: detail.topRaidUnits.map((unit) => ({ ...unit })),
         ...(detail.bossBodyFocus !== undefined
           ? { bossBodyFocus: detail.bossBodyFocus ? { ...detail.bossBodyFocus } : null }
@@ -2831,6 +4899,81 @@ export function mergeBotOnlyBaselineAggregateReports(
       roundHistogram.set(roundKey, (roundHistogram.get(roundKey) ?? 0) + count);
     }
 
+    for (const entry of aggregate.heroTeamMetrics ?? []) {
+      const existing = heroTeamMetricsById.get(entry.heroId) ?? createHeroTeamAccumulator(entry.heroId);
+      existing.heroName = entry.heroName;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.raidTeamWins += entry.raidTeamWins;
+      existing.firstPlaces += entry.firstPlaceRate * entry.matchesPresent;
+      existing.totalPlacement += entry.averagePlacement * entry.matchesPresent;
+      existing.totalRemainingLives += entry.averageRemainingLives * entry.matchesPresent;
+      existing.totalFinalGold += entry.averageFinalGold * entry.matchesPresent;
+      existing.totalGoldEarned += entry.averageGoldEarned * entry.matchesPresent;
+      existing.totalGoldSpent += entry.averageGoldSpent * entry.matchesPresent;
+      existing.totalSpecialUnitUpgradeCount += entry.averageSpecialUnitUpgradeCount * entry.matchesPresent;
+      heroTeamMetricsById.set(entry.heroId, existing);
+    }
+
+    for (const entry of aggregate.heroCompositionMetrics ?? []) {
+      const existing = heroCompositionMetricsByKey.get(entry.compositionKey) ?? {
+        compositionKey: entry.compositionKey,
+        heroIds: [...entry.heroIds],
+        heroNames: [...entry.heroNames],
+        matchesPresent: 0,
+        raidWins: 0,
+        totalRounds: 0,
+      };
+      existing.matchesPresent += entry.matchesPresent;
+      existing.raidWins += entry.raidWins;
+      existing.totalRounds += entry.averageRounds * entry.matchesPresent;
+      heroCompositionMetricsByKey.set(entry.compositionKey, existing);
+    }
+
+    for (const entry of aggregate.roundSurvivalDiagnostics ?? []) {
+      const existing = roundSurvivalDiagnosticsByRound.get(entry.roundIndex)
+        ?? createRoundSurvivalDiagnosticAccumulator(entry.roundIndex);
+      existing.battleSamples += entry.battleSamples;
+      existing.totalBattleEndMs += entry.averageBattleEndMs * entry.battleSamples;
+      existing.phaseSuccessBattles += entry.phaseSuccessRate * entry.battleSamples;
+      existing.phaseSuccessWithBossWipeBattles += entry.phaseSuccessWithBossWipeRate * entry.battleSamples;
+      existing.phaseFailureWithRaidWipeBattles += entry.phaseFailureWithRaidWipeRate * entry.battleSamples;
+      existing.bossWipedBattles += entry.bossWipedRate * entry.battleSamples;
+      existing.raidWipedBattles += entry.raidWipedRate * entry.battleSamples;
+      existing.bothSidesSurvivedBattles += entry.bothSidesSurvivedRate * entry.battleSamples;
+      existing.totalBossStartUnitCount += entry.averageBossStartUnitCount * entry.battleSamples;
+      existing.totalBossSurvivors += entry.averageBossSurvivors * entry.battleSamples;
+      existing.totalBossFinalHp += entry.averageBossFinalHp * entry.battleSamples;
+      existing.totalBossEstimatedMaxHp += entry.averageBossEstimatedMaxHp * entry.battleSamples;
+      existing.totalRaidStartUnitCount += entry.averageRaidStartUnitCount * entry.battleSamples;
+      existing.totalRaidSurvivors += entry.averageRaidSurvivors * entry.battleSamples;
+      existing.totalRaidFinalHp += entry.averageRaidFinalHp * entry.battleSamples;
+      existing.totalRaidEstimatedMaxHp += entry.averageRaidEstimatedMaxHp * entry.battleSamples;
+      roundSurvivalDiagnosticsByRound.set(entry.roundIndex, existing);
+    }
+
+    for (const entry of aggregate.roundUnitSurvivalDiagnostics ?? []) {
+      const key = `${entry.roundIndex}::${entry.side}::${entry.unitId}`;
+      const existing = roundUnitSurvivalDiagnosticsByKey.get(key)
+        ?? createRoundUnitSurvivalDiagnosticAccumulator(
+          entry.roundIndex,
+          entry.side,
+          entry.unitId,
+          entry.unitType,
+          entry.unitName,
+        );
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalUnitLevel += entry.averageUnitLevel * entry.battleAppearances;
+      existing.survivedBattles += entry.survivalRate * entry.battleAppearances;
+      existing.totalFinalHp += entry.averageFinalHp * entry.battleAppearances;
+      existing.totalEstimatedMaxHp += entry.averageEstimatedMaxHp * entry.battleAppearances;
+      existing.totalDamageTaken += entry.averageDamageTaken * entry.battleAppearances;
+      existing.totalLifetimeMs += entry.averageLifetimeMs * entry.battleAppearances;
+      existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
+      existing.zeroDamageBattles += entry.zeroDamageBattleRate * entry.battleAppearances;
+      roundUnitSurvivalDiagnosticsByKey.set(key, existing);
+    }
+
     for (const [label, metrics] of Object.entries(aggregate.playerMetrics)) {
       const appearanceCount = aggregate.completedMatches;
       appearanceCountsByLabel.set(
@@ -2861,6 +5004,26 @@ export function mergeBotOnlyBaselineAggregateReports(
         label,
         (goldSpentTotalsByLabel.get(label) ?? 0) + metrics.averageGoldSpent * appearanceCount,
       );
+      const economyBreakdown = aggregate.playerEconomyBreakdowns?.[label];
+      if (economyBreakdown) {
+        const existingEconomyBreakdown = economyBreakdownTotalsByLabel.get(label)
+          ?? createEmptyPlayerEconomyBreakdown();
+        addPlayerEconomyBreakdown(existingEconomyBreakdown, {
+          fixedPrepIncome: economyBreakdown.fixedPrepIncome * appearanceCount,
+          raidPhaseSuccessBonusIncome: economyBreakdown.raidPhaseSuccessBonusIncome * appearanceCount,
+          sellIncome: economyBreakdown.sellIncome * appearanceCount,
+          specialEconomyIncome: economyBreakdown.specialEconomyIncome * appearanceCount,
+          normalShopSpend: economyBreakdown.normalShopSpend * appearanceCount,
+          bossShopSpend: economyBreakdown.bossShopSpend * appearanceCount,
+          refreshSpend: economyBreakdown.refreshSpend * appearanceCount,
+          specialUnitUpgradeSpend: economyBreakdown.specialUnitUpgradeSpend * appearanceCount,
+          otherSpend: economyBreakdown.otherSpend * appearanceCount,
+          loggedGoldGain: economyBreakdown.loggedGoldGain * appearanceCount,
+          loggedGoldSpent: economyBreakdown.loggedGoldSpent * appearanceCount,
+          finalUnusedGold: economyBreakdown.finalUnusedGold * appearanceCount,
+        });
+        economyBreakdownTotalsByLabel.set(label, existingEconomyBreakdown);
+      }
       purchaseCountTotalsByLabel.set(
         label,
         (purchaseCountTotalsByLabel.get(label) ?? 0) + metrics.averagePurchaseCount * appearanceCount,
@@ -2957,6 +5120,126 @@ export function mergeBotOnlyBaselineAggregateReports(
       raidBattleUnitsById.set(entry.unitId, existing);
     }
 
+    for (const entry of aggregate.okinaSubHostMetrics ?? []) {
+      const existing = okinaSubHostsById.get(entry.hostUnitId)
+        ?? createOkinaSubHostAccumulator(
+          entry.hostUnitId,
+          entry.hostUnitType,
+          entry.hostUnitName,
+        );
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalHostLevel += entry.averageHostLevel * entry.battleAppearances;
+      existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
+      existing.totalDamageTaken += entry.averageDamageTakenPerBattle * entry.battleAppearances;
+      existing.totalLifetimeMs += entry.averageLifetimeMs * entry.battleAppearances;
+      existing.survivedBattles += entry.survivalRate * entry.battleAppearances;
+      existing.ownerWins += entry.ownerWinRate * entry.battleAppearances;
+      okinaSubHostsById.set(entry.hostUnitId, existing);
+    }
+
+    for (const entry of aggregate.okinaSubHostRoundMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.hostUnitId}`;
+      const existing = okinaSubHostsByRoundAndId.get(key)
+        ?? createOkinaSubHostRoundAccumulator(
+          entry.roundIndex,
+          entry.hostUnitId,
+          entry.hostUnitType,
+          entry.hostUnitName,
+        );
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalHostLevel += entry.averageHostLevel * entry.battleAppearances;
+      existing.totalDamage += entry.averageDamagePerBattle * entry.battleAppearances;
+      existing.totalDamageTaken += entry.averageDamageTakenPerBattle * entry.battleAppearances;
+      existing.totalLifetimeMs += entry.averageLifetimeMs * entry.battleAppearances;
+      existing.survivedBattles += entry.survivalRate * entry.battleAppearances;
+      existing.ownerWins += entry.ownerWinRate * entry.battleAppearances;
+      okinaSubHostsByRoundAndId.set(key, existing);
+    }
+
+    for (const entry of aggregate.okinaHeroSubDecisionRoundMetrics ?? []) {
+      const existing = okinaHeroSubDecisionsByRound.get(entry.roundIndex)
+        ?? createOkinaHeroSubDecisionRoundAccumulator(entry.roundIndex);
+      existing.samples += entry.samples;
+      existing.actionRecommendedSamples += entry.actionRecommendedSamples;
+      existing.noCandidateSamples += entry.noCandidateSamples;
+      existing.frontValuePreferredSamples += entry.frontValuePreferredSamples;
+      existing.currentHostKeptSamples += entry.currentHostKeptSamples;
+      existing.totalCandidateCount += entry.averageCandidateCount * entry.samples;
+      existing.totalFrontEquivalentValue += entry.averageFrontEquivalentValue * entry.samples;
+      if (entry.averageBestHostGain !== null) {
+        const bestHostGainSamples = entry.samples - entry.noCandidateSamples;
+        existing.totalBestHostGain += entry.averageBestHostGain * bestHostGainSamples;
+        existing.bestHostGainSamples += bestHostGainSamples;
+      }
+      if (
+        entry.averageBestHostCurrentPowerScore !== null
+        && entry.averageBestHostFutureValueScore !== null
+        && entry.averageBestHostTransitionReadinessScore !== null
+        && entry.averageBestHostProtectionScore !== null
+      ) {
+        const bestHostOptimizationSamples = entry.samples - entry.noCandidateSamples;
+        existing.totalBestHostCurrentPowerScore +=
+          entry.averageBestHostCurrentPowerScore * bestHostOptimizationSamples;
+        existing.totalBestHostFutureValueScore +=
+          entry.averageBestHostFutureValueScore * bestHostOptimizationSamples;
+        existing.totalBestHostTransitionReadinessScore +=
+          entry.averageBestHostTransitionReadinessScore * bestHostOptimizationSamples;
+        existing.totalBestHostProtectionScore +=
+          entry.averageBestHostProtectionScore * bestHostOptimizationSamples;
+        existing.bestHostOptimizationSamples += bestHostOptimizationSamples;
+      }
+      if (entry.averageBestToFrontRatio !== null) {
+        const bestToFrontRatioSamples = entry.samples - entry.noCandidateSamples;
+        existing.totalBestToFrontRatio += entry.averageBestToFrontRatio * bestToFrontRatioSamples;
+        existing.bestToFrontRatioSamples += bestToFrontRatioSamples;
+      }
+      if (entry.mostFrequentBestHostUnitId !== null && entry.mostFrequentBestHostSamples > 0) {
+        const host = existing.bestHostSamplesById.get(entry.mostFrequentBestHostUnitId) ?? {
+          unitId: entry.mostFrequentBestHostUnitId,
+          unitName: entry.mostFrequentBestHostUnitName ?? entry.mostFrequentBestHostUnitId,
+          samples: 0,
+        };
+        host.samples += entry.mostFrequentBestHostSamples;
+        existing.bestHostSamplesById.set(entry.mostFrequentBestHostUnitId, host);
+      }
+      okinaHeroSubDecisionsByRound.set(entry.roundIndex, existing);
+    }
+
+    for (const entry of aggregate.boardRefitDecisionRoundMetrics ?? []) {
+      const existing = boardRefitDecisionsByRound.get(entry.roundIndex)
+        ?? createBoardRefitDecisionRoundAccumulator(entry.roundIndex);
+      mergeBoardRefitDecisionMetricIntoAccumulator(entry, existing);
+      boardRefitDecisionsByRound.set(entry.roundIndex, existing);
+    }
+
+    for (const entry of aggregate.boardRefitDecisionRoleMetrics ?? []) {
+      const existing = boardRefitDecisionsByRole.get(entry.role)
+        ?? createBoardRefitDecisionRoleAccumulator(entry.role);
+      mergeBoardRefitDecisionMetricIntoAccumulator(entry, existing);
+      boardRefitDecisionsByRole.set(entry.role, existing);
+    }
+
+    for (const entry of aggregate.boardRefitDecisionRoleRoundMetrics ?? []) {
+      const key = `${entry.role}:${entry.roundIndex}`;
+      const existing = boardRefitDecisionsByRoleRound.get(key)
+        ?? createBoardRefitDecisionRoleRoundAccumulator(entry.role, entry.roundIndex);
+      mergeBoardRefitDecisionMetricIntoAccumulator(entry, existing);
+      boardRefitDecisionsByRoleRound.set(key, existing);
+    }
+
+    for (const entry of aggregate.finalPlayerBoardMetrics ?? []) {
+      const existing = finalPlayerBoardMetricsByLabel.get(entry.label)
+        ?? createFinalPlayerBoardAccumulator(entry.label, entry.role);
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalDeployedUnitCount += entry.averageDeployedUnitCount * entry.matchesPresent;
+      existing.totalDeployedAssetValue += entry.averageDeployedAssetValue * entry.matchesPresent;
+      existing.totalSpecialUnitCount += entry.averageSpecialUnitCount * entry.matchesPresent;
+      existing.totalStandardUnitCount += entry.averageStandardUnitCount * entry.matchesPresent;
+      finalPlayerBoardMetricsByLabel.set(entry.label, existing);
+    }
+
     for (const entry of aggregate.finalBoardUnitMetrics) {
       const existing = finalBoardUnitsById.get(entry.unitId) ?? {
         unitId: entry.unitId,
@@ -2964,9 +5247,17 @@ export function mergeBotOnlyBaselineAggregateReports(
         unitName: entry.unitName,
         totalCopies: 0,
         matchesPresent: 0,
+        totalUnitLevel: 0,
+        maxUnitLevel: 0,
+        level4Copies: 0,
+        level7Copies: 0,
       };
       existing.totalCopies += entry.totalCopies;
       existing.matchesPresent += entry.matchesPresent;
+      existing.totalUnitLevel += (entry.averageFinalUnitLevel ?? 0) * entry.totalCopies;
+      existing.maxUnitLevel = Math.max(existing.maxUnitLevel, entry.maxFinalUnitLevel ?? 0);
+      existing.level4Copies += (entry.finalLevel4Rate ?? 0) * entry.totalCopies;
+      existing.level7Copies += (entry.finalLevel7Rate ?? 0) * entry.totalCopies;
       finalBoardUnitsById.set(entry.unitId, existing);
     }
 
@@ -3031,6 +5322,71 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.finalBoardCopies += entry.finalBoardCopies;
       existing.finalBoardMatchCount += entry.finalBoardMatchCount;
       shopOfferMetricsByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.bossExclusiveRoundLevelMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.unitId}`;
+      const existing = bossExclusiveRoundLevelByKey.get(key)
+        ?? createBossExclusiveRoundLevelAccumulator(
+          entry.roundIndex,
+          entry.unitId,
+          entry.unitType,
+          entry.unitName,
+        );
+      existing.battleAppearances += entry.battleAppearances;
+      const levelSamples = entry.unitLevelSamples && entry.unitLevelSamples.length > 0
+        ? entry.unitLevelSamples
+        : Array.from({ length: entry.battleAppearances }, () => entry.averageUnitLevel);
+      existing.unitLevelSamples.push(...levelSamples);
+      for (let matchOffset = 0; matchOffset < entry.matchesPresent; matchOffset += 1) {
+        existing.matchKeys.add(`${key}::chunk${roundDetailMatchOffset}::${matchOffset}`);
+      }
+      bossExclusiveRoundLevelByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.highCostRoundMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.role}::${entry.source}::${entry.unitId}`;
+      const existing = highCostRoundMetricsByKey.get(key)
+        ?? createHighCostRoundAccumulator(
+          entry.roundIndex,
+          entry.role,
+          entry.source,
+          entry.unitId,
+          entry.unitType,
+          entry.unitName,
+          entry.cost,
+        );
+      existing.offerObservationCount += entry.offerObservationCount;
+      existing.purchaseCount += entry.purchaseCount;
+      existing.battleAppearances += entry.battleAppearances;
+      for (let matchOffset = 0; matchOffset < entry.offerMatchCount; matchOffset += 1) {
+        existing.offerMatchKeys.add(`${key}::offer::chunk${roundDetailMatchOffset}::${matchOffset}`);
+      }
+      for (let matchOffset = 0; matchOffset < entry.purchaseMatchCount; matchOffset += 1) {
+        existing.purchaseMatchKeys.add(`${key}::purchase::chunk${roundDetailMatchOffset}::${matchOffset}`);
+      }
+      for (let matchOffset = 0; matchOffset < entry.battleMatchCount; matchOffset += 1) {
+        existing.battleMatchKeys.add(`${key}::battle::chunk${roundDetailMatchOffset}::${matchOffset}`);
+      }
+      highCostRoundMetricsByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.roundDamageEfficiencyMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.side}::${entry.unitId}`;
+      const existing = roundDamageEfficiencyByKey.get(key)
+        ?? createRoundDamageEfficiencyAccumulator(
+          entry.roundIndex,
+          entry.side,
+          entry.unitId,
+          entry.unitType,
+          entry.unitName,
+        );
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalUnitLevel += entry.averageUnitLevel * entry.battleAppearances;
+      existing.totalDamage += entry.totalDamage;
+      existing.totalInvestmentCost += entry.totalInvestmentCost;
+      roundDamageEfficiencyByKey.set(key, existing);
     }
 
     for (const entry of aggregate.rangeDamageEfficiencyMetrics) {
@@ -3388,6 +5744,19 @@ export function mergeBotOnlyBaselineAggregateReports(
             (specialUnitUpgradeCountTotalsByLabel.get(label) ?? 0) / appearanceCount,
         }]),
     ),
+    heroTeamMetrics: buildHeroTeamMetrics(heroTeamMetricsById.values()),
+    heroCompositionMetrics: buildHeroCompositionMetrics(heroCompositionMetricsByKey.values()),
+    playerEconomyBreakdowns: Object.fromEntries(
+      Array.from(appearanceCountsByLabel.entries())
+        .sort(([leftLabel], [rightLabel]) => leftLabel.localeCompare(rightLabel))
+        .map(([label, appearanceCount]) => [
+          label,
+          dividePlayerEconomyBreakdown(
+            economyBreakdownTotalsByLabel.get(label) ?? createEmptyPlayerEconomyBreakdown(),
+            appearanceCount,
+          ),
+        ]),
+    ),
     bossBattleUnitMetrics: Array.from(bossBattleUnitsById.values())
       .sort((left, right) =>
         right.matchesPresent - left.matchesPresent
@@ -3400,6 +5769,60 @@ export function mergeBotOnlyBaselineAggregateReports(
         || right.totalDamage - left.totalDamage
         || left.unitId.localeCompare(right.unitId))
       .map((entry) => buildBattleUnitMetrics(entry, completedMatches)),
+    ...(okinaSubHostsById.size > 0
+      ? {
+        okinaSubHostMetrics: Array.from(okinaSubHostsById.values())
+          .sort((left, right) =>
+            right.battleAppearances - left.battleAppearances
+            || right.totalDamage - left.totalDamage
+            || left.hostUnitId.localeCompare(right.hostUnitId))
+          .map((entry) => buildOkinaSubHostMetric(entry)),
+      }
+      : {}),
+    ...(okinaSubHostsByRoundAndId.size > 0
+      ? {
+        okinaSubHostRoundMetrics: Array.from(okinaSubHostsByRoundAndId.values())
+          .sort((left, right) =>
+            left.roundIndex - right.roundIndex
+            || right.battleAppearances - left.battleAppearances
+            || right.totalDamage - left.totalDamage
+            || left.hostUnitId.localeCompare(right.hostUnitId))
+          .map((entry) => buildOkinaSubHostRoundMetric(entry)),
+      }
+      : {}),
+    ...(okinaHeroSubDecisionsByRound.size > 0
+      ? {
+        okinaHeroSubDecisionRoundMetrics: Array.from(okinaHeroSubDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildOkinaHeroSubDecisionRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardRefitDecisionsByRound.size > 0
+      ? {
+        boardRefitDecisionRoundMetrics: Array.from(boardRefitDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildBoardRefitDecisionRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardRefitDecisionsByRole.size > 0
+      ? {
+        boardRefitDecisionRoleMetrics: Array.from(boardRefitDecisionsByRole.values())
+          .sort((left, right) => left.role.localeCompare(right.role))
+          .map((entry) => buildBoardRefitDecisionRoleMetric(entry)),
+      }
+      : {}),
+    ...(boardRefitDecisionsByRoleRound.size > 0
+      ? {
+        boardRefitDecisionRoleRoundMetrics: Array.from(boardRefitDecisionsByRoleRound.values())
+          .sort((left, right) =>
+            left.role.localeCompare(right.role)
+            || left.roundIndex - right.roundIndex)
+          .map((entry) => buildBoardRefitDecisionRoleRoundMetric(entry)),
+      }
+      : {}),
+    finalPlayerBoardMetrics: Array.from(finalPlayerBoardMetricsByLabel.values())
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .map((entry) => buildFinalPlayerBoardMetric(entry)),
     finalBoardUnitMetrics: Array.from(finalBoardUnitsById.values())
       .sort((left, right) =>
         right.matchesPresent - left.matchesPresent
@@ -3413,6 +5836,10 @@ export function mergeBotOnlyBaselineAggregateReports(
         matchesPresent: entry.matchesPresent,
         averageCopiesPerMatch: entry.totalCopies / completedMatches,
         adoptionRate: entry.matchesPresent / completedMatches,
+        averageFinalUnitLevel: entry.totalCopies > 0 ? entry.totalUnitLevel / entry.totalCopies : 0,
+        maxFinalUnitLevel: entry.maxUnitLevel,
+        finalLevel4Rate: entry.totalCopies > 0 ? entry.level4Copies / entry.totalCopies : 0,
+        finalLevel7Rate: entry.totalCopies > 0 ? entry.level7Copies / entry.totalCopies : 0,
       })),
     topDamageUnits: Array.from(topDamageUnitsByKey.values())
       .sort((left, right) =>
@@ -3446,6 +5873,36 @@ export function mergeBotOnlyBaselineAggregateReports(
         ...entry,
         offeredMatchRate: entry.matchesPresent / completedMatches,
       })),
+    bossExclusiveRoundLevelMetrics: Array.from(bossExclusiveRoundLevelByKey.values())
+      .map((entry) => buildBossExclusiveRoundLevelMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.unitId.localeCompare(right.unitId)),
+    highCostRoundMetrics: Array.from(highCostRoundMetricsByKey.values())
+      .map((entry) => buildHighCostRoundMetric(entry, completedMatches))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.role.localeCompare(right.role)
+        || left.source.localeCompare(right.source)
+        || left.unitId.localeCompare(right.unitId)),
+    roundDamageEfficiencyMetrics: Array.from(roundDamageEfficiencyByKey.values())
+      .map((entry) => buildRoundDamageEfficiencyMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.side.localeCompare(right.side)
+        || ((right.damagePerInvestmentCost ?? -1) - (left.damagePerInvestmentCost ?? -1))
+        || right.totalDamage - left.totalDamage
+        || left.unitId.localeCompare(right.unitId)),
+    unitDamageEfficiencyMetrics: buildUnitDamageEfficiencyMetrics(roundDamageEfficiencyByKey.values()),
+    roundSurvivalDiagnostics: Array.from(roundSurvivalDiagnosticsByRound.values())
+      .map((entry) => buildRoundSurvivalDiagnosticMetric(entry))
+      .sort((left, right) => left.roundIndex - right.roundIndex),
+    roundUnitSurvivalDiagnostics: Array.from(roundUnitSurvivalDiagnosticsByKey.values())
+      .map((entry) => buildRoundUnitSurvivalDiagnosticMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.side.localeCompare(right.side)
+        || left.unitId.localeCompare(right.unitId)),
     shopOfferMetrics: Array.from(shopOfferMetricsByKey.values())
       .sort((left, right) =>
         right.matchesPresent - left.matchesPresent

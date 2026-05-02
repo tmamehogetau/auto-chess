@@ -132,6 +132,9 @@ export interface PlayerActionLog {
     | "undeploy"
     | "merge"
     | "hero_select"
+    | "prep_income"
+    | "raid_phase_success_bonus"
+    | "battle_economy_bonus"
     | "shop_refresh"
     | "upgrade_special_unit"
     | "buy_boss_unit"
@@ -153,6 +156,7 @@ export interface PlayerActionLog {
     locked?: boolean;
     benchUnit?: string;
     isRumorUnit?: boolean;
+    amount?: number;
     goldBefore: number;
     goldAfter: number;
   };

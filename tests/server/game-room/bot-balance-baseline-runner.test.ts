@@ -11,10 +11,12 @@ import {
   createBaselineChunkDefinitions,
   DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM,
   resolveBotBalanceBaselineAutoParallelism,
+  resolveBotBalanceBaselineOptimizationVariant,
   resolveBotBalanceBaselineRaidPolicies,
   DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE,
   resolveBotBalanceBaselineParallelism,
   resolveBotBalanceBaselinePortOffsetBase,
+  resolveBotBalanceBaselineRaidHeroIds,
   resolveBotBalanceBaselineWorkerPortOffset,
 } from "./bot-balance-baseline-runner";
 
@@ -58,6 +60,8 @@ describe("bot balance baseline runner helpers", () => {
       requestedMatchCount: 5,
       bossPolicy: "growth",
       raidPolicies: ["strength", "growth", "growth"],
+      raidHeroIds: ["okina", "keiki", "jyoon"],
+      optimizationVariant: "raid-optimization-off",
     });
 
     expect(baselineChunkConfigMatches(baselineConfig, baselineConfig)).toBe(true);
@@ -67,6 +71,7 @@ describe("bot balance baseline runner helpers", () => {
         requestedMatchCount: 4,
         bossPolicy: "growth",
         raidPolicies: ["strength", "growth", "growth"],
+        optimizationVariant: "raid-optimization-off",
       }),
       baselineConfig,
     )).toBe(false);
@@ -75,6 +80,28 @@ describe("bot balance baseline runner helpers", () => {
         requestedMatchCount: 5,
         bossPolicy: "strength",
         raidPolicies: ["strength", "growth", "growth"],
+        raidHeroIds: ["okina", "keiki", "jyoon"],
+        optimizationVariant: "raid-optimization-off",
+      }),
+      baselineConfig,
+    )).toBe(false);
+    expect(baselineChunkConfigMatches(
+      createBaselineChunkConfigSnapshot({
+        requestedMatchCount: 5,
+        bossPolicy: "growth",
+        raidPolicies: ["strength", "growth", "growth"],
+        raidHeroIds: ["reimu", "marisa", "okina"],
+        optimizationVariant: "raid-optimization-off",
+      }),
+      baselineConfig,
+    )).toBe(false);
+    expect(baselineChunkConfigMatches(
+      createBaselineChunkConfigSnapshot({
+        requestedMatchCount: 5,
+        bossPolicy: "growth",
+        raidPolicies: ["strength", "growth", "growth"],
+        raidHeroIds: ["okina", "keiki", "jyoon"],
+        optimizationVariant: "boss-optimization-off",
       }),
       baselineConfig,
     )).toBe(false);
@@ -136,12 +163,28 @@ describe("bot balance baseline runner helpers", () => {
     expect(createBotBalanceBaselineHelperConfigs({
       bossPolicy: "growth",
       raidPolicies: ["strength", "growth", "growth"],
+      raidHeroIds: ["okina", "keiki", "jyoon"],
+      optimizationVariant: "raid-optimization-off",
     })).toEqual([
-      { wantsBoss: true, policy: "growth" },
-      { wantsBoss: false, policy: "strength" },
-      { wantsBoss: false, policy: "growth" },
-      { wantsBoss: false, policy: "growth" },
+      { wantsBoss: true, policy: "growth", optimizationVariant: "raid-optimization-off" },
+      { wantsBoss: false, policy: "strength", heroId: "okina", optimizationVariant: "raid-optimization-off" },
+      { wantsBoss: false, policy: "growth", heroId: "keiki", optimizationVariant: "raid-optimization-off" },
+      { wantsBoss: false, policy: "growth", heroId: "jyoon", optimizationVariant: "raid-optimization-off" },
     ]);
+  });
+
+  test("normalizes optimization ablation variants", () => {
+    expect(resolveBotBalanceBaselineOptimizationVariant(undefined)).toBe("full");
+    expect(resolveBotBalanceBaselineOptimizationVariant("full")).toBe("full");
+    expect(resolveBotBalanceBaselineOptimizationVariant("raid-optimization-off")).toBe("raid-optimization-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("boss-optimization-off")).toBe("boss-optimization-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("all-optimization-off")).toBe("all-optimization-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("board-refit-off")).toBe("board-refit-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("raid-board-refit-off")).toBe("raid-board-refit-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("boss-board-refit-off")).toBe("boss-board-refit-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("future-shop-off")).toBe("future-shop-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("okina-host-off")).toBe("okina-host-off");
+    expect(resolveBotBalanceBaselineOptimizationVariant("unknown")).toBe("full");
   });
 
   test("normalizes raid policy csv values and fills missing slots with strength", () => {
@@ -160,5 +203,22 @@ describe("bot balance baseline runner helpers", () => {
       "strength",
       "growth",
     ]);
+  });
+
+  test("parses fixed raid hero csv values only when all three slots are explicit", () => {
+    expect(resolveBotBalanceBaselineRaidHeroIds(undefined)).toBeNull();
+    expect(resolveBotBalanceBaselineRaidHeroIds("")).toBeNull();
+    expect(resolveBotBalanceBaselineRaidHeroIds(" okina, keiki, jyoon ")).toEqual([
+      "okina",
+      "keiki",
+      "jyoon",
+    ]);
+
+    expect(() => resolveBotBalanceBaselineRaidHeroIds("okina,keiki")).toThrow(
+      /exactly 3/,
+    );
+    expect(() => resolveBotBalanceBaselineRaidHeroIds("okina,unknown,jyoon")).toThrow(
+      /Unknown raid hero/,
+    );
   });
 });

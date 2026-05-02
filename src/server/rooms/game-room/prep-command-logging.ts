@@ -1,4 +1,5 @@
 import type { MatchLogger } from "../../match-logger";
+import type { FeatureFlags } from "../../../shared/feature-flags";
 import type { LoggedPrepCommandPayload } from "./prep-command-payload";
 import { calculateSellValue } from "../../unit-level-config";
 import { calculateSpecialUnitUpgradeCost } from "../../special-unit-level-config";
@@ -41,6 +42,7 @@ export interface PrepCommandLoggingDeps {
     unitLevel?: number;
     unitCount?: number;
   }> | undefined;
+  getRosterFlags?: () => FeatureFlags;
   getRoundIndex: () => number;
   getPlayerGold: (sessionId: string) => number;
 }

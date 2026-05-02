@@ -976,6 +976,7 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
       getBossShopOffers: (sid) => this.controller?.getBossShopOffersForPlayer(sid),
       getBenchUnits: (sid) => this.controller?.getBenchUnitDetailsForPlayer(sid),
       getBoardPlacements: (sid) => this.controller?.getBoardPlacementsForPlayer(sid),
+      getRosterFlags: () => this.featureFlags,
       getRoundIndex: () => this.controller?.roundIndex ?? 0,
       getPlayerGold: (sid) => this.state.players.get(sid)?.gold ?? 0,
     }, { shopOffersSnapshot, bossShopOffersSnapshot, benchUnitsSnapshot, boardPlacementsSnapshot });

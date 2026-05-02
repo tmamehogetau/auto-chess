@@ -3,13 +3,622 @@ import { describe, expect, test } from "vitest";
 import {
   AUTO_FILL_BOSS_ID,
   AUTO_FILL_HERO_IDS,
+  buildBoardRefitDecision,
   buildAutoFillHelperActions,
+  buildOptimizationCandidate,
+  buildOkinaHeroSubDecisionDiagnostic,
+  getBoardCurrentPowerScore,
+  getFutureValueScore,
+  getReplacementProtectionScore,
+  getTransitionReadinessScore,
   resolveAutoFillHelperPlayerPhase,
 } from "../../src/client/autofill-helper-automation.js";
 
 describe("autofill helper automation", () => {
   test("auto-fill hero pool includes yuiman", () => {
     expect(AUTO_FILL_HERO_IDS).toContain("yuiman");
+  });
+
+  test("shared board refit scoring primitives expose independent deterministic components", () => {
+    const lowLevelHighCost = { source: "bench", unitId: "hecatia", unitType: "mage", unitLevel: 1, cost: 5 };
+    const readyHighCost = { ...lowLevelHighCost, unitLevel: 4 };
+    const leveledLowCost = { source: "board", cell: 31, unitId: "nazrin", unitType: "ranger", unitLevel: 7, cost: 1 };
+    const raidContext = {
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+          leveledLowCost,
+        ],
+        benchUnits: [lowLevelHighCost],
+        benchUnitIds: ["hecatia"],
+      },
+      state: { roundIndex: 7 },
+    };
+
+    expect(getBoardCurrentPowerScore(readyHighCost, raidContext))
+      .toBeGreaterThan(getBoardCurrentPowerScore(lowLevelHighCost, raidContext));
+    expect(getFutureValueScore(lowLevelHighCost, raidContext))
+      .toBeGreaterThan(getFutureValueScore(leveledLowCost, raidContext));
+    expect(getTransitionReadinessScore(readyHighCost, raidContext))
+      .toBeGreaterThan(getTransitionReadinessScore(lowLevelHighCost, raidContext));
+    expect(getReplacementProtectionScore(leveledLowCost, raidContext)).toEqual(expect.objectContaining({
+      reasons: expect.arrayContaining(["leveled_low_cost"]),
+    }));
+    expect(getReplacementProtectionScore({
+      source: "board",
+      cell: 30,
+      unitId: "reimu",
+      unitType: "hero",
+      unitLevel: 3,
+    }, raidContext).score).toBeGreaterThan(9_000);
+    expect(getReplacementProtectionScore(lowLevelHighCost, raidContext).score).toBe(0);
+  });
+
+  test("board refit scoring separates current power, future value, transition readiness, and protection", () => {
+    const diagnostic = buildBoardRefitDecision({
+      role: "raid",
+      selectedHeroId: "reimu",
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+        { cell: 31, unitId: "nazrin", unitType: "ranger", unitLevel: 7 },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 7 },
+      ],
+      benchUnits: [{ unitId: "megumu", unitType: "ranger", unitLevel: 1, cost: 4 }],
+      benchUnitIds: ["megumu"],
+    }, { roundIndex: 5 });
+
+    expect(diagnostic.boardAtCapacity).toBe(true);
+    expect(diagnostic.incomingCandidate?.futureValueScore ?? 0)
+      .toBeGreaterThan(diagnostic.outgoingCandidate?.futureValueScore ?? 0);
+    expect(diagnostic.outgoingCandidate?.currentPowerScore ?? 0)
+      .toBeGreaterThan(diagnostic.incomingCandidate?.currentPowerScore ?? 0);
+    expect(diagnostic.outgoingCandidate?.protectionScore ?? 0).toBeGreaterThan(0);
+    expect(diagnostic.decision).toBe("hold");
+    expect(diagnostic.reason).toBe("insufficient_margin");
+  });
+
+  test("board refit scoring marks a matured high-cost bench candidate as replacement-ready", () => {
+    const diagnostic = buildBoardRefitDecision({
+      role: "raid",
+      selectedHeroId: "reimu",
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+        { cell: 31, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+      ],
+      benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+      benchUnitIds: ["hecatia"],
+    }, { roundIndex: 9 });
+
+    expect(diagnostic.decision).toBe("replace");
+    expect(diagnostic.reason).toBe("replacement_ready");
+    expect(diagnostic.incomingCandidate?.transitionReadinessScore ?? 0).toBeGreaterThan(0);
+    expect(diagnostic.replacementScore ?? 0).toBeGreaterThan(0);
+  });
+
+  test("boss board refit accepts a frontline screen when the final-round body is under-protected", () => {
+    const diagnostic = buildBoardRefitDecision({
+      role: "boss",
+      selectedBossId: "remilia",
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 6 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 9, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+        { cell: 10, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+        { cell: 4, unitId: "hecatia", unitType: "mage", unitLevel: 1 },
+        { cell: 16, unitId: "junko", unitType: "mage", unitLevel: 1 },
+        { cell: 1, unitId: "utsuho", unitType: "mage", unitLevel: 1 },
+      ],
+      benchUnits: [{ unitId: "yoshika", unitType: "vanguard", unitLevel: 1, cost: 1 }],
+      benchUnitIds: ["yoshika"],
+    }, { roundIndex: 12 });
+
+    expect(diagnostic.decision).toBe("replace");
+    expect(diagnostic.reason).toBe("replacement_ready");
+    expect(diagnostic.incomingCandidate).toMatchObject({
+      unitId: "yoshika",
+      unitType: "vanguard",
+    });
+    expect(diagnostic.outgoingCandidate?.unitId).not.toBe("meiling");
+  });
+
+  test("boss board refit keeps mature high-cost carries once the frontline screen is established", () => {
+    const diagnostic = buildBoardRefitDecision({
+      role: "boss",
+      selectedBossId: "remilia",
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 7 },
+        { cell: 7, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+        { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+        { cell: 1, unitId: "hecatia", unitType: "mage", unitLevel: 7 },
+        { cell: 15, unitId: "utsuho", unitType: "mage", unitLevel: 7 },
+      ],
+      benchUnits: [{ unitId: "byakuren", unitType: "vanguard", unitLevel: 1, cost: 5 }],
+      benchUnitIds: ["byakuren"],
+    }, { roundIndex: 12 });
+
+    expect(diagnostic.decision).toBe("hold");
+    expect(diagnostic.outgoingCandidate?.unitId).not.toBe("hecatia");
+    expect(diagnostic.outgoingCandidate?.unitId).not.toBe("utsuho");
+    expect(diagnostic.outgoingCandidate?.unitId).not.toBe("patchouli");
+  });
+
+  test("boss board refit can pivot low-level Meiling into a mature carry after Sakuya and Patchouli are established", () => {
+    const diagnostic = buildBoardRefitDecision({
+      role: "boss",
+      selectedBossId: "remilia",
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 3 },
+        { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 7 },
+        { cell: 20, unitId: "byakuren", unitType: "vanguard", unitLevel: 7 },
+        { cell: 7, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+        { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+        { cell: 15, unitId: "utsuho", unitType: "mage", unitLevel: 7 },
+      ],
+      benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+      benchUnitIds: ["hecatia"],
+    }, { roundIndex: 12 });
+
+    expect(diagnostic.decision).toBe("replace");
+    expect(diagnostic.outgoingCandidate?.unitId).toBe("meiling");
+    expect(diagnostic.outgoingCandidate?.protectionReasons).not.toContain("boss_exclusive_core");
+  });
+
+  test("board refit scoring protects pair and sub-host anchors", () => {
+    const protectedCandidate = buildOptimizationCandidate({
+      source: "board",
+      cell: 31,
+      unitId: "miko",
+      unitType: "mage",
+      unitLevel: 2,
+      subUnit: { unitId: "futo", unitType: "mage" },
+    }, {
+      player: {
+        role: "raid",
+        selectedHeroId: "reimu",
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+          { cell: 31, unitId: "miko", unitType: "mage", unitLevel: 2, subUnit: { unitId: "futo", unitType: "mage" } },
+        ],
+        boardSubUnits: ["31:hero:futo"],
+      },
+      state: { roundIndex: 6 },
+    });
+
+    expect(protectedCandidate.protectionScore).toBeGreaterThan(0);
+    expect(protectedCandidate.protectionReasons).toEqual(expect.arrayContaining([
+      "sub_host",
+      "pair_anchor",
+    ]));
+  });
+
+  test("purchase phase boss helper reserves a high-future carry when board slots are full but bench pressure is low", () => {
+    const player = {
+      ready: false,
+      role: "boss",
+      gold: 5,
+      selectedBossId: "remilia",
+      specialUnitLevel: 7,
+      benchUnits: ["ranger"],
+      benchUnitIds: ["nazrin"],
+      boardSubUnits: [],
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 9, unitId: "sakuya", unitType: "assassin", unitLevel: 5 },
+        { cell: 10, unitId: "patchouli", unitType: "mage", unitLevel: 5 },
+        { cell: 3, unitId: "junko", unitType: "vanguard", unitLevel: 7 },
+        { cell: 4, unitId: "byakuren", unitType: "vanguard", unitLevel: 7 },
+        { cell: 5, unitId: "utsuho", unitType: "mage", unitLevel: 7 },
+      ],
+      shopOffers: [
+        { unitId: "hecatia", unitType: "mage", cost: 5 },
+        { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+      ],
+      bossShopOffers: [],
+    };
+    const state = { phase: "Prep", playerPhase: "purchase", roundIndex: 10 };
+
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player,
+      state,
+    })).toEqual([{
+      type: "prep_command",
+      payload: { shopBuySlotIndex: 0 },
+    }]);
+  });
+
+  test("purchase phase boss helper starts reserving a high-future carry at the midgame pivot once its core is established", () => {
+    const player = {
+      ready: false,
+      role: "boss",
+      gold: 5,
+      selectedBossId: "remilia",
+      specialUnitLevel: 4,
+      benchUnits: ["ranger"],
+      benchUnitIds: ["nazrin"],
+      boardSubUnits: [],
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 4 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 9, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+        { cell: 10, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+        { cell: 3, unitId: "junko", unitType: "vanguard", unitLevel: 7 },
+        { cell: 4, unitId: "byakuren", unitType: "vanguard", unitLevel: 7 },
+        { cell: 5, unitId: "utsuho", unitType: "mage", unitLevel: 7 },
+      ],
+      shopOffers: [
+        { unitId: "hecatia", unitType: "mage", cost: 5 },
+        { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+      ],
+      bossShopOffers: [],
+    };
+    const state = { phase: "Prep", playerPhase: "purchase", roundIndex: 6 };
+
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player,
+      state,
+    })).toEqual([{
+      type: "prep_command",
+      payload: { shopBuySlotIndex: 0 },
+    }]);
+  });
+
+  test("deploy phase sells one weak board unit when a ready bench candidate clearly improves a full board", () => {
+    const player = {
+      ready: false,
+      role: "raid",
+      gold: 0,
+      selectedHeroId: "reimu",
+      specialUnitLevel: 3,
+      benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+      benchUnitIds: ["hecatia"],
+      boardSubUnits: [],
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+        { cell: 31, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+      ],
+      shopOffers: [],
+      bossShopOffers: [],
+    };
+    const state = { phase: "Prep", playerPhase: "deploy", roundIndex: 9 };
+    const diagnostic = buildBoardRefitDecision(player, state);
+
+    expect(diagnostic.decision).toBe("replace");
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player,
+      state,
+    })).toEqual([{
+      type: "prep_command",
+      payload: { boardSellIndex: diagnostic.outgoingCandidate?.cell },
+    }]);
+  });
+
+  test("deploy phase does not refit twice in the same round", () => {
+    const actions = buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "reimu",
+        specialUnitLevel: 3,
+        lastBoardRefitRoundIndex: 9,
+        benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+        benchUnitIds: ["hecatia"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+          { cell: 31, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+          { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    });
+
+    expect(actions[0]?.payload).not.toHaveProperty("boardSellIndex");
+  });
+
+  test("boss optimization-off keeps a full board closed instead of selling for a refit", () => {
+    const actions = buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "boss-optimization-off",
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 0,
+        selectedBossId: "remilia",
+        specialUnitLevel: 3,
+        benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+        benchUnitIds: ["hecatia"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 3 },
+          { cell: 3, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+          { cell: 4, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    });
+
+    expect(actions[0]?.payload).not.toHaveProperty("boardSellIndex");
+  });
+
+  test("board-refit-off keeps full boards closed while preserving future reserve buys", () => {
+    const basePlayer = {
+      ready: false,
+      role: "raid",
+      gold: 5,
+      specialUnitLevel: 7,
+      selectedHeroId: "reimu",
+      benchUnits: ["ranger"],
+      benchUnitIds: ["nazrin"],
+      boardSubUnits: ["30:okina", "31:koishi", "32:satori"],
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+        { cell: 31, unitId: "yoshika", unitType: "vanguard", unitLevel: 3 },
+        { cell: 32, unitId: "momoyo", unitType: "assassin", unitLevel: 2 },
+      ],
+      heroExclusiveShopOffers: [],
+      shopOffers: [
+        { unitId: "hecatia", unitType: "mage", cost: 5 },
+        { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+      ],
+      bossShopOffers: [],
+    };
+
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "board-refit-off",
+      player: {
+        ...basePlayer,
+        gold: 0,
+        shopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]?.payload).not.toHaveProperty("boardSellIndex");
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "board-refit-off",
+      player: basePlayer,
+      state: { phase: "Prep", playerPhase: "purchase", roundIndex: 9 },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("role-specific board refit variants only close the targeted role", () => {
+    const raidPlayer = {
+      ready: false,
+      role: "raid",
+      gold: 0,
+      selectedHeroId: "reimu",
+      specialUnitLevel: 3,
+      benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+      benchUnitIds: ["hecatia"],
+      boardSubUnits: [],
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+        { cell: 31, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+      ],
+      shopOffers: [],
+      bossShopOffers: [],
+    };
+    const bossPlayer = {
+      ready: false,
+      role: "boss",
+      gold: 0,
+      selectedBossId: "remilia",
+      specialUnitLevel: 3,
+      benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+      benchUnitIds: ["hecatia"],
+      boardSubUnits: [],
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 3 },
+        { cell: 3, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+        { cell: 4, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+        { cell: 8, unitId: "nazrin", unitType: "ranger", unitLevel: 1 },
+        { cell: 9, unitId: "rin", unitType: "vanguard", unitLevel: 1 },
+        { cell: 10, unitId: "wakasagihime", unitType: "ranger", unitLevel: 1 },
+        { cell: 11, unitId: "clownpiece", unitType: "assassin", unitLevel: 1 },
+      ],
+      shopOffers: [],
+      bossShopOffers: [],
+    };
+
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "raid-board-refit-off",
+      player: raidPlayer,
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]?.payload).not.toHaveProperty("boardSellIndex");
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "raid-board-refit-off",
+      player: bossPlayer,
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]?.payload).toHaveProperty("boardSellIndex");
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "boss-board-refit-off",
+      player: bossPlayer,
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]?.payload).not.toHaveProperty("boardSellIndex");
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "boss-board-refit-off",
+      player: raidPlayer,
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]?.payload).toHaveProperty("boardSellIndex");
+  });
+
+  test("purchase phase raid helper reserves a high-future shop candidate when board and sub slots are full but bench pressure is low", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        specialUnitLevel: 7,
+        selectedHeroId: "reimu",
+        benchUnits: ["ranger"],
+        benchUnitIds: ["nazrin"],
+        boardSubUnits: ["30:okina", "31:koishi", "32:satori"],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+          { cell: 31, unitId: "yoshika", unitType: "vanguard", unitLevel: 3 },
+          { cell: 32, unitId: "momoyo", unitType: "assassin", unitLevel: 2 },
+        ],
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+        bossShopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 9,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("raid optimization-off skips high-future reserve buys that need no immediate deploy slot", () => {
+    const actions = buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "raid-optimization-off",
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        specialUnitLevel: 7,
+        selectedHeroId: "reimu",
+        benchUnits: ["ranger"],
+        benchUnitIds: ["nazrin"],
+        boardSubUnits: ["30:okina", "31:koishi", "32:satori"],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+          { cell: 31, unitId: "yoshika", unitType: "vanguard", unitLevel: 3 },
+          { cell: 32, unitId: "momoyo", unitType: "assassin", unitLevel: 2 },
+        ],
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+        bossShopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 9,
+      },
+    });
+
+    expect(actions[0]?.payload).not.toHaveProperty("shopBuySlotIndex");
+  });
+
+  test("future-shop-off skips no-slot reserve buys while preserving board refit", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "future-shop-off",
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        specialUnitLevel: 7,
+        selectedHeroId: "reimu",
+        benchUnits: ["ranger"],
+        benchUnitIds: ["nazrin"],
+        boardSubUnits: ["30:okina", "31:koishi", "32:satori"],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+          { cell: 31, unitId: "yoshika", unitType: "vanguard", unitLevel: 3 },
+          { cell: 32, unitId: "momoyo", unitType: "assassin", unitLevel: 2 },
+        ],
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+        ],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "purchase", roundIndex: 9 },
+    })[0]?.payload).not.toHaveProperty("shopBuySlotIndex");
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "future-shop-off",
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "reimu",
+        specialUnitLevel: 3,
+        benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+        benchUnitIds: ["hecatia"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 3 },
+          { cell: 31, unitId: "momoyo", unitType: "assassin", unitLevel: 1 },
+          { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]?.payload).toHaveProperty("boardSellIndex");
+  });
+
+  test("all-optimization-off disables both role-specific no-slot reserves and board refits", () => {
+    const actions = buildAutoFillHelperActions({
+      helperIndex: 0,
+      optimizationVariant: "all-optimization-off",
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        selectedHeroId: "reimu",
+        specialUnitLevel: 7,
+        benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 4, cost: 5 }],
+        benchUnitIds: ["hecatia"],
+        boardSubUnits: ["30:okina", "31:koishi", "32:satori"],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+          { cell: 31, unitId: "yoshika", unitType: "vanguard", unitLevel: 3 },
+          { cell: 32, unitId: "momoyo", unitType: "assassin", unitLevel: 2 },
+        ],
+        heroExclusiveShopOffers: [],
+        shopOffers: [{ unitId: "hecatia", unitType: "mage", cost: 5 }],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "purchase", roundIndex: 9 },
+    });
+
+    expect(actions[0]?.payload).not.toHaveProperty("shopBuySlotIndex");
+    expect(actions[0]?.payload).not.toHaveProperty("boardSellIndex");
   });
 
   test("preference stage auto-readies a helper so bot-only lobbies can start", () => {
@@ -267,8 +876,8 @@ describe("autofill helper automation", () => {
         role: "raid",
         benchUnits: [],
         boardUnits: [
-          { cell: 31, unitId: "front-a", unitType: "vanguard" },
-          { cell: 32, unitId: "front-b", unitType: "vanguard" },
+          { cell: 31, unitId: "hecatia", unitType: "mage" },
+          { cell: 32, unitId: "yoshika", unitType: "vanguard" },
         ],
         boardSubUnits: [],
         selectedHeroId: "okina",
@@ -286,6 +895,99 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("raid optimization-off skips Okina host attachment optimization", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 1,
+      optimizationVariant: "raid-optimization-off",
+      player: {
+        ready: false,
+        role: "raid",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 31, unitId: "hecatia", unitType: "mage" },
+          { cell: 32, unitId: "yoshika", unitType: "vanguard" },
+        ],
+        boardSubUnits: [],
+        selectedHeroId: "okina",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: { ready: true },
+        type: "ready",
+      },
+    ]);
+  });
+
+  test("Okina sub decision diagnostic explains the best host boundary", () => {
+    const diagnostic = buildOkinaHeroSubDecisionDiagnostic({
+      role: "raid",
+      selectedHeroId: "okina",
+      specialUnitLevel: 4,
+      boardUnits: [
+        { cell: 31, unitId: "hecatia", unitType: "mage", unitLevel: 4 },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 2 },
+      ],
+      boardSubUnits: [],
+    });
+
+    expect(diagnostic).toEqual(expect.objectContaining({
+      candidateCount: 2,
+      decision: "attach",
+      reason: "attach_best_host",
+      bestHostUnitId: "hecatia",
+      bestHostLevel: 4,
+      specialUnitStage: 4,
+      bestHostOptimizationCandidate: expect.objectContaining({
+        source: "board",
+        cell: 31,
+        unitId: "hecatia",
+        currentPowerScore: expect.any(Number),
+        futureValueScore: expect.any(Number),
+        transitionReadinessScore: expect.any(Number),
+        protectionScore: expect.any(Number),
+        protectionReasons: expect.any(Array),
+      }),
+    }));
+    expect(diagnostic?.bestHostGain ?? 0).toBeGreaterThan(0);
+    expect(diagnostic?.frontEquivalentValue ?? 0).toBeGreaterThan(0);
+    expect(diagnostic?.bestToFrontRatio ?? 0).toBeGreaterThan(1);
+    expect(diagnostic?.bestHostOptimizationCandidate?.currentPowerScore ?? 0).toBeGreaterThan(0);
+    expect(diagnostic?.bestHostOptimizationCandidate?.futureValueScore ?? 0).toBeGreaterThan(0);
+  });
+
+  test("Okina sub decision diagnostic recognizes an already attached host from board units", () => {
+    const diagnostic = buildOkinaHeroSubDecisionDiagnostic({
+      role: "raid",
+      selectedHeroId: "okina",
+      specialUnitLevel: 4,
+      boardUnits: [
+        {
+          cell: 31,
+          unitId: "hecatia",
+          unitType: "mage",
+          unitLevel: 4,
+          attachedSubUnitId: "okina",
+          attachedSubUnitType: "hero",
+        },
+      ],
+      boardSubUnits: [],
+    });
+
+    expect(diagnostic).toEqual(expect.objectContaining({
+      attachedHostCell: 31,
+      candidateCount: 0,
+      currentHostUnitId: "hecatia",
+      decision: "keep_current",
+      reason: "no_candidate",
+    }));
+    expect(diagnostic?.currentHostGain ?? 0).toBeGreaterThan(0);
+  });
+
   test("raid helper can attach Okina to an existing host before explicit deploy phase", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 1,
@@ -294,7 +996,7 @@ describe("autofill helper automation", () => {
         role: "raid",
         benchUnits: [],
         boardUnits: [
-          { cell: 31, unitId: "front-a", unitType: "vanguard" },
+          { cell: 31, unitId: "hecatia", unitType: "mage" },
         ],
         boardSubUnits: [],
         selectedHeroId: "okina",
@@ -330,6 +1032,65 @@ describe("autofill helper automation", () => {
     })).toEqual([
       {
         payload: { bossShopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper skips already purchased boss-shop offers", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        benchUnits: [],
+        boardUnits: [],
+        selectedBossId: "remilia",
+        bossShopOffers: [
+          { unitId: "sakuya", unitType: "assassin", cost: 3, purchased: true },
+          { unitId: "meiling", unitType: "vanguard", cost: 2 },
+        ],
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 1,
+      },
+    })).toEqual([
+      {
+        payload: { bossShopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper skips already purchased normal-shop offers", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "9:sakuya"],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5, purchased: true },
+          { unitId: "kagerou", unitType: "vanguard", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 3,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
         type: "prep_command",
       },
     ]);
@@ -373,7 +1134,7 @@ describe("autofill helper automation", () => {
         benchUnitIds: ["patchouli"],
         boardUnits: [
           "2:remilia",
-          { cell: 4, unitType: "vanguard", unitId: "meiling" },
+          { cell: 4, unitType: "vanguard", unitId: "meiling", unitLevel: 7 },
           { cell: 10, unitType: "assassin", unitId: "sakuya" },
           { cell: 16, unitType: "mage", unitId: "patchouli" },
         ],
@@ -394,7 +1155,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("midgame boss helper upgrades Remilia before another reserve carry", () => {
+  test("midgame boss helper buys another reserve carry while board slots are open", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -405,7 +1166,7 @@ describe("autofill helper automation", () => {
         benchUnits: [],
         boardUnits: [
           "2:remilia",
-          { cell: 4, unitType: "vanguard", unitId: "meiling" },
+          { cell: 4, unitType: "vanguard", unitId: "meiling", unitLevel: 7 },
           { cell: 10, unitType: "assassin", unitId: "sakuya" },
           { cell: 16, unitType: "mage", unitId: "patchouli" },
         ],
@@ -423,7 +1184,233 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
+        payload: { bossShopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper upgrades Remilia before a non-stacking reserve carry once board slots are full", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        boardUnits: [
+          "2:remilia",
+          { cell: 4, unitType: "vanguard", unitId: "meiling", unitLevel: 7 },
+          { cell: 10, unitType: "assassin", unitId: "sakuya" },
+          { cell: 16, unitType: "mage", unitId: "patchouli" },
+          { cell: 8, unitType: "vanguard", unitId: "yoshika", unitLevel: 4 },
+          { cell: 14, unitType: "vanguard", unitId: "rin", unitLevel: 4 },
+          { cell: 15, unitType: "vanguard", unitId: "junko", unitLevel: 4 },
+        ],
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 5,
+      },
+    })).toEqual([
+      {
         payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper buys a normal duplicate even when board slots are full", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 2,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          "2:remilia",
+          "8:meiling",
+          "9:sakuya",
+          "10:patchouli",
+          "3:junko",
+          "4:hecatia",
+          "5:byakuren",
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 7,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full boss helper sells a weak bench unit for a stronger normal offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: ["vanguard", "ranger", "mage", "assassin", "ranger", "vanguard", "mage", "assassin"],
+        benchUnitIds: ["nazrin", "wakasagihime", "rin", "clownpiece", "chimata", "utsuho", "byakuren", "momoyo"],
+        boardUnits: [
+          "2:remilia",
+          "8:meiling",
+          "9:sakuya",
+          "10:patchouli",
+          "4:hecatia",
+          "5:byakuren",
+          "3:utsuho",
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 7 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame board-full boss helper sells a weak board unit for a stronger normal offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          "2:remilia",
+          "8:meiling",
+          "9:sakuya",
+          "10:patchouli",
+          { cell: 3, unitType: "vanguard", unitId: "momoyo" },
+          { cell: 4, unitType: "vanguard", unitId: "rin" },
+          { cell: 5, unitType: "vanguard", unitId: "yoshika", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { boardSellIndex: 3 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper buys the stronger normal offer after opening a board slot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          "2:remilia",
+          "8:meiling",
+          "9:sakuya",
+          "10:patchouli",
+          { cell: 4, unitType: "vanguard", unitId: "rin" },
+          { cell: 5, unitType: "vanguard", unitId: "yoshika", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper can sell non-max Meiling after Sakuya and Patchouli core is online", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          "2:remilia",
+          { cell: 8, unitType: "vanguard", unitId: "meiling", unitLevel: 4 },
+          "9:sakuya",
+          "10:patchouli",
+          { cell: 4, unitType: "vanguard", unitId: "yoshika", unitLevel: 4 },
+          { cell: 5, unitType: "vanguard", unitId: "junko", unitLevel: 4 },
+          { cell: 14, unitType: "mage", unitId: "byakuren", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { boardSellIndex: 8 },
         type: "prep_command",
       },
     ]);
@@ -456,7 +1443,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper upgrades Remilia over a fragile third unit in early rounds", () => {
+  test("prep phase boss helper completes the Scarlet core with Sakuya before upgrading Remilia in early rounds", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -478,7 +1465,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { specialUnitUpgradeCount: 1 },
+        payload: { bossShopBuySlotIndex: 0 },
         type: "prep_command",
       },
     ]);
@@ -538,6 +1525,64 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase boss helper completes the Scarlet core with Sakuya before another Meiling duplicate", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling"],
+        bossShopOffers: [
+          { unitId: "meiling", unitType: "vanguard", cost: 2 },
+          { unitId: "sakuya", unitType: "assassin", cost: 3 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 2,
+      },
+    })).toEqual([
+      {
+        payload: { bossShopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper upgrades Remilia instead of forcing a third boss-exclusive unit", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        specialUnitLevel: 1,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "9:sakuya"],
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 5,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase boss helper can buy from the normal shop when it outranks boss-only offers", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -558,6 +1603,38 @@ describe("autofill helper automation", () => {
       state: {
         phase: "Prep",
         playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper prefers a high-value normal offer over a third-core duplicate", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        specialUnitLevel: 7,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "9:sakuya", "4:patchouli"],
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+        shopOffers: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
       },
     })).toEqual([
       {
@@ -829,7 +1906,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase raid helper still prefers a top-tier normal offer over an early hero upgrade", () => {
+  test("prep phase raid helper can prefer an early hero upgrade over a top-tier normal offer", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,
       player: {
@@ -851,7 +1928,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopBuySlotIndex: 0 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -902,7 +1979,7 @@ describe("autofill helper automation", () => {
         shopOffers: [
           { unitId: "sekibanki", unitType: "assassin", cost: 2 },
           { unitId: "nazrin", unitType: "ranger", cost: 1 },
-          { unitId: "tsukasa", unitType: "mage", cost: 2 },
+          { unitId: "tsukasa", unitType: "mage", cost: 3 },
         ],
       },
       state: {
@@ -1023,6 +2100,37 @@ describe("autofill helper automation", () => {
     })).toEqual([
       {
         payload: { bossShopBuySlotIndex: 1 },
+      type: "prep_command",
+    },
+    ]);
+  });
+
+  test("prep phase boss helper counts string-serialized Meiling escorts before filling backline", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 4,
+        specialUnitLevel: 7,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "14:meiling"],
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "yoshika", unitType: "vanguard", cost: 1 },
+          { unitId: "utsuho", unitType: "mage", cost: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 3,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
         type: "prep_command",
       },
     ]);
@@ -1087,6 +2195,37 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep phase raid helper plans around bench units that can complete a faction tier", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 2,
+        benchUnits: ["ranger"],
+        benchUnitIds: ["megumu"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "tsukasa", factionId: "kou_ryuudou" },
+          { cell: 32, unitId: "momoyo", factionId: "kou_ryuudou" },
+        ],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "chimata", unitType: "mage", factionId: "kou_ryuudou", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase raid helper prefers a matching bench duplicate when upgrade odds outweigh small base-score gaps", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,
@@ -1114,7 +2253,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase raid helper still prioritizes raw strength when the duplicate signal is absent from bench", () => {
+  test("prep phase raid helper can upgrade a deployed board-token hero without a bench duplicate", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 2,
       player: {
@@ -1134,7 +2273,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopBuySlotIndex: 0 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -1697,6 +2836,50 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep deploy phase prioritizes hero-exclusive pair sub attachment onto its hero host", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["vanguard", "vanguard"],
+        benchUnitIds: ["yoshika", "mayumi"],
+        boardUnits: [
+          "30:keiki",
+          { cell: 31, unitType: "ranger", unitId: "nazrin" },
+        ],
+        selectedHeroId: "keiki",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 1,
+            cell: 30,
+            slot: "sub",
+          },
+        },
+        type: "prep_command",
+      },
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 31,
+            slot: "sub",
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase raid helper buys another affordable unit when only part of its deploy lane is filled", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -1750,7 +2933,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("midgame bench-full raid helper keeps a high-cost reserve and sells a lower-priority unit first", () => {
+  test("midgame bench-full raid helper can upgrade its hero before opening space for a high-cost reserve", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -1773,7 +2956,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { benchSellIndex: 4 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -1839,7 +3022,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("midgame strength raid helper rerolls instead of buying an unstacked 1-cost offer", () => {
+  test("midgame strength raid helper upgrades its hero instead of rerolling past an unstacked 1-cost offer", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -1862,13 +3045,13 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopRefreshCount: 1 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
   });
 
-  test("midgame strength raid helper rerolls instead of buying an unstacked 2-cost offer", () => {
+  test("midgame strength raid helper upgrades its hero instead of rerolling past an unstacked 2-cost offer", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -1891,7 +3074,7 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopRefreshCount: 1 },
+        payload: { specialUnitUpgradeCount: 1 },
         type: "prep_command",
       },
     ]);
@@ -1947,7 +3130,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("prep phase boss helper extends Remilia's guard lane when the direct guard cell is occupied", () => {
+  test("prep phase boss helper deepens Remilia's direct guard lane when the direct guard cell is occupied", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -1965,6 +3148,125 @@ describe("autofill helper automation", () => {
           benchToBoardCell: {
             benchIndex: 0,
             cell: 14,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper places Sakuya on a frontline flank instead of a backline slot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: ["assassin"],
+        benchUnitIds: ["sakuya"],
+        boardUnits: ["2:remilia", { cell: 8, unitType: "vanguard", unitId: "meiling" }],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 7,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper keeps Sakuya off the weak right-front flank when the left-front flank is occupied", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: ["assassin"],
+        benchUnitIds: ["sakuya"],
+        boardUnits: [
+          "2:remilia",
+          { cell: 7, unitType: "mage", unitId: "byakuren" },
+          { cell: 8, unitType: "vanguard", unitId: "meiling" },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 15,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper uses the direct guard lane for Sakuya before a deeper flank", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: ["assassin"],
+        benchUnitIds: ["sakuya"],
+        boardUnits: [
+          "2:remilia",
+          { cell: 7, unitType: "mage", unitId: "byakuren" },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase boss helper places backline support beside Remilia instead of the far flank", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: ["mage"],
+        benchUnitIds: ["patchouli"],
+        boardUnits: ["2:remilia", { cell: 8, unitType: "vanguard", unitId: "meiling" }],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 3,
           },
         },
         type: "prep_command",

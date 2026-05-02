@@ -9,7 +9,7 @@ type FakeHelperPlayer = {
   wantsBoss?: boolean;
   gold: number;
   specialUnitLevel?: number;
-  benchUnits: string[];
+  benchUnits: Array<string | { unitType: string; unitId?: string; unitLevel?: number; cost?: number }>;
   benchUnitIds?: string[];
   boardUnits: string[];
   boardSubUnits?: string[];
@@ -28,6 +28,18 @@ type FakeHelperState = {
   lobbyStage?: string;
   featureFlagsEnableTouhouRoster?: boolean;
   players: Map<string, FakeHelperPlayer>;
+};
+
+const getFakeBenchUnitToken = (unit: FakeHelperPlayer["benchUnits"][number] | undefined): string => {
+  if (!unit) {
+    return "vanguard";
+  }
+
+  if (typeof unit === "string") {
+    return unit;
+  }
+
+  return unit.unitId ?? unit.unitType ?? "vanguard";
 };
 
 class FakeHelperRoom {
@@ -66,6 +78,7 @@ class FakeHelperRoom {
       specialUnitUpgradeCount?: number;
       shopRefreshCount?: number;
       benchSellIndex?: number;
+      boardSellIndex?: number;
       benchToBoardCell?: { benchIndex: number; cell: number; slot?: "main" | "sub" };
     };
     const player = this.state?.players.get(this.sessionId);
@@ -181,6 +194,27 @@ class FakeHelperRoom {
       return;
     }
 
+    if (typeof payload.boardSellIndex === "number") {
+      const sellCell = Number(payload.boardSellIndex);
+      if (!Number.isInteger(sellCell)) {
+        this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_cell" });
+        return;
+      }
+
+      const sellIndex = player.boardUnits.findIndex((placement) => placement.startsWith(`${sellCell}:`));
+      if (sellIndex < 0) {
+        this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: false, code: "invalid_board_cell" });
+        return;
+      }
+
+      player.boardUnits.splice(sellIndex, 1);
+      player.boardSubUnits = [...(player.boardSubUnits ?? []).filter((token) => !token.startsWith(`${sellCell}:`))];
+      player.gold += 1;
+      player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
     if (payload.benchToBoardCell) {
       const applyDeployStateUpdate = () => {
         const { benchIndex, cell, slot } = payload.benchToBoardCell ?? {};
@@ -206,6 +240,7 @@ class FakeHelperRoom {
         }
 
         const [benchUnit] = player.benchUnits.splice(safeBenchIndex, 1);
+        const benchUnitToken = getFakeBenchUnitToken(benchUnit);
         player.boardSubUnits ??= [];
 
         if (slot === "sub") {
@@ -215,9 +250,9 @@ class FakeHelperRoom {
           if (!player.boardUnits[existingPlacementIndex]?.endsWith(":sub")) {
             player.boardUnits[existingPlacementIndex] = `${player.boardUnits[existingPlacementIndex]}:sub`;
           }
-          player.boardSubUnits = [...player.boardSubUnits.filter((token) => !token.startsWith(`${safeCell}:`)), `${safeCell}:${benchUnit}`];
+          player.boardSubUnits = [...player.boardSubUnits.filter((token) => !token.startsWith(`${safeCell}:`)), `${safeCell}:${benchUnitToken}`];
         } else {
-          player.boardUnits = [...player.boardUnits, `${safeCell}:${benchUnit}`];
+          player.boardUnits = [...player.boardUnits, `${safeCell}:${benchUnitToken}`];
         }
 
         player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
@@ -643,6 +678,84 @@ describe("helper automation wrapper", () => {
     });
   });
 
+  test("wrapper raises purchase priority for offers that complete an implemented pair skill", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 2,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:reimu", "31:megumu"],
+          boardSubUnits: [],
+          shopOffers: [
+            { unitType: "ranger", unitId: "nazrin", factionId: "myouren", cost: 1 },
+            { unitType: "ranger", unitId: "tsukasa", factionId: "kou_ryuudou", cost: 2 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0, { strategy: "upgrade" });
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        shopBuySlotIndex: 1,
+      }),
+    });
+  });
+
+  test("wrapper raises purchase priority for offers that complete a faction tier", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 4,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:reimu", "31:clownpiece"],
+          boardSubUnits: [],
+          shopOffers: [
+            { unitType: "ranger", unitId: "nazrin", factionId: "myourenji", cost: 1 },
+            { unitType: "vanguard", unitId: "junko", factionId: "kanjuden", cost: 4 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0, { strategy: "upgrade" });
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        shopBuySlotIndex: 1,
+      }),
+    });
+  });
+
   test("wrapper can drive a growth-policy boss helper that buys the expensive boss offer first", () => {
     const state: FakeHelperState = {
       phase: "Prep",
@@ -887,6 +1000,241 @@ describe("helper automation wrapper", () => {
     }));
     expect(state.players.get("player-1")?.boardUnits).toEqual(["30:reimu", "31:ranger:sub"]);
     expect(state.players.get("player-1")?.boardSubUnits).toEqual(["31:assassin"]);
+  });
+
+  test("wrapper deploys a ready bench unit after board refit opens a main slot", async () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      roundIndex: 9,
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 0,
+          benchUnits: [{ unitType: "mage", unitId: "hecatia", unitLevel: 4, cost: 5 }],
+          benchUnitIds: ["hecatia"],
+          boardUnits: ["30:reimu", "31:momoyo", "32:yoshika"],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(room.sentMessages.length).toBeGreaterThanOrEqual(2);
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        boardSellIndex: 32,
+      }),
+    });
+    expect(room.sentMessages[1]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 2,
+        benchToBoardCell: expect.objectContaining({
+          benchIndex: 0,
+        }),
+      }),
+    });
+    expect(room.sentMessages.filter(({ message }) =>
+      typeof (message as { boardSellIndex?: unknown })?.boardSellIndex === "number"
+    )).toHaveLength(1);
+    expect(state.players.get("player-1")?.boardUnits).toContainEqual(expect.stringMatching(/^\d+:hecatia$/));
+  });
+
+  test("wrapper prioritizes implemented pair-skill sub attachments over bench order", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 0,
+          benchUnits: ["vanguard", "ranger"],
+          benchUnitIds: ["yoshika", "tsukasa"],
+          boardUnits: ["30:reimu", "31:megumu"],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        benchToBoardCell: {
+          benchIndex: 1,
+          cell: 31,
+          slot: "sub",
+        },
+      }),
+    });
+  });
+
+  test("wrapper attaches Okina hero sub to the highest-value host instead of the first board unit", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 0,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:yoshika", "31:hecatia", "32:nazrin"],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "okina",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        heroPlacementCell: 31,
+      }),
+    });
+  });
+
+  test("wrapper keeps Okina front when only low-value early hosts are available", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 0,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:yoshika", "32:nazrin"],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "okina",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toEqual({
+      type: CLIENT_MESSAGE_TYPES.READY,
+      message: { ready: true },
+    });
+  });
+
+  test("wrapper reattaches Okina hero sub when a stronger host crosses the back boundary", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 0,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:yoshika", "31:hecatia"],
+          boardSubUnits: ["30:hero:okina"],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "okina",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        heroPlacementCell: 31,
+      }),
+    });
+  });
+
+  test("wrapper buys boss-exclusive duplicates before low-level boss upgrades when board slots are open", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      roundIndex: 5,
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 4,
+          specialUnitLevel: 2,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["2:remilia", "8:meiling", "10:sakuya", "16:patchouli"],
+          shopOffers: [],
+          bossShopOffers: [{ unitType: "mage", unitId: "patchouli", cost: 4 }],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom();
+
+    attachAutoFillHelperAutomationForTest(room, 0, { policy: "strength" });
+
+    room.state = state;
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        bossShopBuySlotIndex: 0,
+      }),
+    });
   });
 
   test("wrapper sells a weak bench unit before buying a stronger offer when the bench is full", async () => {

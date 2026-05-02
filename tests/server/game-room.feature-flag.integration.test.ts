@@ -927,15 +927,17 @@ describe("GameRoom Integration with Feature Flags", () => {
             { cell: 0, unitType: "ranger", unitId: "nazrin", unitLevel: 1, factionId: "myourenji" },
             { cell: 1, unitType: "mage", unitId: "murasa", unitLevel: 1, factionId: "myourenji" },
             { cell: 2, unitType: "mage", unitId: "shou", unitLevel: 1, factionId: "myourenji" },
+            { cell: 3, unitType: "vanguard", unitId: "ichirin", unitLevel: 1, factionId: "myourenji" },
+            { cell: 4, unitType: "vanguard", unitId: "byakuren", unitLevel: 1, factionId: "myourenji" },
           ]);
           controller.shopOffersByPlayer.set(sessionId, [
-            { unitType: "vanguard", unitId: "ichirin", rarity: 2, cost: 2 },
+            { unitType: "ranger", unitId: "tojiko", rarity: 2, cost: 2 },
           ]);
 
           const inventoryBefore = controller.sharedPool.getAllInventory();
           const cost1Before = inventoryBefore.get(1);
           const cost2Before = inventoryBefore.get(2);
-          const unitIdBefore = controller.sharedPool.getAvailableByUnitId("ichirin", 2);
+          const unitIdBefore = controller.sharedPool.getAvailableByUnitId("tojiko", 2);
 
           const buyResult = await sendPrepCommand(clients[0]!, 1, { shopBuySlotIndex: 0 });
           const sellResult = await sendPrepCommand(clients[0]!, 2, { benchSellIndex: 0 });
@@ -943,7 +945,7 @@ describe("GameRoom Integration with Feature Flags", () => {
           const inventoryAfter = controller.sharedPool.getAllInventory();
           const cost1After = inventoryAfter.get(1);
           const cost2After = inventoryAfter.get(2);
-          const unitIdAfter = controller.sharedPool.getAvailableByUnitId("ichirin", 2);
+          const unitIdAfter = controller.sharedPool.getAvailableByUnitId("tojiko", 2);
 
           expect(buyResult).toEqual({ accepted: true });
           expect(sellResult).toEqual({ accepted: true });

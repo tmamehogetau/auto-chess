@@ -164,8 +164,10 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
     roomInternals.advanceLoop(serverRoom.state.phaseDeadlineAtMs + 1);
 
-    const bossPlayer = serverRoom.state.players.get(clients[1]!.sessionId);
-    const raidPlayerA = serverRoom.state.players.get(clients[0]!.sessionId);
+    const bossSessionId = clients[1]!.sessionId;
+    const raidPlayerASessionId = clients[0]!.sessionId;
+    const bossPlayer = serverRoom.state.players.get(bossSessionId);
+    const raidPlayerA = serverRoom.state.players.get(raidPlayerASessionId);
     const raidPlayerB = serverRoom.state.players.get(clients[2]!.sessionId);
     const raidPlayerC = serverRoom.state.players.get(clients[3]!.sessionId);
 
@@ -173,6 +175,49 @@ describeGameRoomIntegration("GameRoom integration / battle and settle", (context
     expect(raidPlayerA?.gold).toBe(12);
     expect(raidPlayerB?.gold).toBe(12);
     expect(raidPlayerC?.gold).toBe(12);
+
+    const actionLogs = (serverRoom as unknown as {
+      matchLogger?: {
+        getActionLogs: () => Array<{
+          playerId: string;
+          actionType: string;
+          details: {
+            goldBefore: number;
+            goldAfter: number;
+            amount?: number;
+          };
+        }>;
+      };
+    }).matchLogger?.getActionLogs() ?? [];
+    expect(actionLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        playerId: bossSessionId,
+        actionType: "prep_income",
+        details: expect.objectContaining({
+          amount: 9,
+          goldBefore: 8,
+          goldAfter: 17,
+        }),
+      }),
+      expect.objectContaining({
+        playerId: raidPlayerASessionId,
+        actionType: "raid_phase_success_bonus",
+        details: expect.objectContaining({
+          amount: 2,
+          goldBefore: 5,
+          goldAfter: 7,
+        }),
+      }),
+      expect.objectContaining({
+        playerId: raidPlayerASessionId,
+        actionType: "prep_income",
+        details: expect.objectContaining({
+          amount: 5,
+          goldBefore: 7,
+          goldAfter: 12,
+        }),
+      }),
+    ]));
   });
 
   test("player-facing purchase/deploy/battle phases are exposed and next purchase starts with hero-only board", async () => {

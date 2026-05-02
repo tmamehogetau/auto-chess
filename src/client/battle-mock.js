@@ -239,7 +239,9 @@ function createElement(tagName, options = {}) {
 }
 
 function createMeter(className, value, maxValue, accent) {
-  const percent = Math.max(0, Math.min(100, (value / maxValue) * 100));
+  const safeMax = Number.isFinite(maxValue) && maxValue > 0 ? maxValue : 1;
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const percent = Math.max(0, Math.min(100, (safeValue / safeMax) * 100));
   const meter = createElement("div", { className });
   const fill = createElement("span");
 

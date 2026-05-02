@@ -7669,7 +7669,7 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
     },
   ]);
 
-  expect(aggregate).toEqual({
+  expect(aggregate).toMatchObject({
     metadata: {
       mode: "fast-parity",
       timeScale: 0.02,
@@ -8182,6 +8182,166 @@ test("buildBotOnlyBaselineAggregateReport summarizes bot-only match results", ()
     raidMeleeCohortMetrics: [],
     raidSpecialMeleeUnitDiagnostics: [],
     roundDetails: [],
+  });
+  expect(aggregate.bossExclusiveRoundLevelMetrics).toEqual([]);
+  expect(aggregate.highCostRoundMetrics).toEqual([]);
+  expect(aggregate.roundDamageEfficiencyMetrics).toEqual([]);
+  expect(aggregate.unitDamageEfficiencyMetrics).toEqual([]);
+  expect(aggregate.roundSurvivalDiagnostics).toEqual([]);
+  expect(aggregate.roundUnitSurvivalDiagnostics).toEqual([]);
+  expect(aggregate.finalBoardUnitMetrics.every((metric) =>
+    metric.averageFinalUnitLevel === 1
+    && metric.maxFinalUnitLevel === 1
+    && metric.finalLevel4Rate === 0
+    && metric.finalLevel7Rate === 0)).toBe(true);
+  expect(aggregate.finalPlayerBoardMetrics).toEqual([
+    {
+      label: "P1",
+      role: "boss",
+      matchesPresent: 2,
+      averageDeployedUnitCount: 1,
+      averageDeployedAssetValue: 0,
+      averageSpecialUnitCount: 0,
+      averageStandardUnitCount: 1,
+    },
+    {
+      label: "P2",
+      role: "raid",
+      matchesPresent: 2,
+      averageDeployedUnitCount: 1,
+      averageDeployedAssetValue: 0,
+      averageSpecialUnitCount: 0,
+      averageStandardUnitCount: 1,
+    },
+    {
+      label: "P3",
+      role: "raid",
+      matchesPresent: 2,
+      averageDeployedUnitCount: 1,
+      averageDeployedAssetValue: 0,
+      averageSpecialUnitCount: 0,
+      averageStandardUnitCount: 1,
+    },
+    {
+      label: "P4",
+      role: "raid",
+      matchesPresent: 2,
+      averageDeployedUnitCount: 1,
+      averageDeployedAssetValue: 0,
+      averageSpecialUnitCount: 0,
+      averageStandardUnitCount: 1,
+    },
+  ]);
+  expect(aggregate.heroCompositionMetrics).toEqual([{
+    compositionKey: "reimu / marisa / okina",
+    heroIds: ["reimu", "marisa", "okina"],
+    heroNames: ["博麗霊夢", "霧雨魔理沙", "摩多羅隠岐奈"],
+    matchesPresent: 2,
+    raidWins: 1,
+    raidWinRate: 0.5,
+    averageRounds: 4.5,
+  }]);
+  expect(aggregate.heroTeamMetrics).toEqual([
+    {
+      heroId: "marisa",
+      heroName: "霧雨魔理沙",
+      matchesPresent: 2,
+      raidTeamWins: 1,
+      raidTeamWinRate: 0.5,
+      firstPlaceRate: 0,
+      averagePlacement: 3,
+      averageRemainingLives: 0,
+      averageFinalGold: 0,
+      averageGoldEarned: 0,
+      averageGoldSpent: 0,
+      averageSpecialUnitUpgradeCount: 0,
+    },
+    {
+      heroId: "okina",
+      heroName: "摩多羅隠岐奈",
+      matchesPresent: 2,
+      raidTeamWins: 1,
+      raidTeamWinRate: 0.5,
+      firstPlaceRate: 0,
+      averagePlacement: 4,
+      averageRemainingLives: 0.5,
+      averageFinalGold: 0,
+      averageGoldEarned: 0,
+      averageGoldSpent: 0,
+      averageSpecialUnitUpgradeCount: 0,
+    },
+    {
+      heroId: "reimu",
+      heroName: "博麗霊夢",
+      matchesPresent: 2,
+      raidTeamWins: 1,
+      raidTeamWinRate: 0.5,
+      firstPlaceRate: 0.5,
+      averagePlacement: 1.5,
+      averageRemainingLives: 0.5,
+      averageFinalGold: 0,
+      averageGoldEarned: 0,
+      averageGoldSpent: 0,
+      averageSpecialUnitUpgradeCount: 0,
+    },
+  ]);
+  expect(aggregate.playerEconomyBreakdowns).toEqual({
+    P1: {
+      fixedPrepIncome: 31.5,
+      raidPhaseSuccessBonusIncome: 0,
+      sellIncome: 0,
+      specialEconomyIncome: 0,
+      normalShopSpend: 0,
+      bossShopSpend: 0,
+      refreshSpend: 0,
+      specialUnitUpgradeSpend: 0,
+      otherSpend: 0,
+      loggedGoldGain: 0,
+      loggedGoldSpent: 0,
+      finalUnusedGold: 0,
+    },
+    P2: {
+      fixedPrepIncome: 17.5,
+      raidPhaseSuccessBonusIncome: 0,
+      sellIncome: 0,
+      specialEconomyIncome: 0,
+      normalShopSpend: 0,
+      bossShopSpend: 0,
+      refreshSpend: 0,
+      specialUnitUpgradeSpend: 0,
+      otherSpend: 0,
+      loggedGoldGain: 0,
+      loggedGoldSpent: 0,
+      finalUnusedGold: 0,
+    },
+    P3: {
+      fixedPrepIncome: 17.5,
+      raidPhaseSuccessBonusIncome: 0,
+      sellIncome: 0,
+      specialEconomyIncome: 0,
+      normalShopSpend: 0,
+      bossShopSpend: 0,
+      refreshSpend: 0,
+      specialUnitUpgradeSpend: 0,
+      otherSpend: 0,
+      loggedGoldGain: 0,
+      loggedGoldSpent: 0,
+      finalUnusedGold: 0,
+    },
+    P4: {
+      fixedPrepIncome: 17.5,
+      raidPhaseSuccessBonusIncome: 0,
+      sellIncome: 0,
+      specialEconomyIncome: 0,
+      normalShopSpend: 0,
+      bossShopSpend: 0,
+      refreshSpend: 0,
+      specialUnitUpgradeSpend: 0,
+      otherSpend: 0,
+      loggedGoldGain: 0,
+      loggedGoldSpent: 0,
+      finalUnusedGold: 0,
+    },
   });
 });
 

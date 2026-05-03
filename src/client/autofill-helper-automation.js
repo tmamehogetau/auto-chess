@@ -202,6 +202,7 @@ const BOSS_FUTURE_RESERVE_BENCH_PRESSURE_LIMIT = 0.5;
 const BOSS_FUTURE_RESERVE_VALUE_FLOOR = 820;
 const BOSS_FUTURE_RESERVE_MIN_ROUND = AUTO_FILL_HIGH_COST_PIVOT_ROUND;
 const BOSS_FUTURE_RESERVE_MIN_SPECIAL_LEVEL = AUTO_FILL_HIGH_COST_PIVOT_LEVEL;
+const BOSS_BODY_GUARD_MOVE_MIN_ROUND = 10;
 
 function normalizeAutoFillOptimizationVariant(value) {
   return typeof value === "string" && AUTO_FILL_OPTIMIZATION_VARIANTS.has(value)
@@ -2119,6 +2120,86 @@ function buildDeployActions(
   }
 
   return actions;
+}
+
+function getPlacementAtCell(placements, cell) {
+  return placements.find((placement) => placement.cell === cell) ?? null;
+}
+
+function getBossRelativeCell(bossCell, dx = 0, dy = 0) {
+  const bossCoordinate = getBoardCellCoordinate(bossCell);
+  const x = bossCoordinate.x + dx;
+  const y = bossCoordinate.y + dy;
+
+  if (x < 0 || x >= SHARED_BOARD_WIDTH || y < 0 || y >= SHARED_BOARD_WIDTH) {
+    return null;
+  }
+
+  return y * SHARED_BOARD_WIDTH + x;
+}
+
+function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
+  if (player?.role !== "boss" || playerPhase !== "deploy") {
+    return null;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  if (roundIndex === null || roundIndex < BOSS_BODY_GUARD_MOVE_MIN_ROUND) {
+    return null;
+  }
+
+  const placements = toArray(player?.boardUnits)
+    .map((unit) => parseBoardPlacement(unit))
+    .filter((placement) => placement !== null);
+  const bossCell = resolveBossBodyCell(player?.boardUnits, player?.selectedBossId);
+  const directGuardCell = getBossRelativeCell(bossCell, 0, 1);
+  const deeperDirectGuardCell = getBossRelativeCell(bossCell, 0, 2);
+
+  if (directGuardCell === null || deeperDirectGuardCell === null) {
+    return null;
+  }
+
+  const directGuard = getPlacementAtCell(placements, directGuardCell);
+  const deeperDirectGuard = getPlacementAtCell(placements, deeperDirectGuardCell);
+  if (
+    !directGuard
+    || !isFrontlineUnitType(directGuard.unitType)
+    || !deeperDirectGuard
+    || !isFrontlineUnitType(deeperDirectGuard.unitType)
+  ) {
+    return null;
+  }
+
+  const sideBacklineCells = [
+    { backlineCell: getBossRelativeCell(bossCell, 1, 0), flankCell: getBossRelativeCell(bossCell, 1, 1) },
+    { backlineCell: getBossRelativeCell(bossCell, -1, 0), flankCell: getBossRelativeCell(bossCell, -1, 1) },
+  ];
+  const target = sideBacklineCells.find(({ backlineCell, flankCell }) => {
+    if (
+      backlineCell === null
+      || flankCell === null
+      || getPlacementAtCell(placements, flankCell)
+    ) {
+      return false;
+    }
+
+    const backlinePlacement = getPlacementAtCell(placements, backlineCell);
+    return backlinePlacement !== null && isBacklineUnitType(backlinePlacement.unitType);
+  });
+
+  if (!target || target.flankCell === null) {
+    return null;
+  }
+
+  return {
+    type: "prep_command",
+    payload: {
+      boardUnitMove: {
+        fromCell: deeperDirectGuardCell,
+        toCell: target.flankCell,
+      },
+    },
+  };
 }
 
 function getOfferCost(offer) {
@@ -4205,6 +4286,9 @@ export function buildAutoFillHelperActions({
         helperIndex,
         helperStrategy,
       );
+    const bossBodyGuardMoveAction = helperBoardRefitOptimizationDisabled
+      ? null
+      : buildBossBodyGuardMoveAction(helperPlayer, state, playerPhase);
 
     if (shouldPreferBossSpecialUnitUpgrade || shouldPreferSpecialUnitUpgrade) {
       return [specialUnitUpgradeDecision.action];
@@ -4294,6 +4378,10 @@ export function buildAutoFillHelperActions({
         return deployActions;
       }
 
+      if (bossBodyGuardMoveAction) {
+        return [bossBodyGuardMoveAction];
+      }
+
       if (
         placedPurchasedUnitCount === 0
         && !hasUnits(helperPlayer.benchUnits)
@@ -4333,6 +4421,10 @@ export function buildAutoFillHelperActions({
       }
 
       return deployActions;
+    }
+
+    if (bossBodyGuardMoveAction) {
+      return [bossBodyGuardMoveAction];
     }
 
     if (reserveBuyAction) {

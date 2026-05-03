@@ -3333,6 +3333,67 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("late boss helper moves a second direct guard onto a body flank", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: {
+          boardUnitMove: {
+            fromCell: 14,
+            toCell: 9,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper keeps a second direct guard in the lane", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 4 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { ready: true },
+        type: "ready",
+      },
+    ]);
+  });
+
   test("prep phase boss helper places Sakuya on a frontline flank instead of a backline slot", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

@@ -150,6 +150,45 @@ export function buildBoardRefitDecision(
   options?: { strategy?: "upgrade" | "highCost" | string | null } | null,
 ): BoardRefitDecisionDiagnostic;
 
+export type BossBodyGuardDecisionDiagnostic = {
+  decision: "direct_fill" | "direct_swap" | "side_flank_move" | "none";
+  reason: string;
+  bossCell: number | null;
+  directGuardCell: number | null;
+  directGuardUnitId: string | null;
+  directGuardUnitName: string | null;
+  directGuardUnitType: string | null;
+  directGuardLevel: number | null;
+  strongestGuardCell: number | null;
+  strongestGuardUnitId: string | null;
+  strongestGuardUnitName: string | null;
+  strongestGuardUnitType: string | null;
+  strongestGuardLevel: number | null;
+  benchFrontlineCount: number;
+  directEmpty: boolean;
+  strongerOffDirect: boolean;
+  actionFromCell: number | null;
+  actionToCell: number | null;
+};
+
+export function buildBossBodyGuardDecisionDiagnostic(
+  player?: {
+    role?: string | null;
+    selectedBossId?: string | null;
+    benchUnits?: unknown[] | Iterable<unknown> | null;
+    benchUnitIds?: unknown[] | Iterable<unknown> | null;
+    boardUnits?:
+      | Array<OptimizationUnitEntry | unknown>
+      | Iterable<OptimizationUnitEntry | unknown>
+      | null;
+  } | null,
+  options?: {
+    state?: { roundIndex?: number | null } | null;
+    roundIndex?: number | null;
+    playerPhase?: string | null;
+  } | null,
+): BossBodyGuardDecisionDiagnostic | null;
+
 export type OkinaHeroSubDecisionDiagnostic = {
   specialUnitStage: 1 | 4 | 7;
   candidateCount: number;

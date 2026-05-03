@@ -13,6 +13,7 @@ import {
 } from "./helpers";
 import {
   AUTO_FILL_HERO_IDS,
+  buildBossBodyGuardDecisionDiagnostic,
   buildBoardRefitDecision,
   buildOkinaHeroSubDecisionDiagnostic,
 } from "../../../src/client/autofill-helper-automation.js";
@@ -48,6 +49,7 @@ import {
   type BotOnlyBaselineAggregateReport,
   type BotOnlyBaselineBattleEndReason,
   type BotOnlyBaselineBattleSummary,
+  type BotOnlyBaselineBossBodyGuardDecisionSnapshot,
   type BotOnlyBaselineBoardRefitDecisionSnapshot,
   type BotOnlyBaselineFinalPlayer,
   type BotOnlyBaselineMatchSummary,
@@ -463,6 +465,7 @@ type BotOnlyBaselineMatchArtifacts = {
   observedShopOffers: BotOnlyBaselineObservedShopOffer[];
   okinaHeroSubDecisionSnapshots: BotOnlyBaselineOkinaHeroSubDecisionSnapshot[];
   boardRefitDecisionSnapshots: BotOnlyBaselineBoardRefitDecisionSnapshot[];
+  bossBodyGuardDecisionSnapshots: BotOnlyBaselineBossBodyGuardDecisionSnapshot[];
 };
 
 type BotOnlyFinalPlayerEconomySnapshot = {
@@ -6053,6 +6056,54 @@ const buildBoardRefitDecisionSnapshots = (
       }];
     }));
 
+const buildBossBodyGuardDecisionSnapshots = (
+  rounds: BotOnlyMatchRoundReport["rounds"],
+): BotOnlyBaselineBossBodyGuardDecisionSnapshot[] =>
+  rounds.flatMap((round) =>
+    round.playersAtBattleStart.flatMap((player) => {
+      if (player.role !== "boss") {
+        return [];
+      }
+
+      const diagnostic = buildBossBodyGuardDecisionDiagnostic({
+        role: player.role,
+        selectedBossId: player.selectedBossId ?? "",
+        boardUnits: player.boardUnits,
+        benchUnits: player.benchUnits,
+        benchUnitIds: player.benchUnitIds ?? [],
+      }, {
+        roundIndex: round.roundIndex,
+        playerPhase: "deploy",
+      });
+      if (diagnostic === null) {
+        return [];
+      }
+
+      return [{
+        roundIndex: round.roundIndex,
+        playerId: player.playerId,
+        label: player.label,
+        decision: diagnostic.decision,
+        reason: diagnostic.reason,
+        bossCell: diagnostic.bossCell,
+        directGuardCell: diagnostic.directGuardCell,
+        directGuardUnitId: diagnostic.directGuardUnitId,
+        directGuardUnitName: diagnostic.directGuardUnitName,
+        directGuardUnitType: diagnostic.directGuardUnitType,
+        directGuardLevel: diagnostic.directGuardLevel,
+        strongestGuardCell: diagnostic.strongestGuardCell,
+        strongestGuardUnitId: diagnostic.strongestGuardUnitId,
+        strongestGuardUnitName: diagnostic.strongestGuardUnitName,
+        strongestGuardUnitType: diagnostic.strongestGuardUnitType,
+        strongestGuardLevel: diagnostic.strongestGuardLevel,
+        benchFrontlineCount: diagnostic.benchFrontlineCount,
+        directEmpty: diagnostic.directEmpty,
+        strongerOffDirect: diagnostic.strongerOffDirect,
+        actionFromCell: diagnostic.actionFromCell,
+        actionToCell: diagnostic.actionToCell,
+      }];
+    }));
+
 const runBotOnlyHelperMatchForBaseline = async (
   connectClient: (serverRoom: BotOnlyServerRoom) => Promise<BotOnlyTestClient>,
   createRoom: () => Promise<BotOnlyServerRoom>,
@@ -6316,6 +6367,7 @@ const runBotOnlyHelperMatchForBaseline = async (
     observedShopOffers: Array.from(observedOffersByKey.values()),
     okinaHeroSubDecisionSnapshots: buildOkinaHeroSubDecisionSnapshots(roundReport.rounds),
     boardRefitDecisionSnapshots: buildBoardRefitDecisionSnapshots(roundReport.rounds),
+    bossBodyGuardDecisionSnapshots: buildBossBodyGuardDecisionSnapshots(roundReport.rounds),
   };
 };
 
@@ -6335,6 +6387,7 @@ const buildBotOnlyBaselineMatchSummary = (
     observedShopOffers: artifacts.observedShopOffers.map((offer) => ({ ...offer })),
     okinaHeroSubDecisionSnapshots: artifacts.okinaHeroSubDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
     boardRefitDecisionSnapshots: artifacts.boardRefitDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
+    bossBodyGuardDecisionSnapshots: artifacts.bossBodyGuardDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
     rounds: artifacts.rounds.map((round) => ({
       roundIndex: round.roundIndex,
       phase: round.phase,

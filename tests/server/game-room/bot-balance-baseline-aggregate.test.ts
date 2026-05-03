@@ -624,6 +624,77 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
     ]));
   });
 
+  test("aggregates boss body guard decision telemetry by round", () => {
+    const report = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        totalRounds: 12,
+        bossBodyGuardDecisionSnapshots: [{
+          roundIndex: 12,
+          playerId: "boss",
+          label: "boss",
+          decision: "direct_swap",
+          reason: "stronger_board_guard",
+          bossCell: 2,
+          directGuardCell: 8,
+          directGuardUnitId: "yoshika",
+          directGuardUnitName: "宮古芳香",
+          directGuardUnitType: "vanguard",
+          directGuardLevel: 2,
+          strongestGuardCell: 9,
+          strongestGuardUnitId: "meiling",
+          strongestGuardUnitName: "紅美鈴",
+          strongestGuardUnitType: "vanguard",
+          strongestGuardLevel: 7,
+          benchFrontlineCount: 0,
+          directEmpty: false,
+          strongerOffDirect: true,
+          actionFromCell: 9,
+          actionToCell: 8,
+        }, {
+          roundIndex: 12,
+          playerId: "boss",
+          label: "boss",
+          decision: "none",
+          reason: "bench_frontline_pending",
+          bossCell: 2,
+          directGuardCell: 8,
+          directGuardUnitId: null,
+          directGuardUnitName: null,
+          directGuardUnitType: null,
+          directGuardLevel: null,
+          strongestGuardCell: null,
+          strongestGuardUnitId: null,
+          strongestGuardUnitName: null,
+          strongestGuardUnitType: null,
+          strongestGuardLevel: null,
+          benchFrontlineCount: 1,
+          directEmpty: true,
+          strongerOffDirect: false,
+          actionFromCell: null,
+          actionToCell: null,
+        }],
+      }),
+    ]);
+
+    expect(report.bossBodyGuardDecisionRoundMetrics).toEqual([
+      expect.objectContaining({
+        roundIndex: 12,
+        samples: 2,
+        directSwapSamples: 1,
+        noActionSamples: 1,
+        directEmptySamples: 1,
+        benchFrontlineBlockedSamples: 1,
+        strongerOffDirectSamples: 1,
+        averageDirectGuardLevel: 2,
+        averageStrongestGuardLevel: 7,
+        mostFrequentDirectGuardUnitId: "yoshika",
+        mostFrequentStrongestGuardUnitId: "meiling",
+        mostFrequentReason: "bench_frontline_pending",
+        mostFrequentReasonSamples: 1,
+      }),
+    ]);
+  });
+
   test("tracks shop offer purchase and final board adoption metrics by player side", () => {
     const report = buildBotOnlyBaselineAggregateReport([
       createMinimalMatchSummary({

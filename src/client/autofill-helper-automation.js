@@ -2173,12 +2173,66 @@ function getBossRelativeCell(bossCell, dx = 0, dy = 0) {
   return y * SHARED_BOARD_WIDTH + x;
 }
 
-function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
-  if (player?.role !== "boss" || playerPhase !== "deploy") {
+function resolvePlacementUnitName(placement) {
+  if (!placement || !placement.unitId) {
     return null;
   }
 
-  const roundIndex = getStateRoundIndex(state);
+  const knownUnit = getKnownCombatUnit(placement.unitId);
+  return placement.unitName
+    ?? knownUnit?.displayName
+    ?? knownUnit?.name
+    ?? placement.unitId;
+}
+
+function buildBossBodyGuardDecisionBase({
+  bossCell,
+  directGuardCell,
+  directGuard,
+  strongestGuard,
+  benchFrontlineCount,
+  decision = "none",
+  reason = "direct_guard_best_available",
+  actionFromCell = null,
+  actionToCell = null,
+}) {
+  return {
+    decision,
+    reason,
+    bossCell,
+    directGuardCell,
+    directGuardUnitId: directGuard?.unitId || null,
+    directGuardUnitName: resolvePlacementUnitName(directGuard),
+    directGuardUnitType: directGuard?.unitType ?? null,
+    directGuardLevel: Number.isFinite(directGuard?.unitLevel) ? Number(directGuard.unitLevel) : null,
+    strongestGuardCell: strongestGuard?.cell ?? null,
+    strongestGuardUnitId: strongestGuard?.unitId || null,
+    strongestGuardUnitName: resolvePlacementUnitName(strongestGuard),
+    strongestGuardUnitType: strongestGuard?.unitType ?? null,
+    strongestGuardLevel: Number.isFinite(strongestGuard?.unitLevel) ? Number(strongestGuard.unitLevel) : null,
+    benchFrontlineCount,
+    directEmpty: directGuard === null,
+    strongerOffDirect:
+      directGuard !== null && getGuardStrengthScore(strongestGuard) > getGuardStrengthScore(directGuard),
+    actionFromCell,
+    actionToCell,
+  };
+}
+
+export function buildBossBodyGuardDecisionDiagnostic(player, options = {}) {
+  if (player?.role !== "boss") {
+    return null;
+  }
+
+  const diagnosticOptions = options ?? {};
+  const playerPhase = diagnosticOptions.playerPhase ?? "";
+  if (playerPhase !== "deploy") {
+    return null;
+  }
+
+  const roundIndex = Number.isInteger(diagnosticOptions.roundIndex)
+    ? diagnosticOptions.roundIndex
+    : getStateRoundIndex(diagnosticOptions.state ?? null);
   if (roundIndex === null || roundIndex < BOSS_BODY_GUARD_MOVE_MIN_ROUND) {
     return null;
   }
@@ -2195,37 +2249,48 @@ function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
   }
 
   const directGuard = getPlacementAtCell(placements, directGuardCell);
+  const benchFrontlineCount = buildBenchGuardEntries(player).length;
   if (!directGuard) {
-    const benchHasFrontlineGuard = buildBenchGuardEntries(player).length > 0;
-    const strongestBoardGuard = benchHasFrontlineGuard
+    const strongestBoardGuard = benchFrontlineCount > 0
       ? null
       : getStrongestGuardPlacement(placements, new Set([bossCell, directGuardCell]));
     if (!strongestBoardGuard) {
-      return null;
+      return buildBossBodyGuardDecisionBase({
+        bossCell,
+        directGuardCell,
+        directGuard: null,
+        strongestGuard: null,
+        benchFrontlineCount,
+        reason: benchFrontlineCount > 0 ? "bench_frontline_pending" : "no_direct_guard_candidate",
+      });
     }
 
-    return {
-      type: "prep_command",
-      payload: {
-        boardUnitMove: {
-          fromCell: strongestBoardGuard.cell,
-          toCell: directGuardCell,
-        },
-      },
-    };
+    return buildBossBodyGuardDecisionBase({
+      bossCell,
+      directGuardCell,
+      directGuard: null,
+      strongestGuard: strongestBoardGuard,
+      benchFrontlineCount,
+      decision: "direct_fill",
+      reason: "direct_guard_empty",
+      actionFromCell: strongestBoardGuard.cell,
+      actionToCell: directGuardCell,
+    });
   }
 
   const strongerBoardGuard = getStrongestGuardPlacement(placements, new Set([bossCell, directGuardCell]));
   if (getGuardStrengthScore(strongerBoardGuard) > getGuardStrengthScore(directGuard)) {
-    return {
-      type: "prep_command",
-      payload: {
-        boardUnitSwap: {
-          fromCell: strongerBoardGuard.cell,
-          toCell: directGuardCell,
-        },
-      },
-    };
+    return buildBossBodyGuardDecisionBase({
+      bossCell,
+      directGuardCell,
+      directGuard,
+      strongestGuard: strongerBoardGuard,
+      benchFrontlineCount,
+      decision: "direct_swap",
+      reason: "stronger_board_guard",
+      actionFromCell: strongerBoardGuard.cell,
+      actionToCell: directGuardCell,
+    });
   }
 
   const deeperDirectGuard = getPlacementAtCell(placements, deeperDirectGuardCell);
@@ -2234,7 +2299,14 @@ function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
     || !deeperDirectGuard
     || !isFrontlineUnitType(deeperDirectGuard.unitType)
   ) {
-    return null;
+    return buildBossBodyGuardDecisionBase({
+      bossCell,
+      directGuardCell,
+      directGuard,
+      strongestGuard: strongerBoardGuard,
+      benchFrontlineCount,
+      reason: "insufficient_direct_lane",
+    });
   }
 
   const sideBacklineCells = [
@@ -2255,15 +2327,56 @@ function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
   });
 
   if (!target || target.flankCell === null) {
+    return buildBossBodyGuardDecisionBase({
+      bossCell,
+      directGuardCell,
+      directGuard,
+      strongestGuard: strongerBoardGuard,
+      benchFrontlineCount,
+      reason: "side_backline_guarded",
+    });
+  }
+
+  return buildBossBodyGuardDecisionBase({
+    bossCell,
+    directGuardCell,
+    directGuard,
+    strongestGuard: strongerBoardGuard,
+    benchFrontlineCount,
+    decision: "side_flank_move",
+    reason: "side_backline_exposed",
+    actionFromCell: deeperDirectGuardCell,
+    actionToCell: target.flankCell,
+  });
+}
+
+function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
+  const diagnostic = buildBossBodyGuardDecisionDiagnostic(player, {
+    state,
+    playerPhase,
+  });
+  if (!diagnostic || diagnostic.actionFromCell === null || diagnostic.actionToCell === null) {
     return null;
+  }
+
+  if (diagnostic.decision === "direct_swap") {
+    return {
+      type: "prep_command",
+      payload: {
+        boardUnitSwap: {
+          fromCell: diagnostic.actionFromCell,
+          toCell: diagnostic.actionToCell,
+        },
+      },
+    };
   }
 
   return {
     type: "prep_command",
     payload: {
       boardUnitMove: {
-        fromCell: deeperDirectGuardCell,
-        toCell: target.flankCell,
+        fromCell: diagnostic.actionFromCell,
+        toCell: diagnostic.actionToCell,
       },
     },
   };
@@ -4432,6 +4545,10 @@ export function buildAutoFillHelperActions({
         return [boardRefitAction];
       }
 
+      if (bossBodyGuardMoveAction) {
+        return [bossBodyGuardMoveAction];
+      }
+
       if (hasUnits(helperPlayer.benchUnits)) {
         if (deployActions.length === 0) {
           return helperPlayer.ready !== true
@@ -4445,10 +4562,6 @@ export function buildAutoFillHelperActions({
         }
 
         return deployActions;
-      }
-
-      if (bossBodyGuardMoveAction) {
-        return [bossBodyGuardMoveAction];
       }
 
       if (

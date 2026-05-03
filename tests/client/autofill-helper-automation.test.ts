@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   AUTO_FILL_BOSS_ID,
   AUTO_FILL_HERO_IDS,
+  buildBossBodyGuardDecisionDiagnostic,
   buildBoardRefitDecision,
   buildAutoFillHelperActions,
   buildOptimizationCandidate,
@@ -3465,6 +3466,70 @@ describe("autofill helper automation", () => {
         type: "prep_command",
       },
     ]);
+  });
+
+  test("late boss helper prioritizes a stronger direct-guard swap before bench deployment", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [
+          { unitId: "patchouli", unitType: "mage", unitLevel: 1 },
+        ],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 8, unitId: "yoshika", unitType: "vanguard", unitLevel: 2 },
+          { cell: 9, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 3, unitId: "sakuya", unitType: "assassin", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: {
+          boardUnitSwap: {
+            fromCell: 9,
+            toCell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("boss body guard diagnostic explains a stronger direct-guard swap", () => {
+    expect(buildBossBodyGuardDecisionDiagnostic({
+      role: "boss",
+      benchUnits: [],
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+        { cell: 8, unitId: "yoshika", unitType: "vanguard", unitLevel: 2 },
+        { cell: 9, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+      ],
+      selectedBossId: "remilia",
+    }, {
+      roundIndex: 11,
+      playerPhase: "deploy",
+    })).toEqual(expect.objectContaining({
+      decision: "direct_swap",
+      reason: "stronger_board_guard",
+      directGuardCell: 8,
+      directGuardUnitId: "yoshika",
+      directGuardLevel: 2,
+      strongestGuardCell: 9,
+      strongestGuardUnitId: "meiling",
+      strongestGuardLevel: 7,
+      actionFromCell: 9,
+      actionToCell: 8,
+      strongerOffDirect: true,
+    }));
   });
 
   test("late boss helper reads tokenized board levels before swapping a direct guard", () => {

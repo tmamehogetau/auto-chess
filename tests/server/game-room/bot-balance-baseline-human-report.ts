@@ -568,6 +568,28 @@ export function buildBotBalanceBaselineJapaneseJson(
         ? null
         : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`,
     })),
+    "ラウンド別ボス直衛判断診断": (aggregate.bossBodyGuardDecisionRoundMetrics ?? []).map((entry) => ({
+      "R": entry.roundIndex,
+      "診断回数": entry.samples,
+      "直衛空き埋め": entry.directFillSamples,
+      "直衛交換": entry.directSwapSamples,
+      "側面護衛": entry.sideFlankMoveSamples,
+      "見送り": entry.noActionSamples,
+      "直衛空き": entry.directEmptySamples,
+      "bench前衛待ち": entry.benchFrontlineBlockedSamples,
+      "直衛外に強前衛": entry.strongerOffDirectSamples,
+      "平均直衛Lv": entry.averageDirectGuardLevel,
+      "平均最強前衛Lv": entry.averageStrongestGuardLevel,
+      "最多直衛": entry.mostFrequentDirectGuardUnitId === null
+        ? null
+        : `${entry.mostFrequentDirectGuardUnitName ?? entry.mostFrequentDirectGuardUnitId} (${entry.mostFrequentDirectGuardUnitId}) x${entry.mostFrequentDirectGuardSamples}`,
+      "最多最強前衛": entry.mostFrequentStrongestGuardUnitId === null
+        ? null
+        : `${entry.mostFrequentStrongestGuardUnitName ?? entry.mostFrequentStrongestGuardUnitId} (${entry.mostFrequentStrongestGuardUnitId}) x${entry.mostFrequentStrongestGuardSamples}`,
+      "最多理由": entry.mostFrequentReason == null
+        ? null
+        : `${entry.mostFrequentReason} x${entry.mostFrequentReasonSamples}`,
+    })),
     "ロール別盤面再編成診断": (aggregate.boardRefitDecisionRoleMetrics ?? []).map((entry) => ({
       "ロール": entry.role,
       "診断回数": entry.samples,
@@ -1324,6 +1346,33 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
         : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`;
       lines.push(
         `| ${entry.roundIndex} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${formatNullableNumber(entry.p25ReplacementScore)} | ${formatNullableNumber(entry.p50ReplacementScore)} | ${formatNullableNumber(entry.p75ReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(incomingReasonLabel)} | ${escapeMarkdownCell(outgoingLabel)} | ${escapeMarkdownCell(outgoingReasonLabel)} |`,
+      );
+    }
+  }
+
+  const bossBodyGuardDecisionRoundMetrics = aggregate.bossBodyGuardDecisionRoundMetrics ?? [];
+  lines.push(
+    "",
+    "## ラウンド別ボス直衛判断診断",
+    "",
+    "| R | 診断回数 | 空き埋め | 交換 | 側面護衛 | 見送り | 直衛空き | bench前衛待ち | 直衛外に強前衛 | 平均直衛Lv | 平均最強前衛Lv | 最多直衛 | 最多最強前衛 | 最多理由 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (bossBodyGuardDecisionRoundMetrics.length === 0) {
+    lines.push("| - | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - | - |");
+  } else {
+    for (const entry of bossBodyGuardDecisionRoundMetrics) {
+      const directGuardLabel = entry.mostFrequentDirectGuardUnitId === null
+        ? "-"
+        : `${entry.mostFrequentDirectGuardUnitName ?? entry.mostFrequentDirectGuardUnitId} (${entry.mostFrequentDirectGuardUnitId}) x${entry.mostFrequentDirectGuardSamples}`;
+      const strongestGuardLabel = entry.mostFrequentStrongestGuardUnitId === null
+        ? "-"
+        : `${entry.mostFrequentStrongestGuardUnitName ?? entry.mostFrequentStrongestGuardUnitId} (${entry.mostFrequentStrongestGuardUnitId}) x${entry.mostFrequentStrongestGuardSamples}`;
+      const reasonLabel = entry.mostFrequentReason === null
+        ? "-"
+        : `${entry.mostFrequentReason} x${entry.mostFrequentReasonSamples}`;
+      lines.push(
+        `| ${entry.roundIndex} | ${entry.samples} | ${entry.directFillSamples} | ${entry.directSwapSamples} | ${entry.sideFlankMoveSamples} | ${entry.noActionSamples} | ${entry.directEmptySamples} | ${entry.benchFrontlineBlockedSamples} | ${entry.strongerOffDirectSamples} | ${formatNullableNumber(entry.averageDirectGuardLevel)} | ${formatNullableNumber(entry.averageStrongestGuardLevel)} | ${escapeMarkdownCell(directGuardLabel)} | ${escapeMarkdownCell(strongestGuardLabel)} | ${escapeMarkdownCell(reasonLabel)} |`,
       );
     }
   }

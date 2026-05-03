@@ -683,6 +683,7 @@ export type BotOnlyBaselineMatchSummary = {
   observedShopOffers?: BotOnlyBaselineObservedShopOffer[];
   okinaHeroSubDecisionSnapshots?: BotOnlyBaselineOkinaHeroSubDecisionSnapshot[];
   boardRefitDecisionSnapshots?: BotOnlyBaselineBoardRefitDecisionSnapshot[];
+  bossBodyGuardDecisionSnapshots?: BotOnlyBaselineBossBodyGuardDecisionSnapshot[];
 };
 
 export type BotOnlyBaselineAggregateReport = {
@@ -722,6 +723,7 @@ export type BotOnlyBaselineAggregateReport = {
   boardRefitDecisionRoundMetrics?: BotOnlyBaselineBoardRefitDecisionRoundMetric[];
   boardRefitDecisionRoleMetrics?: BotOnlyBaselineBoardRefitDecisionRoleMetric[];
   boardRefitDecisionRoleRoundMetrics?: BotOnlyBaselineBoardRefitDecisionRoleRoundMetric[];
+  bossBodyGuardDecisionRoundMetrics?: BotOnlyBaselineBossBodyGuardDecisionRoundMetric[];
   finalPlayerBoardMetrics?: BotOnlyBaselineFinalPlayerBoardMetric[];
   roundSurvivalDiagnostics?: BotOnlyBaselineRoundSurvivalDiagnosticMetric[];
   roundUnitSurvivalDiagnostics?: BotOnlyBaselineRoundUnitSurvivalDiagnosticMetric[];
@@ -872,6 +874,54 @@ export type BotOnlyBaselineBoardRefitDecisionRoleRoundMetric =
   BotOnlyBaselineBoardRefitDecisionRoundMetric & {
     role: "boss" | "raid";
   };
+
+export type BotOnlyBaselineBossBodyGuardDecisionSnapshot = {
+  roundIndex: number;
+  playerId: string;
+  label: string;
+  decision: "direct_fill" | "direct_swap" | "side_flank_move" | "none";
+  reason: string;
+  bossCell: number | null;
+  directGuardCell: number | null;
+  directGuardUnitId: string | null;
+  directGuardUnitName: string | null;
+  directGuardUnitType: string | null;
+  directGuardLevel: number | null;
+  strongestGuardCell: number | null;
+  strongestGuardUnitId: string | null;
+  strongestGuardUnitName: string | null;
+  strongestGuardUnitType: string | null;
+  strongestGuardLevel: number | null;
+  benchFrontlineCount: number;
+  directEmpty: boolean;
+  strongerOffDirect: boolean;
+  actionFromCell: number | null;
+  actionToCell: number | null;
+};
+
+export type BotOnlyBaselineBossBodyGuardDecisionRoundMetric = {
+  roundIndex: number;
+  samples: number;
+  directFillSamples: number;
+  directSwapSamples: number;
+  sideFlankMoveSamples: number;
+  noActionSamples: number;
+  directEmptySamples: number;
+  benchFrontlineBlockedSamples: number;
+  strongerOffDirectSamples: number;
+  averageDirectGuardLevel: number | null;
+  directGuardLevelSamples: number;
+  averageStrongestGuardLevel: number | null;
+  strongestGuardLevelSamples: number;
+  mostFrequentDirectGuardUnitId: string | null;
+  mostFrequentDirectGuardUnitName: string | null;
+  mostFrequentDirectGuardSamples: number;
+  mostFrequentStrongestGuardUnitId: string | null;
+  mostFrequentStrongestGuardUnitName: string | null;
+  mostFrequentStrongestGuardSamples: number;
+  mostFrequentReason: string | null;
+  mostFrequentReasonSamples: number;
+};
 
 export type BotOnlyBaselineFinalPlayerBoardMetric = {
   label: string;
@@ -1310,6 +1360,33 @@ type BoardRefitDecisionRoleAccumulator =
 
 type BoardRefitDecisionRoleRoundAccumulator = BoardRefitDecisionRoundAccumulator & {
   role: "boss" | "raid";
+};
+
+type BossBodyGuardDecisionRoundAccumulator = {
+  roundIndex: number;
+  samples: number;
+  directFillSamples: number;
+  directSwapSamples: number;
+  sideFlankMoveSamples: number;
+  noActionSamples: number;
+  directEmptySamples: number;
+  benchFrontlineBlockedSamples: number;
+  strongerOffDirectSamples: number;
+  totalDirectGuardLevel: number;
+  directGuardLevelSamples: number;
+  totalStrongestGuardLevel: number;
+  strongestGuardLevelSamples: number;
+  directGuardSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+  strongestGuardSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+  reasonSamplesByReason: Map<string, number>;
 };
 
 type FinalPlayerBoardAccumulator = {
@@ -1804,6 +1881,29 @@ function createBoardRefitDecisionRoleRoundAccumulator(
   return {
     role,
     ...createBoardRefitDecisionRoundAccumulator(roundIndex),
+  };
+}
+
+function createBossBodyGuardDecisionRoundAccumulator(
+  roundIndex: number,
+): BossBodyGuardDecisionRoundAccumulator {
+  return {
+    roundIndex,
+    samples: 0,
+    directFillSamples: 0,
+    directSwapSamples: 0,
+    sideFlankMoveSamples: 0,
+    noActionSamples: 0,
+    directEmptySamples: 0,
+    benchFrontlineBlockedSamples: 0,
+    strongerOffDirectSamples: 0,
+    totalDirectGuardLevel: 0,
+    directGuardLevelSamples: 0,
+    totalStrongestGuardLevel: 0,
+    strongestGuardLevelSamples: 0,
+    directGuardSamplesById: new Map(),
+    strongestGuardSamplesById: new Map(),
+    reasonSamplesByReason: new Map(),
   };
 }
 
@@ -3287,6 +3387,44 @@ function buildBoardRefitDecisionRoleRoundMetric(
   };
 }
 
+function buildBossBodyGuardDecisionRoundMetric(
+  entry: BossBodyGuardDecisionRoundAccumulator,
+): BotOnlyBaselineBossBodyGuardDecisionRoundMetric {
+  const mostFrequentDirectGuard = Array.from(entry.directGuardSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+  const mostFrequentStrongestGuard = Array.from(entry.strongestGuardSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+  const mostFrequentReason = getMostFrequentReasonSample(entry.reasonSamplesByReason);
+
+  return {
+    roundIndex: entry.roundIndex,
+    samples: entry.samples,
+    directFillSamples: entry.directFillSamples,
+    directSwapSamples: entry.directSwapSamples,
+    sideFlankMoveSamples: entry.sideFlankMoveSamples,
+    noActionSamples: entry.noActionSamples,
+    directEmptySamples: entry.directEmptySamples,
+    benchFrontlineBlockedSamples: entry.benchFrontlineBlockedSamples,
+    strongerOffDirectSamples: entry.strongerOffDirectSamples,
+    averageDirectGuardLevel: entry.directGuardLevelSamples > 0
+      ? entry.totalDirectGuardLevel / entry.directGuardLevelSamples
+      : null,
+    directGuardLevelSamples: entry.directGuardLevelSamples,
+    averageStrongestGuardLevel: entry.strongestGuardLevelSamples > 0
+      ? entry.totalStrongestGuardLevel / entry.strongestGuardLevelSamples
+      : null,
+    strongestGuardLevelSamples: entry.strongestGuardLevelSamples,
+    mostFrequentDirectGuardUnitId: mostFrequentDirectGuard?.unitId ?? null,
+    mostFrequentDirectGuardUnitName: mostFrequentDirectGuard?.unitName ?? null,
+    mostFrequentDirectGuardSamples: mostFrequentDirectGuard?.samples ?? 0,
+    mostFrequentStrongestGuardUnitId: mostFrequentStrongestGuard?.unitId ?? null,
+    mostFrequentStrongestGuardUnitName: mostFrequentStrongestGuard?.unitName ?? null,
+    mostFrequentStrongestGuardSamples: mostFrequentStrongestGuard?.samples ?? 0,
+    mostFrequentReason: mostFrequentReason?.reason ?? null,
+    mostFrequentReasonSamples: mostFrequentReason?.samples ?? 0,
+  };
+}
+
 function buildFinalPlayerBoardMetric(
   entry: FinalPlayerBoardAccumulator,
 ): BotOnlyBaselineFinalPlayerBoardMetric {
@@ -3436,6 +3574,88 @@ function mergeBoardRefitDecisionMetricIntoAccumulator(
   }
 }
 
+function recordBossBodyGuardDecisionSnapshot(
+  snapshot: BotOnlyBaselineBossBodyGuardDecisionSnapshot,
+  decisionsByRound: Map<number, BossBodyGuardDecisionRoundAccumulator>,
+): void {
+  const entry = decisionsByRound.get(snapshot.roundIndex)
+    ?? createBossBodyGuardDecisionRoundAccumulator(snapshot.roundIndex);
+  entry.samples += 1;
+  entry.directFillSamples += snapshot.decision === "direct_fill" ? 1 : 0;
+  entry.directSwapSamples += snapshot.decision === "direct_swap" ? 1 : 0;
+  entry.sideFlankMoveSamples += snapshot.decision === "side_flank_move" ? 1 : 0;
+  entry.noActionSamples += snapshot.decision === "none" ? 1 : 0;
+  entry.directEmptySamples += snapshot.directEmpty ? 1 : 0;
+  entry.benchFrontlineBlockedSamples += snapshot.reason === "bench_frontline_pending" ? 1 : 0;
+  entry.strongerOffDirectSamples += snapshot.strongerOffDirect ? 1 : 0;
+  if (snapshot.directGuardLevel !== null) {
+    entry.totalDirectGuardLevel += snapshot.directGuardLevel;
+    entry.directGuardLevelSamples += 1;
+  }
+  if (snapshot.strongestGuardLevel !== null) {
+    entry.totalStrongestGuardLevel += snapshot.strongestGuardLevel;
+    entry.strongestGuardLevelSamples += 1;
+  }
+  recordUnitSample(
+    entry.directGuardSamplesById,
+    snapshot.directGuardUnitId,
+    snapshot.directGuardUnitName,
+  );
+  recordUnitSample(
+    entry.strongestGuardSamplesById,
+    snapshot.strongestGuardUnitId,
+    snapshot.strongestGuardUnitName,
+  );
+  recordReasonSample(entry.reasonSamplesByReason, snapshot.reason);
+  decisionsByRound.set(snapshot.roundIndex, entry);
+}
+
+function mergeBossBodyGuardDecisionMetricIntoAccumulator(
+  entry: BotOnlyBaselineBossBodyGuardDecisionRoundMetric,
+  existing: BossBodyGuardDecisionRoundAccumulator,
+): void {
+  existing.samples += entry.samples;
+  existing.directFillSamples += entry.directFillSamples;
+  existing.directSwapSamples += entry.directSwapSamples;
+  existing.sideFlankMoveSamples += entry.sideFlankMoveSamples;
+  existing.noActionSamples += entry.noActionSamples;
+  existing.directEmptySamples += entry.directEmptySamples;
+  existing.benchFrontlineBlockedSamples += entry.benchFrontlineBlockedSamples;
+  existing.strongerOffDirectSamples += entry.strongerOffDirectSamples;
+  if (entry.averageDirectGuardLevel !== null) {
+    existing.totalDirectGuardLevel += entry.averageDirectGuardLevel * entry.directGuardLevelSamples;
+    existing.directGuardLevelSamples += entry.directGuardLevelSamples;
+  }
+  if (entry.averageStrongestGuardLevel !== null) {
+    existing.totalStrongestGuardLevel += entry.averageStrongestGuardLevel * entry.strongestGuardLevelSamples;
+    existing.strongestGuardLevelSamples += entry.strongestGuardLevelSamples;
+  }
+  if (entry.mostFrequentDirectGuardUnitId !== null && entry.mostFrequentDirectGuardSamples > 0) {
+    const directGuard = existing.directGuardSamplesById.get(entry.mostFrequentDirectGuardUnitId) ?? {
+      unitId: entry.mostFrequentDirectGuardUnitId,
+      unitName: entry.mostFrequentDirectGuardUnitName ?? entry.mostFrequentDirectGuardUnitId,
+      samples: 0,
+    };
+    directGuard.samples += entry.mostFrequentDirectGuardSamples;
+    existing.directGuardSamplesById.set(entry.mostFrequentDirectGuardUnitId, directGuard);
+  }
+  if (entry.mostFrequentStrongestGuardUnitId !== null && entry.mostFrequentStrongestGuardSamples > 0) {
+    const strongestGuard = existing.strongestGuardSamplesById.get(entry.mostFrequentStrongestGuardUnitId) ?? {
+      unitId: entry.mostFrequentStrongestGuardUnitId,
+      unitName: entry.mostFrequentStrongestGuardUnitName ?? entry.mostFrequentStrongestGuardUnitId,
+      samples: 0,
+    };
+    strongestGuard.samples += entry.mostFrequentStrongestGuardSamples;
+    existing.strongestGuardSamplesById.set(entry.mostFrequentStrongestGuardUnitId, strongestGuard);
+  }
+  if (entry.mostFrequentReason !== null && entry.mostFrequentReasonSamples > 0) {
+    existing.reasonSamplesByReason.set(
+      entry.mostFrequentReason,
+      (existing.reasonSamplesByReason.get(entry.mostFrequentReason) ?? 0) + entry.mostFrequentReasonSamples,
+    );
+  }
+}
+
 function recordOkinaHeroSubDecisionSnapshot(
   snapshot: BotOnlyBaselineOkinaHeroSubDecisionSnapshot,
   decisionsByRound: Map<number, OkinaHeroSubDecisionRoundAccumulator>,
@@ -3535,6 +3755,7 @@ export function buildBotOnlyBaselineAggregateReport(
       boardRefitDecisionRoundMetrics: [],
       boardRefitDecisionRoleMetrics: [],
       boardRefitDecisionRoleRoundMetrics: [],
+      bossBodyGuardDecisionRoundMetrics: [],
       finalPlayerBoardMetrics: [],
       roundSurvivalDiagnostics: [],
       roundUnitSurvivalDiagnostics: [],
@@ -3584,6 +3805,7 @@ export function buildBotOnlyBaselineAggregateReport(
   const boardRefitDecisionsByRound = new Map<number, BoardRefitDecisionRoundAccumulator>();
   const boardRefitDecisionsByRole = new Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>();
   const boardRefitDecisionsByRoleRound = new Map<string, BoardRefitDecisionRoleRoundAccumulator>();
+  const bossBodyGuardDecisionsByRound = new Map<number, BossBodyGuardDecisionRoundAccumulator>();
   const finalPlayerBoardMetricsByLabel = new Map<string, FinalPlayerBoardAccumulator>();
   const finalBoardUnitsById = new Map<string, {
     unitId: string;
@@ -3663,6 +3885,9 @@ export function buildBotOnlyBaselineAggregateReport(
         boardRefitDecisionsByRole,
         boardRefitDecisionsByRoleRound,
       );
+    }
+    for (const snapshot of report.bossBodyGuardDecisionSnapshots ?? []) {
+      recordBossBodyGuardDecisionSnapshot(snapshot, bossBodyGuardDecisionsByRound);
     }
     const seenOkinaSubHostsByRoundInMatch = new Set<string>();
     for (const round of report.rounds ?? []) {
@@ -4742,6 +4967,13 @@ export function buildBotOnlyBaselineAggregateReport(
           .map((entry) => buildBoardRefitDecisionRoleRoundMetric(entry)),
       }
       : {}),
+    ...(bossBodyGuardDecisionsByRound.size > 0
+      ? {
+        bossBodyGuardDecisionRoundMetrics: Array.from(bossBodyGuardDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildBossBodyGuardDecisionRoundMetric(entry)),
+      }
+      : {}),
     finalPlayerBoardMetrics: Array.from(finalPlayerBoardMetricsByLabel.values())
       .sort((left, right) => left.label.localeCompare(right.label))
       .map((entry) => buildFinalPlayerBoardMetric(entry)),
@@ -4942,6 +5174,7 @@ export function mergeBotOnlyBaselineAggregateReports(
       boardRefitDecisionRoundMetrics: [],
       boardRefitDecisionRoleMetrics: [],
       boardRefitDecisionRoleRoundMetrics: [],
+      bossBodyGuardDecisionRoundMetrics: [],
       finalPlayerBoardMetrics: [],
       roundSurvivalDiagnostics: [],
       roundUnitSurvivalDiagnostics: [],
@@ -4991,6 +5224,7 @@ export function mergeBotOnlyBaselineAggregateReports(
   const boardRefitDecisionsByRound = new Map<number, BoardRefitDecisionRoundAccumulator>();
   const boardRefitDecisionsByRole = new Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>();
   const boardRefitDecisionsByRoleRound = new Map<string, BoardRefitDecisionRoleRoundAccumulator>();
+  const bossBodyGuardDecisionsByRound = new Map<number, BossBodyGuardDecisionRoundAccumulator>();
   const finalPlayerBoardMetricsByLabel = new Map<string, FinalPlayerBoardAccumulator>();
   const finalBoardUnitsById = new Map<string, {
     unitId: string;
@@ -5430,6 +5664,13 @@ export function mergeBotOnlyBaselineAggregateReports(
         ?? createBoardRefitDecisionRoleRoundAccumulator(entry.role, entry.roundIndex);
       mergeBoardRefitDecisionMetricIntoAccumulator(entry, existing);
       boardRefitDecisionsByRoleRound.set(key, existing);
+    }
+
+    for (const entry of aggregate.bossBodyGuardDecisionRoundMetrics ?? []) {
+      const existing = bossBodyGuardDecisionsByRound.get(entry.roundIndex)
+        ?? createBossBodyGuardDecisionRoundAccumulator(entry.roundIndex);
+      mergeBossBodyGuardDecisionMetricIntoAccumulator(entry, existing);
+      bossBodyGuardDecisionsByRound.set(entry.roundIndex, existing);
     }
 
     for (const entry of aggregate.finalPlayerBoardMetrics ?? []) {
@@ -6063,6 +6304,13 @@ export function mergeBotOnlyBaselineAggregateReports(
             left.role.localeCompare(right.role)
             || left.roundIndex - right.roundIndex)
           .map((entry) => buildBoardRefitDecisionRoleRoundMetric(entry)),
+      }
+      : {}),
+    ...(bossBodyGuardDecisionsByRound.size > 0
+      ? {
+        bossBodyGuardDecisionRoundMetrics: Array.from(bossBodyGuardDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildBossBodyGuardDecisionRoundMetric(entry)),
       }
       : {}),
     finalPlayerBoardMetrics: Array.from(finalPlayerBoardMetricsByLabel.values())

@@ -381,9 +381,13 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       mostFrequentIncomingUnitId: "hecatia",
       mostFrequentIncomingUnitName: "ヘカーティア・ラピスラズリ",
       mostFrequentIncomingSamples: 2,
+      mostFrequentIncomingReason: "future_candidate",
+      mostFrequentIncomingReasonSamples: 2,
       mostFrequentOutgoingUnitId: "nazrin",
       mostFrequentOutgoingUnitName: "ナズーリン",
       mostFrequentOutgoingSamples: 1,
+      mostFrequentOutgoingReason: "protected_outgoing",
+      mostFrequentOutgoingReasonSamples: 1,
     }],
     boardRefitDecisionRoleMetrics: [{
       role: "boss",
@@ -401,9 +405,13 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       mostFrequentIncomingUnitId: "patchouli",
       mostFrequentIncomingUnitName: "パチュリー・ノーレッジ",
       mostFrequentIncomingSamples: 2,
+      mostFrequentIncomingReason: "replacement_ready",
+      mostFrequentIncomingReasonSamples: 2,
       mostFrequentOutgoingUnitId: "momoyo",
       mostFrequentOutgoingUnitName: "姫虫百々世",
       mostFrequentOutgoingSamples: 1,
+      mostFrequentOutgoingReason: "weak_outgoing",
+      mostFrequentOutgoingReasonSamples: 1,
     }, {
       role: "raid",
       samples: 1,
@@ -420,9 +428,13 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       mostFrequentIncomingUnitId: "hecatia",
       mostFrequentIncomingUnitName: "ヘカーティア・ラピスラズリ",
       mostFrequentIncomingSamples: 1,
+      mostFrequentIncomingReason: "future_candidate",
+      mostFrequentIncomingReasonSamples: 1,
       mostFrequentOutgoingUnitId: "nazrin",
       mostFrequentOutgoingUnitName: "ナズーリン",
       mostFrequentOutgoingSamples: 1,
+      mostFrequentOutgoingReason: "protected_outgoing",
+      mostFrequentOutgoingReasonSamples: 1,
     }],
     boardRefitDecisionRoleRoundMetrics: [{
       role: "boss",
@@ -441,9 +453,13 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       mostFrequentIncomingUnitId: "patchouli",
       mostFrequentIncomingUnitName: "パチュリー・ノーレッジ",
       mostFrequentIncomingSamples: 2,
+      mostFrequentIncomingReason: "replacement_ready",
+      mostFrequentIncomingReasonSamples: 2,
       mostFrequentOutgoingUnitId: "momoyo",
       mostFrequentOutgoingUnitName: "姫虫百々世",
       mostFrequentOutgoingSamples: 1,
+      mostFrequentOutgoingReason: "weak_outgoing",
+      mostFrequentOutgoingReasonSamples: 1,
     }],
     finalPlayerBoardMetrics: [{
       label: "P2",
@@ -1052,6 +1068,8 @@ describe("bot balance baseline human report", () => {
         "平均bench圧": 0.75,
         "P50置換score": 24.5,
         "最多incoming": "ヘカーティア・ラピスラズリ (hecatia) x2",
+        "最多incoming理由": "future_candidate x2",
+        "最多outgoing理由": "protected_outgoing x1",
       }),
     ]);
     expect(jsonReport["ロール別盤面再編成診断"]).toEqual([
@@ -1063,6 +1081,8 @@ describe("bot balance baseline human report", () => {
         "平均bench圧": 0.5,
         "平均置換score": 72,
         "最多incoming": "パチュリー・ノーレッジ (patchouli) x2",
+        "最多incoming理由": "replacement_ready x2",
+        "最多outgoing理由": "weak_outgoing x1",
       }),
       expect.objectContaining({
         "ロール": "raid",
@@ -1072,6 +1092,8 @@ describe("bot balance baseline human report", () => {
         "平均bench圧": 0.875,
         "平均置換score": -42,
         "最多incoming": "ヘカーティア・ラピスラズリ (hecatia) x1",
+        "最多incoming理由": "future_candidate x1",
+        "最多outgoing理由": "protected_outgoing x1",
       }),
     ]);
     expect(jsonReport["ロール・ラウンド別盤面再編成診断"]).toEqual([
@@ -1082,6 +1104,8 @@ describe("bot balance baseline human report", () => {
         "置換推奨": 2,
         "置換実行": 1,
         "最多incoming": "パチュリー・ノーレッジ (patchouli) x2",
+        "最多incoming理由": "replacement_ready x2",
+        "最多outgoing理由": "weak_outgoing x1",
       }),
     ]);
     expect(jsonReport["プレイヤー別最終盤面価値"]).toEqual([
@@ -1486,14 +1510,14 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| R | 診断回数 | 裏推奨 | 候補なし | 表優先 | 現host維持 | 平均候補数 | 平均表相当値 | 平均best host gain | 平均currentPower | 平均futureValue | 平均transition | 平均protection | 平均best/表 | 最多best host |");
     expect(markdown).toContain("| 4 | 3 | 1 | 1 | 1 | 0 | 1.67 | 90 | 120 | 740 | 360 | 64 | 0 | 1.33 | 火焔猫燐 (rin) x2 |");
     expect(markdown).toContain("## ラウンド別盤面再編成診断");
-    expect(markdown).toContain("| R | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | 最多outgoing |");
-    expect(markdown).toContain("| 6 | 4 | 3 | 2 | 1 | 0 | 1 | 75.0% | 24.5 | -42 | 24.5 | 91 | ヘカーティア・ラピスラズリ (hecatia) x2 | ナズーリン (nazrin) x1 |");
+    expect(markdown).toContain("| R | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | incoming理由 | 最多outgoing | outgoing理由 |");
+    expect(markdown).toContain("| 6 | 4 | 3 | 2 | 1 | 0 | 1 | 75.0% | 24.5 | -42 | 24.5 | 91 | ヘカーティア・ラピスラズリ (hecatia) x2 | future_candidate x2 | ナズーリン (nazrin) x1 | protected_outgoing x1 |");
     expect(markdown).toContain("## ロール別盤面再編成診断");
-    expect(markdown).toContain("| ロール | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | 最多outgoing |");
-    expect(markdown).toContain("| boss | 3 | 3 | 2 | 2 | 1 | 0 | 50.0% | 72 | 12 | 72 | 120 | パチュリー・ノーレッジ (patchouli) x2 | 姫虫百々世 (momoyo) x1 |");
-    expect(markdown).toContain("| raid | 1 | 1 | 1 | 0 | 0 | 1 | 87.5% | -42 | -42 | -42 | -42 | ヘカーティア・ラピスラズリ (hecatia) x1 | ナズーリン (nazrin) x1 |");
+    expect(markdown).toContain("| ロール | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | incoming理由 | 最多outgoing | outgoing理由 |");
+    expect(markdown).toContain("| boss | 3 | 3 | 2 | 2 | 1 | 0 | 50.0% | 72 | 12 | 72 | 120 | パチュリー・ノーレッジ (patchouli) x2 | replacement_ready x2 | 姫虫百々世 (momoyo) x1 | weak_outgoing x1 |");
+    expect(markdown).toContain("| raid | 1 | 1 | 1 | 0 | 0 | 1 | 87.5% | -42 | -42 | -42 | -42 | ヘカーティア・ラピスラズリ (hecatia) x1 | future_candidate x1 | ナズーリン (nazrin) x1 | protected_outgoing x1 |");
     expect(markdown).toContain("## ロール・ラウンド別盤面再編成診断");
-    expect(markdown).toContain("| boss | 6 | 3 | 3 | 2 | 2 | 1 | 0 | 50.0% | 72 | パチュリー・ノーレッジ (patchouli) x2 | 姫虫百々世 (momoyo) x1 |");
+    expect(markdown).toContain("| boss | 6 | 3 | 3 | 2 | 2 | 1 | 0 | 50.0% | 72 | パチュリー・ノーレッジ (patchouli) x2 | replacement_ready x2 | 姫虫百々世 (momoyo) x1 | weak_outgoing x1 |");
     expect(markdown).toContain("## プレイヤー別最終盤面価値");
     expect(markdown).toContain("| P2 | raid | 9 | 3 | 11.4 | 1 | 2 |");
     expect(markdown).toContain("担当側戦闘勝率");

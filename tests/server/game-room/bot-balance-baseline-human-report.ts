@@ -558,9 +558,15 @@ export function buildBotBalanceBaselineJapaneseJson(
       "最多incoming": entry.mostFrequentIncomingUnitId === null
         ? null
         : `${entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId} (${entry.mostFrequentIncomingUnitId}) x${entry.mostFrequentIncomingSamples}`,
+      "最多incoming理由": entry.mostFrequentIncomingReason == null
+        ? null
+        : `${entry.mostFrequentIncomingReason} x${entry.mostFrequentIncomingReasonSamples ?? 0}`,
       "最多outgoing": entry.mostFrequentOutgoingUnitId === null
         ? null
         : `${entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId} (${entry.mostFrequentOutgoingUnitId}) x${entry.mostFrequentOutgoingSamples}`,
+      "最多outgoing理由": entry.mostFrequentOutgoingReason == null
+        ? null
+        : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`,
     })),
     "ロール別盤面再編成診断": (aggregate.boardRefitDecisionRoleMetrics ?? []).map((entry) => ({
       "ロール": entry.role,
@@ -578,9 +584,15 @@ export function buildBotBalanceBaselineJapaneseJson(
       "最多incoming": entry.mostFrequentIncomingUnitId === null
         ? null
         : `${entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId} (${entry.mostFrequentIncomingUnitId}) x${entry.mostFrequentIncomingSamples}`,
+      "最多incoming理由": entry.mostFrequentIncomingReason == null
+        ? null
+        : `${entry.mostFrequentIncomingReason} x${entry.mostFrequentIncomingReasonSamples ?? 0}`,
       "最多outgoing": entry.mostFrequentOutgoingUnitId === null
         ? null
         : `${entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId} (${entry.mostFrequentOutgoingUnitId}) x${entry.mostFrequentOutgoingSamples}`,
+      "最多outgoing理由": entry.mostFrequentOutgoingReason == null
+        ? null
+        : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`,
     })),
     "ロール・ラウンド別盤面再編成診断": (aggregate.boardRefitDecisionRoleRoundMetrics ?? []).map((entry) => ({
       "ロール": entry.role,
@@ -596,9 +608,15 @@ export function buildBotBalanceBaselineJapaneseJson(
       "最多incoming": entry.mostFrequentIncomingUnitId === null
         ? null
         : `${entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId} (${entry.mostFrequentIncomingUnitId}) x${entry.mostFrequentIncomingSamples}`,
+      "最多incoming理由": entry.mostFrequentIncomingReason == null
+        ? null
+        : `${entry.mostFrequentIncomingReason} x${entry.mostFrequentIncomingReasonSamples ?? 0}`,
       "最多outgoing": entry.mostFrequentOutgoingUnitId === null
         ? null
         : `${entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId} (${entry.mostFrequentOutgoingUnitId}) x${entry.mostFrequentOutgoingSamples}`,
+      "最多outgoing理由": entry.mostFrequentOutgoingReason == null
+        ? null
+        : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`,
     })),
     "プレイヤー別最終盤面価値": (aggregate.finalPlayerBoardMetrics ?? []).map((entry) => ({
       "プレイヤー": entry.label,
@@ -1260,21 +1278,27 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     "",
     "## ラウンド別盤面再編成診断",
     "",
-    "| R | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | 最多outgoing |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| R | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | incoming理由 | 最多outgoing | outgoing理由 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   if (boardRefitDecisionRoundMetrics.length === 0) {
-    lines.push("| - | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - | - | - | - |");
+    lines.push("| - | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - | - | - | - | - | - |");
   } else {
     for (const entry of boardRefitDecisionRoundMetrics) {
       const incomingLabel = entry.mostFrequentIncomingUnitId === null
         ? "-"
         : `${entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId} (${entry.mostFrequentIncomingUnitId}) x${entry.mostFrequentIncomingSamples}`;
+      const incomingReasonLabel = entry.mostFrequentIncomingReason == null
+        ? "-"
+        : `${entry.mostFrequentIncomingReason} x${entry.mostFrequentIncomingReasonSamples ?? 0}`;
       const outgoingLabel = entry.mostFrequentOutgoingUnitId === null
         ? "-"
         : `${entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId} (${entry.mostFrequentOutgoingUnitId}) x${entry.mostFrequentOutgoingSamples}`;
+      const outgoingReasonLabel = entry.mostFrequentOutgoingReason == null
+        ? "-"
+        : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`;
       lines.push(
-        `| ${entry.roundIndex} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${formatNullableNumber(entry.p25ReplacementScore)} | ${formatNullableNumber(entry.p50ReplacementScore)} | ${formatNullableNumber(entry.p75ReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(outgoingLabel)} |`,
+        `| ${entry.roundIndex} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${formatNullableNumber(entry.p25ReplacementScore)} | ${formatNullableNumber(entry.p50ReplacementScore)} | ${formatNullableNumber(entry.p75ReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(incomingReasonLabel)} | ${escapeMarkdownCell(outgoingLabel)} | ${escapeMarkdownCell(outgoingReasonLabel)} |`,
       );
     }
   }
@@ -1284,21 +1308,27 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     "",
     "## ロール別盤面再編成診断",
     "",
-    "| ロール | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | 最多outgoing |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| ロール | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | P25 | P50 | P75 | 最多incoming | incoming理由 | 最多outgoing | outgoing理由 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   if (boardRefitDecisionRoleMetrics.length === 0) {
-    lines.push("| - | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - | - | - | - |");
+    lines.push("| - | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - | - | - | - | - | - |");
   } else {
     for (const entry of boardRefitDecisionRoleMetrics) {
       const incomingLabel = entry.mostFrequentIncomingUnitId === null
         ? "-"
         : `${entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId} (${entry.mostFrequentIncomingUnitId}) x${entry.mostFrequentIncomingSamples}`;
+      const incomingReasonLabel = entry.mostFrequentIncomingReason == null
+        ? "-"
+        : `${entry.mostFrequentIncomingReason} x${entry.mostFrequentIncomingReasonSamples ?? 0}`;
       const outgoingLabel = entry.mostFrequentOutgoingUnitId === null
         ? "-"
         : `${entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId} (${entry.mostFrequentOutgoingUnitId}) x${entry.mostFrequentOutgoingSamples}`;
+      const outgoingReasonLabel = entry.mostFrequentOutgoingReason == null
+        ? "-"
+        : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`;
       lines.push(
-        `| ${entry.role} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${formatNullableNumber(entry.p25ReplacementScore)} | ${formatNullableNumber(entry.p50ReplacementScore)} | ${formatNullableNumber(entry.p75ReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(outgoingLabel)} |`,
+        `| ${entry.role} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${formatNullableNumber(entry.p25ReplacementScore)} | ${formatNullableNumber(entry.p50ReplacementScore)} | ${formatNullableNumber(entry.p75ReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(incomingReasonLabel)} | ${escapeMarkdownCell(outgoingLabel)} | ${escapeMarkdownCell(outgoingReasonLabel)} |`,
       );
     }
   }
@@ -1308,21 +1338,27 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     "",
     "## ロール・ラウンド別盤面再編成診断",
     "",
-    "| ロール | R | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | 最多incoming | 最多outgoing |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| ロール | R | 診断回数 | 盤面満杯 | 試行候補 | 置換推奨 | 置換実行 | 将来候補保持 | 平均bench圧 | 平均置換score | 最多incoming | incoming理由 | 最多outgoing | outgoing理由 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   );
   if (boardRefitDecisionRoleRoundMetrics.length === 0) {
-    lines.push("| - | - | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - |");
+    lines.push("| - | - | 0 | 0 | 0 | 0 | 0 | 0 | - | - | - | - | - | - |");
   } else {
     for (const entry of boardRefitDecisionRoleRoundMetrics) {
       const incomingLabel = entry.mostFrequentIncomingUnitId === null
         ? "-"
         : `${entry.mostFrequentIncomingUnitName ?? entry.mostFrequentIncomingUnitId} (${entry.mostFrequentIncomingUnitId}) x${entry.mostFrequentIncomingSamples}`;
+      const incomingReasonLabel = entry.mostFrequentIncomingReason == null
+        ? "-"
+        : `${entry.mostFrequentIncomingReason} x${entry.mostFrequentIncomingReasonSamples ?? 0}`;
       const outgoingLabel = entry.mostFrequentOutgoingUnitId === null
         ? "-"
         : `${entry.mostFrequentOutgoingUnitName ?? entry.mostFrequentOutgoingUnitId} (${entry.mostFrequentOutgoingUnitId}) x${entry.mostFrequentOutgoingSamples}`;
+      const outgoingReasonLabel = entry.mostFrequentOutgoingReason == null
+        ? "-"
+        : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`;
       lines.push(
-        `| ${entry.role} | ${entry.roundIndex} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(outgoingLabel)} |`,
+        `| ${entry.role} | ${entry.roundIndex} | ${entry.samples} | ${entry.boardFullSamples} | ${entry.attemptSamples} | ${entry.recommendedReplacementSamples} | ${entry.committedSamples} | ${entry.futureCandidateKeptCount} | ${formatPercent(entry.averageBenchPressure)} | ${formatNullableNumber(entry.averageReplacementScore)} | ${escapeMarkdownCell(incomingLabel)} | ${escapeMarkdownCell(incomingReasonLabel)} | ${escapeMarkdownCell(outgoingLabel)} | ${escapeMarkdownCell(outgoingReasonLabel)} |`,
       );
     }
   }

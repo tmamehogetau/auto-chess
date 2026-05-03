@@ -558,7 +558,11 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         averageReplacementScore: 39,
         p50ReplacementScore: 120,
         mostFrequentIncomingUnitId: "hecatia",
+        mostFrequentIncomingReason: "future_candidate",
+        mostFrequentIncomingReasonSamples: 1,
         mostFrequentOutgoingUnitId: "momoyo",
+        mostFrequentOutgoingReason: "protected_outgoing",
+        mostFrequentOutgoingReasonSamples: 1,
       }),
     ]);
     expect(report.boardRefitDecisionRoleMetrics).toEqual(expect.arrayContaining([
@@ -570,6 +574,8 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         averageBenchPressure: 1 / 8,
         averageReplacementScore: 120,
         mostFrequentIncomingUnitId: "patchouli",
+        mostFrequentIncomingReason: "replacement_ready",
+        mostFrequentOutgoingReason: "weak_outgoing",
       }),
       expect.objectContaining({
         role: "raid",
@@ -580,6 +586,8 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         averageBenchPressure: 3 / 8,
         averageReplacementScore: -42,
         mostFrequentIncomingUnitId: "hecatia",
+        mostFrequentIncomingReason: "future_candidate",
+        mostFrequentOutgoingReason: "protected_outgoing",
       }),
     ]));
     expect(report.boardRefitDecisionRoleRoundMetrics).toEqual(expect.arrayContaining([
@@ -591,6 +599,8 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         committedSamples: 1,
         mostFrequentIncomingUnitId: "patchouli",
         mostFrequentOutgoingUnitId: "momoyo",
+        mostFrequentIncomingReason: "replacement_ready",
+        mostFrequentOutgoingReason: "weak_outgoing",
       }),
       expect.objectContaining({
         role: "raid",
@@ -600,6 +610,8 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         futureCandidateKeptCount: 1,
         mostFrequentIncomingUnitId: "hecatia",
         mostFrequentOutgoingUnitId: "nazrin",
+        mostFrequentIncomingReason: "future_candidate",
+        mostFrequentOutgoingReason: "protected_outgoing",
       }),
     ]));
     expect(report.finalPlayerBoardMetrics).toEqual(expect.arrayContaining([

@@ -2126,6 +2126,41 @@ function getPlacementAtCell(placements, cell) {
   return placements.find((placement) => placement.cell === cell) ?? null;
 }
 
+function getGuardStrengthScore(unit) {
+  if (!unit || !isFrontlineUnitType(unit.unitType)) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const unitLevel = Number.isFinite(unit.unitLevel)
+    ? Math.max(1, Number(unit.unitLevel))
+    : 1;
+  return unitLevel * 100;
+}
+
+function buildBenchGuardEntries(player) {
+  const benchUnitIds = toArray(player?.benchUnitIds);
+
+  return toArray(player?.benchUnits)
+    .map((unit, index) => ({
+      index,
+      unitId: parseBenchUnitId(unit, benchUnitIds[index]),
+      unitType: parseBenchUnitType(unit),
+      unitLevel: unit && typeof unit === "object" && Number.isFinite(unit.unitLevel)
+        ? Number(unit.unitLevel)
+        : undefined,
+    }))
+    .filter((entry) => isFrontlineUnitType(entry.unitType));
+}
+
+function getStrongestGuardPlacement(placements, excludedCells = new Set()) {
+  return placements
+    .filter((placement) =>
+      !excludedCells.has(placement.cell) && isFrontlineUnitType(placement.unitType))
+    .sort((leftPlacement, rightPlacement) =>
+      getGuardStrengthScore(rightPlacement) - getGuardStrengthScore(leftPlacement)
+      || leftPlacement.cell - rightPlacement.cell)[0] ?? null;
+}
+
 function getBossRelativeCell(bossCell, dx = 0, dy = 0) {
   const bossCoordinate = getBoardCellCoordinate(bossCell);
   const x = bossCoordinate.x + dx;
@@ -2160,10 +2195,29 @@ function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
   }
 
   const directGuard = getPlacementAtCell(placements, directGuardCell);
+  if (!directGuard) {
+    const benchHasFrontlineGuard = buildBenchGuardEntries(player).length > 0;
+    const strongestBoardGuard = benchHasFrontlineGuard
+      ? null
+      : getStrongestGuardPlacement(placements, new Set([bossCell, directGuardCell]));
+    if (!strongestBoardGuard) {
+      return null;
+    }
+
+    return {
+      type: "prep_command",
+      payload: {
+        boardUnitMove: {
+          fromCell: strongestBoardGuard.cell,
+          toCell: directGuardCell,
+        },
+      },
+    };
+  }
+
   const deeperDirectGuard = getPlacementAtCell(placements, deeperDirectGuardCell);
   if (
-    !directGuard
-    || !isFrontlineUnitType(directGuard.unitType)
+    !isFrontlineUnitType(directGuard.unitType)
     || !deeperDirectGuard
     || !isFrontlineUnitType(deeperDirectGuard.unitType)
   ) {

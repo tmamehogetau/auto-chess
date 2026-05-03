@@ -3366,6 +3366,74 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("late boss helper keeps an occupied direct guard instead of opening the lane for a reserve", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [
+          { unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        ],
+        benchUnitIds: ["meiling"],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 8, unitId: "yoshika", unitType: "vanguard", unitLevel: 2 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 14,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("late boss helper moves the strongest existing guard into an open direct lane", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 9, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 3 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: {
+          boardUnitMove: {
+            fromCell: 9,
+            toCell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame boss helper keeps a second direct guard in the lane", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

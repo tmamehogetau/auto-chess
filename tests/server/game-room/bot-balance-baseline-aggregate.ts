@@ -254,6 +254,32 @@ export type BotOnlyBaselineShopOfferMetric = BotOnlyBaselineHighCostOfferMetric 
   finalBoardAdoptionRate: number;
 };
 
+export type BotOnlyBaselineBossNormalHighCostMaturationMetric = {
+  unitId: string;
+  unitName: string;
+  unitType: string;
+  cost: number;
+  offerObservationCount: number;
+  offerMatchCount: number;
+  purchaseCount: number;
+  purchaseMatchCount: number;
+  purchaseRate: number;
+  battleAppearances: number;
+  battleMatchCount: number;
+  battleAdoptionRate: number;
+  averageBattleUnitLevel: number;
+  maxBattleUnitLevel: number;
+  battleLevel4ReachRate: number;
+  battleLevel7ReachRate: number;
+  finalBoardCopies: number;
+  finalBoardMatchCount: number;
+  finalBoardAdoptionRate: number;
+  averageFinalUnitLevel: number;
+  maxFinalUnitLevel: number;
+  finalLevel4Rate: number;
+  finalLevel7Rate: number;
+};
+
 export type BotOnlyBaselineBossExclusiveRoundLevelMetric = {
   roundIndex: number;
   unitId: string;
@@ -685,6 +711,7 @@ export type BotOnlyBaselineAggregateReport = {
   highCostSummary?: BotOnlyBaselineHighCostSummary;
   highCostOfferMetrics?: BotOnlyBaselineHighCostOfferMetric[];
   shopOfferMetrics?: BotOnlyBaselineShopOfferMetric[];
+  bossNormalHighCostMaturationMetrics?: BotOnlyBaselineBossNormalHighCostMaturationMetric[];
   bossExclusiveRoundLevelMetrics?: BotOnlyBaselineBossExclusiveRoundLevelMetric[];
   highCostRoundMetrics?: BotOnlyBaselineHighCostRoundMetric[];
   roundDamageEfficiencyMetrics?: BotOnlyBaselineRoundDamageEfficiencyMetric[];
@@ -1172,6 +1199,41 @@ type BattleUnitAggregateAccumulator = {
   subUnitMatchesPresent?: number;
   hostedSubUnitBattleAppearances?: number;
   hostedSubUnitMatchesPresent?: number;
+};
+
+type FinalBoardUnitRoleAccumulator = {
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  totalCopies: number;
+  matchesPresent: number;
+  totalUnitLevel: number;
+  maxUnitLevel: number;
+  level4Copies: number;
+  level7Copies: number;
+};
+
+type BossNormalHighCostMaturationAccumulator = {
+  unitId: string;
+  unitName: string;
+  unitType: string;
+  cost: number;
+  offerObservationCount: number;
+  offerMatchCount: number;
+  purchaseCount: number;
+  purchaseMatchCount: number;
+  battleAppearances: number;
+  battleMatchCount: number;
+  totalBattleUnitLevel: number;
+  maxBattleUnitLevel: number;
+  battleLevel4Matches: number;
+  battleLevel7Matches: number;
+  finalBoardCopies: number;
+  finalBoardMatchCount: number;
+  totalFinalUnitLevel: number;
+  maxFinalUnitLevel: number;
+  finalLevel4Copies: number;
+  finalLevel7Copies: number;
 };
 
 type OkinaSubHostAccumulator = {
@@ -3006,6 +3068,81 @@ function buildBattleUnitMetrics(
   };
 }
 
+function buildBossNormalHighCostMaturationMetrics(
+  shopOfferMetrics: BotOnlyBaselineShopOfferMetric[],
+  bossBattleUnitMetrics: BotOnlyBaselineBattleUnitMetrics[],
+  finalBoardUnitsByRoleAndId: Map<string, FinalBoardUnitRoleAccumulator>,
+  completedMatches: number,
+): BotOnlyBaselineBossNormalHighCostMaturationMetric[] {
+  const bossBattleUnitById = new Map(bossBattleUnitMetrics.map((unit) => [unit.unitId, unit]));
+  return shopOfferMetrics
+    .filter((offer) => offer.role === "boss" && offer.source === "shop" && offer.cost >= HIGH_COST_THRESHOLD)
+    .sort((left, right) =>
+      right.purchaseCount - left.purchaseCount
+      || right.observationCount - left.observationCount
+      || left.unitId.localeCompare(right.unitId))
+    .map((offer) => {
+      const battleUnit = bossBattleUnitById.get(offer.unitId);
+      const finalBoard = finalBoardUnitsByRoleAndId.get(`boss::${offer.unitId}`);
+      return {
+        unitId: offer.unitId,
+        unitName: offer.unitName,
+        unitType: offer.unitType,
+        cost: offer.cost,
+        offerObservationCount: offer.observationCount,
+        offerMatchCount: offer.matchesPresent,
+        purchaseCount: offer.purchaseCount,
+        purchaseMatchCount: offer.purchaseMatchCount,
+        purchaseRate: offer.purchaseRate,
+        battleAppearances: battleUnit?.battleAppearances ?? 0,
+        battleMatchCount: battleUnit?.matchesPresent ?? 0,
+        battleAdoptionRate: battleUnit?.adoptionRate ?? 0,
+        averageBattleUnitLevel: battleUnit?.averageunitLevel ?? 0,
+        maxBattleUnitLevel: battleUnit?.maxUnitLevel ?? 0,
+        battleLevel4ReachRate: battleUnit?.level4ReachRate ?? 0,
+        battleLevel7ReachRate: battleUnit?.level7ReachRate ?? 0,
+        finalBoardCopies: finalBoard?.totalCopies ?? 0,
+        finalBoardMatchCount: finalBoard?.matchesPresent ?? 0,
+        finalBoardAdoptionRate: divideOrZero(finalBoard?.matchesPresent ?? 0, completedMatches),
+        averageFinalUnitLevel: divideOrZero(finalBoard?.totalUnitLevel ?? 0, finalBoard?.totalCopies ?? 0),
+        maxFinalUnitLevel: finalBoard?.maxUnitLevel ?? 0,
+        finalLevel4Rate: divideOrZero(finalBoard?.level4Copies ?? 0, finalBoard?.totalCopies ?? 0),
+        finalLevel7Rate: divideOrZero(finalBoard?.level7Copies ?? 0, finalBoard?.totalCopies ?? 0),
+      };
+    });
+}
+
+function buildBossNormalHighCostMaturationMetricFromAccumulator(
+  entry: BossNormalHighCostMaturationAccumulator,
+  completedMatches: number,
+): BotOnlyBaselineBossNormalHighCostMaturationMetric {
+  return {
+    unitId: entry.unitId,
+    unitName: entry.unitName,
+    unitType: entry.unitType,
+    cost: entry.cost,
+    offerObservationCount: entry.offerObservationCount,
+    offerMatchCount: entry.offerMatchCount,
+    purchaseCount: entry.purchaseCount,
+    purchaseMatchCount: entry.purchaseMatchCount,
+    purchaseRate: divideOrZero(entry.purchaseCount, entry.offerObservationCount),
+    battleAppearances: entry.battleAppearances,
+    battleMatchCount: entry.battleMatchCount,
+    battleAdoptionRate: divideOrZero(entry.battleMatchCount, completedMatches),
+    averageBattleUnitLevel: divideOrZero(entry.totalBattleUnitLevel, entry.battleAppearances),
+    maxBattleUnitLevel: entry.maxBattleUnitLevel,
+    battleLevel4ReachRate: divideOrZero(entry.battleLevel4Matches, entry.battleMatchCount),
+    battleLevel7ReachRate: divideOrZero(entry.battleLevel7Matches, entry.battleMatchCount),
+    finalBoardCopies: entry.finalBoardCopies,
+    finalBoardMatchCount: entry.finalBoardMatchCount,
+    finalBoardAdoptionRate: divideOrZero(entry.finalBoardMatchCount, completedMatches),
+    averageFinalUnitLevel: divideOrZero(entry.totalFinalUnitLevel, entry.finalBoardCopies),
+    maxFinalUnitLevel: entry.maxFinalUnitLevel,
+    finalLevel4Rate: divideOrZero(entry.finalLevel4Copies, entry.finalBoardCopies),
+    finalLevel7Rate: divideOrZero(entry.finalLevel7Copies, entry.finalBoardCopies),
+  };
+}
+
 function buildOkinaSubHostMetric(
   entry: OkinaSubHostAccumulator,
 ): BotOnlyBaselineOkinaSubHostMetric {
@@ -3459,13 +3596,7 @@ export function buildBotOnlyBaselineAggregateReport(
     level4Copies: number;
     level7Copies: number;
   }>();
-  const finalBoardUnitsByRoleAndId = new Map<string, {
-    unitId: string;
-    unitType: string;
-    unitName: string;
-    totalCopies: number;
-    matchesPresent: number;
-  }>();
+  const finalBoardUnitsByRoleAndId = new Map<string, FinalBoardUnitRoleAccumulator>();
   const damageByUnit = new Map<string, {
     unitId: string;
     unitName: string;
@@ -3840,8 +3971,20 @@ export function buildBotOnlyBaselineAggregateReport(
           unitName: boardUnit.unitName,
           totalCopies: 0,
           matchesPresent: 0,
+          totalUnitLevel: 0,
+          maxUnitLevel: 0,
+          level4Copies: 0,
+          level7Copies: 0,
         };
         existingForRole.totalCopies += 1;
+        existingForRole.totalUnitLevel += finalUnitLevel;
+        existingForRole.maxUnitLevel = Math.max(existingForRole.maxUnitLevel, finalUnitLevel);
+        if (finalUnitLevel >= 4) {
+          existingForRole.level4Copies += 1;
+        }
+        if (finalUnitLevel >= 7) {
+          existingForRole.level7Copies += 1;
+        }
         if (!seenFinalBoardUnitsByRoleInMatch.has(roleScopedKey)) {
           existingForRole.matchesPresent += 1;
           seenFinalBoardUnitsByRoleInMatch.add(roleScopedKey);
@@ -4719,6 +4862,13 @@ export function buildBotOnlyBaselineAggregateReport(
     roundDetails,
   };
 
+  aggregate.bossNormalHighCostMaturationMetrics = buildBossNormalHighCostMaturationMetrics(
+    aggregate.shopOfferMetrics ?? [],
+    aggregate.bossBattleUnitMetrics,
+    finalBoardUnitsByRoleAndId,
+    completedMatches,
+  );
+
   return sharedMetadata == null
     ? aggregate
     : {
@@ -4884,6 +5034,7 @@ export function mergeBotOnlyBaselineAggregateReports(
     finalBoardCopies: number;
     finalBoardMatchCount: number;
   }>();
+  const bossNormalHighCostMaturationById = new Map<string, BossNormalHighCostMaturationAccumulator>();
   const roundDamageEfficiencyByKey = new Map<string, RoundDamageEfficiencyAccumulator>();
   const roundSurvivalDiagnosticsByRound = new Map<number, RoundSurvivalDiagnosticAccumulator>();
   const roundUnitSurvivalDiagnosticsByKey = new Map<string, RoundUnitSurvivalDiagnosticAccumulator>();
@@ -5374,6 +5525,48 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.finalBoardCopies += entry.finalBoardCopies;
       existing.finalBoardMatchCount += entry.finalBoardMatchCount;
       shopOfferMetricsByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.bossNormalHighCostMaturationMetrics ?? []) {
+      const existing = bossNormalHighCostMaturationById.get(entry.unitId) ?? {
+        unitId: entry.unitId,
+        unitName: entry.unitName,
+        unitType: entry.unitType,
+        cost: entry.cost,
+        offerObservationCount: 0,
+        offerMatchCount: 0,
+        purchaseCount: 0,
+        purchaseMatchCount: 0,
+        battleAppearances: 0,
+        battleMatchCount: 0,
+        totalBattleUnitLevel: 0,
+        maxBattleUnitLevel: 0,
+        battleLevel4Matches: 0,
+        battleLevel7Matches: 0,
+        finalBoardCopies: 0,
+        finalBoardMatchCount: 0,
+        totalFinalUnitLevel: 0,
+        maxFinalUnitLevel: 0,
+        finalLevel4Copies: 0,
+        finalLevel7Copies: 0,
+      };
+      existing.offerObservationCount += entry.offerObservationCount;
+      existing.offerMatchCount += entry.offerMatchCount;
+      existing.purchaseCount += entry.purchaseCount;
+      existing.purchaseMatchCount += entry.purchaseMatchCount;
+      existing.battleAppearances += entry.battleAppearances;
+      existing.battleMatchCount += entry.battleMatchCount;
+      existing.totalBattleUnitLevel += entry.averageBattleUnitLevel * entry.battleAppearances;
+      existing.maxBattleUnitLevel = Math.max(existing.maxBattleUnitLevel, entry.maxBattleUnitLevel);
+      existing.battleLevel4Matches += entry.battleLevel4ReachRate * entry.battleMatchCount;
+      existing.battleLevel7Matches += entry.battleLevel7ReachRate * entry.battleMatchCount;
+      existing.finalBoardCopies += entry.finalBoardCopies;
+      existing.finalBoardMatchCount += entry.finalBoardMatchCount;
+      existing.totalFinalUnitLevel += entry.averageFinalUnitLevel * entry.finalBoardCopies;
+      existing.maxFinalUnitLevel = Math.max(existing.maxFinalUnitLevel, entry.maxFinalUnitLevel);
+      existing.finalLevel4Copies += entry.finalLevel4Rate * entry.finalBoardCopies;
+      existing.finalLevel7Copies += entry.finalLevel7Rate * entry.finalBoardCopies;
+      bossNormalHighCostMaturationById.set(entry.unitId, existing);
     }
 
     for (const entry of aggregate.bossExclusiveRoundLevelMetrics ?? []) {
@@ -5967,6 +6160,12 @@ export function mergeBotOnlyBaselineAggregateReports(
         purchaseRate: entry.observationCount > 0 ? entry.purchaseCount / entry.observationCount : 0,
         finalBoardAdoptionRate: completedMatches > 0 ? entry.finalBoardMatchCount / completedMatches : 0,
       })),
+    bossNormalHighCostMaturationMetrics: Array.from(bossNormalHighCostMaturationById.values())
+      .sort((left, right) =>
+        right.purchaseCount - left.purchaseCount
+        || right.offerObservationCount - left.offerObservationCount
+        || left.unitId.localeCompare(right.unitId))
+      .map((entry) => buildBossNormalHighCostMaturationMetricFromAccumulator(entry, completedMatches)),
     rangeDamageEfficiencyMetrics: Array.from(rangeDamageEfficiencyByKey.values())
       .sort((left, right) =>
         left.side.localeCompare(right.side)

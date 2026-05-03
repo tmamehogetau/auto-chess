@@ -517,6 +517,33 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         offeredMatchRate: 3 / 9,
       },
     ],
+    bossNormalHighCostMaturationMetrics: [
+      {
+        unitId: "junko",
+        unitName: "純狐",
+        unitType: "vanguard",
+        cost: 4,
+        offerObservationCount: 12,
+        offerMatchCount: 6,
+        purchaseCount: 4,
+        purchaseMatchCount: 3,
+        purchaseRate: 4 / 12,
+        battleAppearances: 8,
+        battleMatchCount: 5,
+        battleAdoptionRate: 5 / 9,
+        averageBattleUnitLevel: 2.5,
+        maxBattleUnitLevel: 4,
+        battleLevel4ReachRate: 2 / 5,
+        battleLevel7ReachRate: 0,
+        finalBoardCopies: 2,
+        finalBoardMatchCount: 2,
+        finalBoardAdoptionRate: 2 / 9,
+        averageFinalUnitLevel: 3.5,
+        maxFinalUnitLevel: 4,
+        finalLevel4Rate: 1 / 2,
+        finalLevel7Rate: 0,
+      },
+    ],
     shopOfferMetrics: [
       {
         unitId: "patchouli",
@@ -1275,6 +1302,19 @@ describe("bot balance baseline human report", () => {
         "提示回数": 4,
       }),
     ]);
+    expect(jsonReport["ボス通常高コスト成熟診断"]).toEqual([
+      expect.objectContaining({
+        "ユニットID": "junko",
+        "提示回数": 12,
+        "購入率": 4 / 12,
+        "戦闘採用率": 5 / 9,
+        "戦闘平均Lv": 2.5,
+        "戦闘Lv4到達率": 2 / 5,
+        "最終採用率": 2 / 9,
+        "最終平均Lv": 3.5,
+        "最終Lv4到達率": 1 / 2,
+      }),
+    ]);
     expect(jsonReport["ボス専用ラウンド別レベル分布"]).toEqual([
       expect.objectContaining({
         "ラウンド": 1,
@@ -1533,6 +1573,8 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| boss | パチュリー・ノーレッジ | patchouli | mage | 2 | 12 | 9 | 1.75 | 1000 | 84 | 11.9 | usable |");
     expect(markdown).toContain("## 高コストショップ提示ユニット");
     expect(markdown).toContain("| パチュリー・ノーレッジ | patchouli | boss | bossShop | 4 | 100.0% | 41.7% | 44.4% |");
+    expect(markdown).toContain("## ボス通常高コスト成熟診断");
+    expect(markdown).toContain("| 純狐 | junko | vanguard | 4 | 12 | 6 | 4 | 33.3% | 8 | 5 | 55.6% | 2.5 | 4 | 40.0% | 0.0% | 2 | 2 | 22.2% | 3.5 | 4 | 50.0% | 0.0% |");
     expect(markdown).toContain("## ボス専用ラウンド別レベル分布");
     expect(markdown).toContain("| 1 | パチュリー・ノーレッジ | patchouli | mage | 6 | 5 | 1.5 | 1 | 1 | 2 | 16.7% | 0.0% |");
     expect(markdown).toContain("## 高コストラウンド別ショップ進行");

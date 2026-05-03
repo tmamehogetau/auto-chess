@@ -827,9 +827,13 @@ export type BotOnlyBaselineBoardRefitDecisionRoundMetric = {
   mostFrequentIncomingUnitId: string | null;
   mostFrequentIncomingUnitName: string | null;
   mostFrequentIncomingSamples: number;
+  mostFrequentIncomingReason?: string | null;
+  mostFrequentIncomingReasonSamples?: number;
   mostFrequentOutgoingUnitId: string | null;
   mostFrequentOutgoingUnitName: string | null;
   mostFrequentOutgoingSamples: number;
+  mostFrequentOutgoingReason?: string | null;
+  mostFrequentOutgoingReasonSamples?: number;
 };
 
 export type BotOnlyBaselineBoardRefitDecisionRoleMetric =
@@ -1228,11 +1232,13 @@ type BoardRefitDecisionRoundAccumulator = {
     unitName: string;
     samples: number;
   }>;
+  incomingSamplesByReason: Map<string, number>;
   outgoingSamplesById: Map<string, {
     unitId: string;
     unitName: string;
     samples: number;
   }>;
+  outgoingSamplesByReason: Map<string, number>;
 };
 
 type BoardRefitDecisionRoleAccumulator =
@@ -1703,7 +1709,9 @@ function createBoardRefitDecisionRoundAccumulator(
     totalBenchPressure: 0,
     replacementScores: [],
     incomingSamplesById: new Map(),
+    incomingSamplesByReason: new Map(),
     outgoingSamplesById: new Map(),
+    outgoingSamplesByReason: new Map(),
   };
 }
 
@@ -1721,7 +1729,9 @@ function createBoardRefitDecisionRoleAccumulator(
     totalBenchPressure: 0,
     replacementScores: [],
     incomingSamplesById: new Map(),
+    incomingSamplesByReason: new Map(),
     outgoingSamplesById: new Map(),
+    outgoingSamplesByReason: new Map(),
   };
 }
 
@@ -3082,6 +3092,8 @@ function buildBoardRefitDecisionMetricFields(
     .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
   const mostFrequentOutgoing = Array.from(entry.outgoingSamplesById.values())
     .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+  const mostFrequentIncomingReason = getMostFrequentReasonSample(entry.incomingSamplesByReason);
+  const mostFrequentOutgoingReason = getMostFrequentReasonSample(entry.outgoingSamplesByReason);
 
   return {
     samples: entry.samples,
@@ -3100,9 +3112,13 @@ function buildBoardRefitDecisionMetricFields(
     mostFrequentIncomingUnitId: mostFrequentIncoming?.unitId ?? null,
     mostFrequentIncomingUnitName: mostFrequentIncoming?.unitName ?? null,
     mostFrequentIncomingSamples: mostFrequentIncoming?.samples ?? 0,
+    mostFrequentIncomingReason: mostFrequentIncomingReason?.reason ?? null,
+    mostFrequentIncomingReasonSamples: mostFrequentIncomingReason?.samples ?? 0,
     mostFrequentOutgoingUnitId: mostFrequentOutgoing?.unitId ?? null,
     mostFrequentOutgoingUnitName: mostFrequentOutgoing?.unitName ?? null,
     mostFrequentOutgoingSamples: mostFrequentOutgoing?.samples ?? 0,
+    mostFrequentOutgoingReason: mostFrequentOutgoingReason?.reason ?? null,
+    mostFrequentOutgoingReasonSamples: mostFrequentOutgoingReason?.samples ?? 0,
   };
 }
 
@@ -3166,6 +3182,22 @@ function recordUnitSample(
   samplesById.set(unitId, existing);
 }
 
+function recordReasonSample(samplesByReason: Map<string, number>, reason: string | null): void {
+  if (reason === null || reason.length === 0) {
+    return;
+  }
+
+  samplesByReason.set(reason, (samplesByReason.get(reason) ?? 0) + 1);
+}
+
+function getMostFrequentReasonSample(
+  samplesByReason: Map<string, number>,
+): { reason: string; samples: number } | null {
+  return Array.from(samplesByReason.entries())
+    .map(([reason, samples]) => ({ reason, samples }))
+    .sort((left, right) => right.samples - left.samples || left.reason.localeCompare(right.reason))[0] ?? null;
+}
+
 function recordBoardRefitDecisionSnapshot(
   snapshot: BotOnlyBaselineBoardRefitDecisionSnapshot,
   decisionsByRound: Map<number, BoardRefitDecisionRoundAccumulator>,
@@ -3209,6 +3241,8 @@ function recordBoardRefitDecisionAccumulatorSample(
   }
   recordUnitSample(entry.incomingSamplesById, snapshot.incomingUnitId, null);
   recordUnitSample(entry.outgoingSamplesById, snapshot.outgoingUnitId, null);
+  recordReasonSample(entry.incomingSamplesByReason, snapshot.incomingReason);
+  recordReasonSample(entry.outgoingSamplesByReason, snapshot.outgoingReason);
 }
 
 function mergeBoardRefitDecisionMetricIntoAccumulator(
@@ -3248,6 +3282,20 @@ function mergeBoardRefitDecisionMetricIntoAccumulator(
     };
     outgoing.samples += entry.mostFrequentOutgoingSamples;
     existing.outgoingSamplesById.set(entry.mostFrequentOutgoingUnitId, outgoing);
+  }
+  if (entry.mostFrequentIncomingReason) {
+    existing.incomingSamplesByReason.set(
+      entry.mostFrequentIncomingReason,
+      (existing.incomingSamplesByReason.get(entry.mostFrequentIncomingReason) ?? 0)
+        + (entry.mostFrequentIncomingReasonSamples ?? 0),
+    );
+  }
+  if (entry.mostFrequentOutgoingReason) {
+    existing.outgoingSamplesByReason.set(
+      entry.mostFrequentOutgoingReason,
+      (existing.outgoingSamplesByReason.get(entry.mostFrequentOutgoingReason) ?? 0)
+        + (entry.mostFrequentOutgoingReasonSamples ?? 0),
+    );
   }
 }
 

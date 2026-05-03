@@ -169,6 +169,29 @@ describe("autofill helper automation", () => {
     expect(diagnostic.outgoingCandidate?.protectionReasons).not.toContain("boss_exclusive_core");
   });
 
+  test("boss board refit can pivot maxed Meiling into a mature normal carry after the late frontline is covered", () => {
+    const diagnostic = buildBoardRefitDecision({
+      role: "boss",
+      selectedBossId: "remilia",
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 7 },
+        { cell: 20, unitId: "byakuren", unitType: "vanguard", unitLevel: 7 },
+        { cell: 7, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+        { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+        { cell: 15, unitId: "utsuho", unitType: "mage", unitLevel: 7 },
+      ],
+      benchUnits: [{ unitId: "hecatia", unitType: "mage", unitLevel: 7, cost: 5 }],
+      benchUnitIds: ["hecatia"],
+    }, { roundIndex: 12 });
+
+    expect(diagnostic.decision).toBe("replace");
+    expect(diagnostic.outgoingCandidate?.unitId).toBe("meiling");
+    expect(diagnostic.outgoingCandidate?.protectionReasons).not.toContain("boss_exclusive_core");
+    expect(diagnostic.outgoingCandidate?.protectionReasons).not.toContain("frontline_anchor");
+  });
+
   test("board refit scoring protects pair and sub-host anchors", () => {
     const protectedCandidate = buildOptimizationCandidate({
       source: "board",

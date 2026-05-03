@@ -239,7 +239,7 @@ const BOSS_SPECIAL_UNIT_UPGRADE_SCORE_WEIGHT = 44;
 const BOSS_SPECIAL_UNIT_UPGRADE_ESTABLISHED_ROSTER_BONUS = 80;
 const BOSS_SPECIAL_UNIT_UPGRADE_EARLY_LEVEL_BONUS = 45;
 const BOSS_SPECIAL_UNIT_UPGRADE_ROUND_BONUS_CAP = 36;
-const OKINA_FRONT_SUPPORT_UPTIME_ESTIMATE = 0.3;
+const OKINA_FRONT_SUPPORT_UPTIME_ESTIMATE = 1;
 const OKINA_BACK_SUPPORT_UPTIME_ESTIMATE = 6 / 13;
 const OKINA_BACK_FRONT_ADVANTAGE_RATIO = 1.15;
 const OKINA_REHOST_ADVANTAGE_RATIO = 1.2;
@@ -1414,6 +1414,13 @@ function buildOkinaHeroSubHostCandidate(player, placement) {
   };
 }
 
+function isOkinaBackCarryHost(hostUnitId, hostUnitType, hostUnitLevel) {
+  const isCarryClass = hostUnitType === "mage"
+    || hostUnitType === "ranger"
+    || getKnownHeroExclusiveUnit(hostUnitId) !== null;
+  return isCarryClass && hostUnitLevel >= 4;
+}
+
 export function buildOkinaHeroSubDecisionDiagnostic(player) {
   if (
     player?.role !== "raid"
@@ -1486,6 +1493,28 @@ export function buildOkinaHeroSubDecisionDiagnostic(player) {
   const hostUnitType = normalizeUnitType(knownUnit?.unitType ?? hostPlacement.unitType);
   const hostUnitName = knownUnit?.displayName ?? knownUnit?.name ?? hostUnitId;
   const hostStats = getOkinaHostStats(hostPlacement);
+
+  if (!isOkinaBackCarryHost(hostUnitId, hostUnitType, hostStats.unitLevel)) {
+    return {
+      specialUnitStage: getOkinaSpecialUnitStage(player),
+      candidateCount: hostCandidates.length,
+      attachedHostCell: okinaHostCell,
+      currentHostUnitId: currentHostPlacement ? normalizeUnitId(currentHostPlacement.unitId) : null,
+      currentHostGain,
+      bestHostCell: hostPlacement.cell,
+      bestHostUnitId: hostUnitId,
+      bestHostUnitType: hostUnitType,
+      bestHostUnitName: hostUnitName,
+      bestHostLevel: hostStats.unitLevel,
+      bestHostOptimizationCandidate: hostCandidate.optimizationCandidate,
+      bestHostGain: hostGain,
+      frontEquivalentValue,
+      bestToFrontRatio,
+      bestToCurrentRatio,
+      decision: currentHostPlacement ? "keep_current" : "keep_front",
+      reason: "front_value_preferred",
+    };
+  }
 
   if (hostGain < frontEquivalentValue * OKINA_BACK_FRONT_ADVANTAGE_RATIO) {
     return {

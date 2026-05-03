@@ -900,11 +900,12 @@ describe("autofill helper automation", () => {
         role: "raid",
         benchUnits: [],
         boardUnits: [
-          { cell: 31, unitId: "hecatia", unitType: "mage" },
+          { cell: 31, unitId: "hecatia", unitType: "mage", unitLevel: 4 },
           { cell: 32, unitId: "yoshika", unitType: "vanguard" },
         ],
         boardSubUnits: [],
         selectedHeroId: "okina",
+        specialUnitLevel: 4,
         shopOffers: [],
       },
       state: {
@@ -984,6 +985,50 @@ describe("autofill helper automation", () => {
     expect(diagnostic?.bestHostOptimizationCandidate?.futureValueScore ?? 0).toBeGreaterThan(0);
   });
 
+  test("Okina sub decision keeps front support against moderate standard hosts", () => {
+    const diagnostic = buildOkinaHeroSubDecisionDiagnostic({
+      role: "raid",
+      selectedHeroId: "okina",
+      specialUnitLevel: 7,
+      boardUnits: [
+        { cell: 31, unitId: "rin", unitType: "vanguard", unitLevel: 3 },
+        { cell: 32, unitId: "yoshika", unitType: "vanguard", unitLevel: 3 },
+      ],
+      boardSubUnits: [],
+    });
+
+    expect(diagnostic).toEqual(expect.objectContaining({
+      candidateCount: 2,
+      decision: "keep_front",
+      reason: "front_value_preferred",
+      bestHostUnitId: "yoshika",
+      bestHostLevel: 3,
+      specialUnitStage: 7,
+    }));
+  });
+
+  test("Okina sub decision keeps front support against mid-level standard ranged hosts", () => {
+    const diagnostic = buildOkinaHeroSubDecisionDiagnostic({
+      role: "raid",
+      selectedHeroId: "okina",
+      specialUnitLevel: 7,
+      boardUnits: [
+        { cell: 31, unitId: "wakasagihime", unitType: "ranger", unitLevel: 3 },
+        { cell: 32, unitId: "tojiko", unitType: "ranger", unitLevel: 2 },
+      ],
+      boardSubUnits: [],
+    });
+
+    expect(diagnostic).toEqual(expect.objectContaining({
+      candidateCount: 2,
+      decision: "keep_front",
+      reason: "front_value_preferred",
+      bestHostUnitId: "tojiko",
+      bestHostLevel: 2,
+      specialUnitStage: 7,
+    }));
+  });
+
   test("Okina sub decision diagnostic recognizes an already attached host from board units", () => {
     const diagnostic = buildOkinaHeroSubDecisionDiagnostic({
       role: "raid",
@@ -1020,10 +1065,11 @@ describe("autofill helper automation", () => {
         role: "raid",
         benchUnits: [],
         boardUnits: [
-          { cell: 31, unitId: "hecatia", unitType: "mage" },
+          { cell: 31, unitId: "hecatia", unitType: "mage", unitLevel: 4 },
         ],
         boardSubUnits: [],
         selectedHeroId: "okina",
+        specialUnitLevel: 4,
         shopOffers: [],
       },
       state: {

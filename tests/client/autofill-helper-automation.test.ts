@@ -1288,6 +1288,123 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("midgame boss helper matures a normal high-cost duplicate over another saturated Scarlet duplicate", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 4,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 9, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+          { cell: 10, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+          { cell: 3, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+          { cell: 4, unitId: "utsuho", unitType: "mage", unitLevel: 4 },
+          { cell: 5, unitId: "byakuren", unitType: "vanguard", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+        shopOffers: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("late boss helper refreshes past a new high-cost first copy once normal carries are already online", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 9, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+          { cell: 10, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+          { cell: 3, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+          { cell: 4, unitId: "utsuho", unitType: "mage", unitLevel: 4 },
+          { cell: 5, unitId: "byakuren", unitType: "vanguard", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "futo", unitType: "mage", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 9,
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame boss helper refreshes past a weak normal offer after its Scarlet core is established", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          "2:remilia",
+          "8:meiling",
+          "9:sakuya",
+          "10:patchouli",
+          "3:junko",
+          "4:utsuho",
+          "5:byakuren",
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", cost: 1 },
+          { unitId: "wakasagihime", unitType: "ranger", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame bench-full boss helper sells a weak bench unit for a stronger normal offer", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

@@ -692,6 +692,31 @@ export function buildBotBalanceBaselineJapaneseJson(
       "提示試合数": unit.matchesPresent,
       "提示試合率": unit.offeredMatchRate,
     })),
+    "ボス通常高コスト成熟診断": (aggregate.bossNormalHighCostMaturationMetrics ?? []).map((unit) => ({
+      "ユニットID": unit.unitId,
+      "ユニット名": unit.unitName,
+      "ユニット種別": unit.unitType,
+      "コスト": unit.cost,
+      "提示回数": unit.offerObservationCount,
+      "提示試合数": unit.offerMatchCount,
+      "購入回数": unit.purchaseCount,
+      "購入試合数": unit.purchaseMatchCount,
+      "購入率": unit.purchaseRate,
+      "戦闘登場回数": unit.battleAppearances,
+      "戦闘登場試合数": unit.battleMatchCount,
+      "戦闘採用率": unit.battleAdoptionRate,
+      "戦闘平均Lv": unit.averageBattleUnitLevel,
+      "戦闘最大Lv": unit.maxBattleUnitLevel,
+      "戦闘Lv4到達率": unit.battleLevel4ReachRate,
+      "戦闘Lv7到達率": unit.battleLevel7ReachRate,
+      "最終盤面コピー数": unit.finalBoardCopies,
+      "最終盤面採用試合数": unit.finalBoardMatchCount,
+      "最終採用率": unit.finalBoardAdoptionRate,
+      "最終平均Lv": unit.averageFinalUnitLevel,
+      "最終最大Lv": unit.maxFinalUnitLevel,
+      "最終Lv4到達率": unit.finalLevel4Rate,
+      "最終Lv7到達率": unit.finalLevel7Rate,
+    })),
     "ボス専用ラウンド別レベル分布": (aggregate.bossExclusiveRoundLevelMetrics ?? []).map((unit) => ({
       "ラウンド": unit.roundIndex,
       "ユニットID": unit.unitId,
@@ -1449,6 +1474,19 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   for (const unit of highCostOfferMetrics) {
     lines.push(
       `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.role} | ${unit.source} | ${formatNumber(unit.cost)} | ${formatNumber(unit.observationCount)} | ${formatNumber(unit.matchesPresent)} | ${formatPercent(unit.offeredMatchRate)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## ボス通常高コスト成熟診断",
+    "",
+    "| ユニット名 | ユニットID | ユニット種別 | コスト | 提示回数 | 提示試合数 | 購入回数 | 購入率 | 戦闘登場回数 | 戦闘登場試合数 | 戦闘採用率 | 戦闘平均Lv | 戦闘最大Lv | 戦闘Lv4到達率 | 戦闘Lv7到達率 | 最終盤面コピー数 | 最終盤面採用試合数 | 最終採用率 | 最終平均Lv | 最終最大Lv | 最終Lv4到達率 | 最終Lv7到達率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const unit of aggregate.bossNormalHighCostMaturationMetrics ?? []) {
+    lines.push(
+      `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${formatNumber(unit.cost)} | ${formatNumber(unit.offerObservationCount)} | ${formatNumber(unit.offerMatchCount)} | ${formatNumber(unit.purchaseCount)} | ${formatPercent(unit.purchaseRate)} | ${formatNumber(unit.battleAppearances)} | ${formatNumber(unit.battleMatchCount)} | ${formatPercent(unit.battleAdoptionRate)} | ${formatNumber(unit.averageBattleUnitLevel)} | ${formatNumber(unit.maxBattleUnitLevel)} | ${formatPercent(unit.battleLevel4ReachRate)} | ${formatPercent(unit.battleLevel7ReachRate)} | ${formatNumber(unit.finalBoardCopies)} | ${formatNumber(unit.finalBoardMatchCount)} | ${formatPercent(unit.finalBoardAdoptionRate)} | ${formatNumber(unit.averageFinalUnitLevel)} | ${formatNumber(unit.maxFinalUnitLevel)} | ${formatPercent(unit.finalLevel4Rate)} | ${formatPercent(unit.finalLevel7Rate)} |`,
     );
   }
 

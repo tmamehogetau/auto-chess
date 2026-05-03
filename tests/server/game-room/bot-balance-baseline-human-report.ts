@@ -337,6 +337,7 @@ export function buildBotBalanceBaselineJapaneseJson(
           "最終HP": round.bossBodyFocus.finalHp,
         }
         : null,
+      "ボス直衛判断": formatBossBodyGuardDecisionJson(round.bossBodyGuardDecision ?? null),
       "ラウンド結果": round.phaseResult,
       "レイド全員撃破": round.allRaidPlayersWipedOut,
       "撃破されたレイド人数": round.raidPlayersWipedOut,
@@ -1692,13 +1693,13 @@ export function buildBotBalanceBaselineRoundDetailsJapaneseMarkdown(
     "",
     "## 各ラウンド詳細",
     "",
-    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | ボス直衛判断 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
   for (const round of aggregate.roundDetails ?? []) {
     lines.push(
-      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${formatNullableNumber(round.phaseHpPowerIndex ?? null)} | ${escapeMarkdownCell(formatBossBodyFocusDetail(round.bossBodyFocus ?? null))} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
+      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${formatNullableNumber(round.phaseHpPowerIndex ?? null)} | ${escapeMarkdownCell(formatBossBodyFocusDetail(round.bossBodyFocus ?? null))} | ${escapeMarkdownCell(formatBossBodyGuardDecisionDetail(round.bossBodyGuardDecision ?? null))} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
     );
   }
 
@@ -1727,6 +1728,93 @@ function formatBossBodyFocusDetail(
     : "";
   const hp = focus.finalHp === null ? "-" : formatNumber(focus.finalHp);
   return `${formatBossBodyFocusCell(focus)}, dmg=${formatNumber(focus.damageTaken)}, phase=${formatNumber(focus.directPhaseDamage)}, hp=${hp}, ${focus.defeated ? "撃破" : "生存"}${firstDamage}`;
+}
+
+function formatBossBodyGuardUnitLabel(
+  unitName: string | null,
+  unitId: string | null,
+  unitLevel: number | null,
+  cell: number | null,
+): string {
+  if (unitId === null) {
+    return "-";
+  }
+
+  const level = unitLevel === null ? "?" : String(unitLevel);
+  const cellLabel = cell === null ? "?" : String(cell);
+  return `${unitName ?? unitId} (${unitId}) Lv${level} cell ${cellLabel}`;
+}
+
+function formatBossBodyGuardCompactUnitLabel(
+  unitName: string | null,
+  unitId: string | null,
+  unitLevel: number | null,
+  cell: number | null,
+): string {
+  if (unitId === null) {
+    return "-";
+  }
+
+  const level = unitLevel === null ? "?" : String(unitLevel);
+  const cellLabel = cell === null ? "?" : String(cell);
+  return `${unitName ?? unitId}(${unitId})Lv${level}@${cellLabel}`;
+}
+
+function formatBossBodyGuardDecisionJson(
+  decision: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["bossBodyGuardDecision"] | null,
+): Record<string, unknown> | null {
+  if (!decision) {
+    return null;
+  }
+
+  return {
+    "判断": decision.decision,
+    "理由": decision.reason,
+    "直衛": formatBossBodyGuardUnitLabel(
+      decision.directGuardUnitName,
+      decision.directGuardUnitId,
+      decision.directGuardLevel,
+      decision.directGuardCell,
+    ),
+    "最強前衛": formatBossBodyGuardUnitLabel(
+      decision.strongestGuardUnitName,
+      decision.strongestGuardUnitId,
+      decision.strongestGuardLevel,
+      decision.strongestGuardCell,
+    ),
+    "直衛空き": decision.directEmpty,
+    "bench前衛数": decision.benchFrontlineCount,
+    "直衛外に強前衛": decision.strongerOffDirect,
+    "予定移動": decision.actionFromCell === null || decision.actionToCell === null
+      ? "-"
+      : `${decision.actionFromCell} -> ${decision.actionToCell}`,
+  };
+}
+
+function formatBossBodyGuardDecisionDetail(
+  decision: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["bossBodyGuardDecision"] | null,
+): string {
+  if (!decision) {
+    return "-";
+  }
+
+  const directGuard = formatBossBodyGuardCompactUnitLabel(
+    decision.directGuardUnitName,
+    decision.directGuardUnitId,
+    decision.directGuardLevel,
+    decision.directGuardCell,
+  );
+  const strongestGuard = formatBossBodyGuardCompactUnitLabel(
+    decision.strongestGuardUnitName,
+    decision.strongestGuardUnitId,
+    decision.strongestGuardLevel,
+    decision.strongestGuardCell,
+  );
+  const action = decision.actionFromCell === null || decision.actionToCell === null
+    ? "-"
+    : `${decision.actionFromCell}->${decision.actionToCell}`;
+
+  return `${decision.decision}/${decision.reason}; direct=${directGuard}; strongest=${strongestGuard}; strongerOffDirect=${decision.strongerOffDirect ? "YES" : "NO"}; action=${action}`;
 }
 
 function formatRoundPlayerConsequences(

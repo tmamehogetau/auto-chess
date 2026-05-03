@@ -651,6 +651,7 @@ export type BotOnlyBaselineMatchRoundDetail = {
   bossSpellMetrics?: BossSpellBattleMetric[];
   raidPlayerConsequences: BotOnlyBaselineRoundPlayerConsequence[];
   bossBodyFocus?: BotOnlyBaselineBossBodyFocusDetail | null;
+  bossBodyGuardDecision?: BotOnlyBaselineBossBodyGuardDecisionSnapshot | null;
   topBossUnits: BotOnlyBaselineRoundUnitDetail[];
   topBossDamageTakenUnits?: BotOnlyBaselineRoundUnitDetail[];
   topRaidUnits: BotOnlyBaselineRoundUnitDetail[];
@@ -2172,6 +2173,12 @@ function buildRoundDetailsForMatch(
     report.finalPlayers.map((player) => [player.playerId, player] as const),
   );
   const matchWinnerRole = report.ranking[0] === report.bossPlayerId ? "boss" : "raid";
+  const bossBodyGuardDecisionByRound = new Map(
+    (report.bossBodyGuardDecisionSnapshots ?? []).map((snapshot) => [
+      snapshot.roundIndex,
+      snapshot,
+    ] as const),
+  );
 
   return (report.rounds ?? []).map((round) => {
     const raidPlayerConsequences = round.playerConsequences.filter(
@@ -2239,6 +2246,9 @@ function buildRoundDetailsForMatch(
         (battle.bossSpellMetrics ?? []).map((metric) => ({ ...metric }))),
       raidPlayerConsequences,
       bossBodyFocus: buildBossBodyFocusDetail(bossUnitOutcomes),
+      bossBodyGuardDecision: bossBodyGuardDecisionByRound.has(round.roundIndex)
+        ? { ...bossBodyGuardDecisionByRound.get(round.roundIndex)! }
+        : null,
       topBossUnits: bossUnitOutcomes
         .map((unit) => toRoundUnitDetail(unit))
         .sort((left, right) =>
@@ -5305,6 +5315,9 @@ export function mergeBotOnlyBaselineAggregateReports(
         topRaidUnits: detail.topRaidUnits.map((unit) => ({ ...unit })),
         ...(detail.bossBodyFocus !== undefined
           ? { bossBodyFocus: detail.bossBodyFocus ? { ...detail.bossBodyFocus } : null }
+          : {}),
+        ...(detail.bossBodyGuardDecision !== undefined
+          ? { bossBodyGuardDecision: detail.bossBodyGuardDecision ? { ...detail.bossBodyGuardDecision } : null }
           : {}),
         battleEndReasons: [...detail.battleEndReasons],
         battleWinnerRoles: [...detail.battleWinnerRoles],

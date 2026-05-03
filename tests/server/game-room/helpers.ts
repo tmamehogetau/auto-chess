@@ -368,6 +368,93 @@ const buildOptimisticBoardPlacement = (cell: number, unitType: unknown, unitId: 
   ...(typeof unitId === "string" && unitId.length > 0 ? { unitId } : {}),
 });
 
+const replaceOptimisticBoardPlacementCell = (placement: unknown, cell: number): unknown => {
+  if (typeof placement === "string") {
+    const parts = placement.split(":");
+    if (parts.length === 0) {
+      return placement;
+    }
+
+    parts[0] = String(cell);
+    return parts.join(":");
+  }
+
+  if (placement && typeof placement === "object") {
+    return {
+      ...placement,
+      cell,
+    };
+  }
+
+  return placement;
+};
+
+const remapOptimisticBoardSubUnitCells = (
+  boardSubUnits: unknown[] | undefined,
+  cellMap: Map<number, number>,
+): unknown[] =>
+  Array.from(boardSubUnits ?? []).map((token) => {
+    if (typeof token !== "string") {
+      return token;
+    }
+
+    const parts = token.split(":");
+    const parsedCell = Number(parts[0]);
+    const nextCell = Number.isInteger(parsedCell) ? cellMap.get(parsedCell) : undefined;
+    if (nextCell === undefined) {
+      return token;
+    }
+
+    parts[0] = String(nextCell);
+    return parts.join(":");
+  });
+
+const applyOptimisticBoardUnitMove = (
+  player: AutoFillHelperPlayer,
+  fromCell: number,
+  toCell: number,
+): void => {
+  const boardUnits = Array.from(player.boardUnits ?? []);
+  const sourceIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === fromCell);
+  const targetIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === toCell);
+  if (sourceIndex < 0 || targetIndex >= 0 || fromCell === toCell) {
+    return;
+  }
+
+  boardUnits[sourceIndex] = replaceOptimisticBoardPlacementCell(boardUnits[sourceIndex], toCell);
+  player.boardUnits = boardUnits;
+  player.boardSubUnits = remapOptimisticBoardSubUnitCells(
+    (player as { boardSubUnits?: unknown[] }).boardSubUnits,
+    new Map([[fromCell, toCell]]),
+  );
+};
+
+const applyOptimisticBoardUnitSwap = (
+  player: AutoFillHelperPlayer,
+  fromCell: number,
+  toCell: number,
+): void => {
+  const boardUnits = Array.from(player.boardUnits ?? []);
+  const sourceIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === fromCell);
+  const targetIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === toCell);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex || fromCell === toCell) {
+    return;
+  }
+
+  const sourcePlacement = boardUnits[sourceIndex];
+  const targetPlacement = boardUnits[targetIndex];
+  boardUnits[sourceIndex] = replaceOptimisticBoardPlacementCell(sourcePlacement, toCell);
+  boardUnits[targetIndex] = replaceOptimisticBoardPlacementCell(targetPlacement, fromCell);
+  player.boardUnits = boardUnits;
+  player.boardSubUnits = remapOptimisticBoardSubUnitCells(
+    (player as { boardSubUnits?: unknown[] }).boardSubUnits,
+    new Map([
+      [fromCell, toCell],
+      [toCell, fromCell],
+    ]),
+  );
+};
+
 const getAutoFillStateRoundIndex = (state: AutoFillHelperState | null | undefined): number | null => {
   const roundIndex = state?.roundIndex;
   return typeof roundIndex === "number" && Number.isFinite(roundIndex)
@@ -496,6 +583,22 @@ const applyOptimisticPrepCommandToPlayer = (
     if (typeof nextPlayer.gold === "number") {
       nextPlayer.gold += 1;
     }
+    return nextPlayer;
+  }
+
+  const boardUnitMove = payload.boardUnitMove as
+    | { fromCell?: number; toCell?: number }
+    | undefined;
+  if (boardUnitMove && Number.isInteger(boardUnitMove.fromCell) && Number.isInteger(boardUnitMove.toCell)) {
+    applyOptimisticBoardUnitMove(nextPlayer, Number(boardUnitMove.fromCell), Number(boardUnitMove.toCell));
+    return nextPlayer;
+  }
+
+  const boardUnitSwap = payload.boardUnitSwap as
+    | { fromCell?: number; toCell?: number }
+    | undefined;
+  if (boardUnitSwap && Number.isInteger(boardUnitSwap.fromCell) && Number.isInteger(boardUnitSwap.toCell)) {
+    applyOptimisticBoardUnitSwap(nextPlayer, Number(boardUnitSwap.fromCell), Number(boardUnitSwap.toCell));
     return nextPlayer;
   }
 

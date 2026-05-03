@@ -101,6 +101,29 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         defeated: false,
         finalHp: 1200,
       },
+      bossBodyGuardDecision: {
+        roundIndex: 1,
+        playerId: "boss-1",
+        label: "P1",
+        decision: "direct_swap",
+        reason: "stronger_board_guard",
+        bossCell: 2,
+        directGuardCell: 8,
+        directGuardUnitId: "yoshika",
+        directGuardUnitName: "宮古芳香",
+        directGuardUnitType: "vanguard",
+        directGuardLevel: 2,
+        strongestGuardCell: 9,
+        strongestGuardUnitId: "meiling",
+        strongestGuardUnitName: "紅美鈴",
+        strongestGuardUnitType: "vanguard",
+        strongestGuardLevel: 7,
+        benchFrontlineCount: 0,
+        directEmpty: false,
+        strongerOffDirect: true,
+        actionFromCell: 9,
+        actionToCell: 8,
+      },
       topBossUnits: [{
         playerId: "boss-1",
         label: "P1",
@@ -1210,6 +1233,14 @@ describe("bot balance baseline human report", () => {
           "直接フェーズ貢献": 600,
           "撃破": false,
         }),
+        "ボス直衛判断": expect.objectContaining({
+          "判断": "direct_swap",
+          "理由": "stronger_board_guard",
+          "直衛": "宮古芳香 (yoshika) Lv2 cell 8",
+          "最強前衛": "紅美鈴 (meiling) Lv7 cell 9",
+          "直衛外に強前衛": true,
+          "予定移動": "9 -> 8",
+        }),
         "ラウンド結果": "failed",
         "レイド全員撃破": true,
       }),
@@ -1628,7 +1659,7 @@ describe("bot balance baseline human report", () => {
     const markdown = buildBotBalanceBaselineRoundDetailsJapaneseMarkdown(createSampleSummary());
 
     expect(markdown).toContain("# Bot Balance Baseline ラウンド詳細");
-    expect(markdown).toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | レイド全滅 |");
-    expect(markdown).toContain("| 0 | 1 | 5.7 | boss | failed | 600/600 | 100.0% | 14.04 | cell 2 (x=2, y=0), dmg=600, phase=600, hp=1200, 生存 | YES | 3 | 1 | 0 | フェーズHP削り切り | raid | P2:撃破 2->1 | 霧雨魔理沙 Lv1 dmg=600(phase 600) hp=0 撃破 | レミリア Lv1 dmg=240 hp=1200 生存 |");
+    expect(markdown).toContain("| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | ボス直衛判断 | レイド全滅 |");
+    expect(markdown).toContain("| 0 | 1 | 5.7 | boss | failed | 600/600 | 100.0% | 14.04 | cell 2 (x=2, y=0), dmg=600, phase=600, hp=1200, 生存 | direct_swap/stronger_board_guard; direct=宮古芳香(yoshika)Lv2@8; strongest=紅美鈴(meiling)Lv7@9; strongerOffDirect=YES; action=9->8 | YES | 3 | 1 | 0 | フェーズHP削り切り | raid | P2:撃破 2->1 | 霧雨魔理沙 Lv1 dmg=600(phase 600) hp=0 撃破 | レミリア Lv1 dmg=240 hp=1200 生存 |");
   });
 });

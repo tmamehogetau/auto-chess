@@ -80,6 +80,7 @@ class FakeHelperRoom {
       benchSellIndex?: number;
       boardSellIndex?: number;
       benchToBoardCell?: { benchIndex: number; cell: number; slot?: "main" | "sub" };
+      boardUnitSwap?: { fromCell: number; toCell: number };
     };
     const player = this.state?.players.get(this.sessionId);
     if (!player) {
@@ -211,6 +212,11 @@ class FakeHelperRoom {
       player.boardSubUnits = [...(player.boardSubUnits ?? []).filter((token) => !token.startsWith(`${sellCell}:`))];
       player.gold += 1;
       player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (payload.boardUnitSwap) {
       this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
       return;
     }
@@ -1128,6 +1134,54 @@ describe("helper automation wrapper", () => {
         heroPlacementCell: 31,
       }),
     });
+  });
+
+  test("wrapper does not repeat a boss body guard swap while waiting for state sync", async () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      roundIndex: 11,
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 0,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: [
+            "2:boss:5",
+            "8:vanguard:2",
+            "9:vanguard:7",
+            "3:mage:4",
+          ],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(room.sentMessages.filter(({ message }) =>
+      (message as { boardUnitSwap?: unknown })?.boardUnitSwap !== undefined
+    )).toEqual([
+      expect.objectContaining({
+        message: expect.objectContaining({
+          boardUnitSwap: {
+            fromCell: 9,
+            toCell: 8,
+          },
+        }),
+      }),
+    ]);
   });
 
   test("wrapper keeps Okina front when only low-value early hosts are available", () => {

@@ -2731,6 +2731,82 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     ...(typeof unitId === "string" && unitId.length > 0 ? { unitId } : {}),
   });
 
+  const replaceOptimisticBoardPlacementCell = (placement, cell) => {
+    if (typeof placement === "string") {
+      const parts = placement.split(":");
+      if (parts.length === 0) {
+        return placement;
+      }
+
+      parts[0] = String(cell);
+      return parts.join(":");
+    }
+
+    if (placement && typeof placement === "object") {
+      return {
+        ...placement,
+        cell,
+      };
+    }
+
+    return placement;
+  };
+
+  const remapOptimisticBoardSubUnitCells = (boardSubUnits, cellMap) =>
+    Array.from(boardSubUnits ?? []).map((token) => {
+      if (typeof token !== "string") {
+        return token;
+      }
+
+      const parts = token.split(":");
+      const parsedCell = Number(parts[0]);
+      const nextCell = Number.isInteger(parsedCell) ? cellMap.get(parsedCell) : undefined;
+      if (nextCell === undefined) {
+        return token;
+      }
+
+      parts[0] = String(nextCell);
+      return parts.join(":");
+    });
+
+  const applyOptimisticBoardUnitMove = (player, fromCell, toCell) => {
+    const boardUnits = Array.from(player.boardUnits ?? []);
+    const sourceIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === fromCell);
+    const targetIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === toCell);
+    if (sourceIndex < 0 || targetIndex >= 0 || fromCell === toCell) {
+      return;
+    }
+
+    boardUnits[sourceIndex] = replaceOptimisticBoardPlacementCell(boardUnits[sourceIndex], toCell);
+    player.boardUnits = boardUnits;
+    player.boardSubUnits = remapOptimisticBoardSubUnitCells(
+      player.boardSubUnits,
+      new Map([[fromCell, toCell]]),
+    );
+  };
+
+  const applyOptimisticBoardUnitSwap = (player, fromCell, toCell) => {
+    const boardUnits = Array.from(player.boardUnits ?? []);
+    const sourceIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === fromCell);
+    const targetIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === toCell);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex || fromCell === toCell) {
+      return;
+    }
+
+    const sourcePlacement = boardUnits[sourceIndex];
+    const targetPlacement = boardUnits[targetIndex];
+    boardUnits[sourceIndex] = replaceOptimisticBoardPlacementCell(sourcePlacement, toCell);
+    boardUnits[targetIndex] = replaceOptimisticBoardPlacementCell(targetPlacement, fromCell);
+    player.boardUnits = boardUnits;
+    player.boardSubUnits = remapOptimisticBoardSubUnitCells(
+      player.boardSubUnits,
+      new Map([
+        [fromCell, toCell],
+        [toCell, fromCell],
+      ]),
+    );
+  };
+
   const buildOptimisticBenchToken = (offer) => {
     const offerUnitType = typeof offer?.unitType === "string" && offer.unitType.length > 0
       ? offer.unitType
@@ -2824,6 +2900,32 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
         }
         nextPlayer.specialUnitLevel = getClientSpecialUnitLevel(nextPlayer) + 1;
       }
+      return nextPlayer;
+    }
+
+    if (
+      payload.boardUnitMove
+      && Number.isInteger(payload.boardUnitMove.fromCell)
+      && Number.isInteger(payload.boardUnitMove.toCell)
+    ) {
+      applyOptimisticBoardUnitMove(
+        nextPlayer,
+        Number(payload.boardUnitMove.fromCell),
+        Number(payload.boardUnitMove.toCell),
+      );
+      return nextPlayer;
+    }
+
+    if (
+      payload.boardUnitSwap
+      && Number.isInteger(payload.boardUnitSwap.fromCell)
+      && Number.isInteger(payload.boardUnitSwap.toCell)
+    ) {
+      applyOptimisticBoardUnitSwap(
+        nextPlayer,
+        Number(payload.boardUnitSwap.fromCell),
+        Number(payload.boardUnitSwap.toCell),
+      );
       return nextPlayer;
     }
 

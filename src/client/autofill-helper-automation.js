@@ -3410,6 +3410,10 @@ function getMidgamePivotOfferAdjustment(offer, player, state, strategy = "upgrad
 }
 
 function shouldRefreshInsteadOfBuyingOffer(player, targetOffer, state, strategy = "upgrade") {
+  if (shouldBossRefreshUnownedHighCostAfterCarrySeeds(player, targetOffer, state)) {
+    return true;
+  }
+
   if (!targetOffer || !isMidgameHighCostPivotPhase(player, state, strategy)) {
     return false;
   }
@@ -3437,6 +3441,62 @@ function shouldRefreshInsteadOfBuyingOffer(player, targetOffer, state, strategy 
   return player?.role === "raid"
     && offerCost <= 2
     && getPlacedPurchasedUnitCount("raid", player?.boardUnits) + toArray(player?.benchUnits).length >= 3;
+}
+
+function getOwnedNormalHighCostUnitIds(player) {
+  const unitIds = new Set();
+  for (const unitId of getOwnedReserveAndBoardUnitIdCounts(player).keys()) {
+    const knownUnit = getKnownTouhouUnit(unitId);
+    if ((knownUnit?.cost ?? 0) >= 4) {
+      unitIds.add(unitId);
+    }
+  }
+  return unitIds;
+}
+
+function shouldBossRefreshUnownedHighCostAfterCarrySeeds(player, targetOffer, state = null) {
+  if (player?.role !== "boss" || !targetOffer) {
+    return false;
+  }
+
+  const offerCost = getOfferCost(targetOffer) ?? 0;
+  if (offerCost < 4 || canReserveOfferStackIntoOwnedUnit(player, targetOffer)) {
+    return false;
+  }
+
+  const targetUnitId = normalizeOfferUnitId(targetOffer);
+  if (
+    BOSS_OFFER_PRIORITY_BY_UNIT_ID[targetUnitId] !== undefined
+    || BOSS_COMMON_OFFER_PRIORITY_BY_UNIT_ID[targetUnitId] !== undefined
+  ) {
+    return false;
+  }
+
+  const roundIndex = getStateRoundIndex(state);
+  if (roundIndex === null || roundIndex < BOSS_FUTURE_RESERVE_MIN_ROUND) {
+    return false;
+  }
+
+  if (getClientSpecialUnitLevel(player) < BOSS_FUTURE_RESERVE_MIN_SPECIAL_LEVEL) {
+    return false;
+  }
+
+  if (!hasEstablishedBossExclusiveCore(player)) {
+    return false;
+  }
+
+  const formationBalanceBonus = getFormationBalanceBonus(
+    targetOffer,
+    player?.boardUnits,
+    player?.benchUnits,
+    player?.selectedHeroId,
+    player?.selectedBossId,
+  );
+  if (formationBalanceBonus >= FRONTLINE_DEFICIT_PRIORITY_BONUS) {
+    return false;
+  }
+
+  return getOwnedNormalHighCostUnitIds(player).size >= 2;
 }
 
 function getOwnedReserveAndBoardUnitIdCounts(player) {

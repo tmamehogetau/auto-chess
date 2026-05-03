@@ -983,7 +983,7 @@ describe("autofill helper automation", () => {
       candidateCount: 0,
       currentHostUnitId: "hecatia",
       decision: "keep_current",
-      reason: "no_candidate",
+      reason: "current_host_only",
     }));
     expect(diagnostic?.currentHostGain ?? 0).toBeGreaterThan(0);
   });

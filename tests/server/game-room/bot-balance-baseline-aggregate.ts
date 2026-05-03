@@ -730,6 +730,7 @@ export type BotOnlyBaselineOkinaHeroSubDecisionReason =
   | "reattach_stronger_host"
   | "front_value_preferred"
   | "current_host_margin_preferred"
+  | "current_host_only"
   | "no_candidate";
 
 export type BotOnlyBaselineOkinaHeroSubDecisionSnapshot = {
@@ -3261,7 +3262,10 @@ function recordOkinaHeroSubDecisionSnapshot(
     snapshot.decision === "attach" || snapshot.decision === "reattach" ? 1 : 0;
   entry.noCandidateSamples += snapshot.reason === "no_candidate" ? 1 : 0;
   entry.frontValuePreferredSamples += snapshot.reason === "front_value_preferred" ? 1 : 0;
-  entry.currentHostKeptSamples += snapshot.reason === "current_host_margin_preferred" ? 1 : 0;
+  const keptCurrentHost =
+    snapshot.reason === "current_host_margin_preferred"
+    || snapshot.reason === "current_host_only";
+  entry.currentHostKeptSamples += keptCurrentHost ? 1 : 0;
   entry.totalCandidateCount += snapshot.candidateCount;
   entry.totalFrontEquivalentValue += snapshot.frontEquivalentValue;
 

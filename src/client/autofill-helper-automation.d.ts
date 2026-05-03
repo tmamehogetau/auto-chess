@@ -172,6 +172,7 @@ export type OkinaHeroSubDecisionDiagnostic = {
     | "reattach_stronger_host"
     | "front_value_preferred"
     | "current_host_margin_preferred"
+    | "current_host_only"
     | "no_candidate";
 };
 

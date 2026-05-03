@@ -164,7 +164,7 @@ export const SPELL_CARDS: SpellCard[] = [
   {
     id: 'last-word',
     name: '「紅色の幻想郷」',
-    description: 'レミリアがマナを溜め、ラウンド終了まで続く紅色の幻想郷を展開する。敵全体へ永続DoTを与え、5秒ごとにDoTとボス陣営攻撃バフのスタックが増える',
+    description: 'レミリアが戦闘開始時に、ラウンド終了まで続く紅色の幻想郷を展開する。敵全体へ永続DoTを与え、5秒ごとにDoTとボス陣営攻撃バフのスタックが増える',
     roundRange: [12, 12],
     category: 'lastWord',
     effect: {

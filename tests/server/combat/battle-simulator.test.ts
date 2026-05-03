@@ -5179,7 +5179,7 @@ describe("battle-simulator", () => {
     expect(scheduledTicks[0]!.calculateDamage(boss, enemies[0]!, 40)).toBe(47);
   });
 
-  test("records Remilia Last Word activation and sustained tick damage telemetry after mana gain", () => {
+  test("records Remilia Last Word opening activation and sustained tick damage telemetry", () => {
     const simulator = new BattleSimulator();
     const boss = createTestBattleUnit(
       {
@@ -5219,7 +5219,8 @@ describe("battle-simulator", () => {
       casterBattleUnitId: "boss-remilia",
       activationCount: 1,
     });
-    expect(result.bossSpellMetrics?.[0]?.firstActivationAtMs).toBeGreaterThan(0);
+    expect(result.bossSpellMetrics?.[0]?.firstActivationAtMs).toBe(0);
+    expect(result.bossSpellMetrics?.[0]?.firstTickAtMs).toBe(1000);
     expect(result.bossSpellMetrics?.[0]?.tickCount).toBeGreaterThan(0);
     expect(result.bossSpellMetrics?.[0]?.totalDamage).toBeGreaterThan(0);
   });

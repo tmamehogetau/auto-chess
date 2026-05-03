@@ -22,6 +22,7 @@ describe("PrepCommandExecutor", () => {
     deployBenchUnitToBoard: vi.fn(),
     returnBoardUnitToBench: vi.fn(),
     moveBoardUnit: vi.fn(),
+    swapBoardUnits: vi.fn(),
     returnAttachedSubUnitToBench: vi.fn(),
     moveAttachedSubUnit: vi.fn(),
     swapAttachedSubUnitWithBench: vi.fn(),
@@ -290,6 +291,17 @@ describe("PrepCommandExecutor", () => {
       executePrepCommand("p1", 1, payload, deps);
 
       expect(deps.moveBoardUnit).toHaveBeenCalledWith("p1", 24, 31, "sub");
+    });
+
+    test("swaps two board units when boardUnitSwap provided", () => {
+      const deps = createDependencies();
+      const payload: CommandPayload = {
+        boardUnitSwap: { fromCell: 9, toCell: 8 },
+      };
+
+      executePrepCommand("p1", 1, payload, deps);
+
+      expect(deps.swapBoardUnits).toHaveBeenCalledWith("p1", 9, 8);
     });
 
     test("swaps attached sub unit with a bench slot when subUnitSwapBench provided", () => {

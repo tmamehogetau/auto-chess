@@ -26,6 +26,7 @@ export function buildPrepCommandPayload(
     message.benchToBoardCell === undefined &&
     message.boardToBenchCell === undefined &&
     message.boardUnitMove === undefined &&
+    message.boardUnitSwap === undefined &&
     message.subUnitToBenchCell === undefined &&
     message.subUnitMove === undefined &&
     message.subUnitSwapBench === undefined &&
@@ -51,6 +52,7 @@ export function buildPrepCommandPayload(
     ...(message.benchToBoardCell !== undefined && { benchToBoardCell: message.benchToBoardCell }),
     ...(message.boardToBenchCell !== undefined && { boardToBenchCell: message.boardToBenchCell }),
     ...(message.boardUnitMove !== undefined && { boardUnitMove: message.boardUnitMove }),
+    ...(message.boardUnitSwap !== undefined && { boardUnitSwap: message.boardUnitSwap }),
     ...(message.subUnitToBenchCell !== undefined && { subUnitToBenchCell: message.subUnitToBenchCell }),
     ...(message.subUnitMove !== undefined && { subUnitMove: message.subUnitMove }),
     ...(message.subUnitSwapBench !== undefined && { subUnitSwapBench: message.subUnitSwapBench }),

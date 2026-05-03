@@ -1796,6 +1796,7 @@ export class MatchRoomController {
         this.deployBenchUnitToBoard(id, benchIndex, cell, slot),
       returnBoardUnitToBench: (id, cell) => this.returnBoardUnitToBench(id, cell),
       moveBoardUnit: (id, fromCell, toCell, slot) => this.moveBoardUnit(id, fromCell, toCell, slot),
+      swapBoardUnits: (id, fromCell, toCell) => this.swapBoardUnits(id, fromCell, toCell),
       returnAttachedSubUnitToBench: (id, cell) => this.returnAttachedSubUnitToBench(id, cell),
       moveAttachedSubUnit: (id, fromCell, toCell, slot) =>
         this.moveAttachedSubUnit(id, fromCell, toCell, slot),
@@ -2104,6 +2105,36 @@ export class MatchRoomController {
       this.setBoardPlacementsForPlayer(playerId, boardPlacements);
       this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
     }
+  }
+
+  private swapBoardUnits(playerId: string, fromCell: number, toCell: number): void {
+    const boardPlacements = [...(this.boardPlacementsByPlayer.get(playerId) ?? [])];
+    const sourceIndex = boardPlacements.findIndex((placement) => placement.cell === fromCell);
+    const targetIndex = boardPlacements.findIndex((placement) => placement.cell === toCell);
+    const reservedBoardCells = this.getReservedSpecialBoardCells();
+
+    if (
+      sourceIndex < 0 ||
+      targetIndex < 0 ||
+      sourceIndex === targetIndex ||
+      reservedBoardCells.includes(fromCell) ||
+      reservedBoardCells.includes(toCell)
+    ) {
+      return;
+    }
+
+    const sourcePlacement = boardPlacements[sourceIndex]!;
+    const targetPlacement = boardPlacements[targetIndex]!;
+    boardPlacements[sourceIndex] = {
+      ...sourcePlacement,
+      cell: toCell,
+    };
+    boardPlacements[targetIndex] = {
+      ...targetPlacement,
+      cell: fromCell,
+    };
+    this.setBoardPlacementsForPlayer(playerId, boardPlacements);
+    this.boardUnitCountByPlayer.set(playerId, boardPlacements.length);
   }
 
   private moveAttachedSubUnit(

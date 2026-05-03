@@ -36,6 +36,7 @@ export interface ExecutionDependencies {
   deployBenchUnitToBoard: (playerId: string, benchIndex: number, cell: number, slot?: "main" | "sub") => void;
   returnBoardUnitToBench: (playerId: string, cell: number) => void;
   moveBoardUnit: (playerId: string, fromCell: number, toCell: number, slot?: "main" | "sub") => void;
+  swapBoardUnits: (playerId: string, fromCell: number, toCell: number) => void;
   returnAttachedSubUnitToBench: (playerId: string, cell: number) => void;
   moveAttachedSubUnit: (playerId: string, fromCell: number, toCell: number, slot?: "main" | "sub") => void;
   swapAttachedSubUnitWithBench: (playerId: string, cell: number, benchIndex: number) => void;
@@ -246,6 +247,14 @@ export function executePrepCommand(
       payload.boardUnitMove.fromCell,
       payload.boardUnitMove.toCell,
       payload.boardUnitMove.slot,
+    );
+  }
+
+  if (payload.boardUnitSwap !== undefined) {
+    deps.swapBoardUnits(
+      playerId,
+      payload.boardUnitSwap.fromCell,
+      payload.boardUnitSwap.toCell,
     );
   }
 

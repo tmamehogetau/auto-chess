@@ -3434,6 +3434,72 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("late boss helper swaps a stronger existing guard into an occupied direct lane", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 8, unitId: "yoshika", unitType: "vanguard", unitLevel: 2 },
+          { cell: 9, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: {
+          boardUnitSwap: {
+            fromCell: 9,
+            toCell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("late boss helper reads tokenized board levels before swapping a direct guard", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          "2:boss:5",
+          "8:vanguard:2",
+          "9:vanguard:7",
+          "3:mage:4",
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: {
+          boardUnitSwap: {
+            fromCell: 9,
+            toCell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame boss helper keeps a second direct guard in the lane", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

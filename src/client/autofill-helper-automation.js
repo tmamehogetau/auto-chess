@@ -2215,6 +2215,19 @@ function buildBossBodyGuardMoveAction(player, state = null, playerPhase = "") {
     };
   }
 
+  const strongerBoardGuard = getStrongestGuardPlacement(placements, new Set([bossCell, directGuardCell]));
+  if (getGuardStrengthScore(strongerBoardGuard) > getGuardStrengthScore(directGuard)) {
+    return {
+      type: "prep_command",
+      payload: {
+        boardUnitSwap: {
+          fromCell: strongerBoardGuard.cell,
+          toCell: directGuardCell,
+        },
+      },
+    };
+  }
+
   const deeperDirectGuard = getPlacementAtCell(placements, deeperDirectGuardCell);
   if (
     !isFrontlineUnitType(directGuard.unitType)
@@ -3119,15 +3132,17 @@ function parseBoardPlacement(value) {
   }
 
   if (typeof value === "string") {
-    const [, rawUnitId = ""] = value.split(":");
+    const [, rawUnitId = "", rawUnitLevel = ""] = value.split(":");
     const normalizedUnitId = normalizeUnitId(rawUnitId);
     const knownUnit = getKnownCombatUnit(normalizedUnitId);
     const normalizedUnitType = normalizeUnitType(knownUnit?.unitType ?? rawUnitId);
+    const unitLevel = Number(rawUnitLevel);
     return {
       cell,
       factionId: knownUnit?.factionId ?? "",
       unitId: rawUnitId,
       unitType: normalizedUnitType,
+      unitLevel: Number.isInteger(unitLevel) && unitLevel > 0 ? unitLevel : undefined,
       subUnit: undefined,
     };
   }

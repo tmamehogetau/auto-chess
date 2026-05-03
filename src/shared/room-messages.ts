@@ -70,6 +70,10 @@ export interface PrepCommandMessage {
     toCell: number;
     slot?: "main" | "sub";
   };
+  boardUnitSwap?: {
+    fromCell: number;
+    toCell: number;
+  };
   subUnitToBenchCell?: {
     cell: number;
   };

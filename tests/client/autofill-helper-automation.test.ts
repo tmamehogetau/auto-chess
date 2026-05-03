@@ -1366,6 +1366,44 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("midgame boss helper chases duplicates once two normal high-cost carries are seeded", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 6,
+        specialUnitLevel: 5,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 9, unitId: "sakuya", unitType: "assassin", unitLevel: 7 },
+          { cell: 10, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+          { cell: 3, unitId: "junko", unitType: "vanguard", unitLevel: 2 },
+          { cell: 4, unitId: "utsuho", unitType: "mage", unitLevel: 2 },
+          { cell: 5, unitId: "yoshika", unitType: "vanguard", unitLevel: 1 },
+        ],
+        selectedBossId: "remilia",
+        bossShopOffers: [],
+        shopOffers: [
+          { unitId: "futo", unitType: "mage", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("midgame boss helper refreshes past a weak normal offer after its Scarlet core is established", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,

@@ -151,7 +151,7 @@ export function buildBoardRefitDecision(
 ): BoardRefitDecisionDiagnostic;
 
 export type BossBodyGuardDecisionDiagnostic = {
-  decision: "direct_fill" | "direct_swap" | "side_flank_move" | "none";
+  decision: "direct_fill" | "direct_swap" | "direct_lane_fill" | "side_flank_move" | "none";
   reason: string;
   bossCell: number | null;
   directGuardCell: number | null;
@@ -262,7 +262,22 @@ export type AutoFillHelperAction =
       payload:
         | { bossShopBuySlotIndex: number }
         | { heroExclusiveShopBuySlotIndex: number }
-        | { shopBuySlotIndex: number }
+        | {
+            shopBuySlotIndex: number;
+            botPurchaseReason?: string;
+            botPurchasePlanId?: string;
+            botPurchasePlanAnchorUnitId?: string;
+            botPurchasePlanBonus?: number;
+            botArchetypeDecision?: string;
+            botArchetypeDecisionPlanId?: string;
+            botArchetypeDecisionCandidateUnitId?: string;
+            botArchetypeDecisionCandidateCost?: number;
+            botArchetypeDecisionBlocker?: string;
+            botArchetypeDecisionCombatPlanUnitCount?: number;
+            botArchetypeDecisionReservePlanUnitCount?: number;
+            botArchetypeDecisionAvailableMainSlots?: number;
+            botArchetypeDecisionAvailableSubSlots?: number;
+          }
         | { specialUnitUpgradeCount: number }
         | { shopRefreshCount: number }
         | { benchSellIndex: number }

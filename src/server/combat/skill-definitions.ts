@@ -3108,17 +3108,22 @@ export const SCARLET_MANSION_BASIC_SKILL_DEFINITIONS: Record<string, UnitSkillEf
     },
     execute: (caster, _allies, enemies, log, context) => {
       const skillContext = resolveSkillContext(context, log);
+      const target = skillContext.findCurrentOrNearestTarget(caster, enemies);
+      if (!target) {
+        return;
+      }
+
       const stage = resolveSkillStage(caster);
       const damageMultiplier = stage >= 7 ? 3.6 : stage >= 4 ? 3.0 : 2.6;
-      const targets = selectUnitsWithinRange(caster.cell, enemies, 3);
+      const targets = selectUnitsWithinRange(target.cell, enemies, 3);
 
-      for (const target of targets) {
+      for (const damagedTarget of targets) {
         const damage = calculateUltimateDamage(
           caster,
           caster.attackPower * caster.buffModifiers.attackMultiplier * damageMultiplier,
-          target,
+          damagedTarget,
         );
-        skillContext.dealDamage(caster, target, damage, "日符「ロイヤルフレア」");
+        skillContext.dealDamage(caster, damagedTarget, damage, "日符「ロイヤルフレア」");
       }
 
       log.push(`${caster.sourceUnitId ?? caster.type} activates 日符「ロイヤルフレア」`);

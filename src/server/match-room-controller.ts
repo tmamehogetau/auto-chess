@@ -4,6 +4,7 @@ import {
   seedToUnitFloat,
   pickRarity,
 } from "./match-room-controller/random-utils";
+import { resolveDeterministicBattleSeed } from "./match-room-controller/battle-seed";
 import {
   BattleResolutionService,
   type BattleResolutionDependencies,
@@ -132,8 +133,11 @@ interface MatchRoomControllerOptions {
   eliminationDurationMs: number;
   battleTimelineTimeScale?: number;
   battleSimulator?: BattleResolutionDependencies["battleSimulator"];
+  battleSeedBase?: number;
   setId?: UnitEffectSetId;
   featureFlags?: Partial<FeatureFlags>;
+  bossExtraPrepIncome?: number;
+  bossExtraTotalPrepIncome?: number;
 }
 
 
@@ -431,6 +435,12 @@ export class MatchRoomController {
 
   private readonly battleTimelineTimeScale: number;
 
+  private readonly battleSeedBase: number | undefined;
+
+  private readonly bossExtraPrepIncome: number;
+
+  private bossExtraTotalPrepIncomeRemaining: number;
+
   private readonly settleDurationMs: number;
 
   private readonly eliminationDurationMs: number;
@@ -546,6 +556,12 @@ export class MatchRoomController {
     this.prepDurationMs = options.prepDurationMs;
     this.battleDurationMs = options.battleDurationMs;
     this.battleTimelineTimeScale = options.battleTimelineTimeScale ?? 1;
+    const battleSeedBaseOption = options.battleSeedBase;
+    this.battleSeedBase = typeof battleSeedBaseOption === "number" && Number.isFinite(battleSeedBaseOption)
+      ? Math.trunc(battleSeedBaseOption)
+      : undefined;
+    this.bossExtraPrepIncome = Math.max(0, Math.trunc(options.bossExtraPrepIncome ?? 0));
+    this.bossExtraTotalPrepIncomeRemaining = Math.max(0, Math.trunc(options.bossExtraTotalPrepIncome ?? 0));
     this.settleDurationMs = options.settleDurationMs;
     this.eliminationDurationMs = options.eliminationDurationMs;
     this.gameLoopState = null;
@@ -1854,7 +1870,11 @@ export class MatchRoomController {
     applyPrepIncomeToPlayers({
       alivePlayerIds: state.alivePlayerIds,
       goldByPlayer: this.goldByPlayer,
-      getBaseIncome: (playerId) => state.isBoss(playerId) ? BOSS_PREP_BASE_INCOME : RAID_PREP_BASE_INCOME,
+      getBaseIncome: (playerId) =>
+        state.isBoss(playerId)
+          ? BOSS_PREP_BASE_INCOME + this.bossExtraPrepIncome
+            + this.consumeBossExtraTotalPrepIncome(state.roundIndex)
+          : RAID_PREP_BASE_INCOME,
       initialGold: INITIAL_GOLD,
       onIncomeApplied: (playerId, amount, goldBefore, goldAfter) => {
         this.matchLogger?.logAction(playerId, state.roundIndex, "prep_income", {
@@ -1864,6 +1884,20 @@ export class MatchRoomController {
         });
       },
     });
+  }
+
+  private consumeBossExtraTotalPrepIncome(roundIndex: number): number {
+    if (this.bossExtraTotalPrepIncomeRemaining <= 0) {
+      return 0;
+    }
+
+    const remainingPrepIncomeGrants = Math.max(1, 13 - Math.max(2, Math.trunc(roundIndex)));
+    const amount = Math.min(
+      this.bossExtraTotalPrepIncomeRemaining,
+      Math.ceil(this.bossExtraTotalPrepIncomeRemaining / remainingPrepIncomeGrants),
+    );
+    this.bossExtraTotalPrepIncomeRemaining -= amount;
+    return amount;
   }
 
   private getSpecialUnitLevel(playerId: string): number {
@@ -2818,22 +2852,23 @@ export class MatchRoomController {
     playerId: string,
     placements: readonly BoardUnitPlacement[],
   ): BoardUnitPlacement[] {
+    const resolvedPlacements = resolveBattlePlacements([...placements], this.rosterFlags);
     const heroSubHostCell = this.getHeroSubHostCellForPlayer(playerId);
     if (heroSubHostCell === null || !this.enableSubUnitSystem) {
-      return placements.map((placement) => ({ ...placement }));
+      return resolvedPlacements.map((placement) => ({ ...placement }));
     }
 
     const selectedHeroId = this.selectedHeroByPlayer.get(playerId) ?? "";
     if (selectedHeroId !== "okina") {
-      return placements.map((placement) => ({ ...placement }));
+      return resolvedPlacements.map((placement) => ({ ...placement }));
     }
 
     const okinaHero = HEROES.find((hero) => hero.id === "okina");
     if (!okinaHero) {
-      return placements.map((placement) => ({ ...placement }));
+      return resolvedPlacements.map((placement) => ({ ...placement }));
     }
 
-    return placements.map((placement) => {
+    return resolvedPlacements.map((placement) => {
       const snapshotPlacement = { ...placement };
       if (snapshotPlacement.cell !== heroSubHostCell || snapshotPlacement.subUnit) {
         return snapshotPlacement;
@@ -3200,12 +3235,25 @@ export class MatchRoomController {
       leftHeroSynergyBonusType: matchup.leftSide.heroSynergyBonusTypes,
       rightHeroSynergyBonusType: matchup.rightSide.heroSynergyBonusTypes,
       battleIndex: matchup.battleIndex,
+      ...this.buildDeterministicBattleSeedField(matchup),
     });
 
     this.storeBattleResolutionResults(matchup, resolutionResult);
     this.logResolvedBattleResult(matchup, resolutionResult);
 
     return resolutionResult;
+  }
+
+  private buildDeterministicBattleSeedField(
+    matchup: PreparedMatchupContext,
+  ): Partial<Pick<Parameters<BattleResolutionService["resolveMatchup"]>[0], "battleSeed">> {
+    const battleSeed = resolveDeterministicBattleSeed(this.battleSeedBase, {
+      battleId: matchup.battleId,
+      roundIndex: this.roundIndex,
+      battleIndex: matchup.battleIndex,
+    });
+
+    return battleSeed === undefined ? {} : { battleSeed };
   }
 
   private prepareMatchupContext(leftPlayerId: string, rightPlayerId: string): PreparedMatchupContext {

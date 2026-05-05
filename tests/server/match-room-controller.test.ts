@@ -21,6 +21,7 @@ import {
   withFlags,
 } from "./feature-flag-test-helper";
 import { FeatureFlagService } from "../../src/server/feature-flag-service";
+import { resolveDeterministicBattleSeed } from "../../src/server/match-room-controller/battle-seed";
 
 const controllerOptions = {
   readyAutoStartMs: 60_000,
@@ -4412,6 +4413,162 @@ describe("MatchRoomController", () => {
     );
   });
 
+  test("passes deterministic battle seeds to battle resolution when configured", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            1_000,
+            { ...controllerOptions, battleSeedBase: 20260504 },
+          );
+          const { battleResolutionService } = controller.getTestAccess();
+          const resolveMatchupSpy = vi.spyOn(battleResolutionService, "resolveMatchup");
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(2_000);
+
+          controller.applyPrepPlacementForPlayer("p2", [{ cell: 0, unitType: "vanguard" }]);
+          controller.applyPrepPlacementForPlayer("p1", [{ cell: 4, unitType: "ranger" }]);
+          controller.applyPrepPlacementForPlayer("p3", [{ cell: 5, unitType: "mage" }]);
+          controller.applyPrepPlacementForPlayer("p4", [{ cell: 6, unitType: "assassin" }]);
+
+          controller.advanceByTime(32_000);
+          controller.advanceByTime(42_000);
+
+          const firstCall = resolveMatchupSpy.mock.calls[0]?.[0];
+          expect(firstCall?.battleSeed).toBe(resolveDeterministicBattleSeed(20260504, {
+            battleId: firstCall?.battleId ?? "",
+            roundIndex: firstCall?.roundIndex ?? 0,
+            battleIndex: firstCall?.battleIndex ?? 0,
+          }));
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("baseline boss extra prep income only increases boss prep income", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+              bossExtraPrepIncome: 35,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.advanceByTime(1);
+          controller.setPendingPhaseDamageForTest(1200);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          for (const raidPlayerId of ["p1", "p3", "p4"]) {
+            battleResultsByPlayer.set(raidPlayerId, {
+              opponentId: "p2",
+              won: true,
+              damageDealt: 10,
+              damageTaken: 0,
+              survivors: 1,
+              opponentSurvivors: 0,
+            });
+          }
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.phase).toBe("Prep");
+          expect(controller.roundIndex).toBe(2);
+          expect(controller.getPlayerStatus("p1").gold).toBe(12);
+          expect(controller.getPlayerStatus("p3").gold).toBe(12);
+          expect(controller.getPlayerStatus("p4").gold).toBe(12);
+          expect(controller.getPlayerStatus("p2").gold).toBe(52);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  test("baseline boss extra total prep income is distributed across boss prep income", async () => {
+    await withFlags(
+      { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
+      async () => {
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+        try {
+          const controller = new MatchRoomController(
+            ["p1", "p2", "p3", "p4"],
+            0,
+            {
+              readyAutoStartMs: 1,
+              prepDurationMs: 1,
+              battleDurationMs: 1,
+              settleDurationMs: 1,
+              eliminationDurationMs: 1,
+              bossExtraTotalPrepIncome: 35,
+            },
+          );
+
+          controller.setReady("p1", true);
+          controller.setReady("p2", true);
+          controller.setReady("p3", true);
+          controller.setReady("p4", true);
+          controller.startIfReady(0);
+
+          controller.advanceByTime(1);
+          controller.setPendingPhaseDamageForTest(1200);
+          const { battleResultsByPlayer } = controller.getTestAccess();
+          for (const raidPlayerId of ["p1", "p3", "p4"]) {
+            battleResultsByPlayer.set(raidPlayerId, {
+              opponentId: "p2",
+              won: true,
+              damageDealt: 10,
+              damageTaken: 0,
+              survivors: 1,
+              opponentSurvivors: 0,
+            });
+          }
+
+          controller.advanceByTime(2);
+          controller.advanceByTime(3);
+          controller.advanceByTime(4);
+
+          expect(controller.phase).toBe("Prep");
+          expect(controller.roundIndex).toBe(2);
+          expect(controller.getPlayerStatus("p1").gold).toBe(12);
+          expect(controller.getPlayerStatus("p3").gold).toBe(12);
+          expect(controller.getPlayerStatus("p4").gold).toBe(12);
+          expect(controller.getPlayerStatus("p2").gold).toBe(21);
+        } finally {
+          randomSpy.mockRestore();
+        }
+      },
+    );
+  });
+
   test("time-out only raid failure does not grant the phase success bonus", async () => {
     await withFlags(
       { ...FLAG_CONFIGURATIONS.ALL_DISABLED, enableBossExclusiveShop: true },
@@ -4768,6 +4925,40 @@ describe("MatchRoomController", () => {
         expect.objectContaining({ cell: 3, unitType: "ranger" }),
       ]),
     );
+  });
+
+  test("Battle開始時スナップショットはunitId由来の陣営メタデータを保持する", async () => {
+    await withFlags(FLAG_CONFIGURATIONS.TOUHOU_ROSTER_WITH_FACTIONS, async () => {
+      const controller = new MatchRoomController(
+        ["p1", "p2"],
+        1_000,
+        controllerOptions,
+      );
+
+      controller.setReady("p1", true);
+      controller.setReady("p2", true);
+      controller.startIfReady(2_000);
+
+      expect(controller.applyPrepPlacementForPlayer("p1", [
+        { cell: 2, unitType: "ranger", unitId: "nazrin", unitLevel: 1 },
+      ])).toEqual({ success: true, code: "SUCCESS" });
+      expect(controller.applyPrepPlacementForPlayer("p2", [
+        { cell: 3, unitType: "ranger" },
+      ])).toEqual({ success: true, code: "SUCCESS" });
+
+      controller.advanceByTime(32_000);
+
+      const { battleInputSnapshotByPlayer: snapshotMap } = controller.getTestAccess();
+      expect(snapshotMap.get("p1")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            cell: 2,
+            unitId: "nazrin",
+            factionId: "myourenji",
+          }),
+        ]),
+      );
+    });
   });
 
   test("T3: 戦闘単位で入力と結果を追跡できるトレースログが常時出力される", () => {

@@ -43,6 +43,8 @@ import {
   createFastParityGameRoomOptions,
   DEFAULT_GAME_ROOM_OPTIONS,
 } from "../../../src/server/rooms/game-room-config";
+import { resolveDeterministicBattleSeed } from "../../../src/server/match-room-controller/battle-seed";
+import { buildBattleId } from "../../../src/server/match-room-controller/matchup-context-builder";
 import { getMvpPhase1Boss } from "../../../src/shared/types";
 import {
   buildBotOnlyBaselineAggregateReport as buildBotOnlyBaselineAggregateReportFromSummaries,
@@ -50,6 +52,7 @@ import {
   type BotOnlyBaselineBattleEndReason,
   type BotOnlyBaselineBattleSummary,
   type BotOnlyBaselineBossBodyGuardDecisionSnapshot,
+  type BotOnlyBaselineBoardMovementAction,
   type BotOnlyBaselineBoardRefitDecisionSnapshot,
   type BotOnlyBaselineFinalPlayer,
   type BotOnlyBaselineMatchSummary,
@@ -62,12 +65,19 @@ import {
 import {
   createBotBalanceBaselineHelperConfigs,
   createBotBalanceBaselineRoomTimings,
+  resolveBotBalanceBaselineBossExtraPrepIncome,
+  resolveBotBalanceBaselineBossExtraTotalPrepIncome,
+  resolveBotBalanceBaselineBattleSeedBase,
   resolveBotBalanceBaselineHelperPolicy,
   resolveBotBalanceBaselineOptimizationVariant,
   resolveBotBalanceBaselineRaidHeroIds,
   resolveBotBalanceBaselineRaidPolicies,
   type BotBalanceBaselineOptimizationVariant,
 } from "./bot-balance-baseline-runner";
+import {
+  buildBattleOnlyDiagnosticScenarioRecordsFromMatchReport,
+  type BotBattleOnlyScenarioRecord,
+} from "./bot-battle-diagnostic";
 
 type BotOnlyServerRoom = Awaited<ReturnType<typeof createRoomWithForcedFlags>>;
 type BotOnlyTestClient = {
@@ -142,6 +152,7 @@ type BotOnlyMatchRoundReport = {
     refreshCount?: number;
     sellCount?: number;
     specialUnitUpgradeCount?: number;
+    benchUnitIds?: string[];
     boardUnits: ReportBoardUnit[];
   }>;
   rounds: Array<{
@@ -250,6 +261,7 @@ type BotOnlyRoundBattleReport = {
   unitDamageBreakdown: ReportUnitDamageContribution[];
   unitOutcomes: ReportUnitBattleOutcome[];
   bossSpellMetrics?: BossSpellBattleMetric[];
+  battleSeed?: number;
 };
 
 type ReportUnitDamageContribution = {
@@ -277,6 +289,7 @@ type ReportUnitBattleOutcome = {
   attachedSubUnitId?: string;
   attachedSubUnitName?: string;
   attachedSubUnitType?: string;
+  attachedSubUnitLevel?: number;
   isSpecialUnit: boolean;
   attackCount?: number;
   basicSkillActivationCount?: number;
@@ -444,11 +457,14 @@ type ReportBoardUnit = {
   unitName: string;
   unitType: string;
   unitId: string;
+  factionId?: string | null;
   unitLevel: number;
   subUnitName: string;
   attachedSubUnitId?: string;
   attachedSubUnitName?: string;
   attachedSubUnitType?: string;
+  attachedSubUnitLevel?: number;
+  attachedSubUnitFactionId?: string | null;
 };
 
 type BotOnlyMatchArtifacts = {
@@ -462,6 +478,7 @@ type BotOnlyBaselineMatchArtifacts = {
   clients: BotOnlyTestClient[];
   battles: BotOnlyBaselineBattleSummary[];
   rounds: BotOnlyBaselineRoundSummary[];
+  battleDiagnosticScenarios: BotBattleOnlyScenarioRecord[];
   observedShopOffers: BotOnlyBaselineObservedShopOffer[];
   okinaHeroSubDecisionSnapshots: BotOnlyBaselineOkinaHeroSubDecisionSnapshot[];
   boardRefitDecisionSnapshots: BotOnlyBaselineBoardRefitDecisionSnapshot[];
@@ -698,26 +715,32 @@ const toReportBoardUnit = (placement: BoardUnitPlacement): ReportBoardUnit => {
       ?? placement.unitType,
     unitType: placement.unitType,
     unitId: placement.unitId ?? "",
+    ...(placement.factionId !== undefined ? { factionId: placement.factionId } : {}),
     unitLevel: placement.unitLevel ?? 1,
     subUnitName: attachedSubUnitName,
     ...(placement.subUnit?.unitId ? { attachedSubUnitId: placement.subUnit.unitId } : {}),
     ...(attachedSubUnitName.length > 0 ? { attachedSubUnitName } : {}),
     ...(placement.subUnit?.unitType ? { attachedSubUnitType: placement.subUnit.unitType } : {}),
+    ...(placement.subUnit?.unitLevel !== undefined ? { attachedSubUnitLevel: placement.subUnit.unitLevel } : {}),
+    ...(placement.subUnit?.factionId !== undefined ? { attachedSubUnitFactionId: placement.subUnit.factionId } : {}),
   };
 };
 
 const parseHeroSubUnitTokensByCell = (
   boardSubUnits: Iterable<unknown> | undefined,
-): Map<number, { unitId: string; unitName: string; unitType: "hero" }> => {
-  const result = new Map<number, { unitId: string; unitName: string; unitType: "hero" }>();
+): Map<number, { unitId: string; unitName: string; unitType: "hero"; unitLevel?: number }> => {
+  const result = new Map<number, { unitId: string; unitName: string; unitType: "hero"; unitLevel?: number }>();
 
   for (const token of boardSubUnits ?? []) {
     if (typeof token !== "string") {
       continue;
     }
 
-    const [cellText = "", unitType = "", unitId = ""] = token.split(":");
+    const [cellText = "", unitType = "", third = "", fourth = ""] = token.split(":");
     const cell = Number.parseInt(cellText, 10);
+    const parsedLevel = Number.parseInt(third, 10);
+    const hasLevel = Number.isInteger(parsedLevel) && fourth.length > 0;
+    const unitId = hasLevel ? fourth : third;
     if (!Number.isInteger(cell) || unitType !== "hero" || unitId.length === 0) {
       continue;
     }
@@ -726,6 +749,7 @@ const parseHeroSubUnitTokensByCell = (
       unitId,
       unitName: resolveSharedBoardHeroPresentation(unitId)?.displayName ?? unitId,
       unitType: "hero",
+      ...(hasLevel ? { unitLevel: parsedLevel } : {}),
     });
   }
 
@@ -753,6 +777,7 @@ const attachHeroSubUnitReportMetadata = (
       attachedSubUnitId: heroSubUnit.unitId,
       attachedSubUnitName: heroSubUnit.unitName,
       attachedSubUnitType: heroSubUnit.unitType,
+      ...(heroSubUnit.unitLevel !== undefined ? { attachedSubUnitLevel: heroSubUnit.unitLevel } : {}),
     };
   });
 };
@@ -824,6 +849,27 @@ const getTestAccess = (serverRoom: BotOnlyServerRoom): BotOnlyTestAccess | null 
   return controller?.getTestAccess?.() ?? null;
 };
 
+const getReportedSpecialUnitPlacement = (
+  serverRoom: BotOnlyServerRoom,
+  playerId: string,
+  kind: "hero" | "boss",
+): number | null => {
+  const controller = (serverRoom as unknown as {
+    controller?: {
+      getHeroPlacementForPlayer?: (id: string) => number | null;
+      getBossPlacementForPlayer?: (id: string) => number | null;
+    } | null;
+  }).controller;
+  const placement = kind === "hero"
+    ? controller?.getHeroPlacementForPlayer?.(playerId)
+    : controller?.getBossPlacementForPlayer?.(playerId);
+
+  if (typeof placement !== "number" || !Number.isInteger(placement) || placement < 0) {
+    return null;
+  }
+  return placement;
+};
+
 const getReportBattleStartUnitsForPlayer = (
   serverRoom: BotOnlyServerRoom,
   playerId: string,
@@ -842,7 +888,7 @@ const getReportBattleStartUnitsForPlayer = (
 
   if (typeof player.selectedHeroId === "string" && player.selectedHeroId.length > 0) {
     battleStartUnitsWithHeroSubMetadata.push({
-      cell: 8,
+      cell: getReportedSpecialUnitPlacement(serverRoom, playerId, "hero") ?? 8,
       unitName:
         resolveSharedBoardHeroPresentation(player.selectedHeroId)?.displayName
         ?? player.selectedHeroId,
@@ -859,7 +905,7 @@ const getReportBattleStartUnitsForPlayer = (
     && player.selectedBossId.length > 0
   ) {
     battleStartUnitsWithHeroSubMetadata.push({
-      cell: 2,
+      cell: getReportedSpecialUnitPlacement(serverRoom, playerId, "boss") ?? 2,
       unitName:
         resolveSharedBoardBossPresentation(player.selectedBossId)?.displayName
         ?? player.selectedBossId,
@@ -2178,6 +2224,7 @@ const buildUnitBattleOutcomesForBattle = (
         ...(metadata?.attachedSubUnitId ? { attachedSubUnitId: metadata.attachedSubUnitId } : {}),
         ...(metadata?.attachedSubUnitName ? { attachedSubUnitName: metadata.attachedSubUnitName } : {}),
         ...(metadata?.attachedSubUnitType ? { attachedSubUnitType: metadata.attachedSubUnitType } : {}),
+        ...(metadata?.attachedSubUnitLevel !== undefined ? { attachedSubUnitLevel: metadata.attachedSubUnitLevel } : {}),
         isSpecialUnit: isReportSpecialBattleUnit(sourceUnitId, unit.battleUnitId, metadata),
         attackCount,
         basicSkillActivationCount,
@@ -2460,6 +2507,8 @@ const buildRoundBattleReport = (
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
   playerLabels: Map<string, string>,
   battleDurationOverrideMs?: number,
+  battleSeedBase?: number,
+  roundIndexOverride?: number,
 ): BotOnlyRoundBattleReport => {
   const battleDurationMs = battleDurationOverrideMs ?? resolveBattleDurationMsFromTimeline(timeline);
   const battleEndReason = resolveBattleEndReasonFromTimeline(timeline);
@@ -2468,6 +2517,12 @@ const buildRoundBattleReport = (
   const bossIsLeft = battle.leftPlayerId === serverRoom.state.bossPlayerId;
   return {
     battleIndex: battle.battleIndex,
+    ...buildBotOnlyBattleSeedField(battleSeedBase, {
+      roundIndex: roundIndexOverride ?? serverRoom.state.roundIndex,
+      battleIndex: battle.battleIndex,
+      leftPlayerId: battle.leftPlayerId,
+      rightPlayerId: battle.rightPlayerId,
+    }),
     leftPlayerId: battle.leftPlayerId,
     leftLabel: getPlayerLabel(playerLabels, battle.leftPlayerId),
     rightPlayerId: battle.rightPlayerId,
@@ -2502,6 +2557,24 @@ const buildRoundBattleReport = (
     ),
     ...(bossSpellMetrics.length > 0 ? { bossSpellMetrics } : {}),
   };
+};
+
+const buildBotOnlyBattleSeedField = (
+  battleSeedBase: number | undefined,
+  input: {
+    roundIndex: number;
+    battleIndex: number;
+    leftPlayerId: string;
+    rightPlayerId: string;
+  },
+): Partial<Pick<BotOnlyRoundBattleReport, "battleSeed">> => {
+  const battleSeed = resolveDeterministicBattleSeed(battleSeedBase, {
+    battleId: buildBattleId(input.roundIndex, input.leftPlayerId, input.rightPlayerId),
+    roundIndex: input.roundIndex,
+    battleIndex: input.battleIndex,
+  });
+
+  return battleSeed === undefined ? {} : { battleSeed };
 };
 
 const resolveBattleTimelineForReportBattle = (
@@ -2631,6 +2704,7 @@ const buildRoundBattleReportsFromCurrentState = (
   playersAtBattleStart: BotOnlyRoundSnapshot["playersAtBattleStart"],
   playerLabels: Map<string, string>,
   battleDurationOverrideMs?: number,
+  battleSeedBase?: number,
 ): BotOnlyRoundBattleReport[] => {
   const roundLog = getMatchLogger(serverRoom)
     .getRoundLogs()
@@ -2649,6 +2723,8 @@ const buildRoundBattleReportsFromCurrentState = (
       playersAtBattleStart,
       playerLabels,
       battleDurationOverrideMs,
+      battleSeedBase,
+      roundIndex,
     );
   });
 };
@@ -3045,6 +3121,8 @@ test("getReportBattleStartUnitsForPlayer includes special unit metadata for hero
       ]),
     },
     controller: {
+      getHeroPlacementForPlayer: (playerId: string) => playerId === "raid-1" ? 30 : null,
+      getBossPlacementForPlayer: (playerId: string) => playerId === "boss-1" ? 14 : null,
       getTestAccess: () => ({
         battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>([
           ["raid-1", [{ cell: 31, unitType: "ranger", unitId: "nazrin", unitLevel: 2 }]],
@@ -3064,7 +3142,7 @@ test("getReportBattleStartUnitsForPlayer includes special unit metadata for hero
       subUnitName: "",
     },
     {
-      cell: 8,
+      cell: 30,
       unitName: "博麗霊夢",
       unitType: "hero",
       unitId: "reimu",
@@ -3075,7 +3153,7 @@ test("getReportBattleStartUnitsForPlayer includes special unit metadata for hero
 
   expect(getReportBattleStartUnitsForPlayer(fakeRoom, "boss-1")).toEqual([
     {
-      cell: 2,
+      cell: 14,
       unitName: "レミリア",
       unitType: "boss",
       unitId: "remilia",
@@ -3094,11 +3172,12 @@ test("getReportBattleStartUnitsForPlayer marks Okina hero sub metadata on the ho
           selectedHeroId: "okina",
           selectedBossId: "",
           specialUnitLevel: 4,
-          boardSubUnits: ["31:hero:okina"],
+          boardSubUnits: ["31:hero:4:okina"],
         }],
       ]),
     },
     controller: {
+      getHeroPlacementForPlayer: (playerId: string) => playerId === "raid-1" ? 31 : null,
       getTestAccess: () => ({
         battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>([
           ["raid-1", [{ cell: 31, unitType: "ranger", unitId: "nazrin", unitLevel: 2 }]],
@@ -3118,9 +3197,10 @@ test("getReportBattleStartUnitsForPlayer marks Okina hero sub metadata on the ho
       attachedSubUnitId: "okina",
       attachedSubUnitName: "摩多羅隠岐奈",
       attachedSubUnitType: "hero",
+      attachedSubUnitLevel: 4,
     },
     {
-      cell: 8,
+      cell: 31,
       unitName: "摩多羅隠岐奈",
       unitType: "hero",
       unitId: "okina",
@@ -3128,6 +3208,51 @@ test("getReportBattleStartUnitsForPlayer marks Okina hero sub metadata on the ho
       subUnitName: "",
     },
   ]);
+});
+
+test("getReportBattleStartUnitsForPlayer preserves attached sub-unit levels", () => {
+  const fakeRoom = {
+    state: {
+      players: new Map([
+        ["raid-1", {
+          role: "raid",
+          selectedHeroId: "",
+          selectedBossId: "",
+          specialUnitLevel: 1,
+        }],
+      ]),
+    },
+    controller: {
+      getTestAccess: () => ({
+        battleInputSnapshotByPlayer: new Map<string, BoardUnitPlacement[]>([
+          ["raid-1", [{
+            cell: 31,
+            unitType: "vanguard",
+            unitId: "byakuren",
+            unitLevel: 4,
+            subUnit: {
+              unitType: "ranger",
+              unitId: "nazrin",
+              unitLevel: 7,
+            },
+          }]],
+        ]),
+      }),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  expect(getReportBattleStartUnitsForPlayer(fakeRoom, "raid-1")).toEqual([{
+    cell: 31,
+    unitName: "聖白蓮",
+    unitType: "vanguard",
+    unitId: "byakuren",
+    unitLevel: 4,
+    subUnitName: "ナズーリン",
+    attachedSubUnitId: "nazrin",
+    attachedSubUnitName: "ナズーリン",
+    attachedSubUnitType: "ranger",
+    attachedSubUnitLevel: 7,
+  }]);
 });
 
 test("buildPlayerConsequences keeps battle-start tracked units after controller snapshots reset", () => {
@@ -5806,6 +5931,7 @@ const buildBotOnlyFinalPlayers = (
       refreshCount: economy.refreshCount,
       sellCount: economy.sellCount,
       specialUnitUpgradeCount: economy.specialUnitUpgradeCount,
+      benchUnitIds: Array.from((player as typeof player & { benchUnitIds?: Iterable<string> }).benchUnitIds ?? []),
       boardUnits: getReportBoardUnitsForPlayer(serverRoom, client.sessionId),
     };
   });
@@ -5905,6 +6031,19 @@ const buildBotOnlyBaselinePurchases = (
     const details = actionLog.details as typeof actionLog.details & {
       unitId?: unknown;
       unitName?: unknown;
+      botPurchaseReason?: unknown;
+      botPurchasePlanId?: unknown;
+      botPurchasePlanAnchorUnitId?: unknown;
+      botPurchasePlanBonus?: unknown;
+      botArchetypeDecision?: unknown;
+      botArchetypeDecisionPlanId?: unknown;
+      botArchetypeDecisionCandidateUnitId?: unknown;
+      botArchetypeDecisionCandidateCost?: unknown;
+      botArchetypeDecisionBlocker?: unknown;
+      botArchetypeDecisionCombatPlanUnitCount?: unknown;
+      botArchetypeDecisionReservePlanUnitCount?: unknown;
+      botArchetypeDecisionAvailableMainSlots?: unknown;
+      botArchetypeDecisionAvailableSubSlots?: unknown;
     };
 
     purchases.push({
@@ -5916,10 +6055,88 @@ const buildBotOnlyBaselinePurchases = (
       ...(typeof details.unitId === "string" && { unitId: details.unitId }),
       ...(typeof details.unitName === "string" && { unitName: details.unitName }),
       cost: typeof details.cost === "number" ? details.cost : 0,
+      ...(typeof details.botPurchaseReason === "string" && { botPurchaseReason: details.botPurchaseReason }),
+      ...(typeof details.botPurchasePlanId === "string" && { botPurchasePlanId: details.botPurchasePlanId }),
+      ...(typeof details.botPurchasePlanAnchorUnitId === "string" && {
+        botPurchasePlanAnchorUnitId: details.botPurchasePlanAnchorUnitId,
+      }),
+      ...(typeof details.botPurchasePlanBonus === "number" && { botPurchasePlanBonus: details.botPurchasePlanBonus }),
+      ...(typeof details.botArchetypeDecision === "string" && {
+        botArchetypeDecision: details.botArchetypeDecision,
+      }),
+      ...(typeof details.botArchetypeDecisionPlanId === "string" && {
+        botArchetypeDecisionPlanId: details.botArchetypeDecisionPlanId,
+      }),
+      ...(typeof details.botArchetypeDecisionCandidateUnitId === "string" && {
+        botArchetypeDecisionCandidateUnitId: details.botArchetypeDecisionCandidateUnitId,
+      }),
+      ...(typeof details.botArchetypeDecisionCandidateCost === "number" && {
+        botArchetypeDecisionCandidateCost: details.botArchetypeDecisionCandidateCost,
+      }),
+      ...(typeof details.botArchetypeDecisionBlocker === "string" && {
+        botArchetypeDecisionBlocker: details.botArchetypeDecisionBlocker,
+      }),
+      ...(typeof details.botArchetypeDecisionCombatPlanUnitCount === "number" && {
+        botArchetypeDecisionCombatPlanUnitCount: details.botArchetypeDecisionCombatPlanUnitCount,
+      }),
+      ...(typeof details.botArchetypeDecisionReservePlanUnitCount === "number" && {
+        botArchetypeDecisionReservePlanUnitCount: details.botArchetypeDecisionReservePlanUnitCount,
+      }),
+      ...(typeof details.botArchetypeDecisionAvailableMainSlots === "number" && {
+        botArchetypeDecisionAvailableMainSlots: details.botArchetypeDecisionAvailableMainSlots,
+      }),
+      ...(typeof details.botArchetypeDecisionAvailableSubSlots === "number" && {
+        botArchetypeDecisionAvailableSubSlots: details.botArchetypeDecisionAvailableSubSlots,
+      }),
     });
   }
 
   return purchases;
+};
+
+const normalizeBoardMovementRole = (
+  role: string | undefined,
+): "boss" | "raid" | "unknown" => {
+  if (role === "boss" || role === "raid") {
+    return role;
+  }
+  return "unknown";
+};
+
+const buildBotOnlyBaselineBoardMovementActions = (
+  serverRoom: BotOnlyServerRoom,
+  playerLabels: Map<string, string>,
+): BotOnlyBaselineBoardMovementAction[] => {
+  const actions: BotOnlyBaselineBoardMovementAction[] = [];
+
+  for (const actionLog of getMatchLogger(serverRoom).getActionLogs()) {
+    if (actionLog.actionType !== "board_move" && actionLog.actionType !== "board_swap") {
+      continue;
+    }
+
+    const fromCell = typeof actionLog.details.fromCell === "number"
+      ? actionLog.details.fromCell
+      : null;
+    const toCell = typeof actionLog.details.toCell === "number"
+      ? actionLog.details.toCell
+      : null;
+    if (fromCell === null || toCell === null) {
+      continue;
+    }
+
+    const player = serverRoom.state.players.get(actionLog.playerId);
+    actions.push({
+      roundIndex: actionLog.roundIndex,
+      playerId: actionLog.playerId,
+      label: getPlayerLabel(playerLabels, actionLog.playerId),
+      role: normalizeBoardMovementRole(player?.role),
+      actionType: actionLog.actionType,
+      fromCell,
+      toCell,
+    });
+  }
+
+  return actions;
 };
 
 const buildOkinaHeroSubDecisionSnapshots = (
@@ -6116,6 +6333,8 @@ const runBotOnlyHelperMatchForBaseline = async (
   }>,
   matchIndex = 0,
 ): Promise<BotOnlyBaselineMatchArtifacts> => {
+  const battleSeedBase = resolveBotBalanceBaselineBattleSeedBase(process.env.BOT_BASELINE_BATTLE_SEED_BASE)
+    + Math.max(0, Math.trunc(matchIndex));
   const serverRoom = await createRoom();
   const clients = await Promise.all([
     connectClient(serverRoom),
@@ -6296,6 +6515,7 @@ const runBotOnlyHelperMatchForBaseline = async (
       playersAtBattleStart,
       playerLabels,
       battlePhaseElapsedMs,
+      battleSeedBase,
     );
     const phaseProgress = buildRoundPhaseProgress(getCurrentControllerPhaseProgress(serverRoom));
     for (const battle of roundBattles) {
@@ -6306,6 +6526,7 @@ const runBotOnlyHelperMatchForBaseline = async (
         ...(battle.battleEndReason !== undefined ? { battleEndReason: battle.battleEndReason } : {}),
         ...(typeof battle.bossSurvivors === "number" ? { bossSurvivors: battle.bossSurvivors } : {}),
         ...(typeof battle.raidSurvivors === "number" ? { raidSurvivors: battle.raidSurvivors } : {}),
+        ...(typeof battle.battleSeed === "number" ? { battleSeed: battle.battleSeed } : {}),
         unitDamageBreakdown: battle.unitDamageBreakdown.map((unit) => ({ ...unit })),
         unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
         ...(battle.bossSpellMetrics ? {
@@ -6364,12 +6585,39 @@ const runBotOnlyHelperMatchForBaseline = async (
     clients,
     battles,
     rounds: roundReport.rounds,
+    battleDiagnosticScenarios: buildBattleOnlyDiagnosticScenarioRecordsFromMatchReport({
+      matchIndex,
+      rounds: roundReport.rounds,
+    }),
     observedShopOffers: Array.from(observedOffersByKey.values()),
     okinaHeroSubDecisionSnapshots: buildOkinaHeroSubDecisionSnapshots(roundReport.rounds),
     boardRefitDecisionSnapshots: buildBoardRefitDecisionSnapshots(roundReport.rounds),
     bossBodyGuardDecisionSnapshots: buildBossBodyGuardDecisionSnapshots(roundReport.rounds),
   };
 };
+
+const cloneBattleDiagnosticScenarioRecord = (
+  record: BotBattleOnlyScenarioRecord,
+): BotBattleOnlyScenarioRecord => ({
+  ...record,
+  scenario: {
+    ...record.scenario,
+    leftPlacements: record.scenario.leftPlacements.map((placement) => ({
+      ...placement,
+      ...(placement.subUnit ? { subUnit: { ...placement.subUnit } } : {}),
+    })),
+    rightPlacements: record.scenario.rightPlacements.map((placement) => ({
+      ...placement,
+      ...(placement.subUnit ? { subUnit: { ...placement.subUnit } } : {}),
+    })),
+    ...(record.scenario.leftBossUnitIds !== undefined
+      ? { leftBossUnitIds: [...record.scenario.leftBossUnitIds] }
+      : {}),
+    ...(record.scenario.rightBossUnitIds !== undefined
+      ? { rightBossUnitIds: [...record.scenario.rightBossUnitIds] }
+      : {}),
+  },
+});
 
 const buildBotOnlyBaselineMatchSummary = (
   artifacts: BotOnlyBaselineMatchArtifacts,
@@ -6384,6 +6632,8 @@ const buildBotOnlyBaselineMatchSummary = (
     ranking: Array.from(artifacts.serverRoom.state.ranking) as string[],
     playerLabels: Object.fromEntries(playerLabels),
     purchases: buildBotOnlyBaselinePurchases(artifacts.serverRoom, playerLabels),
+    boardMovementActions: buildBotOnlyBaselineBoardMovementActions(artifacts.serverRoom, playerLabels),
+    battleDiagnosticScenarios: artifacts.battleDiagnosticScenarios.map(cloneBattleDiagnosticScenarioRecord),
     observedShopOffers: artifacts.observedShopOffers.map((offer) => ({ ...offer })),
     okinaHeroSubDecisionSnapshots: artifacts.okinaHeroSubDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
     boardRefitDecisionSnapshots: artifacts.boardRefitDecisionSnapshots.map((snapshot) => ({ ...snapshot })),
@@ -6406,6 +6656,7 @@ const buildBotOnlyBaselineMatchSummary = (
         ...(battle.battleEndReason !== undefined ? { battleEndReason: battle.battleEndReason } : {}),
         ...(typeof battle.bossSurvivors === "number" ? { bossSurvivors: battle.bossSurvivors } : {}),
         ...(typeof battle.raidSurvivors === "number" ? { raidSurvivors: battle.raidSurvivors } : {}),
+        ...(typeof battle.battleSeed === "number" ? { battleSeed: battle.battleSeed } : {}),
         leftDamageDealt: battle.leftDamageDealt,
         rightDamageDealt: battle.rightDamageDealt,
         unitOutcomes: battle.unitOutcomes.map((unit) => ({ ...unit })),
@@ -6905,6 +7156,49 @@ test("buildRoundBattleReport records battle end reason and role-based survivor c
   expect(report.battleEndReason).toBe("timeout_hp_lead");
   expect(report.bossSurvivors).toBe(1);
   expect(report.raidSurvivors).toBe(2);
+});
+
+test("buildRoundBattleReport records deterministic battle seeds for diagnostic replay", () => {
+  const fakeRoom = {
+    state: {
+      roundIndex: 12,
+      bossPlayerId: "boss-1",
+      raidPlayerIds: ["raid-1", "raid-2", "raid-3"],
+      players: new Map([
+        ["boss-1", { selectedHeroId: "", selectedBossId: "remilia" }],
+        ["raid-1", { selectedHeroId: "reimu", selectedBossId: "" }],
+      ]),
+    },
+  } as unknown as BotOnlyServerRoom;
+
+  const report = buildRoundBattleReport(
+    fakeRoom,
+    {
+      battleIndex: 0,
+      leftPlayerId: "raid-1",
+      rightPlayerId: "boss-1",
+      winner: "right",
+      leftDamageDealt: 100,
+      rightDamageDealt: 250,
+      leftSurvivors: 2,
+      rightSurvivors: 1,
+    },
+    [],
+    [],
+    new Map([
+      ["boss-1", "P1"],
+      ["raid-1", "P2"],
+    ]),
+    undefined,
+    20260504,
+    12,
+  );
+
+  expect(report.battleSeed).toBe(resolveDeterministicBattleSeed(20260504, {
+    battleId: buildBattleId(12, "raid-1", "boss-1"),
+    roundIndex: 12,
+    battleIndex: 0,
+  }));
 });
 
 test("buildBotOnlyHumanReadableRoundReport omits phase hp only on the R12 final judgment round", () => {
@@ -7643,6 +7937,7 @@ const buildBotOnlyBaselineAggregateReport = (
       bossPlayerId: report.bossPlayerId,
       ranking: report.ranking,
       playerLabels: report.playerLabels,
+      battleDiagnosticScenarios: buildBattleOnlyDiagnosticScenarioRecordsFromMatchReport(report),
       finalPlayers: report.finalPlayers.map((player) => ({
         playerId: player.playerId,
         label: player.label,
@@ -7660,6 +7955,7 @@ const buildBotOnlyBaselineAggregateReport = (
         refreshCount: player.refreshCount ?? 0,
         sellCount: player.sellCount ?? 0,
         specialUnitUpgradeCount: player.specialUnitUpgradeCount ?? 0,
+        benchUnitIds: player.benchUnitIds ?? [],
         boardUnits: player.boardUnits,
       })),
       battles: report.rounds.flatMap((round) =>
@@ -9074,6 +9370,17 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
   const baselineOptimizationVariant = resolveBotBalanceBaselineOptimizationVariant(
     process.env.BOT_BASELINE_OPTIMIZATION_VARIANT,
   );
+  const baselineBossExtraPrepIncome = resolveBotBalanceBaselineBossExtraPrepIncome(
+    process.env.BOT_BASELINE_BOSS_EXTRA_PREP_INCOME,
+  );
+  const baselineBossExtraTotalPrepIncome = resolveBotBalanceBaselineBossExtraTotalPrepIncome(
+    process.env.BOT_BASELINE_BOSS_EXTRA_TOTAL_PREP_INCOME,
+  );
+  const baselineBattleSeedBase = resolveBotBalanceBaselineBattleSeedBase(
+    process.env.BOT_BASELINE_BATTLE_SEED_BASE,
+  );
+  const resolveBaselineMatchBattleSeedBase = (matchIndex: number): number =>
+    baselineBattleSeedBase + Math.max(0, Math.trunc(matchIndex));
   const baselineHelperConfigs = createBotBalanceBaselineHelperConfigs({
     bossPolicy: baselineBossPolicy,
     raidPolicies: baselineRaidPolicies,
@@ -9103,6 +9410,8 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
   } as const;
   const BOT_ONLY_BASELINE_ROOM_TIMINGS: Record<string, unknown> = {
     ...createBotBalanceBaselineRoomTimings(0.02),
+    bossExtraPrepIncome: baselineBossExtraPrepIncome,
+    bossExtraTotalPrepIncome: baselineBossExtraTotalPrepIncome,
   };
   const BOT_ONLY_DAMAGE_TARGETS: Record<number, number> = {
     1: 1200,
@@ -9344,7 +9653,10 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
           enableSpellCard: true,
           enableSubUnitSystem: true,
           enableTouhouRoster: true,
-        }, BOT_ONLY_BASELINE_ROOM_TIMINGS),
+        }, {
+          ...BOT_ONLY_BASELINE_ROOM_TIMINGS,
+          battleSeedBase: resolveBaselineMatchBattleSeedBase(0),
+        }),
         BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
         baselineHelperConfigs,
         0,
@@ -9378,10 +9690,13 @@ describeGameRoomIntegration("GameRoom integration / bot playability", (context) 
             () => createRoomWithForcedFlags(getTestServer(), {
               enableBossExclusiveShop: true,
               enableHeroSystem: true,
-              enableSpellCard: true,
-              enableSubUnitSystem: true,
-              enableTouhouRoster: true,
-            }, BOT_ONLY_BASELINE_ROOM_TIMINGS),
+            enableSpellCard: true,
+            enableSubUnitSystem: true,
+            enableTouhouRoster: true,
+            }, {
+              ...BOT_ONLY_BASELINE_ROOM_TIMINGS,
+              battleSeedBase: resolveBaselineMatchBattleSeedBase(matchIndex),
+            }),
             BOT_ONLY_HUMAN_REPORT_DAMAGE_TARGETS,
             baselineHelperConfigs,
             matchIndex,

@@ -37,6 +37,8 @@
     "verify:quick": "run-s --silent typecheck test:client:ci test:server:parallel-safe",
     "verify:full": "npm run verify:ci && npm run test:coverage",
     "bot:balance:baseline": "tsx scripts/run-bot-balance-baseline.ts",
+    "bot:archetype:probe": "tsx scripts/run-bot-archetype-probe.ts",
+    "bot:battle:diagnostic": "tsx scripts/run-bot-battle-diagnostic.ts",
     "client:check": "node scripts/serve-client-check.mjs",
     "server": "tsx server.ts",
     "play": "npm-run-all --parallel server client:check",

@@ -493,6 +493,126 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
       averageSpecialUnitCount: 1,
       averageStandardUnitCount: 2,
     }],
+    bossR12CeilingDiagnostics: {
+      sampleCount: 2,
+      averageBossUnitCount: 6,
+      averageAssetValue: 94,
+      p50AssetValue: 82,
+      p75AssetValue: 106,
+      p90AssetValue: 106,
+      maxAssetValue: 106,
+      averageRemiliaLevel: 5.5,
+      remiliaLevel7Rate: 0.5,
+      averageScarletCorePresentCount: 3,
+      averageScarletCoreLevelSum: 18,
+      scarletCoreTargetReachedRate: 1,
+      averageLateCarryCount: 1.5,
+      averageLateCarryLevel4PlusCount: 1.5,
+      maxLateCarryLevel4PlusCount: 2,
+      twoLateCarryLevel4PlusRate: 0.5,
+      oneLateCarryLevel6PlusRate: 0.5,
+      maxLateCarryLevel: 6,
+      averageTargetComponentsMet: 5,
+      maxTargetComponentsMet: 6,
+      targetBoardReachedRate: 0.5,
+      averageEstimatedMissingGold: 16,
+      p50EstimatedMissingGold: 0,
+      p75EstimatedMissingGold: 32,
+      p90EstimatedMissingGold: 32,
+      minEstimatedMissingGold: 0,
+      averageNetEstimatedMissingGold: 15.5,
+      p50NetEstimatedMissingGold: 0,
+      p75NetEstimatedMissingGold: 31,
+      p90NetEstimatedMissingGold: 31,
+      minNetEstimatedMissingGold: 0,
+      finalGoldCoversEstimatedGapRate: 0.5,
+      virtualIncomeBreakpoints: [
+        { extraGold: 10, targetReachableRate: 0.5, averageRemainingNetGap: 10.5 },
+        { extraGold: 20, targetReachableRate: 0.5, averageRemainingNetGap: 5.5 },
+        { extraGold: 30, targetReachableRate: 0.5, averageRemainingNetGap: 0.5 },
+        { extraGold: 40, targetReachableRate: 1, averageRemainingNetGap: 0 },
+        { extraGold: 50, targetReachableRate: 1, averageRemainingNetGap: 0 },
+      ],
+      averageRemiliaMissingUpgradeCost: 8,
+      averageScarletCoreMissingCopyCost: 0,
+      averageLateCarryMissingCopyCost: 8,
+      averageBossGoldEarned: 108,
+      averageBossGoldSpent: 112,
+      averageBossFinalGold: 1,
+      averageBossNormalShopSpend: 48,
+      averageBossShopSpend: 32,
+      averageBossRefreshSpend: 1,
+      averageBossSpecialUnitUpgradeSpend: 16,
+      topAssetValueSamples: [{
+        matchIndex: 1,
+        battleIndex: 0,
+        finalBattleWinner: "boss",
+        matchWinnerRole: "boss",
+        bossUnitCount: 6,
+        assetValue: 106,
+        remiliaLevel: 7,
+        meilingLevel: 7,
+        sakuyaLevel: 7,
+        patchouliLevel: 4,
+        scarletCorePresentCount: 3,
+        scarletCoreLevelSum: 18,
+        scarletCoreTargetReached: true,
+        lateCarryCount: 2,
+        lateCarryLevel4PlusCount: 2,
+        lateCarryLevel6PlusCount: 0,
+        maxLateCarryLevel: 4,
+        targetComponentsMet: 6,
+        targetBoardReached: true,
+        remiliaMissingUpgradeCost: 0,
+        scarletCoreMissingCopyCost: 0,
+        lateCarryMissingCopyCost: 0,
+        targetEstimatedMissingGold: 0,
+        finalGoldCoversEstimatedGap: true,
+        bossGoldEarned: 108,
+        bossGoldSpent: 112,
+        bossFinalGold: 1,
+        bossNormalShopSpend: 48,
+        bossShopSpend: 32,
+        bossRefreshSpend: 1,
+        bossSpecialUnitUpgradeSpend: 16,
+        boardSignature: "レミリア Lv7, 紅美鈴 Lv7, 十六夜咲夜 Lv7, パチュリー・ノーレッジ Lv4, 純狐 Lv4, 霊烏路空 Lv4",
+      }],
+      nearestTargetSamples: [{
+        matchIndex: 1,
+        battleIndex: 0,
+        finalBattleWinner: "boss",
+        matchWinnerRole: "boss",
+        bossUnitCount: 6,
+        assetValue: 106,
+        remiliaLevel: 7,
+        meilingLevel: 7,
+        sakuyaLevel: 7,
+        patchouliLevel: 4,
+        scarletCorePresentCount: 3,
+        scarletCoreLevelSum: 18,
+        scarletCoreTargetReached: true,
+        lateCarryCount: 2,
+        lateCarryLevel4PlusCount: 2,
+        lateCarryLevel6PlusCount: 0,
+        maxLateCarryLevel: 4,
+        targetComponentsMet: 6,
+        targetBoardReached: true,
+        remiliaMissingUpgradeCost: 0,
+        scarletCoreMissingCopyCost: 0,
+        lateCarryMissingCopyCost: 0,
+        targetEstimatedMissingGold: 0,
+        finalGoldCoversEstimatedGap: true,
+        bossGoldEarned: 108,
+        bossGoldSpent: 112,
+        bossFinalGold: 1,
+        bossNormalShopSpend: 48,
+        bossShopSpend: 32,
+        bossRefreshSpend: 1,
+        bossSpecialUnitUpgradeSpend: 16,
+        boardSignature: "レミリア Lv7, 紅美鈴 Lv7, 十六夜咲夜 Lv7, パチュリー・ノーレッジ Lv4, 純狐 Lv4, 霊烏路空 Lv4",
+      }],
+      samples: [],
+    },
     finalBoardUnitMetrics: [
       {
         unitId: "momoyo",
@@ -664,6 +784,195 @@ function createSampleAggregate(): BotOnlyBaselineAggregateReport {
         totalInvestmentCost: 4,
         averageInvestmentCostPerBattle: 1,
         damagePerInvestmentCost: 55,
+      },
+    ],
+    roundBoardStrengthMetrics: [
+      {
+        roundIndex: 1,
+        side: "boss",
+        battleSamples: 3,
+        averageUnitCount: 4,
+        averageSurvivorCount: 1.2,
+        averageInvestmentScore: 48,
+        averageEstimatedDurabilityScore: 1800,
+        averageEstimatedDamageScore: 36.5,
+        averageBoardStrengthScore: 3660,
+        averageRealizedDamage: 920,
+        averageAbsorbedDamage: 1650,
+        averageRemainingHp: 640,
+        averageRealizedBattleScore: 1817.5,
+      },
+      {
+        roundIndex: 1,
+        side: "raid",
+        battleSamples: 3,
+        averageUnitCount: 8,
+        averageSurvivorCount: 4.5,
+        averageInvestmentScore: 42,
+        averageEstimatedDurabilityScore: 4200,
+        averageEstimatedDamageScore: 54,
+        averageBoardStrengthScore: 4920,
+        averageRealizedDamage: 1260,
+        averageAbsorbedDamage: 980,
+        averageRemainingHp: 2100,
+        averageRealizedBattleScore: 2653,
+      },
+    ],
+    roundBoardStrengthComparisonMetrics: [
+      {
+        roundIndex: 1,
+        battleSamples: 3,
+        averageBossBoardStrengthScore: 3660,
+        averageRaidBoardStrengthScore: 4920,
+        averageBossToRaidBoardStrengthRatio: 0.74,
+        averageBossRealizedBattleScore: 1817.5,
+        averageRaidRealizedBattleScore: 2653,
+        averageBossToRaidRealizedBattleRatio: 0.69,
+        bossEstimatedAdvantageRate: 1 / 3,
+        bossRealizedAdvantageRate: 1 / 3,
+        bossBattleWinRate: 1 / 3,
+        raidBattleWinRate: 2 / 3,
+        bossEstimatedAdvantageButBattleLossRate: 1 / 3,
+        bossEstimatedAdvantageButRealizedDisadvantageRate: 1 / 3,
+      },
+    ],
+    unitStrengthConversionMetrics: [
+      {
+        side: "boss",
+        unitId: "patchouli",
+        unitType: "mage",
+        unitName: "パチュリー・ノーレッジ",
+        battleAppearances: 4,
+        matchesPresent: 2,
+        averageUnitLevel: 3.5,
+        averageInvestmentScore: 18,
+        averageEstimatedDurabilityScore: 720,
+        averageEstimatedDamageScore: 42,
+        averageEstimatedStrengthScore: 3078,
+        averageRealizedDamage: 410,
+        averageAbsorbedDamage: 300,
+        averageRemainingHp: 120,
+        averageEffectiveStrengthScore: 575,
+        averageStrengthScoreDelta: -2503,
+        averageEffectiveToEstimatedRatio: 0.19,
+        sideBaselineEffectiveToEstimatedRatio: 0.16,
+        sideAdjustedEffectiveToEstimatedIndex: 1.19,
+        sideAdjustedStrengthScoreDelta: 82.52,
+        underperformedBattleRate: 0.75,
+        zeroDamageBattleRate: 0.25,
+        survivedBattleRate: 0.5,
+        sampleQuality: "low",
+      },
+    ],
+    unitLevelStrengthConversionMetrics: [
+      {
+        side: "boss",
+        unitId: "patchouli",
+        unitType: "mage",
+        unitName: "パチュリー・ノーレッジ",
+        unitLevel: 3,
+        battleAppearances: 3,
+        matchesPresent: 2,
+        averageUnitLevel: 3,
+        averageInvestmentScore: 12,
+        averageEstimatedDurabilityScore: 680,
+        averageEstimatedDamageScore: 38,
+        averageEstimatedStrengthScore: 2682,
+        averageRealizedDamage: 360,
+        averageAbsorbedDamage: 280,
+        averageRemainingHp: 90,
+        averageEffectiveStrengthScore: 503,
+        averageStrengthScoreDelta: -2179,
+        averageEffectiveToEstimatedRatio: 0.18,
+        sideBaselineEffectiveToEstimatedRatio: 0.16,
+        sideAdjustedEffectiveToEstimatedIndex: 1.13,
+        sideAdjustedStrengthScoreDelta: 73.88,
+        previousLevelEffectiveStrengthScore: null,
+        effectiveStrengthScoreDeltaFromPreviousLevel: null,
+        effectiveStrengthScoreGrowthRatioFromPreviousLevel: null,
+        underperformedBattleRate: 1,
+        zeroDamageBattleRate: 0,
+        survivedBattleRate: 0.67,
+        sampleQuality: "low",
+      },
+      {
+        side: "boss",
+        unitId: "patchouli",
+        unitType: "mage",
+        unitName: "パチュリー・ノーレッジ",
+        unitLevel: 4,
+        battleAppearances: 4,
+        matchesPresent: 3,
+        averageUnitLevel: 4,
+        averageInvestmentScore: 16,
+        averageEstimatedDurabilityScore: 760,
+        averageEstimatedDamageScore: 46,
+        averageEstimatedStrengthScore: 3274,
+        averageRealizedDamage: 480,
+        averageAbsorbedDamage: 320,
+        averageRemainingHp: 140,
+        averageEffectiveStrengthScore: 662,
+        averageStrengthScoreDelta: -2612,
+        averageEffectiveToEstimatedRatio: 0.2,
+        sideBaselineEffectiveToEstimatedRatio: 0.16,
+        sideAdjustedEffectiveToEstimatedIndex: 1.25,
+        sideAdjustedStrengthScoreDelta: 138.16,
+        previousLevelEffectiveStrengthScore: 503,
+        effectiveStrengthScoreDeltaFromPreviousLevel: 159,
+        effectiveStrengthScoreGrowthRatioFromPreviousLevel: 662 / 503,
+        underperformedBattleRate: 0.75,
+        zeroDamageBattleRate: 0,
+        survivedBattleRate: 0.75,
+        sampleQuality: "low",
+      },
+    ],
+    unitArchetypeDependencyMetrics: [
+      {
+        side: "raid",
+        unitId: "zanmu",
+        unitType: "mage",
+        unitName: "日白残無",
+        primaryArchetypeTag: "mixed_faction_core",
+        battleAppearances: 4,
+        matchesPresent: 3,
+        archetypeFitBattleAppearances: 2,
+        nonArchetypeBattleAppearances: 2,
+        archetypeFitRate: 0.5,
+        averageUnitLevel: 2.5,
+        averageArchetypeUnitLevel: 3,
+        averageNonArchetypeUnitLevel: 2,
+        averageRoundIndex: 8.5,
+        averageArchetypeRoundIndex: 10,
+        averageNonArchetypeRoundIndex: 7,
+        averageEffectiveStrengthScore: 900,
+        averageArchetypeEffectiveStrengthScore: 1200,
+        averageNonArchetypeEffectiveStrengthScore: 600,
+        archetypeEffectiveStrengthLift: 600,
+        archetypeDependencyIndex: 2,
+        roundLevelComparisonBattleAppearances: 4,
+        roundLevelAdjustedArchetypeEffectiveStrengthScore: 1100,
+        roundLevelAdjustedNonArchetypeEffectiveStrengthScore: 700,
+        roundLevelAdjustedArchetypeEffectiveStrengthLift: 400,
+        roundLevelAdjustedArchetypeDependencyIndex: 1100 / 700,
+        averageUniqueFactionCount: 3.25,
+        averageSameFactionCount: 0,
+        pairLinkedBattleRate: 0,
+        sampleQuality: "low",
+      },
+    ],
+    factionEffectValueMetrics: [
+      {
+        side: "raid",
+        factionId: "myourenji",
+        battleSamples: 3,
+        averageFactionUnitCount: 2,
+        averageTier: 1,
+        averageBaseEstimatedStrengthScore: 2400,
+        averageFactionAdjustedEstimatedStrengthScore: 2580,
+        averageEstimatedStrengthLift: 180,
+        averageEstimatedStrengthLiftRate: 0.075,
+        averageTeamEstimatedStrengthLiftShare: 0.032,
+        sampleQuality: "low",
       },
     ],
     rangeDamageEfficiencyMetrics: [
@@ -1166,6 +1475,44 @@ describe("bot balance baseline human report", () => {
         "平均出撃資産価値": 11.4,
       }),
     ]);
+    expect(jsonReport["R12ボス盤面ceiling診断"]).toEqual(expect.objectContaining({
+      "サンプル数": 2,
+      "最大資産価値": 106,
+      "RemiliaLv7率": 0.5,
+      "通常高コストLv4+が2体以上の率": 0.5,
+      "目標盤面到達率": 0.5,
+      "平均推定不足Gold": 16,
+      "平均最終Gold差引後不足Gold": 15.5,
+      "P75最終Gold差引後不足Gold": 31,
+      "平均通常高コスト不足Gold": 8,
+      "仮想追加収入breakpoint": expect.arrayContaining([
+        expect.objectContaining({
+          "追加Gold": 10,
+          "目標到達可能率": 0.5,
+          "平均残不足Gold": 10.5,
+        }),
+        expect.objectContaining({
+          "追加Gold": 40,
+          "目標到達可能率": 1,
+          "平均残不足Gold": 0,
+        }),
+      ]),
+      "最大資産サンプル": [
+        expect.objectContaining({
+          "試合": 1,
+          "資産価値": 106,
+          "通常高コストLv4+数": 2,
+          "目標コンポーネント到達数": 6,
+          "推定不足Gold": 0,
+        }),
+      ],
+      "目標最近傍サンプル": [
+        expect.objectContaining({
+          "試合": 1,
+          "推定不足Gold": 0,
+        }),
+      ],
+    }));
     expect(jsonReport["主人公チーム勝率"]).toEqual([
       expect.objectContaining({
         "主人公": "博麗霊夢",
@@ -1217,6 +1564,111 @@ describe("bot balance baseline human report", () => {
         "戦闘登場回数": 3,
         "生存率": 2 / 3,
         "残HP率": 0.64,
+      }),
+    ]);
+    expect(jsonReport["ラウンド別盤面強度"]).toEqual([
+      expect.objectContaining({
+        "R": 1,
+        "陣営": "boss",
+        "戦闘サンプル": 3,
+        "平均ユニット数": 4,
+        "平均投資score": 48,
+        "平均推定盤面強度score": 3660,
+        "平均実戦score": 1817.5,
+      }),
+      expect.objectContaining({
+        "R": 1,
+        "陣営": "raid",
+        "戦闘サンプル": 3,
+        "平均ユニット数": 8,
+        "平均投資score": 42,
+        "平均推定盤面強度score": 4920,
+        "平均実戦score": 2653,
+      }),
+    ]);
+    expect(jsonReport["ラウンド別盤面強度変換"]).toEqual([
+      expect.objectContaining({
+        "R": 1,
+        "戦闘サンプル": 3,
+        "ボス推定盤面強度score": 3660,
+        "レイド推定盤面強度score": 4920,
+        "ボス/レイド推定強度比": 0.74,
+        "ボス戦闘勝率": 1 / 3,
+        "ボス推定優位率": 1 / 3,
+        "ボス推定優位だが敗北率": 1 / 3,
+      }),
+    ]);
+    expect(jsonReport["ユニット別戦力変換"]).toEqual([
+      expect.objectContaining({
+        "陣営": "boss",
+        "ユニットID": "patchouli",
+        "平均推定戦力score": 3078,
+        "平均実効戦力score": 575,
+        "実効-推定score": -2503,
+        "実効/推定比": 0.19,
+        "陣営基準変換率": 0.16,
+        "陣営補正変換指数": 1.19,
+        "陣営補正差分score": 82.52,
+        "推定割れ率": 0.75,
+      }),
+    ]);
+    expect(jsonReport["ユニットLv別戦力変換"]).toEqual([
+      expect.objectContaining({
+        "陣営": "boss",
+        "ユニットID": "patchouli",
+        "Lv": 3,
+        "平均実効戦力score": 503,
+        "前Lv実効戦力score": null,
+        "前Lv差分score": null,
+      }),
+      expect.objectContaining({
+        "陣営": "boss",
+        "ユニットID": "patchouli",
+        "Lv": 4,
+        "平均実効戦力score": 662,
+        "前Lv実効戦力score": 503,
+        "前Lv差分score": 159,
+        "前Lv成長率": 662 / 503,
+      }),
+    ]);
+    expect(jsonReport["ユニットアーキタイプ依存度"]).toEqual([
+      expect.objectContaining({
+        "陣営": "raid",
+        "ユニットID": "zanmu",
+        "主要アーキタイプ": "mixed_faction_core",
+        "戦闘登場回数": 4,
+        "適合戦闘数": 2,
+        "適合率": 0.5,
+        "適合時平均Lv": 3,
+        "非適合時平均Lv": 2,
+        "平均R": 8.5,
+        "適合時平均R": 10,
+        "非適合時平均R": 7,
+        "汎用実効score": 900,
+        "適合時実効score": 1200,
+        "非適合時実効score": 600,
+        "適合リフトscore": 600,
+        "依存指数": 2,
+        "R/Lv補正比較戦闘数": 4,
+        "R/Lv補正適合時実効score": 1100,
+        "R/Lv補正非適合時実効score": 700,
+        "R/Lv補正リフトscore": 400,
+        "R/Lv補正依存指数": 1100 / 700,
+        "平均ユニーク陣営数": 3.25,
+      }),
+    ]);
+    expect(jsonReport["陣営効果推定価値"]).toEqual([
+      expect.objectContaining({
+        "陣営": "raid",
+        "陣営ID": "myourenji",
+        "戦闘サンプル": 3,
+        "平均同陣営数": 2,
+        "平均tier": 1,
+        "効果なし推定score": 2400,
+        "効果あり推定score": 2580,
+        "推定リフトscore": 180,
+        "陣営内リフト率": 0.075,
+        "盤面全体リフト率": 0.032,
       }),
     ]);
     expect(jsonReport["各ラウンド詳細"]).toEqual([
@@ -1535,6 +1987,22 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("## バランス診断");
     expect(markdown).toContain("## R12最終戦");
     expect(markdown).toContain("| 試行数 | レイド勝率 | ボス撃破率 | 同時全滅数 | 平均ボス本体ダメージ | 平均ボス残HP | 平均終了秒(高速) | 平均終了秒(通常換算) |");
+    expect(markdown).toContain("| 直衛生存で本体撃破 | 本体突破内比率 | 直衛撃破後に本体撃破 | 本体突破内比率 |");
+    expect(markdown).toContain("### R12本体突破時の実直衛結果");
+    expect(markdown).toContain("| ユニット名 | ユニットID | 種別 | 件数 | 本体突破内比率 | 生存率 | 撃破率 | 平均Lv | 平均残HP | 平均被ダメ | 判断一致率 |");
+    expect(markdown).toContain("### R12本体突破時の生存ボス内訳");
+    expect(markdown).toContain("### R12本体突破時のレイド本体ダメージ寄与");
+    expect(markdown).toContain("### R12ボス勝利時のボス火力");
+    expect(markdown).toContain("| ユニット名 | ユニットID | 種別 | 件数 | ボス勝利内比率 | 合計ダメージ | 寄与率 | 平均総ダメージ | 平均Lv | 平均残HP |");
+    expect(markdown).toContain("### R12ボス攻撃結果");
+    expect(markdown).toContain("### R12本体突破時の生存レイド火力");
+    expect(markdown).toContain("### R12ボス盤面ceiling診断");
+    expect(markdown).toContain("| 2 | 94 | 82 | 106 | 106 | 106 | 50.0% | 100.0% | 1.5 | 2 | 50.0% | 50.0% | 50.0% | 16 | 32 | 0 | 15.5 | 31 | 50.0% |");
+    expect(markdown).toContain("| +10 | 50.0% | 10.5 |");
+    expect(markdown).toContain("| +40 | 100.0% | 0 |");
+    expect(markdown).toContain("| 平均 | 8 | 0 | 8 | 108 | 112 | 1 | 48 | 32 | 1 | 16 |");
+    expect(markdown).toContain("| 1 | 0 | boss | 106 | 7 | 7 | 7 | 4 | 2 | 6/6 | 0 | 1 | レミリア Lv7, 紅美鈴 Lv7, 十六夜咲夜 Lv7, パチュリー・ノーレッジ Lv4, 純狐 Lv4, 霊烏路空 Lv4 |");
+    expect(markdown).toContain("| 1 | 0 | boss | 106 | 6/6 | 0 | 0 | 0 | 0 | 1 | レミリア Lv7, 紅美鈴 Lv7, 十六夜咲夜 Lv7, パチュリー・ノーレッジ Lv4, 純狐 Lv4, 霊烏路空 Lv4 |");
     expect(markdown).toContain("## ショップ出現診断");
     expect(markdown).toContain("## 全体結果");
     expect(markdown).toContain("## 戦闘終了指標");
@@ -1550,6 +2018,25 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| R | 陣営 | ユニット名 | ユニットID | 戦闘数 | 平均Lv | 生存率 | 平均残HP | 残HP率 | 平均被ダメ | 平均生存ms | 平均与ダメ | 0ダメ率 |");
     expect(markdown).toContain("| 1 | boss | レミリア | remilia | 3 | 2 | 33.3% | 400 | 33.3% | 800 | 5400 | 900 | 0.0% |");
     expect(markdown).toContain("| 1 | raid | 霧雨魔理沙 | marisa | 3 | 1 | 66.7% | 320 | 64.0% | 180 | 5700 | 600 | 0.0% |");
+    expect(markdown).toContain("## ラウンド別盤面強度");
+    expect(markdown).toContain("| R | 陣営 | 戦闘数 | 平均ユニット数 | 平均生存数 | 投資score | 推定耐久score | 推定火力score | 推定盤面強度score | 実与ダメ | 吸収ダメ | 残HP | 実戦score |");
+    expect(markdown).toContain("| 1 | boss | 3 | 4 | 1.2 | 48 | 1800 | 36.5 | 3660 | 920 | 1650 | 640 | 1817.5 |");
+    expect(markdown).toContain("| 1 | raid | 3 | 8 | 4.5 | 42 | 4200 | 54 | 4920 | 1260 | 980 | 2100 | 2653 |");
+    expect(markdown).toContain("## ラウンド別盤面強度変換");
+    expect(markdown).toContain("| R | 戦闘数 | boss推定score | raid推定score | boss/raid推定比 | boss実戦score | raid実戦score | boss/raid実戦比 | boss推定優位率 | boss実戦優位率 | boss戦闘勝率 | raid戦闘勝率 | 推定優位だが敗北 | 推定優位だが実戦劣位 |");
+    expect(markdown).toContain("| 1 | 3 | 3660 | 4920 | 0.74 | 1817.5 | 2653 | 0.69 | 33.3% | 33.3% | 33.3% | 66.7% | 33.3% | 33.3% |");
+    expect(markdown).toContain("## ユニット別戦力変換");
+    expect(markdown).toContain("| 陣営 | ユニット名 | ユニットID | ユニット種別 | 戦闘登場回数 | 平均Lv | 推定戦力score | 実効戦力score | 実効-推定 | 実効/推定比 | 陣営基準 | 補正指数 | 補正差分 | 推定割れ率 | 0ダメ率 | 生存率 | サンプル品質 |");
+    expect(markdown).toContain("| boss | パチュリー・ノーレッジ | patchouli | mage | 4 | 3.5 | 3078 | 575 | -2503 | 0.19 | 0.16 | 1.19 | 82.52 | 75.0% | 25.0% | 50.0% | low |");
+    expect(markdown).toContain("## ユニットLv別戦力変換");
+    expect(markdown).toContain("| 陣営 | ユニット名 | ユニットID | 種別 | Lv | 戦闘登場回数 | 実効score | 前Lv実効score | 前Lv差分 | 前Lv成長率 | 補正指数 | 生存率 | サンプル品質 |");
+    expect(markdown).toContain("| boss | パチュリー・ノーレッジ | patchouli | mage | 4 | 4 | 662 | 503 | 159 | 1.32 | 1.25 | 75.0% | low |");
+    expect(markdown).toContain("## ユニットアーキタイプ依存度");
+    expect(markdown).toContain("| 陣営 | ユニット名 | ユニットID | 種別 | 主要アーキタイプ | 戦闘数 | 適合数 | 適合率 | 平均Lv | 適合時Lv | 非適合時Lv | 平均R | 適合時R | 非適合時R | 実効score | 適合時score | 非適合時score | リフト | 依存指数 | R/Lv補正比較数 | R/Lv補正適合時score | R/Lv補正非適合時score | R/Lv補正リフト | R/Lv補正指数 | 平均ユニーク陣営 | 平均同陣営数 | pair率 | サンプル品質 |");
+    expect(markdown).toContain("| raid | 日白残無 | zanmu | mage | mixed_faction_core | 4 | 2 | 50.0% | 2.5 | 3 | 2 | 8.5 | 10 | 7 | 900 | 1200 | 600 | 600 | 2 | 4 | 1100 | 700 | 400 | 1.57 | 3.25 | 0 | 0.0% | low |");
+    expect(markdown).toContain("## 陣営効果推定価値");
+    expect(markdown).toContain("| 陣営 | 陣営ID | 戦闘サンプル | 平均同陣営数 | 平均tier | 効果なし推定score | 効果あり推定score | 推定リフト | 陣営内リフト率 | 盤面全体リフト率 | サンプル品質 |");
+    expect(markdown).toContain("| raid | myourenji | 3 | 2 | 1 | 2400 | 2580 | 180 | 7.5% | 3.2% | low |");
     expect(markdown).toContain("## ラウンド分布");
     expect(markdown).toContain("## 各ラウンド詳細");
     expect(markdown).toContain("- 詳細なラウンド別明細は `round-details.ja.md` に分離しています。");
@@ -1604,6 +2091,12 @@ describe("bot balance baseline human report", () => {
     expect(markdown).toContain("| boss | パチュリー・ノーレッジ | patchouli | mage | 2 | 12 | 9 | 1.75 | 1000 | 84 | 11.9 | usable |");
     expect(markdown).toContain("## 高コストショップ提示ユニット");
     expect(markdown).toContain("| パチュリー・ノーレッジ | patchouli | boss | bossShop | 4 | 100.0% | 41.7% | 44.4% |");
+    expect(markdown).toContain("## レイド構築プラン診断");
+    expect(markdown).toContain("| プラン | アンカー | 対象ユニット | 対象購入回数 | 構築理由購入回数 | 構築理由購入率 | 構築購入最終main | 構築購入最終sub | 構築購入最終bench | 構築購入最終欠落 | 構築購入完全欠落 | 構築購入戦闘登場 | 構築購入戦闘未登場 | 構築購入戦闘登場率 | 構築購入盤面保持率 | 構築購入総保持率 | 最終盤面サンプル | アンカー最終採用数 | プラン成立数 | プラン成立率 | 平均最終プランユニット数 |");
+    expect(markdown).toContain("## レイド構築ユニット別診断");
+    expect(markdown).toContain("| プラン | ユニット | ユニットID | 構築理由購入回数 | 最終main | 最終sub | 最終bench | 最終欠落 | 完全欠落 | 戦闘登場 | 戦闘未登場 | 戦闘登場率 | 盤面保持率 | 総保持率 |");
+    expect(markdown).toContain("## レイド構築ショップ判断");
+    expect(markdown).toContain("| R | プラン | 判断 | 阻害理由 | 候補ユニット | 候補コスト | サンプル | プラン対象購入 | 高コスト購入 | 平均購入コスト | 平均盤面プラン数 | 平均控えプラン数 | 平均main空き | 平均sub空き |");
     expect(markdown).toContain("## ボス通常高コスト成熟診断");
     expect(markdown).toContain("| 純狐 | junko | vanguard | 4 | 12 | 6 | 4 | 33.3% | 8 | 5 | 55.6% | 2.5 | 4 | 40.0% | 0.0% | 2 | 2 | 22.2% | 3.5 | 4 | 50.0% | 0.0% |");
     expect(markdown).toContain("## ボス専用ラウンド別レベル分布");

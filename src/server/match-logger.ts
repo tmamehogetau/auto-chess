@@ -128,6 +128,8 @@ export interface PlayerActionLog {
     | "buy_unit"
     | "sell_unit"
     | "board_sell"
+    | "board_move"
+    | "board_swap"
     | "deploy"
     | "undeploy"
     | "merge"
@@ -159,6 +161,21 @@ export interface PlayerActionLog {
     locked?: boolean;
     benchUnit?: string;
     isRumorUnit?: boolean;
+    unitId?: string;
+    unitName?: string;
+    botPurchaseReason?: string;
+    botPurchasePlanId?: string;
+    botPurchasePlanAnchorUnitId?: string;
+    botPurchasePlanBonus?: number;
+    botArchetypeDecision?: string;
+    botArchetypeDecisionPlanId?: string;
+    botArchetypeDecisionCandidateUnitId?: string;
+    botArchetypeDecisionCandidateCost?: number;
+    botArchetypeDecisionBlocker?: string;
+    botArchetypeDecisionCombatPlanUnitCount?: number;
+    botArchetypeDecisionReservePlanUnitCount?: number;
+    botArchetypeDecisionAvailableMainSlots?: number;
+    botArchetypeDecisionAvailableSubSlots?: number;
     amount?: number;
     goldBefore: number;
     goldAfter: number;

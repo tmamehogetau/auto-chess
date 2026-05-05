@@ -11,6 +11,8 @@ import {
   createBaselineChunkDefinitions,
   DEFAULT_BOT_BALANCE_BASELINE_PARALLELISM,
   resolveBotBalanceBaselineAutoParallelism,
+  resolveBotBalanceBaselineBossExtraPrepIncome,
+  resolveBotBalanceBaselineBossExtraTotalPrepIncome,
   resolveBotBalanceBaselineOptimizationVariant,
   resolveBotBalanceBaselineRaidPolicies,
   DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE,
@@ -62,6 +64,8 @@ describe("bot balance baseline runner helpers", () => {
       raidPolicies: ["strength", "growth", "growth"],
       raidHeroIds: ["okina", "keiki", "jyoon"],
       optimizationVariant: "raid-optimization-off",
+      bossExtraPrepIncome: 35,
+      bossExtraTotalPrepIncome: 40,
     });
 
     expect(baselineChunkConfigMatches(baselineConfig, baselineConfig)).toBe(true);
@@ -102,6 +106,32 @@ describe("bot balance baseline runner helpers", () => {
         raidPolicies: ["strength", "growth", "growth"],
         raidHeroIds: ["okina", "keiki", "jyoon"],
         optimizationVariant: "boss-optimization-off",
+        bossExtraPrepIncome: 35,
+        bossExtraTotalPrepIncome: 40,
+      }),
+      baselineConfig,
+    )).toBe(false);
+    expect(baselineChunkConfigMatches(
+      createBaselineChunkConfigSnapshot({
+        requestedMatchCount: 5,
+        bossPolicy: "growth",
+        raidPolicies: ["strength", "growth", "growth"],
+        raidHeroIds: ["okina", "keiki", "jyoon"],
+        optimizationVariant: "raid-optimization-off",
+        bossExtraPrepIncome: 40,
+        bossExtraTotalPrepIncome: 40,
+      }),
+      baselineConfig,
+    )).toBe(false);
+    expect(baselineChunkConfigMatches(
+      createBaselineChunkConfigSnapshot({
+        requestedMatchCount: 5,
+        bossPolicy: "growth",
+        raidPolicies: ["strength", "growth", "growth"],
+        raidHeroIds: ["okina", "keiki", "jyoon"],
+        optimizationVariant: "raid-optimization-off",
+        bossExtraPrepIncome: 35,
+        bossExtraTotalPrepIncome: 45,
       }),
       baselineConfig,
     )).toBe(false);
@@ -185,6 +215,22 @@ describe("bot balance baseline runner helpers", () => {
     expect(resolveBotBalanceBaselineOptimizationVariant("future-shop-off")).toBe("future-shop-off");
     expect(resolveBotBalanceBaselineOptimizationVariant("okina-host-off")).toBe("okina-host-off");
     expect(resolveBotBalanceBaselineOptimizationVariant("unknown")).toBe("full");
+  });
+
+  test("normalizes boss extra prep income for baseline ablations", () => {
+    expect(resolveBotBalanceBaselineBossExtraPrepIncome(undefined)).toBe(0);
+    expect(resolveBotBalanceBaselineBossExtraPrepIncome("35")).toBe(35);
+    expect(resolveBotBalanceBaselineBossExtraPrepIncome(" 40.9 ")).toBe(40);
+    expect(resolveBotBalanceBaselineBossExtraPrepIncome("-3")).toBe(0);
+    expect(resolveBotBalanceBaselineBossExtraPrepIncome("unknown")).toBe(0);
+  });
+
+  test("normalizes boss extra total prep income for baseline ablations", () => {
+    expect(resolveBotBalanceBaselineBossExtraTotalPrepIncome(undefined)).toBe(0);
+    expect(resolveBotBalanceBaselineBossExtraTotalPrepIncome("35")).toBe(35);
+    expect(resolveBotBalanceBaselineBossExtraTotalPrepIncome(" 40.9 ")).toBe(40);
+    expect(resolveBotBalanceBaselineBossExtraTotalPrepIncome("-3")).toBe(0);
+    expect(resolveBotBalanceBaselineBossExtraTotalPrepIncome("unknown")).toBe(0);
   });
 
   test("normalizes raid policy csv values and fills missing slots with strength", () => {

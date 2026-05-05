@@ -51,7 +51,407 @@ function createMinimalMatchSummary(
   };
 }
 
+function createBossOutcome(unitId: string, unitName: string, unitType: string, unitLevel: number) {
+  return {
+    playerId: "boss",
+    label: "boss",
+    unitId,
+    unitName,
+    unitType,
+    side: "boss" as const,
+    totalDamage: 100,
+    phaseContributionDamage: 0,
+    finalHp: 100,
+    alive: true,
+    unitLevel,
+    subUnitName: "",
+    isSpecialUnit: unitId === "remilia",
+  };
+}
+
+function createR12CeilingMatch(
+  bossUnits: ReturnType<typeof createBossOutcome>[],
+  phaseResult: "pending" | "success" | "failed" = "failed",
+): BotOnlyBaselineMatchSummary {
+  return createMinimalMatchSummary({
+    totalRounds: 12,
+    ranking: phaseResult === "success" ? ["raid", "boss"] : ["boss", "raid"],
+    rounds: [{
+      roundIndex: 12,
+      phase: "battle",
+      durationMs: 10_000,
+      phaseHpTarget: 2500,
+      phaseDamageDealt: phaseResult === "success" ? 2500 : 1200,
+      phaseResult,
+      phaseCompletionRate: phaseResult === "success" ? 1 : 0.48,
+      eliminations: [],
+      playerConsequences: [],
+      battles: [{
+        battleIndex: 0,
+        leftPlayerId: "raid",
+        rightPlayerId: "boss",
+        winner: phaseResult === "success" ? "left" : "right",
+        leftDamageDealt: phaseResult === "success" ? 2500 : 1200,
+        rightDamageDealt: 1400,
+        unitOutcomes: bossUnits,
+      }],
+    }],
+  });
+}
+
 describe("buildBotOnlyBaselineAggregateReport", () => {
+  test("preserves battle diagnostic scenario records", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        battleDiagnosticScenarios: [{
+          matchIndex: 17,
+          roundIndex: 12,
+          battleIndex: 1,
+          leftPlayerId: "raid",
+          rightPlayerId: "boss",
+          scenario: {
+            round: 12,
+            leftPlacements: [{ cell: 30, unitId: "junko", unitType: "mage", unitLevel: 4, factionId: "kanjuden" }],
+            rightPlacements: [{ cell: 2, unitId: "remilia", unitType: "vanguard", unitLevel: 7, factionId: null }],
+            rightBossUnitIds: ["remilia"],
+          },
+        }],
+      }),
+    ]);
+
+    expect(aggregate.battleDiagnosticScenarios).toEqual([{
+      matchIndex: 17,
+      roundIndex: 12,
+      battleIndex: 1,
+      leftPlayerId: "raid",
+      rightPlayerId: "boss",
+      scenario: {
+        round: 12,
+        leftPlacements: [{ cell: 30, unitId: "junko", unitType: "mage", unitLevel: 4, factionId: "kanjuden" }],
+        rightPlacements: [{ cell: 2, unitId: "remilia", unitType: "vanguard", unitLevel: 7, factionId: null }],
+        rightBossUnitIds: ["remilia"],
+      },
+    }]);
+  });
+
+  test("counts accepted board movement actions by role and round", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        boardMovementActions: [
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_swap",
+            fromCell: 14,
+            toCell: 8,
+          },
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_move",
+            fromCell: 9,
+            toCell: 14,
+          },
+          {
+            roundIndex: 10,
+            playerId: "raid",
+            label: "raid",
+            role: "raid",
+            actionType: "board_swap",
+            fromCell: 31,
+            toCell: 30,
+          },
+        ],
+      }),
+    ]);
+
+    expect(aggregate.boardMovementRoundMetrics).toEqual([
+      { roundIndex: 12, role: "boss", samples: 2, moveSamples: 1, swapSamples: 1 },
+      { roundIndex: 10, role: "raid", samples: 1, moveSamples: 0, swapSamples: 1 },
+    ]);
+    expect(aggregate.boardMovementRouteMetrics).toEqual([
+      {
+        roundIndex: 12,
+        role: "boss",
+        actionType: "board_move",
+        fromCell: 9,
+        toCell: 14,
+        samples: 1,
+        reverseSamples: 0,
+        netSamples: 1,
+      },
+      {
+        roundIndex: 12,
+        role: "boss",
+        actionType: "board_swap",
+        fromCell: 14,
+        toCell: 8,
+        samples: 1,
+        reverseSamples: 0,
+        netSamples: 1,
+      },
+      {
+        roundIndex: 10,
+        role: "raid",
+        actionType: "board_swap",
+        fromCell: 31,
+        toCell: 30,
+        samples: 1,
+        reverseSamples: 0,
+        netSamples: 1,
+      },
+    ]);
+  });
+
+  test("matches boss body guard movement recommendations to accepted board movement actions", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        bossBodyGuardDecisionSnapshots: [
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            decision: "direct_swap",
+            reason: "stronger_direct_guard_available",
+            bossCell: 2,
+            directGuardCell: 8,
+            directGuardUnitId: "rin",
+            directGuardUnitName: "火焔猫燐",
+            directGuardUnitType: "vanguard",
+            directGuardLevel: 4,
+            strongestGuardCell: 14,
+            strongestGuardUnitId: "meiling",
+            strongestGuardUnitName: "紅美鈴",
+            strongestGuardUnitType: "vanguard",
+            strongestGuardLevel: 7,
+            benchFrontlineCount: 0,
+            directEmpty: false,
+            strongerOffDirect: true,
+            actionFromCell: 14,
+            actionToCell: 8,
+          },
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            decision: "side_flank_move",
+            reason: "side_backline_guarded",
+            bossCell: 2,
+            directGuardCell: 8,
+            directGuardUnitId: "meiling",
+            directGuardUnitName: "紅美鈴",
+            directGuardUnitType: "vanguard",
+            directGuardLevel: 7,
+            strongestGuardCell: 8,
+            strongestGuardUnitId: "meiling",
+            strongestGuardUnitName: "紅美鈴",
+            strongestGuardUnitType: "vanguard",
+            strongestGuardLevel: 7,
+            benchFrontlineCount: 0,
+            directEmpty: false,
+            strongerOffDirect: false,
+            actionFromCell: 9,
+            actionToCell: 14,
+          },
+        ],
+        boardMovementActions: [{
+          roundIndex: 12,
+          playerId: "boss",
+          label: "boss",
+          role: "boss",
+          actionType: "board_swap",
+          fromCell: 14,
+          toCell: 8,
+        }],
+      }),
+    ]);
+
+    expect(aggregate.bossBodyGuardDecisionRoundMetrics).toContainEqual(expect.objectContaining({
+      roundIndex: 12,
+      boardMovementActionSamples: 2,
+      acceptedBoardMovementActionSamples: 1,
+      acceptedBoardMovementActionRate: 0.5,
+    }));
+  });
+
+  test("reports reverse accepted board movement route samples", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        boardMovementActions: [
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_move",
+            fromCell: 9,
+            toCell: 14,
+          },
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_move",
+            fromCell: 9,
+            toCell: 14,
+          },
+          {
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_move",
+            fromCell: 14,
+            toCell: 9,
+          },
+        ],
+      }),
+    ]);
+
+    expect(aggregate.boardMovementRouteMetrics).toContainEqual({
+      roundIndex: 12,
+      role: "boss",
+      actionType: "board_move",
+      fromCell: 9,
+      toCell: 14,
+      samples: 2,
+      reverseSamples: 1,
+      netSamples: 1,
+    });
+    expect(aggregate.boardMovementRouteMetrics).toContainEqual({
+      roundIndex: 12,
+      role: "boss",
+      actionType: "board_move",
+      fromCell: 14,
+      toCell: 9,
+      samples: 1,
+      reverseSamples: 2,
+      netSamples: -1,
+    });
+  });
+
+  test("merges accepted board movement round metrics", () => {
+    const aggregate = mergeBotOnlyBaselineAggregateReports([
+      buildBotOnlyBaselineAggregateReport([
+        createMinimalMatchSummary({
+          boardMovementActions: [{
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_swap",
+            fromCell: 14,
+            toCell: 8,
+          }],
+        }),
+      ]),
+      buildBotOnlyBaselineAggregateReport([
+        createMinimalMatchSummary({
+          boardMovementActions: [{
+            roundIndex: 12,
+            playerId: "boss",
+            label: "boss",
+            role: "boss",
+            actionType: "board_move",
+            fromCell: 9,
+            toCell: 14,
+          }],
+        }),
+      ]),
+    ]);
+
+    expect(aggregate.boardMovementRoundMetrics).toContainEqual({
+      roundIndex: 12,
+      role: "boss",
+      samples: 2,
+      moveSamples: 1,
+      swapSamples: 1,
+    });
+    expect(aggregate.boardMovementRouteMetrics).toContainEqual({
+      roundIndex: 12,
+      role: "boss",
+      actionType: "board_swap",
+      fromCell: 14,
+      toCell: 8,
+      samples: 1,
+      reverseSamples: 0,
+      netSamples: 1,
+    });
+    expect(aggregate.boardMovementRouteMetrics).toContainEqual({
+      roundIndex: 12,
+      role: "boss",
+      actionType: "board_move",
+      fromCell: 9,
+      toCell: 14,
+      samples: 1,
+      reverseSamples: 0,
+      netSamples: 1,
+    });
+  });
+
+  test("records whether the boss R12 board reaches the intended ceiling components", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createR12CeilingMatch([
+        createBossOutcome("remilia", "レミリア", "boss", 7),
+        createBossOutcome("meiling", "紅美鈴", "vanguard", 7),
+        createBossOutcome("sakuya", "十六夜咲夜", "ranger", 7),
+        createBossOutcome("patchouli", "パチュリー・ノーレッジ", "mage", 4),
+        createBossOutcome("junko", "純狐", "vanguard", 4),
+        createBossOutcome("utsuho", "霊烏路空", "mage", 4),
+      ]),
+      createR12CeilingMatch([
+        createBossOutcome("remilia", "レミリア", "boss", 4),
+        createBossOutcome("meiling", "紅美鈴", "vanguard", 7),
+        createBossOutcome("sakuya", "十六夜咲夜", "ranger", 7),
+        createBossOutcome("patchouli", "パチュリー・ノーレッジ", "mage", 4),
+        createBossOutcome("junko", "純狐", "vanguard", 6),
+      ], "success"),
+    ]);
+
+    expect(aggregate.bossR12CeilingDiagnostics).toMatchObject({
+      sampleCount: 2,
+      maxAssetValue: 106,
+      remiliaLevel7Rate: 0.5,
+      scarletCoreTargetReachedRate: 1,
+      maxLateCarryLevel4PlusCount: 2,
+      twoLateCarryLevel4PlusRate: 0.5,
+      oneLateCarryLevel6PlusRate: 0.5,
+      maxLateCarryLevel: 6,
+      maxTargetComponentsMet: 6,
+      targetBoardReachedRate: 0.5,
+      averageEstimatedMissingGold: 16,
+      minEstimatedMissingGold: 0,
+      averageNetEstimatedMissingGold: 16,
+      p75NetEstimatedMissingGold: 32,
+      minNetEstimatedMissingGold: 0,
+      finalGoldCoversEstimatedGapRate: 0.5,
+      virtualIncomeBreakpoints: [
+        { extraGold: 10, targetReachableRate: 0.5, averageRemainingNetGap: 11 },
+        { extraGold: 20, targetReachableRate: 0.5, averageRemainingNetGap: 6 },
+        { extraGold: 30, targetReachableRate: 0.5, averageRemainingNetGap: 1 },
+        { extraGold: 40, targetReachableRate: 1, averageRemainingNetGap: 0 },
+        { extraGold: 50, targetReachableRate: 1, averageRemainingNetGap: 0 },
+      ],
+      averageRemiliaMissingUpgradeCost: 8,
+      averageLateCarryMissingCopyCost: 8,
+    });
+    expect(aggregate.bossR12CeilingDiagnostics?.topAssetValueSamples[0]).toMatchObject({
+      assetValue: 106,
+      targetComponentsMet: 6,
+      targetBoardReached: true,
+      targetEstimatedMissingGold: 0,
+    });
+    expect(aggregate.bossR12CeilingDiagnostics?.nearestTargetSamples[0]).toMatchObject({
+      assetValue: 106,
+      targetEstimatedMissingGold: 0,
+    });
+  });
+
   test("calculates round damage efficiency using shop cost and special-unit upgrade cost", () => {
     const report = buildBotOnlyBaselineAggregateReport([
       createMinimalMatchSummary({
@@ -770,6 +1170,298 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
       source: "shop",
       purchaseCount: 1,
     }));
+  });
+
+  test("tracks raid archetype construction purchase reasons and final board hits", () => {
+    const report = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        finalPlayers: [
+          Object.assign(createFinalPlayer("raid-1", "raid", [
+            { cell: 30, unitName: "飯綱丸龍", unitType: "ranger", unitId: "megumu", unitLevel: 1, subUnitName: "" },
+            { cell: 31, unitName: "菅牧典", unitType: "assassin", unitId: "tsukasa", unitLevel: 1, subUnitName: "" },
+            {
+              cell: 32,
+              unitName: "ranger",
+              unitType: "ranger",
+              unitId: "ranger",
+              unitLevel: 1,
+              subUnitName: "天弓千亦",
+              attachedSubUnitId: "chimata",
+              attachedSubUnitName: "天弓千亦",
+              attachedSubUnitType: "hero",
+            },
+          ]), {
+            benchUnitIds: ["momoyo"],
+          }),
+        ],
+        purchases: [{
+          roundIndex: 3,
+          playerId: "raid-1",
+          label: "raid-1",
+          actionType: "buy_unit",
+          unitType: "mage",
+          unitId: "chimata",
+          unitName: "天弓千亦",
+          cost: 2,
+          botPurchaseReason: "raid_archetype_construction",
+          botPurchasePlanId: "kou_ryuudou_core",
+          botPurchasePlanAnchorUnitId: "megumu",
+          botPurchasePlanBonus: 260,
+        }, {
+          roundIndex: 3,
+          playerId: "raid-1",
+          label: "raid-1",
+          actionType: "buy_unit",
+          unitType: "vanguard",
+          unitId: "momoyo",
+          unitName: "姫虫百々世",
+          cost: 4,
+          botPurchaseReason: "raid_archetype_construction",
+          botPurchasePlanId: "kou_ryuudou_core",
+          botPurchasePlanAnchorUnitId: "megumu",
+          botPurchasePlanBonus: 260,
+        } as any],
+        rounds: [{
+          roundIndex: 4,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 1200,
+          phaseDamageDealt: 1200,
+          phaseResult: "success",
+          phaseCompletionRate: 1,
+          playerConsequences: [],
+          eliminations: [],
+          battles: [{
+            battleIndex: 0,
+            leftPlayerId: "raid-1",
+            rightPlayerId: "boss",
+            winner: "left",
+            leftDamageDealt: 1200,
+            rightDamageDealt: 400,
+            unitOutcomes: [{
+              playerId: "raid-1",
+              label: "raid-1",
+              unitId: "ranger",
+              unitName: "ranger",
+              unitType: "ranger",
+              side: "raid",
+              totalDamage: 500,
+              phaseContributionDamage: 500,
+              finalHp: 100,
+              alive: true,
+              unitLevel: 1,
+              subUnitName: "天弓千亦",
+              attachedSubUnitId: "chimata",
+              attachedSubUnitName: "天弓千亦",
+              attachedSubUnitType: "hero",
+              isSpecialUnit: false,
+            }],
+          }],
+        }],
+      }),
+    ]);
+
+    expect((report as any).raidArchetypeConstructionMetrics).toContainEqual(expect.objectContaining({
+      planId: "kou_ryuudou_core",
+      anchorUnitId: "megumu",
+      purchaseCount: 2,
+      constructionPurchaseCount: 2,
+      constructionFinalMainUnitCount: 0,
+      constructionFinalSubUnitCount: 1,
+      constructionFinalMissingUnitCount: 1,
+      constructionFinalBenchUnitCount: 1,
+      constructionFinalAbsentUnitCount: 0,
+      constructionEverBattleUnitCount: 1,
+      constructionNeverBattleUnitCount: 1,
+      constructionEverBattleRate: 0.5,
+      constructionFinalRetentionRate: 0.5,
+      constructionFinalTotalRetentionRate: 1,
+      finalPlayerSamples: 1,
+      finalAnchorPlayerCount: 1,
+      finalPlanHitPlayerCount: 1,
+      averageFinalPlanUnitCount: 3,
+    }));
+    expect((report as any).raidArchetypeConstructionUnitMetrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        planId: "kou_ryuudou_core",
+        unitId: "chimata",
+        constructionPurchaseCount: 1,
+        constructionFinalSubUnitCount: 1,
+        constructionFinalBenchUnitCount: 0,
+        constructionFinalAbsentUnitCount: 0,
+        constructionEverBattleUnitCount: 1,
+        constructionNeverBattleUnitCount: 0,
+        constructionEverBattleRate: 1,
+        constructionFinalTotalRetentionRate: 1,
+      }),
+      expect.objectContaining({
+        planId: "kou_ryuudou_core",
+        unitId: "momoyo",
+        constructionPurchaseCount: 1,
+        constructionFinalSubUnitCount: 0,
+        constructionFinalBenchUnitCount: 1,
+        constructionFinalAbsentUnitCount: 0,
+        constructionEverBattleUnitCount: 0,
+        constructionNeverBattleUnitCount: 1,
+        constructionEverBattleRate: 0,
+        constructionFinalTotalRetentionRate: 1,
+      }),
+    ]));
+  });
+
+  test("tracks raid archetype progress by round before final board cleanup", () => {
+    const report = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        totalRounds: 6,
+        finalPlayers: [
+          createFinalPlayer("boss", "boss"),
+          createFinalPlayer("raid", "raid"),
+        ],
+        rounds: [{
+          roundIndex: 4,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 1200,
+          phaseDamageDealt: 1000,
+          phaseResult: "success",
+          phaseCompletionRate: 1,
+          eliminations: [],
+          playerConsequences: [],
+          battles: [{
+            battleIndex: 0,
+            leftPlayerId: "raid",
+            rightPlayerId: "boss",
+            winner: "left",
+            leftDamageDealt: 1000,
+            rightDamageDealt: 500,
+            unitOutcomes: [{
+              playerId: "raid",
+              label: "raid",
+              unitId: "kagerou",
+              unitName: "今泉影狼",
+              unitType: "vanguard",
+              side: "raid",
+              totalDamage: 120,
+              phaseContributionDamage: 120,
+              finalHp: 100,
+              alive: true,
+              unitLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            }, {
+              playerId: "raid",
+              label: "raid",
+              unitId: "wakasagihime",
+              unitName: "わかさぎ姫",
+              unitType: "ranger",
+              side: "raid",
+              totalDamage: 300,
+              phaseContributionDamage: 300,
+              finalHp: 100,
+              alive: true,
+              unitLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            }, {
+              playerId: "raid",
+              label: "raid",
+              unitId: "sekibanki",
+              unitName: "赤蛮奇",
+              unitType: "assassin",
+              side: "raid",
+              totalDamage: 180,
+              phaseContributionDamage: 180,
+              finalHp: 100,
+              alive: true,
+              unitLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+            }],
+          }],
+        }],
+      }),
+    ]);
+
+    expect((report as any).raidArchetypeRoundProgressMetrics).toContainEqual(expect.objectContaining({
+      planId: "grassroot_core",
+      roundIndex: 4,
+      playerSamples: 1,
+      anchorPlayerCount: 1,
+      planHitPlayerCount: 1,
+      averagePlanUnitCount: 3,
+      unitCount3PlusPlayerCount: 1,
+    }));
+    expect((report as any).raidArchetypeConstructionMetrics).toContainEqual(expect.objectContaining({
+      planId: "grassroot_core",
+      finalPlanHitPlayerCount: 0,
+    }));
+  });
+
+  test("aggregates raid archetype shop completion decision telemetry", () => {
+    const report = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        purchases: [{
+          roundIndex: 4,
+          playerId: "raid",
+          label: "raid",
+          actionType: "buy_unit",
+          unitType: "mage",
+          unitId: "hecatia",
+          unitName: "ヘカーティア・ラピスラズリ",
+          cost: 4,
+          botArchetypeDecision: "completed_but_high_cost_skipped",
+          botArchetypeDecisionPlanId: "grassroot_core",
+          botArchetypeDecisionCandidateUnitId: "wakasagihime",
+          botArchetypeDecisionCandidateCost: 1,
+          botArchetypeDecisionBlocker: "all_deploy_slots_full",
+          botArchetypeDecisionCombatPlanUnitCount: 1,
+          botArchetypeDecisionReservePlanUnitCount: 2,
+          botArchetypeDecisionAvailableMainSlots: 0,
+          botArchetypeDecisionAvailableSubSlots: 0,
+        }, {
+          roundIndex: 4,
+          playerId: "raid",
+          label: "raid",
+          actionType: "buy_unit",
+          unitType: "ranger",
+          unitId: "wakasagihime",
+          unitName: "わかさぎ姫",
+          cost: 1,
+          botArchetypeDecision: "completed_and_bought",
+          botArchetypeDecisionPlanId: "grassroot_core",
+          botArchetypeDecisionCandidateUnitId: "wakasagihime",
+          botArchetypeDecisionCandidateCost: 1,
+        }],
+      }),
+    ]);
+
+    expect((report as any).raidArchetypeShopDecisionMetrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        roundIndex: 4,
+        planId: "grassroot_core",
+        decision: "completed_but_high_cost_skipped",
+        samples: 1,
+        highCostPurchaseCount: 1,
+        averagePurchasedCost: 4,
+        candidateUnitId: "wakasagihime",
+        candidateCost: 1,
+        blocker: "all_deploy_slots_full",
+        averageCombatPlanUnitCount: 1,
+        averageReservePlanUnitCount: 2,
+        averageAvailableMainSlots: 0,
+        averageAvailableSubSlots: 0,
+      }),
+      expect.objectContaining({
+        roundIndex: 4,
+        planId: "grassroot_core",
+        decision: "completed_and_bought",
+        samples: 1,
+        planUnitPurchaseCount: 1,
+        averagePurchasedCost: 1,
+        candidateUnitId: "wakasagihime",
+        candidateCost: 1,
+      }),
+    ]));
   });
 
   test("tracks boss-exclusive level distribution and high-cost shop progression by round", () => {
@@ -2105,6 +2797,23 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
             initialRow: 0,
             initialColumn: 2,
           }, {
+            playerId: "boss-1",
+            label: "P1",
+            unitId: "meiling",
+            unitName: "紅美鈴",
+            unitType: "vanguard",
+            side: "boss",
+            totalDamage: 0,
+            phaseContributionDamage: 0,
+            finalHp: 320,
+            alive: true,
+            unitLevel: 7,
+            subUnitName: "",
+            isSpecialUnit: false,
+            damageTaken: 280,
+            initialRow: 1,
+            initialColumn: 2,
+          }, {
             playerId: "raid-a",
             label: "P2",
             unitId: "marisa",
@@ -2191,6 +2900,21 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
         defeated: true,
         finalHp: 0,
       }),
+      bossBodyDirectGuardOutcome: expect.objectContaining({
+        unitId: "meiling",
+        unitName: "紅美鈴",
+        unitType: "vanguard",
+        cell: 8,
+        x: 2,
+        y: 1,
+        unitLevel: 7,
+        damageTaken: 280,
+        finalHp: 320,
+        alive: true,
+        bossCell: 2,
+        expectedCell: 8,
+        matchedDecisionUnit: false,
+      }),
     }));
     expect(aggregate.roundDetails?.[1]).toEqual(expect.objectContaining({
       roundIndex: 2,
@@ -2218,6 +2942,476 @@ describe("buildBotOnlyBaselineAggregateReport", () => {
     expect(aggregate.roundDetails?.[0]?.topBossDamageTakenUnits?.[0]).toEqual(expect.objectContaining({
       unitId: "remilia",
       damageTaken: 600,
+    }));
+
+    const bossBoardStrength = aggregate.roundBoardStrengthMetrics?.find(
+      (metric) => metric.roundIndex === 1 && metric.side === "boss",
+    );
+    const raidBoardStrength = aggregate.roundBoardStrengthMetrics?.find(
+      (metric) => metric.roundIndex === 1 && metric.side === "raid",
+    );
+    expect(bossBoardStrength).toEqual(expect.objectContaining({
+      roundIndex: 1,
+      side: "boss",
+      battleSamples: 1,
+      averageUnitCount: 2,
+      averageSurvivorCount: 1,
+      averageInvestmentScore: expect.any(Number),
+      averageEstimatedDurabilityScore: expect.any(Number),
+      averageEstimatedDamageScore: expect.any(Number),
+      averageBoardStrengthScore: expect.any(Number),
+      averageRealizedDamage: 120,
+      averageAbsorbedDamage: 880,
+      averageRemainingHp: 320,
+      averageRealizedBattleScore: expect.any(Number),
+    }));
+    expect(raidBoardStrength).toEqual(expect.objectContaining({
+      roundIndex: 1,
+      side: "raid",
+      battleSamples: 1,
+      averageUnitCount: 2,
+      averageSurvivorCount: 0,
+      averageRealizedDamage: 600,
+      averageAbsorbedDamage: 0,
+      averageRemainingHp: 0,
+    }));
+    expect(bossBoardStrength?.averageInvestmentScore ?? 0).toBeGreaterThan(
+      raidBoardStrength?.averageInvestmentScore ?? Number.POSITIVE_INFINITY,
+    );
+    expect(bossBoardStrength?.averageBoardStrengthScore ?? 0).toBeGreaterThan(0);
+    expect(raidBoardStrength?.averageBoardStrengthScore ?? 0).toBeGreaterThan(0);
+
+    expect(aggregate.roundBoardStrengthComparisonMetrics).toContainEqual(expect.objectContaining({
+      roundIndex: 1,
+      battleSamples: 1,
+      bossBattleWinRate: 0,
+      raidBattleWinRate: 1,
+      bossEstimatedAdvantageRate: 1,
+      bossEstimatedAdvantageButBattleLossRate: 1,
+      averageBossToRaidBoardStrengthRatio: expect.any(Number),
+      averageBossToRaidRealizedBattleRatio: expect.any(Number),
+    }));
+    expect(aggregate.roundBoardStrengthOutcomeMetrics).toContainEqual(expect.objectContaining({
+      roundIndex: 1,
+      winnerRole: "raid",
+      battleSamples: 1,
+      bossBattleWinRate: 0,
+      raidBattleWinRate: 1,
+      bossEstimatedAdvantageRate: 1,
+      bossEstimatedAdvantageButBattleLossRate: 1,
+      averageBossToRaidBoardStrengthRatio: expect.any(Number),
+      averageBossToRaidRealizedBattleRatio: expect.any(Number),
+    }));
+
+    expect(aggregate.unitStrengthConversionMetrics).toContainEqual(expect.objectContaining({
+      side: "boss",
+      unitId: "remilia",
+      battleAppearances: 1,
+      averageEstimatedStrengthScore: expect.any(Number),
+      averageEffectiveStrengthScore: 330,
+      averageStrengthScoreDelta: expect.any(Number),
+      averageEffectiveToEstimatedRatio: expect.any(Number),
+      sideBaselineEffectiveToEstimatedRatio: expect.any(Number),
+      sideAdjustedEffectiveToEstimatedIndex: expect.any(Number),
+      sideAdjustedStrengthScoreDelta: expect.any(Number),
+      underperformedBattleRate: 1,
+      zeroDamageBattleRate: 0,
+      survivedBattleRate: 0,
+    }));
+  });
+
+  test("estimates active faction effect lift on the same battle board", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        rounds: [{
+          roundIndex: 6,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 600,
+          phaseDamageDealt: 300,
+          phaseResult: "failed",
+          phaseCompletionRate: 0.5,
+          eliminations: [],
+          playerConsequences: [],
+          battles: [{
+            battleIndex: 0,
+            leftPlayerId: "raid",
+            rightPlayerId: "boss",
+            winner: "left",
+            leftDamageDealt: 300,
+            rightDamageDealt: 100,
+            unitOutcomes: [{
+              playerId: "raid",
+              label: "raid",
+              unitId: "nazrin",
+              unitName: "ナズーリン",
+              unitType: "ranger",
+              side: "raid",
+              totalDamage: 180,
+              phaseContributionDamage: 180,
+              finalHp: 260,
+              alive: true,
+              unitLevel: 2,
+              subUnitName: "",
+              isSpecialUnit: false,
+              damageTaken: 140,
+            }, {
+              playerId: "raid",
+              label: "raid",
+              unitId: "shou",
+              unitName: "寅丸星",
+              unitType: "mage",
+              side: "raid",
+              totalDamage: 120,
+              phaseContributionDamage: 120,
+              finalHp: 180,
+              alive: true,
+              unitLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+              damageTaken: 90,
+            }],
+          }],
+        }],
+      }),
+    ]);
+
+    const metric = aggregate.factionEffectValueMetrics?.find((entry) =>
+      entry.side === "raid" && entry.factionId === "myourenji");
+
+    expect(metric).toEqual(expect.objectContaining({
+      side: "raid",
+      factionId: "myourenji",
+      battleSamples: 1,
+      averageFactionUnitCount: 2,
+      averageTier: 1,
+      sampleQuality: "low",
+    }));
+    expect(metric?.averageEstimatedStrengthLift ?? 0).toBeGreaterThan(0);
+    expect(metric?.averageEstimatedStrengthLiftRate ?? 0).toBeGreaterThan(0);
+    expect(metric?.averageTeamEstimatedStrengthLiftShare ?? 0).toBeGreaterThan(0);
+  });
+
+  test("uses hero-exclusive combat stats for unit strength conversion estimates", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        rounds: [{
+          roundIndex: 1,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 600,
+          phaseDamageDealt: 0,
+          phaseResult: "failed",
+          phaseCompletionRate: 0,
+          eliminations: [],
+          playerConsequences: [],
+          battles: [{
+            battleIndex: 0,
+            leftPlayerId: "raid",
+            rightPlayerId: "boss",
+            winner: "left",
+            leftDamageDealt: 0,
+            rightDamageDealt: 0,
+            unitOutcomes: [{
+              playerId: "raid",
+              label: "raid",
+              unitId: "mayumi",
+              unitName: "杖刀偶磨弓",
+              unitType: "vanguard",
+              side: "raid",
+              totalDamage: 0,
+              phaseContributionDamage: 0,
+              finalHp: 1240,
+              alive: true,
+              unitLevel: 1,
+              subUnitName: "",
+              isSpecialUnit: false,
+              damageTaken: 0,
+            }],
+          }],
+        }],
+      }),
+    ]);
+
+    const mayumiMetric = aggregate.unitStrengthConversionMetrics?.find((metric) =>
+      metric.side === "raid" && metric.unitId === "mayumi");
+    expect(mayumiMetric).toEqual(expect.objectContaining({
+      battleAppearances: 1,
+      averageInvestmentScore: 3,
+      averageEstimatedDurabilityScore: 1240,
+    }));
+    expect(mayumiMetric?.averageEstimatedDamageScore).toBeCloseTo(93.6);
+    expect(mayumiMetric?.averageEstimatedStrengthScore).toBeCloseTo(5877);
+    expect(mayumiMetric?.sideAdjustedEffectiveToEstimatedIndex).toBeCloseTo(1);
+    expect(mayumiMetric?.sideAdjustedStrengthScoreDelta).toBeCloseTo(0);
+  });
+
+  test("summarizes unit strength conversion by exact unit level", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        rounds: [{
+          roundIndex: 1,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 600,
+          phaseDamageDealt: 0,
+          phaseResult: "failed",
+          phaseCompletionRate: 0,
+          eliminations: [],
+          playerConsequences: [],
+          battles: [{
+            battleIndex: 0,
+            leftPlayerId: "boss",
+            rightPlayerId: "raid",
+            winner: "left",
+            leftDamageDealt: 0,
+            rightDamageDealt: 0,
+            unitOutcomes: [
+              {
+                playerId: "boss",
+                label: "boss",
+                unitId: "patchouli",
+                unitName: "パチュリー・ノーレッジ",
+                unitType: "mage",
+                side: "boss",
+                totalDamage: 100,
+                phaseContributionDamage: 0,
+                finalHp: 100,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 100,
+              },
+              {
+                playerId: "boss",
+                label: "boss",
+                unitId: "patchouli",
+                unitName: "パチュリー・ノーレッジ",
+                unitType: "mage",
+                side: "boss",
+                totalDamage: 260,
+                phaseContributionDamage: 0,
+                finalHp: 200,
+                alive: true,
+                unitLevel: 2,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 200,
+              },
+            ],
+          }],
+        }],
+      }),
+    ]);
+
+    expect(aggregate.unitLevelStrengthConversionMetrics).toContainEqual(expect.objectContaining({
+      side: "boss",
+      unitId: "patchouli",
+      unitLevel: 1,
+      battleAppearances: 1,
+      averageEffectiveStrengthScore: 185,
+      previousLevelEffectiveStrengthScore: null,
+      effectiveStrengthScoreDeltaFromPreviousLevel: null,
+    }));
+    expect(aggregate.unitLevelStrengthConversionMetrics).toContainEqual(expect.objectContaining({
+      side: "boss",
+      unitId: "patchouli",
+      unitLevel: 2,
+      battleAppearances: 1,
+      averageEffectiveStrengthScore: 430,
+      previousLevelEffectiveStrengthScore: 185,
+      effectiveStrengthScoreDeltaFromPreviousLevel: 245,
+      effectiveStrengthScoreGrowthRatioFromPreviousLevel: 430 / 185,
+    }));
+  });
+
+  test("summarizes archetype dependency from fit and non-fit battle contexts", () => {
+    const aggregate = buildBotOnlyBaselineAggregateReport([
+      createMinimalMatchSummary({
+        rounds: [{
+          roundIndex: 1,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 600,
+          phaseDamageDealt: 0,
+          phaseResult: "failed",
+          phaseCompletionRate: 0,
+          eliminations: [],
+          playerConsequences: [],
+          battles: [{
+            battleIndex: 0,
+            leftPlayerId: "raid",
+            rightPlayerId: "boss",
+            winner: "left",
+            leftDamageDealt: 0,
+            rightDamageDealt: 0,
+            unitOutcomes: [
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "zanmu",
+                unitName: "日白残無",
+                unitType: "mage",
+                side: "raid",
+                totalDamage: 400,
+                phaseContributionDamage: 0,
+                finalHp: 300,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 200,
+              },
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "nazrin",
+                unitName: "ナズーリン",
+                unitType: "ranger",
+                side: "raid",
+                totalDamage: 0,
+                phaseContributionDamage: 0,
+                finalHp: 1,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 0,
+              },
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "yoshika",
+                unitName: "宮古芳香",
+                unitType: "vanguard",
+                side: "raid",
+                totalDamage: 0,
+                phaseContributionDamage: 0,
+                finalHp: 1,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 0,
+              },
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "clownpiece",
+                unitName: "クラウンピース",
+                unitType: "ranger",
+                side: "raid",
+                totalDamage: 0,
+                phaseContributionDamage: 0,
+                finalHp: 1,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 0,
+              },
+            ],
+          }],
+        }, {
+          roundIndex: 1,
+          phase: "battle",
+          durationMs: 10_000,
+          phaseHpTarget: 600,
+          phaseDamageDealt: 0,
+          phaseResult: "failed",
+          phaseCompletionRate: 0,
+          eliminations: [],
+          playerConsequences: [],
+          battles: [{
+            battleIndex: 1,
+            leftPlayerId: "raid",
+            rightPlayerId: "boss",
+            winner: "right",
+            leftDamageDealt: 0,
+            rightDamageDealt: 0,
+            unitOutcomes: [
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "zanmu",
+                unitName: "日白残無",
+                unitType: "mage",
+                side: "raid",
+                totalDamage: 100,
+                phaseContributionDamage: 0,
+                finalHp: 0,
+                alive: false,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 100,
+              },
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "hecatia",
+                unitName: "ヘカーティア・ラピスラズリ",
+                unitType: "mage",
+                side: "raid",
+                totalDamage: 0,
+                phaseContributionDamage: 0,
+                finalHp: 1,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 0,
+              },
+              {
+                playerId: "raid",
+                label: "raid",
+                unitId: "junko",
+                unitName: "純狐",
+                unitType: "vanguard",
+                side: "raid",
+                totalDamage: 0,
+                phaseContributionDamage: 0,
+                finalHp: 1,
+                alive: true,
+                unitLevel: 1,
+                subUnitName: "",
+                isSpecialUnit: false,
+                damageTaken: 0,
+              },
+            ],
+          }],
+        }],
+      }),
+    ]);
+
+    expect(aggregate.unitArchetypeDependencyMetrics).toContainEqual(expect.objectContaining({
+      side: "raid",
+      unitId: "zanmu",
+      primaryArchetypeTag: "mixed_faction_core",
+      battleAppearances: 2,
+      archetypeFitBattleAppearances: 1,
+      nonArchetypeBattleAppearances: 1,
+      archetypeFitRate: 0.5,
+      averageUnitLevel: 1,
+      averageArchetypeUnitLevel: 1,
+      averageNonArchetypeUnitLevel: 1,
+      averageRoundIndex: 1,
+      averageArchetypeRoundIndex: 1,
+      averageNonArchetypeRoundIndex: 1,
+      averageEffectiveStrengthScore: 377.5,
+      averageArchetypeEffectiveStrengthScore: 620,
+      averageNonArchetypeEffectiveStrengthScore: 135,
+      archetypeEffectiveStrengthLift: 485,
+      archetypeDependencyIndex: 620 / 135,
+      roundLevelComparisonBattleAppearances: 2,
+      roundLevelAdjustedArchetypeEffectiveStrengthScore: 620,
+      roundLevelAdjustedNonArchetypeEffectiveStrengthScore: 135,
+      roundLevelAdjustedArchetypeEffectiveStrengthLift: 485,
+      roundLevelAdjustedArchetypeDependencyIndex: 620 / 135,
+      averageUniqueFactionCount: 2,
+      averageSameFactionCount: 0,
+      pairLinkedBattleRate: 0,
     }));
   });
 

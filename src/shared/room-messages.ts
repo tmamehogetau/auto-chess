@@ -55,6 +55,19 @@ export interface PrepCommandMessage {
   specialUnitUpgradeCount?: number;
   shopRefreshCount?: number;
   shopBuySlotIndex?: number;
+  botPurchaseReason?: string;
+  botPurchasePlanId?: string;
+  botPurchasePlanAnchorUnitId?: string;
+  botPurchasePlanBonus?: number;
+  botArchetypeDecision?: string;
+  botArchetypeDecisionPlanId?: string;
+  botArchetypeDecisionCandidateUnitId?: string;
+  botArchetypeDecisionCandidateCost?: number;
+  botArchetypeDecisionBlocker?: string;
+  botArchetypeDecisionCombatPlanUnitCount?: number;
+  botArchetypeDecisionReservePlanUnitCount?: number;
+  botArchetypeDecisionAvailableMainSlots?: number;
+  botArchetypeDecisionAvailableSubSlots?: number;
   heroExclusiveShopBuySlotIndex?: number;
   shopLock?: boolean;
   benchToBoardCell?: {

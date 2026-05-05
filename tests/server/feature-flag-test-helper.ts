@@ -187,6 +187,8 @@ function applyKnownRoomOptions(
     settleDurationMs?: number;
     eliminationDurationMs?: number;
     selectionTimeoutMs?: number;
+    bossExtraPrepIncome?: number;
+    bossExtraTotalPrepIncome?: number;
     sharedBoardRoomId?: string;
   };
 
@@ -197,6 +199,8 @@ function applyKnownRoomOptions(
     "settleDurationMs",
     "eliminationDurationMs",
     "selectionTimeoutMs",
+    "bossExtraPrepIncome",
+    "bossExtraTotalPrepIncome",
   ] as const;
 
   for (const optionKey of numericOptionKeys) {

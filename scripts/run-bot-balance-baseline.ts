@@ -23,6 +23,9 @@ import {
   createBaselineChunkDefinitions,
   resolveBotBalanceBaselineHelperPolicy,
   resolveBotBalanceBaselineOptimizationVariant,
+  resolveBotBalanceBaselineBossExtraPrepIncome,
+  resolveBotBalanceBaselineBossExtraTotalPrepIncome,
+  resolveBotBalanceBaselineBattleSeedBase,
   resolveBotBalanceBaselineParallelism,
   resolveBotBalanceBaselinePortOffsetBase,
   resolveBotBalanceBaselineRaidHeroIds,
@@ -67,6 +70,9 @@ type CliOptions = {
   raidPolicies: Array<"strength" | "growth">;
   raidHeroIds: BotBalanceBaselineRaidHeroIds | null;
   optimizationVariant: BotBalanceBaselineOptimizationVariant;
+  bossExtraPrepIncome: number;
+  bossExtraTotalPrepIncome: number;
+  battleSeedBase: number;
   outputDir: string;
   resume: boolean;
 };
@@ -91,6 +97,9 @@ function parseCliOptions(argv: string[]): CliOptions {
   let raidPolicies = resolveBotBalanceBaselineRaidPolicies(undefined);
   let raidHeroIds: BotBalanceBaselineRaidHeroIds | null = null;
   let optimizationVariant = resolveBotBalanceBaselineOptimizationVariant(undefined);
+  let bossExtraPrepIncome = resolveBotBalanceBaselineBossExtraPrepIncome(undefined);
+  let bossExtraTotalPrepIncome = resolveBotBalanceBaselineBossExtraTotalPrepIncome(undefined);
+  let battleSeedBase = resolveBotBalanceBaselineBattleSeedBase(undefined);
   let outputDir = defaultOutputDir;
   let resume = false;
 
@@ -155,6 +164,24 @@ function parseCliOptions(argv: string[]): CliOptions {
       continue;
     }
 
+    if (argument === "--boss-extra-prep-income" && nextValue) {
+      bossExtraPrepIncome = resolveBotBalanceBaselineBossExtraPrepIncome(nextValue);
+      index += 1;
+      continue;
+    }
+
+    if (argument === "--boss-extra-total-prep-income" && nextValue) {
+      bossExtraTotalPrepIncome = resolveBotBalanceBaselineBossExtraTotalPrepIncome(nextValue);
+      index += 1;
+      continue;
+    }
+
+    if (argument === "--battle-seed-base" && nextValue) {
+      battleSeedBase = resolveBotBalanceBaselineBattleSeedBase(nextValue);
+      index += 1;
+      continue;
+    }
+
     if (argument === "--resume") {
       resume = true;
       continue;
@@ -172,6 +199,9 @@ function parseCliOptions(argv: string[]): CliOptions {
           "  --raid-policies <csv>  Raid helper policies for bots 2-4 (default: strength,strength,strength)",
           "  --raid-heroes <csv>    Fixed raid heroes for bots 2-4, e.g. reimu,marisa,okina",
           "  --optimization-variant <mode> Optimization ablation: full|raid-optimization-off|boss-optimization-off|all-optimization-off|board-refit-off|raid-board-refit-off|boss-board-refit-off|future-shop-off|okina-host-off",
+          "  --boss-extra-prep-income <n> Baseline-only extra prep income for the boss",
+          "  --boss-extra-total-prep-income <n> Baseline-only total extra prep income distributed to the boss through R12",
+          "  --battle-seed-base <n> Deterministic battle RNG seed base for baseline replay diagnostics",
           "  --output-dir <path>    Directory for chunk logs and summary",
           "  --resume               Reuse existing chunk JSON files in output dir",
         ].join("\n"),
@@ -189,6 +219,9 @@ function parseCliOptions(argv: string[]): CliOptions {
     raidPolicies,
     raidHeroIds,
     optimizationVariant,
+    bossExtraPrepIncome,
+    bossExtraTotalPrepIncome,
+    battleSeedBase,
     outputDir,
     resume,
   };
@@ -275,6 +308,9 @@ async function runBaselineChunk(
   raidPolicies: Array<"strength" | "growth">,
   raidHeroIds: BotBalanceBaselineRaidHeroIds | null,
   optimizationVariant: BotBalanceBaselineOptimizationVariant,
+  bossExtraPrepIncome: number,
+  bossExtraTotalPrepIncome: number,
+  battleSeedBase: number,
 ): Promise<ChunkRunRecord> {
   const logPath = join(outputDir, `chunk-${String(chunkIndex + 1).padStart(3, "0")}.log`);
   const startedAt = new Date().toISOString();
@@ -307,6 +343,9 @@ async function runBaselineChunk(
         BOT_BASELINE_RAID_POLICIES: raidPolicies.join(","),
         ...(raidHeroIds ? { BOT_BASELINE_RAID_HERO_IDS: raidHeroIds.join(",") } : {}),
         BOT_BASELINE_OPTIMIZATION_VARIANT: optimizationVariant,
+        BOT_BASELINE_BOSS_EXTRA_PREP_INCOME: String(bossExtraPrepIncome),
+        BOT_BASELINE_BOSS_EXTRA_TOTAL_PREP_INCOME: String(bossExtraTotalPrepIncome),
+        BOT_BASELINE_BATTLE_SEED_BASE: String(battleSeedBase),
         BOT_BASELINE_TIMEOUT_MS: String(timeoutMs),
         BOT_BASELINE_WORKER_INDEX: String(workerIndex),
         SUPPRESS_VERBOSE_TEST_LOGS: "true",
@@ -351,6 +390,9 @@ async function runBaselineChunk(
       raidPolicies,
       raidHeroIds,
       optimizationVariant,
+      bossExtraPrepIncome,
+      bossExtraTotalPrepIncome,
+      battleSeedBase,
     }),
     workerIndex,
     portOffset,
@@ -396,6 +438,9 @@ async function main(): Promise<void> {
             raidPolicies: options.raidPolicies,
             raidHeroIds: options.raidHeroIds,
             optimizationVariant: options.optimizationVariant,
+            bossExtraPrepIncome: options.bossExtraPrepIncome,
+            bossExtraTotalPrepIncome: options.bossExtraTotalPrepIncome,
+            battleSeedBase: options.battleSeedBase,
           }),
         )
         : null;
@@ -411,6 +456,9 @@ async function main(): Promise<void> {
         options.raidPolicies,
         options.raidHeroIds,
         options.optimizationVariant,
+        options.bossExtraPrepIncome,
+        options.bossExtraTotalPrepIncome,
+        options.battleSeedBase,
       );
 
       if (!existingChunk) {
@@ -470,6 +518,9 @@ async function main(): Promise<void> {
     bossPolicy: options.bossPolicy,
     raidPolicies: options.raidPolicies,
     optimizationVariant: options.optimizationVariant,
+    bossExtraPrepIncome: options.bossExtraPrepIncome,
+    bossExtraTotalPrepIncome: options.bossExtraTotalPrepIncome,
+    battleSeedBase: options.battleSeedBase,
     helperConfigs,
     chunkCount: chunkRecords.length,
     outputDir: options.outputDir,
@@ -513,6 +564,8 @@ async function main(): Promise<void> {
       bossWinRate: aggregate.bossWinRate,
       averageRounds: aggregate.averageRounds,
       optimizationVariant: options.optimizationVariant,
+      bossExtraPrepIncome: options.bossExtraPrepIncome,
+      bossExtraTotalPrepIncome: options.bossExtraTotalPrepIncome,
       failureCount: failures.length,
     },
   }));

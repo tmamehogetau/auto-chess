@@ -327,6 +327,206 @@ describe("autofill helper automation", () => {
     }]);
   });
 
+  test("deploy phase raid helper fields a high-cost vanguard before an older low-cost vanguard", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "reimu",
+        specialUnitLevel: 7,
+        benchUnits: [
+          { unitId: "kagerou", unitType: "vanguard", cost: 1 },
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+        benchUnitIds: ["kagerou", "junko"],
+        boardSubUnits: ["30:nazrin"],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+          { cell: 31, unitId: "rin", unitType: "vanguard", unitLevel: 1 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]).toEqual({
+      type: "prep_command",
+      payload: {
+        benchToBoardCell: {
+          benchIndex: 1,
+          cell: 31,
+          slot: "sub",
+        },
+      },
+    });
+  });
+
+  test("deploy phase raid helper fields the Zanmu factionless carry anchor with enough mixed-faction support", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "reimu",
+        specialUnitLevel: 7,
+        benchUnits: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+          { unitId: "megumu", unitType: "ranger", cost: 4 },
+          { unitId: "kagerou", unitType: "vanguard", cost: 2 },
+          { unitId: "zanmu", unitType: "hero", cost: 5 },
+        ],
+        benchUnitIds: ["junko", "megumu", "kagerou", "zanmu"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]).toEqual(
+      {
+        type: "prep_command",
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 3,
+            cell: 31,
+          },
+        },
+      },
+    );
+  });
+
+  test("deploy phase raid helper waits on unsupported Zanmu instead of skipping frontline coverage", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "reimu",
+        specialUnitLevel: 7,
+        benchUnits: [
+          { unitId: "zanmu", unitType: "mage", cost: 5 },
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+        benchUnitIds: ["zanmu", "junko"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 7 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 9 },
+    })[0]).toEqual(
+      {
+        type: "prep_command",
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 1,
+            cell: 19,
+          },
+        },
+      },
+    );
+  });
+
+  test("final deploy phase raid helper shifts a third-lane frontline toward the boss guard", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "marisa",
+        specialUnitLevel: 7,
+        benchUnits: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+        benchUnitIds: ["junko"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 35, unitId: "marisa", unitType: "hero", unitLevel: 7 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 12 },
+    })[0]).toEqual(
+      {
+        type: "prep_command",
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 20,
+          },
+        },
+      },
+    );
+  });
+
+  test("pre-final raid frontline deployment keeps the normal third-lane spread", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 0,
+        selectedHeroId: "marisa",
+        specialUnitLevel: 7,
+        benchUnits: [
+          { unitId: "junko", unitType: "vanguard", cost: 4 },
+        ],
+        benchUnitIds: ["junko"],
+        boardSubUnits: [],
+        boardUnits: [
+          { cell: 35, unitId: "marisa", unitType: "hero", unitLevel: 7 },
+        ],
+        shopOffers: [],
+        bossShopOffers: [],
+      },
+      state: { phase: "Prep", playerPhase: "deploy", roundIndex: 11 },
+    })[0]).toEqual(
+      {
+        type: "prep_command",
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 23,
+          },
+        },
+      },
+    );
+  });
+
+  test("raid board refit still accepts clear upgrades over active archetype construction units", () => {
+    const player = {
+      ready: false,
+      role: "raid",
+      gold: 0,
+      selectedHeroId: "reimu",
+      specialUnitLevel: 5,
+      benchUnits: [{ unitId: "seiga", unitType: "mage", unitLevel: 3, cost: 2 }],
+      benchUnitIds: ["seiga"],
+      boardSubUnits: [],
+      boardUnits: [
+        { cell: 30, unitId: "reimu", unitType: "hero", unitLevel: 5 },
+        { cell: 31, unitId: "megumu", unitType: "ranger", unitLevel: 1 },
+        { cell: 32, unitId: "chimata", unitType: "mage", unitLevel: 1 },
+      ],
+      shopOffers: [],
+      bossShopOffers: [],
+    };
+    const diagnostic = buildBoardRefitDecision(player, { roundIndex: 9 });
+
+    expect(diagnostic.outgoingCandidate?.unitId).toBe("chimata");
+    expect(diagnostic.outgoingCandidate?.protectionReasons).not.toContain("raid_archetype_construction");
+    expect(diagnostic.decision).toBe("replace");
+  });
+
   test("deploy phase does not refit twice in the same round", () => {
     const actions = buildAutoFillHelperActions({
       helperIndex: 0,
@@ -1369,7 +1569,9 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
-        payload: { shopBuySlotIndex: 0 },
+        payload: {
+          shopBuySlotIndex: 0,
+        },
         type: "prep_command",
       },
     ]);
@@ -1799,6 +2001,64 @@ describe("autofill helper automation", () => {
         phase: "Prep",
         playerPhase: "purchase",
         roundIndex: 5,
+      },
+    })).toEqual([
+      {
+        payload: { specialUnitUpgradeCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("late boss helper completes the Scarlet offense core with Patchouli once Remilia is mature", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        specialUnitLevel: 7,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "9:sakuya"],
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { bossShopBuySlotIndex: 0 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("late boss helper keeps upgrading Remilia before buying the third Scarlet core", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        gold: 8,
+        specialUnitLevel: 6,
+        benchUnits: [],
+        benchUnitIds: [],
+        boardUnits: ["2:remilia", "8:meiling", "9:sakuya"],
+        bossShopOffers: [
+          { unitId: "patchouli", unitType: "mage", cost: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
       },
     })).toEqual([
       {
@@ -2437,6 +2697,243 @@ describe("autofill helper automation", () => {
         shopOffers: [
           { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
           { unitId: "chimata", unitType: "mage", factionId: "kou_ryuudou", cost: 2 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: {
+          shopBuySlotIndex: 1,
+          botPurchaseReason: "raid_archetype_construction",
+          botPurchasePlanId: "kou_ryuudou_core",
+          botPurchasePlanAnchorUnitId: "megumu",
+          botPurchasePlanBonus: 400,
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper steps into a final archetype member when completion is one buy away", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["vanguard", "ranger"],
+        benchUnitIds: ["ichirin", "nazrin"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "byakuren", unitType: "vanguard", factionId: "myourenji" },
+          { cell: 32, unitId: "murasa", unitType: "mage", factionId: "myourenji" },
+        ],
+        shopOffers: [
+          { unitId: "junko", unitType: "vanguard", factionId: "kanjuden", cost: 4 },
+          { unitId: "shou", unitType: "mage", factionId: "myourenji", cost: 4 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+      },
+    })).toEqual([
+      {
+        payload: {
+          shopBuySlotIndex: 1,
+          botPurchaseReason: "raid_archetype_construction",
+          botPurchasePlanId: "myourenji_core",
+          botPurchasePlanAnchorUnitId: "byakuren",
+          botPurchasePlanBonus: 320,
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame raid helper does not force Grassroot completion over an affordable high-cost carry", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        benchUnits: ["assassin"],
+        benchUnitIds: ["sekibanki"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "kagerou", unitType: "vanguard", factionId: "grassroots" },
+        ],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", factionId: "kanjuden", cost: 4 },
+          { unitId: "wakasagihime", unitType: "ranger", factionId: "grassroots", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: {
+          shopBuySlotIndex: 0,
+          botArchetypeDecision: "completed_but_high_cost_skipped",
+          botArchetypeDecisionPlanId: "grassroot_core",
+          botArchetypeDecisionCandidateUnitId: "wakasagihime",
+          botArchetypeDecisionCandidateCost: 1,
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame raid helper completes Grassroot when the full plan can be fielded immediately", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 2,
+        benchUnits: ["assassin"],
+        benchUnitIds: ["sekibanki"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "kagerou", unitType: "vanguard", factionId: "grassroots" },
+        ],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "wakasagihime", unitType: "ranger", factionId: "grassroots", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: {
+          shopBuySlotIndex: 1,
+          botPurchaseReason: "raid_archetype_construction",
+          botPurchasePlanId: "grassroot_core",
+          botPurchasePlanAnchorUnitId: "kagerou",
+          botPurchasePlanBonus: 380,
+          botArchetypeDecision: "completed_and_bought",
+          botArchetypeDecisionPlanId: "grassroot_core",
+          botArchetypeDecisionCandidateUnitId: "wakasagihime",
+          botArchetypeDecisionCandidateCost: 1,
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame raid helper treats Grassroot completion as fieldable when one main deploy can create a sub slot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 4,
+        benchUnits: ["assassin"],
+        benchUnitIds: ["sekibanki"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "kagerou", unitType: "vanguard", factionId: "grassroots" },
+        ],
+        boardSubUnits: [
+          "30:nazrin",
+          "31:rin",
+        ],
+        shopOffers: [
+          { unitId: "hecatia", unitType: "mage", factionId: "kanjuden", cost: 4 },
+          { unitId: "wakasagihime", unitType: "ranger", factionId: "grassroots", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: {
+          shopBuySlotIndex: 0,
+          botArchetypeDecision: "completed_but_high_cost_skipped",
+          botArchetypeDecisionPlanId: "grassroot_core",
+          botArchetypeDecisionCandidateUnitId: "wakasagihime",
+          botArchetypeDecisionCandidateCost: 1,
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame raid helper completes Grassroot when main deploys can create the needed sub slot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 2,
+        benchUnits: ["vanguard", "assassin"],
+        benchUnitIds: ["kagerou", "sekibanki"],
+        boardUnits: [
+          "30:reimu",
+        ],
+        boardSubUnits: [
+          "30:nazrin",
+        ],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitId: "rin", unitType: "mage", factionId: "animal_realm", cost: 2 },
+          { unitId: "wakasagihime", unitType: "ranger", factionId: "grassroots", cost: 1 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: {
+          shopBuySlotIndex: 1,
+          botPurchaseReason: "raid_archetype_construction",
+          botPurchasePlanId: "grassroot_core",
+          botPurchasePlanAnchorUnitId: "kagerou",
+          botPurchasePlanBonus: 380,
+          botArchetypeDecision: "completed_and_bought",
+          botArchetypeDecisionPlanId: "grassroot_core",
+          botArchetypeDecisionCandidateUnitId: "wakasagihime",
+          botArchetypeDecisionCandidateCost: 1,
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("prep phase raid helper counts attached sub units toward faction tier planning", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 2,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        specialUnitLevel: 7,
+        benchUnits: [],
+        boardSubUnits: ["31:hero:clownpiece"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitId: "ranger", factionId: "" },
+        ],
+        shopOffers: [
+          { unitId: "nazrin", unitType: "ranger", factionId: "myourenji", cost: 1 },
+          { unitId: "hecatia", unitType: "mage", factionId: "kanjuden", cost: 2 },
         ],
       },
       state: {
@@ -3105,6 +3602,51 @@ describe("autofill helper automation", () => {
     ]);
   });
 
+  test("prep deploy phase prioritizes a bench unit that advances Grassroot completion into a sub slot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        gold: 5,
+        benchUnits: ["mage", "assassin"],
+        benchUnitIds: ["nazrin", "sekibanki"],
+        boardUnits: [
+          "30:reimu",
+          { cell: 31, unitType: "vanguard", unitId: "kagerou" },
+        ],
+        selectedHeroId: "reimu",
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 4,
+      },
+    })).toEqual([
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 1,
+            cell: 31,
+            slot: "sub",
+          },
+        },
+        type: "prep_command",
+      },
+      {
+        payload: {
+          benchToBoardCell: {
+            benchIndex: 0,
+            cell: 30,
+            slot: "sub",
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
   test("prep phase raid helper buys another affordable unit when only part of its deploy lane is filled", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -3212,6 +3754,157 @@ describe("autofill helper automation", () => {
     })).toEqual([
       {
         payload: { benchSellIndex: 4 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full raid helper keeps Zanmu anchor when opening space for a hero-exclusive offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 5,
+        gold: 5,
+        benchUnits: ["vanguard", "vanguard", "ranger", "ranger", "hero", "vanguard", "ranger", "assassin"],
+        benchUnitIds: ["yoshika", "rin", "wakasagihime", "momoyo", "zanmu", "kagerou", "megumu", "fairy"],
+        boardUnits: ["30:keiki"],
+        selectedHeroId: "keiki",
+        heroExclusiveShopOffers: [
+          { unitType: "vanguard", unitId: "mayumi", cost: 3 },
+        ],
+        shopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 7 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full raid helper keeps owned hero-exclusive carries for a normal high-cost offer", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      strategy: "highCost",
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 7,
+        gold: 5,
+        benchUnits: ["assassin", "vanguard", "ranger", "ranger", "mage", "vanguard", "ranger", "assassin"],
+        benchUnitIds: ["shion", "yoshika", "wakasagihime", "momoyo", "tojiko", "kagerou", "megumu", "fairy"],
+        boardUnits: ["30:jyoon"],
+        selectedHeroId: "jyoon",
+        heroExclusiveShopOffers: [],
+        shopOffers: [
+          { unitType: "mage", unitId: "hecatia", factionId: "kanjuden", cost: 5 },
+        ],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 7 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full raid helper keeps active archetype construction units when opening reserve space", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 7,
+        gold: 5,
+        benchUnits: ["mage", "vanguard", "assassin", "ranger", "vanguard", "mage", "ranger", "assassin"],
+        benchUnitIds: ["chimata", "momoyo", "tsukasa", "nazrin", "yoshika", "rin", "wakasagihime", "fairy"],
+        boardUnits: ["30:reimu", "31:megumu"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "mage", unitId: "hecatia", factionId: "kanjuden", cost: 5 },
+        ],
+        heroExclusiveShopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 7 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full raid helper refreshes instead of breaking a near-complete archetype for an unrelated high-cost reserve", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 7,
+        gold: 7,
+        benchUnits: ["vanguard", "ranger", "vanguard", "ranger", "mage", "hero", "vanguard", "mage"],
+        benchUnitIds: ["byakuren", "nazrin", "ichirin", "murasa", "shou", "miko", "yoshika", "seiga"],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "mage", unitId: "hecatia", factionId: "kanjuden", cost: 5 },
+        ],
+        heroExclusiveShopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { shopRefreshCount: 1 },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("midgame bench-full raid helper treats Zanmu route as factionless carry instead of near-complete faction construction", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "raid",
+        specialUnitLevel: 7,
+        gold: 7,
+        benchUnits: ["hero", "vanguard", "mage", "ranger", "vanguard", "hero", "vanguard", "assassin"],
+        benchUnitIds: ["zanmu", "junko", "seiga", "megumu", "kagerou", "miko", "yoshika", "fairy"],
+        boardUnits: ["30:reimu"],
+        selectedHeroId: "reimu",
+        shopOffers: [
+          { unitType: "mage", unitId: "hecatia", factionId: "kanjuden", cost: 5 },
+        ],
+        heroExclusiveShopOffers: [],
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "purchase",
+        roundIndex: 8,
+      },
+    })).toEqual([
+      {
+        payload: { benchSellIndex: 7 },
         type: "prep_command",
       },
     ]);
@@ -3380,7 +4073,7 @@ describe("autofill helper automation", () => {
     ]);
   });
 
-  test("late boss helper moves a second direct guard onto a body flank", () => {
+  test("late boss helper keeps the second direct guard when no extra flank guard is available", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
       player: {
@@ -3402,13 +4095,72 @@ describe("autofill helper automation", () => {
       },
     })).toEqual([
       {
+        payload: { ready: true },
+        type: "ready",
+      },
+    ]);
+  });
+
+  test("late boss helper moves an extra guard onto a body flank without opening the direct lane", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+          { cell: 20, unitId: "byakuren", unitType: "vanguard", unitLevel: 4 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
         payload: {
           boardUnitMove: {
-            fromCell: 14,
+            fromCell: 20,
             toCell: 9,
           },
         },
         type: "prep_command",
+      },
+    ]);
+  });
+
+  test("late boss helper keeps an existing opposite flank guard instead of oscillating side coverage", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 1, unitId: "patchouli", unitType: "mage", unitLevel: 4 },
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 5 },
+          { cell: 3, unitId: "satori", unitType: "mage", unitLevel: 4 },
+          { cell: 7, unitId: "byakuren", unitType: "vanguard", unitLevel: 4 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 14, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 11,
+      },
+    })).toEqual([
+      {
+        payload: { ready: true },
+        type: "ready",
       },
     ]);
   });
@@ -3578,6 +4330,64 @@ describe("autofill helper automation", () => {
     }));
   });
 
+  test("boss body guard diagnostic prefers a durable guard over a slightly higher-level direct guard", () => {
+    expect(buildBossBodyGuardDecisionDiagnostic({
+      role: "boss",
+      benchUnits: [],
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 14, unitId: "byakuren", unitType: "vanguard", unitLevel: 6 },
+        { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+      ],
+      selectedBossId: "remilia",
+    }, {
+      roundIndex: 12,
+      playerPhase: "deploy",
+    })).toEqual(expect.objectContaining({
+      decision: "direct_swap",
+      reason: "stronger_board_guard",
+      directGuardCell: 8,
+      directGuardUnitId: "meiling",
+      directGuardLevel: 7,
+      strongestGuardCell: 14,
+      strongestGuardUnitId: "byakuren",
+      strongestGuardLevel: 6,
+      actionFromCell: 14,
+      actionToCell: 8,
+      strongerOffDirect: true,
+    }));
+  });
+
+  test("boss body guard diagnostic fills a missing second direct guard in the final round", () => {
+    expect(buildBossBodyGuardDecisionDiagnostic({
+      role: "boss",
+      benchUnits: [],
+      boardUnits: [
+        { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+        { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+        { cell: 9, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+        { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+      ],
+      selectedBossId: "remilia",
+    }, {
+      roundIndex: 12,
+      playerPhase: "deploy",
+    })).toEqual(expect.objectContaining({
+      decision: "direct_lane_fill",
+      reason: "second_direct_guard_missing",
+      directGuardCell: 8,
+      directGuardUnitId: "meiling",
+      directGuardLevel: 7,
+      strongestGuardCell: 9,
+      strongestGuardUnitId: "junko",
+      strongestGuardLevel: 4,
+      actionFromCell: 9,
+      actionToCell: 14,
+      strongerOffDirect: false,
+    }));
+  });
+
   test("late boss helper reads tokenized board levels before swapping a direct guard", () => {
     expect(buildAutoFillHelperActions({
       helperIndex: 0,
@@ -3604,6 +4414,39 @@ describe("autofill helper automation", () => {
           boardUnitSwap: {
             fromCell: 9,
             toCell: 8,
+          },
+        },
+        type: "prep_command",
+      },
+    ]);
+  });
+
+  test("final boss helper moves an off-lane frontline into the second direct guard slot", () => {
+    expect(buildAutoFillHelperActions({
+      helperIndex: 0,
+      player: {
+        ready: false,
+        role: "boss",
+        benchUnits: [],
+        boardUnits: [
+          { cell: 2, unitId: "remilia", unitType: "boss", unitLevel: 7 },
+          { cell: 8, unitId: "meiling", unitType: "vanguard", unitLevel: 7 },
+          { cell: 9, unitId: "junko", unitType: "vanguard", unitLevel: 4 },
+          { cell: 3, unitId: "patchouli", unitType: "mage", unitLevel: 7 },
+        ],
+        selectedBossId: "remilia",
+      },
+      state: {
+        phase: "Prep",
+        playerPhase: "deploy",
+        roundIndex: 12,
+      },
+    })).toEqual([
+      {
+        payload: {
+          boardUnitMove: {
+            fromCell: 9,
+            toCell: 14,
           },
         },
         type: "prep_command",

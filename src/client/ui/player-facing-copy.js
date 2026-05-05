@@ -24,38 +24,38 @@ export function buildReadyHint({
 }) {
   if (phase === "Waiting" && bossRoleSelectionEnabled && lobbyStage === "selection") {
     if (isBossPlayer && !bossSelected) {
-      return "Confirm your boss character to open the first prep phase.";
+      return "最初の準備フェーズを開くため、ボスを確定してください。";
     }
 
     if (!isBossPlayer && !heroSelected) {
-      return "Choose a hero while the boss locks in.";
+      return "ボス確定を待ちながら主人公を選んでください。";
     }
 
-    return "Selections are resolving. Wait for the room to open the first prep phase.";
+    return "選択を反映中です。最初の準備フェーズが開くのを待ちます。";
   }
 
   if (phase === "Waiting") {
     if (isReady) {
-      return "Ready locked. Wait for Prep to open, then buy and place before battle starts.";
+      return "準備完了済みです。準備フェーズが開いたら、購入と配置を整えます。";
     }
 
-    return "Press Ready to open the first prep phase. Buying and placement unlock as soon as Prep begins.";
+    return "Ready を押すと最初の準備フェーズへ進みます。開始後に購入と配置が解放されます。";
   }
 
   if (phase === "Prep" && heroEnabled && !isBossPlayer && !heroSelected) {
-    return "Choose a hero first. Then finish your prep setup.";
+    return "先に主人公を選び、その後に準備を整えます。";
   }
 
   if (phase === "End") {
-    return "Match complete. Read the final judgment and recap before starting the next room.";
+    return "戦闘終了です。最終結果を確認してから次の部屋へ進みます。";
   }
 
   if (phase !== "Prep" && phase !== "Waiting") {
-    return "Battle in progress. Watch the result, then set up again on the next prep phase.";
+    return "戦闘中です。結果を見届け、次の準備フェーズで立て直します。";
   }
 
   if (isReady) {
-    return "Locked in. Cancel Ready if you still want to move units or change your shop plan.";
+    return "準備完了済みです。まだ動かすなら Ready を解除します。";
   }
 
   const safeReadyCount = Number.isFinite(readyCount) ? readyCount : 0;
@@ -63,14 +63,14 @@ export function buildReadyHint({
   const waitingPlayers = Math.max(0, safeTotalCount - safeReadyCount);
 
   if (waitingPlayers > 1) {
-    return `${waitingPlayers} players are still setting up. Buy, place, then press Ready when your side is stable.`;
+    return `${waitingPlayers}人が準備中です。購入と配置を終えたら Ready を押します。`;
   }
 
   if (waitingPlayers === 1) {
-    return "One player is still setting up. Finish your board, then press Ready to lock it in.";
+    return "あと1人が準備中です。盤面を整えたら Ready を押します。";
   }
 
-  return "Buy units, place them on the shared board, then press Ready.";
+  return "ユニットを購入し、共有盤面に配置してから Ready を押します。";
 }
 
 export function buildEntryFlowStatus({
@@ -167,8 +167,8 @@ export function buildPhaseHpCopy(progress) {
   if (!progress) {
     return {
       valueText: "0 / 0",
-      resultText: "Waiting for battle",
-      helperText: "Boss phase HP appears here when battle starts. Drop it to 0 to clear the phase.",
+      resultText: "戦闘開始待ち",
+      helperText: "0 で突破",
     };
   }
 
@@ -181,24 +181,24 @@ export function buildPhaseHpCopy(progress) {
 
   if (progress.result === "success") {
     return {
-      valueText: `${remainingHp} HP left (${textPercent}% pushed)`,
-      resultText: "Phase cleared",
-      helperText: "The raid broke the boss phase HP bar. Rebuild and get ready for the next push.",
+      valueText: `残り ${remainingHp} HP (${textPercent}%削り)`,
+      resultText: "フェイズ突破",
+      helperText: "次の押し込みへ",
     };
   }
 
   if (progress.result === "failed") {
     return {
-      valueText: `${remainingHp} HP left (${textPercent}% pushed)`,
-      resultText: "Boss held this phase",
-      helperText: `The boss still had ${remainingHp} HP. Rebuild and push harder next round.`,
+      valueText: `残り ${remainingHp} HP (${textPercent}%削り)`,
+      resultText: "ボスが耐えた",
+      helperText: `残り ${remainingHp} HP`,
     };
   }
 
   return {
-    valueText: `${remainingHp} HP left (${textPercent}% pushed)`,
-    resultText: "Phase in progress",
-    helperText: "This is the boss HP still standing. Drop it to 0 to clear the phase.",
+    valueText: `残り ${remainingHp} HP (${textPercent}%削り)`,
+    resultText: "フェイズ進行中",
+    helperText: "0 で突破",
   };
 }
 
@@ -217,29 +217,29 @@ export function buildFinalJudgmentCopy({
     const winnerPlayerId = typeof safeRanking[0] === "string" ? safeRanking[0] : null;
 
     if (!winnerPlayerId) {
-      return "Final Judgment: calculating...";
+      return "最終判定: 集計中";
     }
 
     return winnerPlayerId === bossPlayerId
-      ? "Final Judgment: Boss Victory"
-      : "Final Judgment: Raid Victory";
+      ? "最終判定: ボス勝利"
+      : "最終判定: レイド勝利";
   }
 
   const roundNumber = toRoundNumber(Number(roundIndex));
 
   if (safePhase === "Prep") {
-    return `Round ${roundNumber}: buy, place, then Ready`;
+    return `第${roundNumber}ラウンド: 購入、配置、Ready`;
   }
 
   if (safePhase === "Battle") {
-    return `Round ${roundNumber}: hold the line and push phase damage`;
+    return `第${roundNumber}ラウンド: 前線を維持してフェイズダメージを押す`;
   }
 
   if (safePhase === "Settle") {
-    return `Round ${roundNumber}: read the result and fix one weak position`;
+    return `第${roundNumber}ラウンド: 結果を読んで弱い位置を 1 つ直す`;
   }
 
-  return `Round ${roundNumber}: next judgment pending`;
+  return `第${roundNumber}ラウンド: 次の判定待ち`;
 }
 
 export function buildBattleResultCopy({ isVictory, battleResult }) {
@@ -250,13 +250,13 @@ export function buildBattleResultCopy({ isVictory, battleResult }) {
 
   if (isVictory) {
     return {
-      title: "🏆 VICTORY",
-      subtitle: `You won this fight, dealt ${damageDealt} damage, and kept ${survivors} allies standing.`,
+      title: "勝利",
+      subtitle: `${damageDealt} ダメージ / 生存 ${survivors}`,
       hint: damageTaken === 0
-        ? "Perfect hold. Keep this formation and push the boss even faster next round."
+        ? "この陣形を維持"
         : damageDealt < damageTaken
-          ? "You won, but the trade was rough. Add a sturdier front line before the next push."
-          : "You won the trade. Protect the weak spot and turn this lead into boss damage next round.",
+          ? "前線を厚く"
+          : "弱点を守る",
       damageDealt,
       damageTaken,
     };
@@ -264,16 +264,16 @@ export function buildBattleResultCopy({ isVictory, battleResult }) {
 
   const survivorGap = Math.max(0, opponentSurvivors - survivors);
   return {
-    title: "💀 DEFEAT",
-    subtitle: `You lost this fight, took ${damageTaken} HP damage, and finished ${Math.max(
+    title: "敗北",
+    subtitle: `${damageTaken} HP 被弾 / ユニット差 ${Math.max(
       0,
       survivorGap,
-    )} units behind.`,
+    )}`,
     hint: survivorGap >= 3
-      ? "You were overrun. Add more frontline bodies or move carries away from the first hit."
+      ? "前衛を増やす"
       : damageDealt >= damageTaken
-        ? "The fight was close. Tighten positioning and finish low targets faster next round."
-        : "You took too much damage. Reinforce the front and buy time for your backline to work.",
+        ? "配置を締める"
+        : "後衛の時間を作る",
     damageDealt,
     damageTaken,
   };
@@ -281,38 +281,38 @@ export function buildBattleResultCopy({ isVictory, battleResult }) {
 
 export function buildRoundSummaryCaption({ ranking, sessionId }) {
   if (!Array.isArray(ranking) || ranking.length === 0) {
-    return "No round damage ranking yet. Watch the next battle to see who is carrying the phase.";
+    return "火力集計待ち";
   }
 
   const topEntry = ranking[0];
 
   if (topEntry?.playerId === sessionId) {
-    return "You led the damage this round. Help cover the weakest positions before the next fight.";
+    return "火力トップ";
   }
 
-  return `${shortPlayerId(topEntry?.playerId)} led the damage. Check whether your side needs more front line or focus fire.`;
+  return `${shortPlayerId(topEntry?.playerId)} が火力トップ`;
 }
 
 export function buildRoundSummaryTip({ ranking, sessionId }) {
   if (!Array.isArray(ranking) || ranking.length === 0) {
-    return "Watch the next fight and note which position collapses first.";
+    return "崩れた位置を見る";
   }
 
   const topEntry = ranking[0];
   const ownEntry = ranking.find((entry) => entry?.playerId === sessionId) ?? null;
 
   if (topEntry?.playerId === sessionId) {
-    return "You are carrying damage. Ask allies to cover open space and keep your carry safe.";
+    return "主火力を守る";
   }
 
   if (ownEntry && Number.isFinite(ownEntry.damageDealt) && Number.isFinite(topEntry?.damageDealt)) {
     const damageGap = Math.max(0, topEntry.damageDealt - ownEntry.damageDealt);
     if (damageGap >= 10) {
-      return `You trailed by ${damageGap} damage. Try a stronger carry position or cleaner focus fire next round.`;
+      return `${damageGap} ダメージ差`;
     }
   }
 
-  return "Check whether your side needs more frontline, better focus fire, or a safer carry position.";
+  return "前線か集中攻撃を補う";
 }
 
 export function buildCommandResultCopy({ accepted, code, hint }) {

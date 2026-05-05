@@ -15,12 +15,12 @@ describe("scarlet synergy ui contract", () => {
     expect(source.includes("🦇")).toBe(true);
   });
 
-  test("manual check renders scarlet mansion synergy description", () => {
+  test("manual check keeps remilia boss support description current", () => {
     const source = readFileSync(manualCheckPath, "utf-8");
 
     expect(source.includes("SCARLET_MANSION_DATA.synergyDescription")).toBe(true);
     expect(source.includes("scarlet-synergy-description")).toBe(true);
-    expect(source.includes("HP70%以上でATK+10% / 吸血")).toBe(true);
+    expect(source.includes("幼きデーモンロード: 被ダメ軽減 / 高HP攻撃 / 吸血")).toBe(true);
   });
 
   test("scarlet mansion synergy description has dedicated styling", () => {

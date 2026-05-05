@@ -22,7 +22,7 @@ describe("player-facing copy", () => {
       lobbyStage: "preference",
       readyCount: 0,
       totalCount: 3,
-    })).toContain("Press Ready");
+    })).toContain("Ready を押す");
   });
 
   test("waiting の ready hint は prep 開始前に Ready を先に促す", () => {
@@ -33,7 +33,7 @@ describe("player-facing copy", () => {
       heroSelected: false,
       readyCount: 3,
       totalCount: 4,
-    })).toContain("Press Ready to open the first prep phase");
+    })).toContain("Ready を押す");
   });
 
   test("boss selection 中の ready hint は boss 側に hero ではなく boss confirm を促す", () => {
@@ -48,7 +48,7 @@ describe("player-facing copy", () => {
       bossSelected: false,
       readyCount: 4,
       totalCount: 4,
-    })).toContain("Confirm your boss character");
+    })).toContain("ボスを確定");
   });
 
   test("boss selection 中の ready hint は raid 側に hero 選択待ちを返す", () => {
@@ -63,7 +63,7 @@ describe("player-facing copy", () => {
       bossSelected: false,
       readyCount: 4,
       totalCount: 4,
-    })).toContain("Choose a hero while the boss locks in");
+    })).toContain("主人公を選んでください");
   });
 
   test("prep の ready hint は boss 側で hero 未選択文に落ちない", () => {
@@ -78,7 +78,7 @@ describe("player-facing copy", () => {
       bossSelected: true,
       readyCount: 4,
       totalCount: 4,
-    })).toContain("Locked in");
+    })).toContain("準備完了済み");
   });
 
   test("entry flow status は未接続時に 4 段階の主導線を返す", () => {
@@ -137,17 +137,17 @@ describe("player-facing copy", () => {
       completionRate: 0.25,
       result: "pending",
     })).toEqual({
-      valueText: "75 HP left (25% pushed)",
-      resultText: "Phase in progress",
-      helperText: "This is the boss HP still standing. Drop it to 0 to clear the phase.",
+      valueText: "残り 75 HP (25%削り)",
+      resultText: "フェイズ進行中",
+      helperText: "0 で突破",
     });
   });
 
   test("phase hp copy は未開始でも 0 clear rule を先に示す", () => {
     expect(buildPhaseHpCopy(null)).toEqual({
       valueText: "0 / 0",
-      resultText: "Waiting for battle",
-      helperText: "Boss phase HP appears here when battle starts. Drop it to 0 to clear the phase.",
+      resultText: "戦闘開始待ち",
+      helperText: "0 で突破",
     });
   });
 
@@ -158,7 +158,7 @@ describe("player-facing copy", () => {
       bossPlayerId: "boss-1",
       raidPlayerIds: ["p1", "p2", "p3"],
       roundIndex: 2,
-    })).toBe("Round 3: buy, place, then Ready");
+    })).toBe("第3ラウンド: 購入、配置、Ready");
   });
 
   test("final judgment copy は settle で結果確認と修正を促す", () => {
@@ -168,7 +168,7 @@ describe("player-facing copy", () => {
       bossPlayerId: "boss-1",
       raidPlayerIds: ["p1", "p2", "p3"],
       roundIndex: 1,
-    })).toBe("Round 2: read the result and fix one weak position");
+    })).toBe("第2ラウンド: 結果を読んで弱い位置を 1 つ直す");
   });
 
   test("battle result copy は defeat で次の改善につながる文を返す", () => {
@@ -182,10 +182,10 @@ describe("player-facing copy", () => {
       },
     });
 
-    expect(result.title).toBe("💀 DEFEAT");
-    expect(result.subtitle).toContain("took 9 HP damage");
-    expect(result.subtitle).toContain("2 units behind");
-    expect(result.hint).toContain("positioning");
+    expect(result.title).toBe("敗北");
+    expect(result.subtitle).toContain("9 HP 被弾");
+    expect(result.subtitle).toContain("ユニット差 2");
+    expect(result.hint).toContain("配置");
   });
 
   test("command result copy は raw reject code を tester に見せない", () => {
@@ -227,6 +227,6 @@ describe("player-facing copy", () => {
         { playerId: "player-self", damageDealt: 10 },
       ],
       sessionId: "player-self",
-    })).toContain("14 damage");
+    })).toContain("14 ダメージ差");
   });
 });

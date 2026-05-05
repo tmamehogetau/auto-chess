@@ -4,6 +4,7 @@ import {
   renderPlayerLobbySummary,
   renderPlayerPrepSummary,
   renderPlayerResultSummary,
+  renderPlayerSelectionSummary,
 } from "../../src/client/player-surface-renderers.js";
 
 class FakeClassList {
@@ -152,6 +153,7 @@ describe("player surface renderers", () => {
   });
 
   test("prep summary renders player-facing economy and ready copy", () => {
+    const detailCardElement = new FakeElement();
     const boardCopyElement = new FakeElement();
     const shopCopyElement = new FakeElement();
     const benchCopyElement = new FakeElement();
@@ -161,6 +163,7 @@ describe("player surface renderers", () => {
     const boardCellElements = Array.from({ length: 2 }, () => new FakeButtonElement());
 
     renderPlayerPrepSummary({
+      detailCardElement: detailCardElement as unknown as HTMLElement,
       boardCopyElement: boardCopyElement as unknown as HTMLElement,
       shopCopyElement: shopCopyElement as unknown as HTMLElement,
       benchCopyElement: benchCopyElement as unknown as HTMLElement,
@@ -177,6 +180,7 @@ describe("player surface renderers", () => {
       },
       player: {
         ready: false,
+        selectedHeroId: "reimu",
         gold: 8,
         shopOffers: [
           { unitType: "mage", cost: 3, displayName: "パチュリー" },
@@ -188,13 +192,102 @@ describe("player surface renderers", () => {
       selectedBenchIndex: 1,
     });
 
+    expect(detailCardElement.textContent).toContain("博麗霊夢");
+    expect(detailCardElement.innerHTML).toContain("/pics/processed/front/reimu.png");
     expect(shopCopyElement.textContent).toContain("8G");
     expect(shopCopyElement.textContent).toContain("購入");
     expect(benchCopyElement.textContent).toContain("2 / 8");
-    expect(benchCopyElement.textContent).toContain("Bench 2");
-    expect(readyCopyElement.textContent).toContain("One player is still setting up");
+    expect(benchCopyElement.textContent).toContain("2番選択");
+    expect(readyCopyElement.textContent).toContain("あと1人が準備中");
+    expect(readyCopyElement.innerHTML).toContain("player-ready-checklist");
     expect(shopSlotElements[0]?.textContent).toContain("パチュリー");
+    expect(shopSlotElements[0]?.innerHTML).toContain("player-shop-offer-portrait");
+    expect(shopSlotElements[0]?.innerHTML).toContain("player-shop-offer-badges");
+    expect(shopSlotElements[0]?.innerHTML).toContain("player-shop-offer-state");
+    expect(shopSlotElements[0]?.innerHTML).toContain("player-shop-offer-cost");
+    expect(shopSlotElements[0]?.innerHTML).toContain("loading=\"lazy\"");
+    expect(shopSlotElements[0]?.className).toContain("player-shop-offer-affordable");
+    expect(shopSlotElements[0]?.className).toContain("player-shop-offer-stack-candidate");
     expect(benchSlotElements[1]?.className).toContain("selected");
+  });
+
+  test("prep summary marks recommended placement cells when a bench unit is selected", () => {
+    const boardCellElements = Array.from({ length: 36 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      boardCellElements: boardCellElements as unknown as HTMLButtonElement[],
+      player: {
+        selectedHeroId: "reimu",
+      },
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: 0,
+    });
+
+    expect(boardCellElements[0]?.className).toContain("player-board-cell-locked");
+    expect(boardCellElements[24]?.className).toContain("player-board-cell-recommended");
+    expect(boardCellElements[24]?.className).toContain("player-board-cell-open");
+  });
+
+  test("battle facing phase repurposes bench slots into player status rows", () => {
+    const allyRailElement = new FakeElement();
+    const benchCopyElement = new FakeElement();
+    const benchSlotElements = Array.from({ length: 2 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      allyRailElement: allyRailElement as unknown as HTMLElement,
+      benchCopyElement: benchCopyElement as unknown as HTMLElement,
+      benchSlotElements: benchSlotElements as unknown as HTMLButtonElement[],
+      state: {
+        bossPlayerId: "boss",
+        declaredSpellId: "instant-1",
+        players: {
+          self: { selectedHeroId: "reimu", hp: 72, maxHp: 100, ready: true },
+          ally: { selectedHeroId: "marisa", hp: 41, maxHp: 80, ready: false },
+        },
+      },
+      player: {
+        selectedHeroId: "reimu",
+      },
+      sessionId: "self",
+      currentPhase: "Battle",
+      playerFacingPhase: "battle",
+      selectedBenchIndex: null,
+    });
+
+    expect(allyRailElement.innerHTML).toContain("攻略情報");
+    expect(allyRailElement.textContent).toContain("紅符");
+    expect(benchCopyElement.textContent).toContain("2人");
+    expect(benchSlotElements[0]?.innerHTML).toContain("player-battle-player-hp");
+    expect(benchSlotElements[0]?.textContent).toContain("博麗霊夢");
+    expect(benchSlotElements[1]?.textContent).toContain("霧雨魔理沙");
+  });
+
+  test("boss ready checklist treats the selected boss as an active board plan", () => {
+    const readyCopyElement = new FakeElement();
+
+    renderPlayerPrepSummary({
+      readyCopyElement: readyCopyElement as unknown as HTMLElement,
+      state: {
+        bossPlayerId: "self",
+        featureFlagsEnableHeroSystem: true,
+        players: {
+          self: { ready: false },
+        },
+      },
+      player: {
+        role: "boss",
+        selectedBossId: "remilia",
+        ready: false,
+      },
+      sessionId: "self",
+      currentPhase: "Prep",
+      playerFacingPhase: "deploy",
+      selectedBenchIndex: null,
+    });
+
+    expect(readyCopyElement.textContent).toContain("完了 ボス選択");
+    expect(readyCopyElement.textContent).toContain("完了 配置 0/6");
   });
 
   test("prep summary renders iterable schema-like shop and bench collections", () => {
@@ -273,6 +366,38 @@ describe("player surface renderers", () => {
     expect(participantSummaryElement.textContent).toContain("role selection");
   });
 
+  test("selection summary renders the selected hero detail", () => {
+    const roleSummaryElement = new FakeElement();
+    const roleOptionsElement = new FakeElement();
+
+    renderPlayerSelectionSummary({
+      roleSummaryElement: roleSummaryElement as unknown as HTMLElement,
+      roleOptionsElement: roleOptionsElement as unknown as HTMLElement,
+      state: {
+        lobbyStage: "heroSelection",
+        bossPlayerId: "boss",
+        players: {
+          boss: { wantsBoss: true },
+          raid: { wantsBoss: false },
+        },
+      },
+      player: {
+        role: "raid",
+        selectedHeroId: "okina",
+      },
+      sessionId: "raid",
+    });
+
+    expect(roleSummaryElement.innerHTML).toContain("player-selection-picked-card");
+    expect(roleSummaryElement.innerHTML).toContain("player-selection-feature-portrait");
+    expect(roleSummaryElement.innerHTML).toContain("/pics/processed/front/okina.png");
+    expect(roleSummaryElement.innerHTML).not.toContain("Raid Pick");
+    expect(roleSummaryElement.textContent).toContain("摩多羅隠岐奈");
+    expect(roleSummaryElement.textContent).toContain("支援 / HP 540 / ATK 40");
+    expect(roleSummaryElement.textContent).toContain("支援枠可");
+    expect(roleOptionsElement.textContent).toContain("Ready");
+  });
+
   test("prep summary renders boss shop, room summary, and deadline copy when provided", () => {
     const shopCopyElement = new FakeElement();
     const bossShopCopyElement = new FakeElement();
@@ -326,7 +451,7 @@ describe("player surface renderers", () => {
     expect(heroUpgradeCopyElement.textContent).toContain("ボス強化");
     expect(heroUpgradeCopyElement.textContent).toContain("LV 3");
     expect(refreshCopyElement.textContent).toContain("リロード");
-    expect(bossShopCopyElement.textContent).toContain("Boss shop");
+    expect(bossShopCopyElement.textContent).toContain("専用ユニット");
     expect(bossShopCopyElement.textContent).toContain("5G");
     expect(bossShopSlotElements[0]?.textContent).toContain("パチュリー");
     expect(roomCopyElement.textContent).toContain("room-123");
@@ -363,9 +488,9 @@ describe("player surface renderers", () => {
     });
 
     expect(heroExclusiveShopElement.hidden).toBe(false);
-    expect(heroExclusiveShopCopyElement.textContent).toContain("EXCLUSIVE");
+    expect(heroExclusiveShopCopyElement.textContent).toContain("主人公専用");
     expect(heroExclusiveShopCopyElement.textContent).toContain("通常配置可能");
-    expect(heroExclusiveShopCopyElement.textContent).toContain("main/sub");
+    expect(heroExclusiveShopCopyElement.textContent).toContain("主枠・支援枠");
     expect(heroExclusiveShopSlotElements[0]?.textContent).toContain("杖刀偶磨弓");
     expect(heroExclusiveShopSlotElements[0]?.textContent).toContain("3G");
     expect(heroExclusiveShopSlotElements[0]?.disabled).toBe(false);
@@ -441,10 +566,44 @@ describe("player surface renderers", () => {
       selectedBenchIndex: null,
     });
 
-    expect(shopSlotElements[0]?.textContent).toContain("✨");
+    expect(shopSlotElements[0]?.textContent).toContain("魔");
     expect(shopSlotElements[0]?.textContent).toContain("パチュリー");
-    expect(shopSlotElements[1]?.textContent).toContain("🛡️");
+    expect(shopSlotElements[0]?.textContent).toContain("購入可");
+    expect(shopSlotElements[1]?.textContent).toContain("盾");
     expect(shopSlotElements[1]?.textContent).toContain("美鈴");
+  });
+
+  test("purchase summary disables unaffordable common and boss offers", () => {
+    const shopSlotElements = Array.from({ length: 1 }, () => new FakeButtonElement());
+    const bossShopSlotElements = Array.from({ length: 1 }, () => new FakeButtonElement());
+
+    renderPlayerPrepSummary({
+      shopSlotElements: shopSlotElements as unknown as HTMLButtonElement[],
+      bossShopSlotElements: bossShopSlotElements as unknown as HTMLButtonElement[],
+      state: {
+        bossPlayerId: "self",
+        featureFlagsEnableBossExclusiveShop: true,
+      },
+      player: {
+        role: "boss",
+        gold: 1,
+        shopOffers: [
+          { unitType: "mage", cost: 3, displayName: "パチュリー" },
+        ],
+        bossShopOffers: [
+          { unitType: "assassin", cost: 5, displayName: "紅牙" },
+        ],
+      },
+      sessionId: "self",
+      currentPhase: "Prep",
+      playerFacingPhase: "purchase",
+      selectedBenchIndex: null,
+    });
+
+    expect(shopSlotElements[0]?.disabled).toBe(true);
+    expect(shopSlotElements[0]?.textContent).toContain("2G不足");
+    expect(bossShopSlotElements[0]?.disabled).toBe(true);
+    expect(bossShopSlotElements[0]?.textContent).toContain("4G不足");
   });
 
   test("prep summary renders special unit, spell, and synergies", () => {
@@ -524,8 +683,8 @@ describe("player surface renderers", () => {
       selectedBenchIndex: null,
     });
 
-    expect(detailCardElement.innerHTML).toContain("Unit Detail");
-    expect(detailCardElement.innerHTML).toContain("hover");
+    expect(detailCardElement.innerHTML).toContain("詳細");
+    expect(detailCardElement.innerHTML).toContain("選択");
     expect(detailCardElement.innerHTML).toContain("player-detail-head");
     expect(detailCardElement.innerHTML).toContain("player-detail-portrait");
     expect(detailCardElement.innerHTML).toContain("player-detail-tags");
@@ -597,7 +756,7 @@ describe("player surface renderers", () => {
     expect(hoverCalls).toEqual([
       expect.objectContaining({
         title: "摩多羅隠岐奈",
-        lines: expect.arrayContaining(["他の自軍 unit の sub slot に入れます。"]),
+        lines: expect.arrayContaining(["支援枠可"]),
       }),
     ]);
   });
@@ -689,15 +848,15 @@ describe("player surface renderers", () => {
     });
 
     expect(specialUnitCopyElement.textContent).toContain("博麗霊夢");
-    expect(specialUnitCopyElement.textContent).toContain("主人公");
-    expect(specialUnitCopyElement.textContent).toContain("hover で詳細");
+    expect(specialUnitCopyElement.textContent).toContain("LV");
+    expect(specialUnitCopyElement.textContent).toContain("HP");
     expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-panel");
     expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-avatar-img");
     expect(specialUnitCopyElement.innerHTML).toContain("player-special-unit-lives");
-    expect(playerStatsCopyElement.textContent).toContain("Placement");
+    expect(playerStatsCopyElement.textContent).toContain("配置");
     expect(playerStatsCopyElement.textContent).toContain("1 / 2");
-    expect(playerStatsCopyElement.textContent).toContain("State");
-    expect(playerStatsCopyElement.textContent).toContain("Deploy");
+    expect(playerStatsCopyElement.textContent).toContain("状態");
+    expect(playerStatsCopyElement.textContent).toContain("配置");
     expect(playerStatsCopyElement.textContent).not.toContain("Gold");
     expect(playerStatsCopyElement.textContent).not.toContain("HP");
     expect(playerStatsCopyElement.textContent).not.toContain("LV");
@@ -719,8 +878,7 @@ describe("player surface renderers", () => {
     });
 
     expect(benchCopyElement.textContent).toContain("2 / 8");
-    expect(benchCopyElement.textContent).toContain("Bench 2");
-    expect(benchCopyElement.textContent).toContain("target slot");
+    expect(benchCopyElement.textContent).toContain("2番選択");
     expect(benchCopyElement.innerHTML).not.toContain("player-bench-summary-panel");
   });
 
@@ -805,7 +963,7 @@ describe("player surface renderers", () => {
     expect(findDescendantByClass(benchSlotElements[0], "player-bench-slot-avatar-img")).not.toBeNull();
     expect(benchSlotElements[0]?.textContent).toContain("ナズーリン");
     expect(findDescendantByClass(benchSlotElements[1], "player-bench-slot-empty-copy")).not.toBeNull();
-    expect(benchSlotElements[1]?.textContent).toContain("empty");
+    expect(benchSlotElements[1]?.textContent).toContain("空き");
   });
 
   test("prep summary keeps empty bench slots clickable when a selected board unit can return", () => {
@@ -1107,14 +1265,13 @@ describe("player surface renderers", () => {
       sessionId: "raid-1",
     });
 
-    expect(resultSurfaceElement.innerHTML).toContain("Boss held this phase");
-    expect(resultSurfaceElement.innerHTML).toContain("Result phase");
-    expect(resultSurfaceElement.innerHTML).toContain("Round 3: read the result and fix one weak position");
-    expect(resultSurfaceElement.innerHTML).toContain("💀 DEFEAT");
-    expect(resultSurfaceElement.innerHTML).toContain("trailed by 14 damage");
+    expect(resultSurfaceElement.innerHTML).toContain("ボスが耐えた");
+    expect(resultSurfaceElement.innerHTML).toContain("第3ラウンド: 結果を読んで弱い位置を 1 つ直す");
+    expect(resultSurfaceElement.innerHTML).toContain("敗北");
+    expect(resultSurfaceElement.innerHTML).toContain("14 ダメージ差");
     expect(resultSurfaceElement.innerHTML).toContain("player-result-hero-card");
     expect(resultSurfaceElement.innerHTML).toContain("player-result-support-card");
-    expect(resultSurfaceElement.innerHTML).toContain("Surviving Units");
+    expect(resultSurfaceElement.innerHTML).toContain("生存ユニット");
     expect(resultSurfaceElement.innerHTML).toContain("古明地こいし");
     expect(resultSurfaceElement.innerHTML).toContain("27 / 60");
   });
@@ -1151,8 +1308,8 @@ describe("player surface renderers", () => {
       sessionId: "raid-1",
     });
 
-    expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
-    expect(resultSurfaceElement.innerHTML).toContain("Battle end-state on the 6x6 shared board.");
+    expect(resultSurfaceElement.innerHTML).toContain("共有盤面の痕跡");
+    expect(resultSurfaceElement.innerHTML).toContain("6x6 共有盤面の戦闘終了時点です。");
     expect(resultSurfaceElement.innerHTML).toContain("古明地こいし");
     expect(resultSurfaceElement.innerHTML).toContain("27 / 60");
     expect((resultSurfaceElement.innerHTML.match(/data-result-imprint-cell="/g) ?? []).length).toBe(36);
@@ -1237,8 +1394,8 @@ describe("player surface renderers", () => {
       sessionId: "raid-1",
     });
 
-    expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
-    expect(resultSurfaceElement.innerHTML).toContain("Battle end-state on the 6x6 shared board.");
+    expect(resultSurfaceElement.innerHTML).toContain("共有盤面の痕跡");
+    expect(resultSurfaceElement.innerHTML).toContain("6x6 共有盤面の戦闘終了時点です。");
     expect(resultSurfaceElement.innerHTML).toContain('data-result-imprint-cell="25"');
     expect(resultSurfaceElement.innerHTML).toContain("vanguard");
     expect(resultSurfaceElement.innerHTML).toContain("14 / 20");
@@ -1278,7 +1435,7 @@ describe("player surface renderers", () => {
       sessionId: "raid-1",
     });
 
-    expect(resultSurfaceElement.innerHTML).toContain("Shared-board Imprint");
+    expect(resultSurfaceElement.innerHTML).toContain("共有盤面の痕跡");
     expect(resultSurfaceElement.innerHTML).toContain('data-result-imprint-cell="25"');
     expect(resultSurfaceElement.innerHTML).toContain("前衛");
     expect(resultSurfaceElement.innerHTML).toContain("14 / 20");
@@ -1321,6 +1478,6 @@ describe("player surface renderers", () => {
       sessionId: "raid-2",
     });
 
-    expect(resultSurfaceElement.innerHTML).toContain("Final Judgment: Raid Victory");
+    expect(resultSurfaceElement.innerHTML).toContain("最終判定: レイド勝利");
   });
 });

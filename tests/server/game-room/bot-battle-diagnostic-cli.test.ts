@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
@@ -59,7 +59,9 @@ describe("bot battle diagnostic cli", () => {
   });
 
   test("runs a selected scenario from a baseline summary", () => {
-    const tmpDir = mkdtempSync(join(process.cwd(), ".tmp", "bot-battle-diagnostic-cli-"));
+    const tmpRoot = join(process.cwd(), ".tmp");
+    mkdirSync(tmpRoot, { recursive: true });
+    const tmpDir = mkdtempSync(join(tmpRoot, "bot-battle-diagnostic-cli-"));
     const summaryPath = join(tmpDir, "summary.json");
     const outputDir = join(tmpDir, "out");
     writeFileSync(summaryPath, `${JSON.stringify({

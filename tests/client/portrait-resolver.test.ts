@@ -35,12 +35,12 @@ describe("portrait resolver", () => {
     expect(resolvePortraitKeyByUnitId("tsukasa")).toBe("tsukasa");
   });
 
-  test("returns a generated portrait fallback when a shop offer has no matching asset", () => {
+  test("returns an existing character portrait fallback when a shop offer has no matching asset", () => {
     expect(getShopPortraitUrl({
       unitId: "shop:vanguard",
       unitType: "vanguard",
       displayName: "戦士A",
-    })).toMatch(/^data:image\/svg\+xml/);
+    })).toBe("/pics/processed/front/meiling.png");
   });
 
   test("resolves newly added processed portrait paths for known shop offers", () => {

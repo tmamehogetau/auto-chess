@@ -69,7 +69,17 @@ await binding?.leave();
 - `startSetIdDisplayBootstrap(options)` in `src/client/bootstrap.ts` wraps connect + attach with optional `setId` forwarding.
 - `src/client/index.html` has a minimal `[data-set-id-display]` template for manual checks.
 
-## Manual browser check
+## Real player title-flow check
+
+- Start game server: `cmd.exe /c "set PORT=2568 && npm.cmd run server"`
+- Start local static server: `cmd.exe /c "set CLIENT_CHECK_PORT=8081 && npm.cmd run client:check"`
+- Open `http://localhost:8081/` from the local server.
+- Host player: enter username, press `ルーム作成`, then share the displayed room code.
+- Joining players: open the same URL, enter username and room code, then press `入室`.
+- Continue through lobby boss preference, ready, character selection, purchase, deploy, battle, and result.
+- Do not use `autoconnect=1` for this check because it skips the title screen interaction.
+
+## Manual browser check / dev harness
 
 - Start local static server: `npm run client:check`
 - Open `src/client/index.html` from the local server (do not use `file://`).

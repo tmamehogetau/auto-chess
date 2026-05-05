@@ -177,16 +177,16 @@ const BOSS_CHARACTERS = [
 
 // Spell cards (client-side copy)
 const SPELL_CARDS = [
-  { id: 'instant-1', name: '紅符「スカーレットシュート」', description: 'レイドメンバー全員に50ダメージを与える' },
-  { id: 'instant-2', name: '必殺「ハートブレイク」', description: 'レイドメンバー全員に65ダメージを与える' },
-  { id: 'instant-3', name: '神槍「スピア・ザ・グングニル」', description: 'レイドメンバー全員に80ダメージを与える' },
-  { id: 'area-1', name: '紅符「不夜城レッド」', description: 'レイドメンバー全員に40ダメージを与える' },
-  { id: 'area-2', name: '紅魔「スカーレットデビル」', description: 'レイドメンバー全員に55ダメージを与える' },
-  { id: 'area-3', name: '魔符「全世界ナイトメア」', description: 'レイドメンバー全員に70ダメージを与える' },
-  { id: 'rush-1', name: '神鬼「レミリアストーカー」', description: 'レイドメンバー全員に45ダメージを与える' },
-  { id: 'rush-2', name: '夜符「デーモンキングクレイドル」', description: 'レイドメンバー全員に60ダメージを与える' },
-  { id: 'rush-3', name: '夜王「ドラキュラクレイドル」', description: 'レイドメンバー全員に75ダメージを与える' },
-  { id: 'last-word', name: '「紅色の幻想郷」', description: 'レイドメンバー全員に100ダメージを与える' },
+  { id: 'instant-1', name: '紅符「スカーレットシュート」', description: 'マナ発動: 攻撃力依存の直線貫通レーザー' },
+  { id: 'instant-2', name: '必殺「ハートブレイク」', description: 'マナ発動: 最高攻撃力の敵を狙う攻撃力依存の直線貫通攻撃' },
+  { id: 'instant-3', name: '神槍「スピア・ザ・グングニル」', description: 'マナ発動: 最高攻撃力の敵を狙う高威力の直線貫通攻撃' },
+  { id: 'area-1', name: '紅符「不夜城レッド」', description: 'マナ発動: 上下左右2マスに攻撃力依存ダメージ' },
+  { id: 'area-2', name: '紅魔「スカーレットデビル」', description: 'マナ発動: 周囲2マスに攻撃力依存ダメージ' },
+  { id: 'area-3', name: '魔符「全世界ナイトメア」', description: 'マナ発動: 敵全体に攻撃力依存ダメージ' },
+  { id: 'rush-1', name: '夜符「デーモンキングクレイドル」', description: 'マナ発動: 盤面端まで横突進し上下1マスにも攻撃力依存ダメージ' },
+  { id: 'rush-2', name: '夜符「バッドレディスクランブル」', description: 'マナ発動: 盤面端まで横突進し上下1マスにも攻撃力依存ダメージ' },
+  { id: 'rush-3', name: '夜王「ドラキュラクレイドル」', description: 'マナ発動: 縦に最大1マス軌道調整して横突進し上下1マスにも攻撃力依存ダメージ' },
+  { id: 'last-word', name: '「紅色の幻想郷」', description: 'マナ発動: 敵全体へ永続DoT、5秒ごとにDoTとボス攻撃バフが累積' },
 ];
 
 const SPELL_SET_IDS_BY_ROUND_START = {
@@ -211,17 +211,17 @@ const SCARLET_MANSION_DATA = {
       flavorText: "紅魔館の門番。悠々自適に勤務中。",
     },
     assassin: {
-      role: "守護サポート",
-      skillDescription: "幻幽「ジャック・ザ・ルドビレ」- 最もHPの低い味方を守護し、被ダメージを肩代わり",
+      role: "単体制御",
+      skillDescription: "時符「プライベートスクウェア」- 攻撃力の高い敵1体の攻撃速度と移動速度を低下",
       flavorText: "紅魔館のメイド長。完璧で瀟洒な仕事人。",
     },
     mage: {
       role: "爆発補助",
-      skillDescription: "火水木金土符「賢者の石」- ランダムな敵3体に大魔法ダメージ",
+      skillDescription: "日符「ロイヤルフレア」- 激重発動で自身の周囲3マスに大ダメージ",
       flavorText: "紅魔館の魔法使い。動きたくない。",
     },
   },
-  synergyDescription: 'HP70%以上でATK+10% / 吸血',
+  synergyDescription: '幼きデーモンロード: 被ダメ軽減 / 高HP攻撃 / 吸血',
 };
 
 // ラウンドに応じたスペルカードセットを取得
@@ -2807,6 +2807,13 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     );
   };
 
+  const getAutoFillStateRoundIndex = (state) => {
+    const roundIndex = state?.roundIndex;
+    return typeof roundIndex === "number" && Number.isFinite(roundIndex)
+      ? Math.trunc(roundIndex)
+      : null;
+  };
+
   const buildOptimisticBenchToken = (offer) => {
     const offerUnitType = typeof offer?.unitType === "string" && offer.unitType.length > 0
       ? offer.unitType
@@ -2929,6 +2936,24 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       return nextPlayer;
     }
 
+    if (typeof payload.boardSellIndex === "number") {
+      const sellCell = Number(payload.boardSellIndex);
+      const boardUnits = Array.from(nextPlayer.boardUnits ?? []);
+      const sellIndex = boardUnits.findIndex((placement) => parseHelperBoardCell(placement) === sellCell);
+      if (!Number.isInteger(sellCell) || sellIndex < 0) {
+        return nextPlayer;
+      }
+
+      boardUnits.splice(sellIndex, 1);
+      nextPlayer.boardUnits = boardUnits;
+      nextPlayer.boardSubUnits = Array.from(nextPlayer.boardSubUnits ?? [])
+        .filter((token) => !token.startsWith(`${sellCell}:`));
+      if (typeof nextPlayer.gold === "number") {
+        nextPlayer.gold += 1;
+      }
+      return nextPlayer;
+    }
+
     const benchToBoardCell = payload.benchToBoardCell;
     if (!benchToBoardCell || !Number.isInteger(benchToBoardCell.benchIndex) || !Number.isInteger(benchToBoardCell.cell)) {
       return nextPlayer;
@@ -2995,6 +3020,8 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     };
   };
 
+  let lastBoardRefitRoundIndex = null;
+
   const buildAutomationStateKey = (state, helperPlayer) => JSON.stringify({
     bossOffers: Array.isArray(helperPlayer?.bossShopOffers)
       ? helperPlayer.bossShopOffers.map((offer) => serializeHelperOffer(offer))
@@ -3008,6 +3035,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     gold: typeof helperPlayer?.gold === "number" && Number.isFinite(helperPlayer.gold)
       ? helperPlayer.gold
       : null,
+    lastBoardRefitRoundIndex,
     lastCmdSeq: helperPlayer?.lastCmdSeq ?? null,
     lobbyStage: typeof state?.lobbyStage === "string" ? state.lobbyStage : "",
     phase: typeof state?.phase === "string" ? state.phase : "",
@@ -3038,7 +3066,10 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
       optimisticHelperPlayer = null;
     }
     const helperPlayer = optimisticHelperPlayer ?? syncedHelperPlayer;
-    const automationStateKey = buildAutomationStateKey(state, helperPlayer);
+    const helperPlayerForAutomation = helperPlayer && lastBoardRefitRoundIndex !== null
+      ? { ...helperPlayer, lastBoardRefitRoundIndex }
+      : helperPlayer;
+    const automationStateKey = buildAutomationStateKey(state, helperPlayerForAutomation);
 
     if (automationStateKey === lastAutomationStateKey) {
       return;
@@ -3051,7 +3082,7 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
 
     const actions = buildAutoFillHelperActions({
       helperIndex,
-      player: helperPlayer,
+      player: helperPlayerForAutomation,
       sessionId: helperRoom.sessionId,
       state,
     });
@@ -3107,6 +3138,9 @@ function attachAutoFillRoomAutomation(helperRoom, helperIndex) {
     helperRoom.onMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, (message) => {
       const commandResult = message ?? null;
       if (commandResult?.accepted === true && pendingPrepCommand) {
+        if (typeof pendingPrepCommand.payload?.boardSellIndex === "number") {
+          lastBoardRefitRoundIndex = getAutoFillStateRoundIndex(helperRoom.state);
+        }
         const basePlayer = optimisticHelperPlayer ?? (helperRoom.state ? mapGet(helperRoom.state.players, helperRoom.sessionId) : null);
         optimisticHelperPlayer = applyOptimisticPrepCommandToPlayer(
           basePlayer,

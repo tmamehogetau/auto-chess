@@ -69,10 +69,10 @@ Use `docs/reference/2026-04-21_Test_And_Bot_Baseline_Runbook.md` for:
 ## Browser Companion On This Windows Setup
 
 - If the brainstorming/browser-companion helper server does not stay reachable on this Windows worktree, fall back to a plain static HTML flow.
-- Put the generated companion screen under `.superpowers/brainstorm/<session>/`.
+- Put the generated companion screen under `.superpowers/brainstorm/` using a per-session subdirectory.
 - Serve that directory with `node scripts/brainstorm-static-server.js <screen_dir> 54321 127.0.0.1`.
 - If sandboxed localhost binding is blocked, rerun the server start with escalated permissions.
-- Open `http://127.0.0.1:54321` in Playwright or the user's browser and use that URL for the review step.
+- Open the local companion URL in Playwright or the user's browser and use it for the review step.
 
 ## Local Play Startup On This Windows Setup
 
@@ -82,8 +82,10 @@ Use `docs/reference/2026-04-21_Test_And_Bot_Baseline_Runbook.md` for:
   - `cmd.exe /c "set PORT=2568 && npm.cmd run server"`
 - Prefer launching the static client check server the same way:
   - `cmd.exe /c "set CLIENT_CHECK_PORT=8081 && npm.cmd run client:check"`
-- Use `http://localhost:8081/src/client/index.html?endpoint=ws://localhost:2568&setId=set2` for operator checks.
-- Use `http://localhost:8081/src/client/player.html?endpoint=ws://localhost:2568` for player checks.
+- Use `http://localhost:8081/` for real player title-flow checks: username -> room create / room code join -> lobby.
+- Use `http://localhost:8081/src/client/player.html?endpoint=ws://localhost:2568` only when an explicit player URL is needed.
+- Use `http://localhost:8081/src/client/index.html?endpoint=ws://localhost:2568&setId=set2` for operator/dev checks, not for title-flow playtest.
+- Do not use `autoconnect=1` when verifying the new title screen flow because it skips the title interaction.
 - If both servers are already running, reuse them instead of starting duplicate processes.
 
 ## Done Criteria

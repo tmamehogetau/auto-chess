@@ -1951,14 +1951,14 @@ function resolveSharedBattleAttackDirection(unit) {
 
   const archetype = resolveBattleReplayArchetype(unit.battleUnitId);
   const isRanged = archetype === "ranger" || archetype === "mage";
-  const attackLengthPx = 14 + Math.max(Math.abs(deltaX), Math.abs(deltaY)) * 6;
+  const attackLengthPx = 28 + Math.max(Math.abs(deltaX), Math.abs(deltaY)) * 42;
 
   return {
     presentation: isRanged ? "ranged" : "melee",
     angleDeg: Math.round((Math.atan2(deltaY, deltaX) * 180) / Math.PI),
-    lengthPx: Math.max(18, Math.min(isRanged ? 36 : 30, attackLengthPx)),
-    lungeX: isRanged ? null : (deltaX === 0 ? 0 : Math.sign(deltaX) * 10),
-    lungeY: isRanged ? null : (deltaY === 0 ? 0 : Math.sign(deltaY) * 10),
+    lengthPx: Math.max(52, Math.min(isRanged ? 230 : 170, attackLengthPx)),
+    lungeX: isRanged ? null : (deltaX === 0 ? 0 : Math.sign(deltaX) * 14),
+    lungeY: isRanged ? null : (deltaY === 0 ? 0 : Math.sign(deltaY) * 14),
   };
 }
 

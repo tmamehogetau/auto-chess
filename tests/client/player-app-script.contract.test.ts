@@ -25,7 +25,41 @@ describe("player-app script contract", () => {
     expect(source.includes("handleSharedCellClick(")).toBe(true);
     expect(source.includes("SERVER_MESSAGE_TYPES.ROUND_STATE")).toBe(true);
     expect(source.includes("data-player-room-code-input")).toBe(true);
+    expect(source.includes("data-player-name-input")).toBe(true);
+    expect(source.includes("data-player-create-room-btn")).toBe(true);
+    expect(source.includes("data-title-hero-art")).toBe(true);
+    expect(source.includes("data-title-boss-art")).toBe(true);
+    expect(source.includes("TITLE_CHARACTER_ART_BASE_PATH")).toBe(true);
+    expect(source.includes("TITLE_CHARACTER_ART_VERSION")).toBe(true);
+    expect(source.includes("resolveTitleCharacterArtPath")).toBe(true);
+    expect(source.includes("?v=${TITLE_CHARACTER_ART_VERSION}")).toBe(true);
+    expect(source.includes("/src/client/title-assets/characters")).toBe(true);
+    expect(source.includes("TITLE_HERO_ART_BY_ID")).toBe(true);
+    expect(source.includes("TITLE_BOSS_THEME_BY_ID")).toBe(true);
+    expect(source.includes("TITLE_ART_ROTATION_INTERVAL_MS")).toBe(true);
+    expect(source.includes("TITLE_ART_FADE_MS")).toBe(true);
+    expect(source.includes("TITLE_HERO_PREVIEW_IDS")).toBe(true);
+    expect(source.includes("TITLE_BOSS_PREVIEW_IDS")).toBe(true);
+    expect(source.includes("function startTitleArtCarousel(")).toBe(true);
+    expect(source.includes("function stopTitleArtCarousel(")).toBe(true);
+    expect(source.includes("function rotateTitleArtPreviewPair(")).toBe(true);
+    expect(source.includes("player-title-hero-is-fading")).toBe(true);
+    expect(source.includes("player-title-boss-is-fading")).toBe(true);
+    expect(source.includes("player-title-bg-is-fading")).toBe(true);
+    expect(source.includes("shouldFadeBoss")).toBe(true);
+    expect(source.includes("remilia.png")).toBe(true);
+    expect(source.includes("yuyuko.png")).toBe(true);
+    expect(source.includes("function renderPlayerTitleScreen(")).toBe(true);
+    expect(source.includes("showPlayerPhase(\"title\")")).toBe(true);
+    expect(source.includes("playerShell.dataset.titleBossTheme")).toBe(true);
+    expect(source.includes("playerShell.dataset.titleHeroId")).toBe(true);
+    expect(source.includes("playerShell.dataset.titleBossId")).toBe(true);
     expect(source.includes("roomCodeInput")).toBe(true);
+    expect(source.includes("playerNameInput")).toBe(true);
+    expect(source.includes("resolveRequestedPlayerName")).toBe(true);
+    expect(source.includes("hydrateRequestedPlayerNameInput")).toBe(true);
+    expect(source.includes("resolvePlayerRoomOptions")).toBe(true);
+    expect(source.includes("createRoomButton")).toBe(true);
     expect(source.includes("data-player-lobby-ready-copy")).toBe(true);
     expect(source.includes("data-player-lobby-ready-button")).toBe(true);
     expect(source.includes("data-player-hud-round-phase")).toBe(true);
@@ -40,6 +74,8 @@ describe("player-app script contract", () => {
     expect(source.includes("CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
     expect(source.includes("CLIENT_MESSAGE_TYPES.HERO_SELECT")).toBe(true);
     expect(source.includes("gameRoomSession.connect({ roomId")).toBe(true);
+    expect(source.includes("...resolvePlayerRoomOptions()")).toBe(true);
+    expect(source.includes('gameRoomSession.connect({ mode: "createPaired", ...resolvePlayerRoomOptions() })')).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_PREFERENCE")).toBe(true);
     expect(source.includes("gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT")).toBe(true);
@@ -114,15 +150,18 @@ describe("player-app script contract", () => {
     expect(source.includes('window.addEventListener("beforeunload", () => {')).toBe(true);
     expect(source.includes("stopDeadlineRefreshLoop();")).toBe(true);
     expect(source.includes("clearPlayerBattleStartSweep();")).toBe(true);
+    expect(source.includes("stopTitleArtCarousel();")).toBe(true);
   });
 
-  test("connect failure は tester が再試行できる文面へ戻す", () => {
+  test("connect failure は join と create で再試行しやすい文面へ戻す", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
     expect(source.includes("async function connectPlayerSession()")).toBe(true);
+    expect(source.includes("async function createPlayerRoom()")).toBe(true);
     expect(source.includes("try {")).toBe(true);
     expect(source.includes("catch")).toBe(true);
-    expect(source.includes("接続できませんでした。進行役に声をかけてください。")).toBe(true);
+    expect(source.includes("接続できませんでした。ルームコードを確認してください。")).toBe(true);
+    expect(source.includes("ルーム作成に失敗しました。もう一度作成してください。")).toBe(true);
   });
 
   test("prep commands use incrementing cmdSeq instead of Date.now()", () => {
@@ -216,27 +255,42 @@ describe("player-app script contract", () => {
     expect(source.includes("data-player-room-code-input")).toBe(true);
     expect(source.includes('let latestSharedBoardRoomId = "";')).toBe(true);
     expect(source.includes("function rememberSharedBoardRoomId(")).toBe(true);
-    expect(source.includes("gameRoomSession.connect({ roomId: requestedRoomCode })")).toBe(true);
-    expect(source.includes('mode: "createPaired"')).toBe(false);
+    expect(source.includes("function hydrateCreatedRoomCode(")).toBe(true);
+    expect(source.includes("async function createPlayerRoom()")).toBe(true);
+    expect(source.includes("gameRoomSession.connect({ roomId: requestedRoomCode, ...resolvePlayerRoomOptions() })")).toBe(true);
+    expect(source.includes('gameRoomSession.connect({ mode: "createPaired", ...resolvePlayerRoomOptions() })')).toBe(true);
     expect(source.includes('sharedBoardRoomName: "shared_board"')).toBe(false);
     expect(source.includes('const requestedSetId = getSearchParam("setId") ?? undefined;')).toBe(false);
     expect(source.includes("setId: requestedSetId,")).toBe(false);
     expect(source.includes("latestRoundState = message;")).toBe(true);
     expect(source.includes("message?.sharedBoardRoomId")).toBe(true);
     expect(source.includes("state?.sharedBoardRoomId")).toBe(true);
-    expect(source.includes("const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();")).toBe(false);
-    expect(source.includes("pairedSharedBoardRoom?.roomId")).toBe(false);
-    expect(source.includes("existingRoom: pairedSharedBoardRoom,")).toBe(false);
+    expect(source.includes("const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();")).toBe(true);
+    expect(source.includes("pairedSharedBoardRoom?.roomId")).toBe(true);
+    expect(source.includes("existingRoom: pairedSharedBoardRoom,")).toBe(true);
     expect(source.includes("latestPlayer = null;")).toBe(true);
     expect(source.includes("latestState = null;")).toBe(true);
   });
 
-  test("player app requires a room code before join or autoconnect", () => {
+  test("player app exposes the player-facing phase to the runtime themed shell", () => {
     const source = readFileSync(playerAppScriptPath, "utf-8");
 
-    expect(source.includes('if (getSearchParam("autoconnect") === "1" && resolveRequestedRoomCode().length > 0)')).toBe(true);
+    expect(source.includes("function syncPlayerFacingPhaseDataset(")).toBe(true);
+    expect(source.includes("playerShell.dataset.playerFacingPhase = latestPlayerFacingPhase;")).toBe(true);
+    expect(source.includes("syncPlayerFacingPhaseDataset();")).toBe(true);
+  });
+
+  test("player app requires a room code and username before join or autoconnect", () => {
+    const source = readFileSync(playerAppScriptPath, "utf-8");
+
+    expect(source.includes('getSearchParam("autoconnect") === "1"')).toBe(true);
+    expect(source.includes("&& resolveRequestedRoomCode().length > 0")).toBe(true);
+    expect(source.includes("&& resolveRequestedPlayerName().length > 0")).toBe(true);
     expect(source.includes("roomCodeRequired")).toBe(true);
+    expect(source.includes("playerNameRequired")).toBe(true);
+    expect(source.includes("ユーザーネームを入力してから入室してください。")).toBe(true);
     expect(source.includes("ルームコードを入力してから Join してください。")).toBe(true);
     expect(source.includes('resolveRequestedRoomCode() || "pending"')).toBe(true);
+    expect(source.includes("syncPlayerCreateRoomButton();")).toBe(true);
   });
 });

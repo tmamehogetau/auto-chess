@@ -30,11 +30,16 @@ import {
 } from "./shared-board-client.js";
 import { buildCommandResultCopy, buildReadyHint } from "./ui/player-facing-copy.js";
 import { mapEntries, mapGet } from "./utils/pure-utils.js";
+import { resolveFrontPortraitUrl } from "./portrait-resolver.js";
 
 const playerShell = document.querySelector("[data-player-shell]");
 const statusCopy = document.querySelector("[data-player-status-copy]");
 const connectButton = document.querySelector("[data-player-connect-btn]");
+const createRoomButton = document.querySelector("[data-player-create-room-btn]");
 const roomCodeInput = document.querySelector("[data-player-room-code-input]");
+const playerNameInput = document.querySelector("[data-player-name-input]");
+const titleHeroArtElement = document.querySelector("[data-title-hero-art]");
+const titleBossArtElement = document.querySelector("[data-title-boss-art]");
 const hudRoundPhaseElement = document.querySelector("[data-player-hud-round-phase]");
 const hudTimerElement = document.querySelector("[data-player-hud-timer]");
 const hudSpellElement = document.querySelector("[data-player-hud-spell]");
@@ -96,6 +101,7 @@ const resultSurfaceElement = document.querySelector("[data-player-result-surface
 const detailCardElement = document.querySelector("[data-player-detail-card]");
 const allyRailElement = document.querySelector("[data-player-ally-rail]");
 const phaseSections = new Map([
+  ["title", document.querySelector('[data-player-phase="title"]')],
   ["lobby", document.querySelector('[data-player-phase="lobby"]')],
   ["selection", document.querySelector('[data-player-phase="selection"]')],
   ["prep", document.querySelector('[data-player-phase="prep"]')],
@@ -113,8 +119,11 @@ let selectedBossId = "remilia";
 let selectedBenchIndex = null;
 let cmdSeqCounter = 0;
 let latestRawPhase = "Waiting";
-let latestPlayerFacingPhase = "lobby";
+let latestPlayerFacingPhase = "title";
 let battleStartSweepTimeoutId = null;
+let titleArtCarouselIntervalId = null;
+let titleArtFadeTimeoutId = null;
+let titleArtPreviewPair = { heroId: "reimu", bossId: "remilia" };
 let latestPrepHoverDetail = null;
 let deadlineRefreshIntervalId = null;
 let selectedSharedSubUnitToken = null;
@@ -132,6 +141,8 @@ function rememberSharedBoardRoomId(roomId) {
 
 const PLAYER_BATTLE_START_SWEEP_MS = 900;
 const PLAYER_DEADLINE_REFRESH_INTERVAL_MS = 250;
+const TITLE_ART_ROTATION_INTERVAL_MS = 7000;
+const TITLE_ART_FADE_MS = 560;
 
 const HERO_OPTIONS = [
   { id: "reimu", name: "博麗霊夢", role: "balance" },
@@ -145,6 +156,42 @@ const HERO_OPTIONS = [
 const BOSS_OPTIONS = [
   { id: "remilia", name: "レミリア", roleCopy: "紅魔館の主" },
 ];
+
+const TITLE_CHARACTER_ART_BASE_PATH = "/src/client/title-assets/characters";
+const TITLE_CHARACTER_ART_VERSION = "20260502-size-normalized";
+const resolveTitleCharacterArtPath = (filename) =>
+  `${TITLE_CHARACTER_ART_BASE_PATH}/${filename}?v=${TITLE_CHARACTER_ART_VERSION}`;
+
+const TITLE_HERO_ART_BY_ID = {
+  reimu: resolveTitleCharacterArtPath("reimu.png"),
+  marisa: resolveTitleCharacterArtPath("marisa.png"),
+  okina: resolveTitleCharacterArtPath("okina.png"),
+  keiki: resolveTitleCharacterArtPath("keiki.png"),
+  jyoon: resolveTitleCharacterArtPath("jyoon.png"),
+  yuiman: resolveTitleCharacterArtPath("yuiman.png"),
+};
+
+const TITLE_BOSS_THEME_BY_ID = {
+  remilia: {
+    theme: "remilia",
+    name: "レミリア",
+    bossArt: resolveTitleCharacterArtPath("remilia.png"),
+  },
+  yuyuko: {
+    theme: "yuyuko",
+    name: "西行寺幽々子",
+    bossArt: resolveTitleCharacterArtPath("yuyuko.png"),
+  },
+};
+
+const TITLE_HERO_PREVIEW_IDS = HERO_OPTIONS.map((hero) => hero.id);
+const TITLE_BOSS_PREVIEW_IDS = Object.keys(TITLE_BOSS_THEME_BY_ID);
+
+const HERO_ROLE_LABELS = {
+  balance: "均衡",
+  dps: "火力",
+  support: "支援",
+};
 
 initSharedBoardClient(
   {
@@ -194,10 +241,12 @@ gameRoomSession.onConnectionState((connectionState) => {
     return;
   }
 
+  syncPlayerCreateRoomButton();
+
   if (connectionState === "connecting") {
     if (connectButton instanceof HTMLButtonElement) {
       connectButton.disabled = true;
-      connectButton.textContent = "Joining...";
+      connectButton.textContent = "接続中";
     }
     statusCopy.textContent = "ルームへ接続しています。進行役の案内が出るまで少し待ってください。";
     return;
@@ -206,7 +255,7 @@ gameRoomSession.onConnectionState((connectionState) => {
   if (connectionState === "connected") {
     if (connectButton instanceof HTMLButtonElement) {
       connectButton.disabled = true;
-      connectButton.textContent = "Connected";
+      connectButton.textContent = "接続済み";
     }
     statusCopy.textContent = "接続完了。現在の phase に合わせて player-facing surface を切り替えます。";
     renderPlayerHeaderTruth();
@@ -223,7 +272,7 @@ gameRoomSession.onConnectionState((connectionState) => {
   latestRoundState = null;
   latestSharedBoardRoomId = "";
   latestRawPhase = "Waiting";
-  latestPlayerFacingPhase = "lobby";
+  latestPlayerFacingPhase = "title";
   latestPrepHoverDetail = null;
   selectedBenchIndex = null;
   selectedSharedSubUnitToken = null;
@@ -231,8 +280,9 @@ gameRoomSession.onConnectionState((connectionState) => {
   stopDeadlineRefreshLoop();
   leaveSharedBoardRoom();
   setSharedBoardRoomId("");
-  statusCopy.textContent = "進行役がルームを準備したら、この画面の player flow が始まります。";
-  showPlayerPhase("lobby");
+  statusCopy.textContent = "ルームを作成するか、ルームコードを入力して入室してください。";
+  renderPlayerTitleScreen();
+  showPlayerPhase("title");
   renderPlayerHeaderTruth();
   renderPlayerPrepSurface();
   updateReadyButton(null);
@@ -247,6 +297,12 @@ gameRoomSession.onStateChange((state) => {
   const player = mapGet(state?.players, gameRoomSession.getRoom()?.sessionId ?? "") ?? null;
   latestState = state;
   latestPlayer = player;
+  if (typeof player?.selectedHeroId === "string" && player.selectedHeroId.length > 0) {
+    selectedHeroId = player.selectedHeroId;
+  }
+  if (typeof player?.selectedBossId === "string" && player.selectedBossId.length > 0) {
+    selectedBossId = player.selectedBossId;
+  }
   if (!Number.isInteger(selectedBenchIndex) || selectedBenchIndex < 0 || selectedBenchIndex >= Number(player?.benchUnits?.length ?? 0)) {
     selectedBenchIndex = null;
   }
@@ -257,6 +313,7 @@ gameRoomSession.onStateChange((state) => {
     rememberSharedBoardRoomId(state.sharedBoardRoomId);
   }
   refreshSharedBoardRender();
+  renderPlayerTitleScreen();
   showPlayerPhase(nextView);
   syncPlayerBattleStartSweep(previousPhase, state);
   renderPlayerHeaderTruth();
@@ -348,14 +405,24 @@ if (playerShell instanceof HTMLElement) {
 window.addEventListener("beforeunload", () => {
   stopDeadlineRefreshLoop();
   clearPlayerBattleStartSweep();
+  stopTitleArtCarousel();
 });
 
 connectButton?.addEventListener("click", () => {
   void connectPlayerSession();
 });
 
+createRoomButton?.addEventListener("click", () => {
+  void createPlayerRoom();
+});
+
 roomCodeInput?.addEventListener("input", () => {
   syncPlayerConnectButton();
+});
+
+playerNameInput?.addEventListener("input", () => {
+  syncPlayerConnectButton();
+  syncPlayerCreateRoomButton();
 });
 
 bossPreferenceOnButton?.addEventListener("click", () => {
@@ -373,6 +440,7 @@ readyButtons.forEach((button) => {
     }
 
     const nextReady = !(latestPlayer?.ready === true);
+    triggerPlayerUiPulse(button, nextReady ? "player-ui-pulse-ready" : "player-ui-pulse-soft");
     gameRoomSession.send(CLIENT_MESSAGE_TYPES.READY, { ready: nextReady });
   });
 });
@@ -447,10 +515,31 @@ boardGridElement?.addEventListener("click", (event) => {
 }, true);
 
 hydrateRequestedRoomCodeInput();
+hydrateRequestedPlayerNameInput();
+renderPlayerTitleScreen();
+startTitleArtCarousel();
 syncPlayerConnectButton();
+syncPlayerCreateRoomButton();
 
-if (getSearchParam("autoconnect") === "1" && resolveRequestedRoomCode().length > 0) {
+if (
+  getSearchParam("autoconnect") === "1"
+  && resolveRequestedRoomCode().length > 0
+  && resolveRequestedPlayerName().length > 0
+) {
   void connectPlayerSession();
+}
+
+function triggerPlayerUiPulse(element, className = "player-ui-pulse-soft") {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+
+  element.classList.remove(className);
+  void element.offsetWidth;
+  element.classList.add(className);
+  window.setTimeout(() => {
+    element.classList.remove(className);
+  }, 520);
 }
 
 function resolvePlayerPhaseView(state) {
@@ -485,6 +574,112 @@ function resolvePlayerPhaseView(state) {
   return "lobby";
 }
 
+function renderPlayerTitleScreen(heroId = selectedHeroId ?? "reimu", bossId = selectedBossId ?? "remilia") {
+  const normalizedHeroId = typeof heroId === "string" && heroId.length > 0 ? heroId : "reimu";
+  const normalizedBossId = typeof bossId === "string" && bossId.length > 0 ? bossId : "remilia";
+  const heroOption = HERO_OPTIONS.find((hero) => hero.id === normalizedHeroId) ?? HERO_OPTIONS[0];
+  const bossOption = BOSS_OPTIONS.find((boss) => boss.id === normalizedBossId)
+    ?? { id: normalizedBossId, name: TITLE_BOSS_THEME_BY_ID[normalizedBossId]?.name ?? normalizedBossId, roleCopy: "" };
+  const bossTheme = TITLE_BOSS_THEME_BY_ID[normalizedBossId] ?? TITLE_BOSS_THEME_BY_ID.remilia;
+
+  if (playerShell instanceof HTMLElement) {
+    playerShell.dataset.titleBossTheme = bossTheme.theme;
+    playerShell.dataset.titleHeroId = heroOption?.id ?? "reimu";
+    playerShell.dataset.titleBossId = bossTheme.theme;
+  }
+
+  if (titleHeroArtElement instanceof HTMLImageElement) {
+    titleHeroArtElement.src = TITLE_HERO_ART_BY_ID[normalizedHeroId] ?? TITLE_HERO_ART_BY_ID.reimu;
+    titleHeroArtElement.alt = heroOption?.name ?? "主人公";
+  }
+
+  if (titleBossArtElement instanceof HTMLImageElement) {
+    titleBossArtElement.src = bossTheme.bossArt;
+    titleBossArtElement.alt = bossOption.name;
+  }
+}
+
+function resolveRandomTitleArtPreviewPair() {
+  const nextHeroId = TITLE_HERO_PREVIEW_IDS[Math.floor(Math.random() * TITLE_HERO_PREVIEW_IDS.length)] ?? "reimu";
+  const nextBossId = TITLE_BOSS_PREVIEW_IDS[Math.floor(Math.random() * TITLE_BOSS_PREVIEW_IDS.length)] ?? "remilia";
+
+  if (
+    TITLE_HERO_PREVIEW_IDS.length * TITLE_BOSS_PREVIEW_IDS.length > 1
+    && nextHeroId === titleArtPreviewPair.heroId
+    && nextBossId === titleArtPreviewPair.bossId
+  ) {
+    return resolveRandomTitleArtPreviewPair();
+  }
+
+  return { heroId: nextHeroId, bossId: nextBossId };
+}
+
+function applyTitleArtPreviewPair(nextPair) {
+  titleArtPreviewPair = nextPair;
+  renderPlayerTitleScreen(nextPair.heroId, nextPair.bossId);
+}
+
+function rotateTitleArtPreviewPair() {
+  if (!(playerShell instanceof HTMLElement) || playerShell.dataset.playerFacingPhase !== "title") {
+    stopTitleArtCarousel();
+    return;
+  }
+
+  const nextPair = resolveRandomTitleArtPreviewPair();
+  const prefersReducedMotion = typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (prefersReducedMotion) {
+    applyTitleArtPreviewPair(nextPair);
+    return;
+  }
+
+  const shouldFadeHero = nextPair.heroId !== titleArtPreviewPair.heroId;
+  const shouldFadeBoss = nextPair.bossId !== titleArtPreviewPair.bossId;
+
+  playerShell.classList.toggle("player-title-hero-is-fading", shouldFadeHero);
+  playerShell.classList.toggle("player-title-boss-is-fading", shouldFadeBoss);
+  playerShell.classList.toggle("player-title-bg-is-fading", shouldFadeBoss);
+  window.clearTimeout(titleArtFadeTimeoutId);
+  titleArtFadeTimeoutId = window.setTimeout(() => {
+    applyTitleArtPreviewPair(nextPair);
+    playerShell.classList.remove(
+      "player-title-hero-is-fading",
+      "player-title-boss-is-fading",
+      "player-title-bg-is-fading",
+    );
+    titleArtFadeTimeoutId = null;
+  }, TITLE_ART_FADE_MS);
+}
+
+function startTitleArtCarousel() {
+  if (titleArtCarouselIntervalId !== null) {
+    return;
+  }
+
+  titleArtCarouselIntervalId = window.setInterval(rotateTitleArtPreviewPair, TITLE_ART_ROTATION_INTERVAL_MS);
+}
+
+function stopTitleArtCarousel() {
+  if (titleArtCarouselIntervalId !== null) {
+    window.clearInterval(titleArtCarouselIntervalId);
+    titleArtCarouselIntervalId = null;
+  }
+
+  if (titleArtFadeTimeoutId !== null) {
+    window.clearTimeout(titleArtFadeTimeoutId);
+    titleArtFadeTimeoutId = null;
+  }
+
+  if (playerShell instanceof HTMLElement) {
+    playerShell.classList.remove(
+      "player-title-hero-is-fading",
+      "player-title-boss-is-fading",
+      "player-title-bg-is-fading",
+    );
+  }
+}
+
 function showPlayerPhase(activePhase) {
   for (const [phaseName, element] of phaseSections.entries()) {
     if (!(element instanceof HTMLElement)) {
@@ -495,6 +690,24 @@ function showPlayerPhase(activePhase) {
     element.hidden = !isActive;
     element.dataset.phaseActive = isActive ? "true" : "false";
   }
+
+  if (playerShell instanceof HTMLElement) {
+    playerShell.dataset.playerFacingPhase = activePhase === "title" ? "title" : latestPlayerFacingPhase;
+  }
+
+  if (activePhase === "title") {
+    startTitleArtCarousel();
+  } else {
+    stopTitleArtCarousel();
+  }
+}
+
+function syncPlayerFacingPhaseDataset() {
+  if (!(playerShell instanceof HTMLElement)) {
+    return;
+  }
+
+  playerShell.dataset.playerFacingPhase = latestPlayerFacingPhase;
 }
 
 function syncPlayerBattleStartSweep(previousPhase, state) {
@@ -611,22 +824,72 @@ function renderTopHud() {
   const deadlineSummary = buildDeadlineSummary(latestState, latestRoundState);
   const spellSummary = typeof latestPlayer?.spellName === "string" && latestPlayer.spellName.length > 0
     ? latestPlayer.spellName
-    : "No active spell";
+    : "スペル待機中";
+  const selectedHeroId = typeof latestPlayer?.selectedHeroId === "string" && latestPlayer.selectedHeroId.length > 0
+    ? latestPlayer.selectedHeroId
+    : "reimu";
+  const selectedBossId = typeof latestPlayer?.selectedBossId === "string" && latestPlayer.selectedBossId.length > 0
+    ? latestPlayer.selectedBossId
+    : "remilia";
+  const specialUnitId = latestPlayer?.role === "boss" ? selectedBossId : selectedHeroId;
+  const gold = Math.max(0, Math.round(Number(latestPlayer?.gold ?? 0) || 0));
+  const level = Math.max(1, Math.round(Number(latestPlayer?.level ?? latestPlayer?.specialUnitLevel ?? 1) || 1));
+  const lives = Math.max(0, Math.round(Number(latestPlayer?.remainingLives ?? 0) || 0));
+  const phaseLabel = latestPlayerFacingPhase === "purchase"
+    ? "購入"
+    : latestPlayerFacingPhase === "battle"
+      ? "戦闘"
+      : latestPlayerFacingPhase === "deploy"
+        ? "配置"
+        : "準備";
+  const phaseSubcopy = latestPlayerFacingPhase === "purchase"
+    ? "配置前の準備"
+    : latestPlayerFacingPhase === "battle"
+      ? "交戦中"
+      : "共有盤面";
 
   if (hudRoundPhaseElement instanceof HTMLElement) {
-    hudRoundPhaseElement.innerHTML = `<strong>Round / Phase</strong><div>Round ${roundIndex} / ${latestPlayerFacingPhase}</div>`;
+    hudRoundPhaseElement.innerHTML = `
+      <span class="player-hud-portrait-strip">
+        <img class="player-hud-portrait" src="${resolveFrontPortraitUrl(specialUnitId, "reimu")}" alt="選択ユニット" loading="lazy" />
+        <span>
+          <span class="player-hud-kicker">Round ${roundIndex}</span>
+          <span class="player-hud-phase-title">${phaseLabel}</span>
+          <span class="player-hud-phase-sub">${phaseSubcopy}</span>
+        </span>
+      </span>
+    `;
   }
 
   if (hudTimerElement instanceof HTMLElement) {
-    hudTimerElement.innerHTML = `<strong>Timer</strong><div>${deadlineSummary.label}: ${deadlineSummary.valueText}</div>`;
+    hudTimerElement.innerHTML = `
+      <span class="player-hud-timer-stack">
+        <span class="player-hud-kicker">${deadlineSummary.label}</span>
+        <span class="player-hud-primary">${deadlineSummary.valueText}</span>
+      </span>
+    `;
   }
 
   if (hudSpellElement instanceof HTMLElement) {
-    hudSpellElement.innerHTML = `<strong>Spell</strong><div>${spellSummary}</div>`;
+    hudSpellElement.innerHTML = `
+      <span class="player-hud-spell-card">
+        <img class="player-hud-spell-portrait" src="${resolveFrontPortraitUrl(selectedBossId, "remilia")}" alt="ボススペル" loading="lazy" />
+        <span>
+          <span class="player-hud-kicker">Spell</span>
+          <span class="player-hud-primary">${spellSummary}</span>
+          <span class="player-hud-secondary">${latestPlayerFacingPhase === "battle" ? "発動中" : "宣言確認"}</span>
+        </span>
+      </span>
+    `;
   }
 
   if (hudFlowElement instanceof HTMLElement) {
-    hudFlowElement.innerHTML = "<strong>Flow</strong><div>Purchase -&gt; Deploy -&gt; Battle</div>";
+    hudFlowElement.innerHTML = `
+      <span class="player-hud-flow-stack">
+        <span class="player-hud-primary">Gold ${gold}</span>
+        <span class="player-hud-secondary">Level ${level} / Lives ${lives}</span>
+      </span>
+    `;
   }
 }
 
@@ -641,6 +904,17 @@ function resolveRequestedRoomCode() {
   return getSearchParam("roomId") ?? "";
 }
 
+function resolveRequestedPlayerName() {
+  return playerNameInput instanceof HTMLInputElement
+    ? playerNameInput.value.trim()
+    : "";
+}
+
+function resolvePlayerRoomOptions() {
+  const playerName = resolveRequestedPlayerName();
+  return playerName.length > 0 ? { playerName } : {};
+}
+
 function hydrateRequestedRoomCodeInput() {
   if (!(roomCodeInput instanceof HTMLInputElement) || roomCodeInput.value.trim().length > 0) {
     return;
@@ -652,6 +926,17 @@ function hydrateRequestedRoomCodeInput() {
   }
 }
 
+function hydrateRequestedPlayerNameInput() {
+  if (!(playerNameInput instanceof HTMLInputElement) || playerNameInput.value.trim().length > 0) {
+    return;
+  }
+
+  const requestedPlayerName = getSearchParam("playerName") ?? getSearchParam("name") ?? "";
+  if (requestedPlayerName.length > 0) {
+    playerNameInput.value = requestedPlayerName.slice(0, 24);
+  }
+}
+
 function syncPlayerConnectButton() {
   if (!(connectButton instanceof HTMLButtonElement)) {
     return;
@@ -660,18 +945,43 @@ function syncPlayerConnectButton() {
   const connectionState = gameRoomSession.getConnectionState();
   if (connectionState === "connecting") {
     connectButton.disabled = true;
-    connectButton.textContent = "Joining...";
+    connectButton.textContent = "接続中";
     return;
   }
 
   if (connectionState === "connected") {
     connectButton.disabled = true;
-    connectButton.textContent = "Connected";
+    connectButton.textContent = "接続済み";
     return;
   }
 
-  connectButton.disabled = resolveRequestedRoomCode().length === 0;
-  connectButton.textContent = "Join Session";
+  connectButton.disabled = resolveRequestedRoomCode().length === 0 || resolveRequestedPlayerName().length === 0;
+  connectButton.textContent = "入室";
+}
+
+function syncPlayerCreateRoomButton() {
+  if (!(createRoomButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const connectionState = gameRoomSession.getConnectionState();
+  createRoomButton.disabled = connectionState === "connecting"
+    || connectionState === "connected"
+    || resolveRequestedPlayerName().length === 0;
+  createRoomButton.textContent = connectionState === "connecting" ? "作成中" : "ルーム作成";
+}
+
+function hydrateCreatedRoomCode(roomId) {
+  const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
+  if (normalizedRoomId.length === 0) {
+    return;
+  }
+
+  if (roomCodeInput instanceof HTMLInputElement) {
+    roomCodeInput.value = normalizedRoomId;
+  }
+
+  syncPlayerConnectButton();
 }
 
 function resolveSharedBoardRoomId(state, roundState, fallbackRoomId = latestSharedBoardRoomId) {
@@ -707,6 +1017,7 @@ function renderPlayerHeaderTruth() {
 
   renderTopHud();
   updatePhaseNotes();
+  syncPlayerFacingPhaseDataset();
 }
 
 function syncDeadlineRefreshLoop() {
@@ -806,6 +1117,14 @@ function updateReadyCopy(state, player) {
 async function connectPlayerSession() {
   try {
     const requestedRoomCode = resolveRequestedRoomCode();
+    const playerNameRequired = resolveRequestedPlayerName().length === 0;
+    if (playerNameRequired) {
+      showPlayerStatus("ユーザーネームを入力してから入室してください。");
+      syncPlayerConnectButton();
+      syncPlayerCreateRoomButton();
+      return;
+    }
+
     const roomCodeRequired = requestedRoomCode.length === 0;
     if (roomCodeRequired) {
       showPlayerStatus("ルームコードを入力してから Join してください。");
@@ -813,7 +1132,7 @@ async function connectPlayerSession() {
       return;
     }
 
-    const room = await gameRoomSession.connect({ roomId: requestedRoomCode });
+    const room = await gameRoomSession.connect({ roomId: requestedRoomCode, ...resolvePlayerRoomOptions() });
     const client = gameRoomSession.getClient();
 
     if (room?.sessionId) {
@@ -837,7 +1156,51 @@ async function connectPlayerSession() {
     }
   } catch (_error) {
     if (statusCopy instanceof HTMLElement) {
-      statusCopy.textContent = "接続できませんでした。進行役に声をかけてください。";
+      statusCopy.textContent = "接続できませんでした。ルームコードを確認してください。";
+    }
+  }
+}
+
+async function createPlayerRoom() {
+  try {
+    const playerNameRequired = resolveRequestedPlayerName().length === 0;
+    if (playerNameRequired) {
+      showPlayerStatus("ユーザーネームを入力してからルームを作成してください。");
+      syncPlayerConnectButton();
+      syncPlayerCreateRoomButton();
+      return;
+    }
+
+    const room = await gameRoomSession.connect({ mode: "createPaired", ...resolvePlayerRoomOptions() });
+    const client = gameRoomSession.getClient();
+    const pairedSharedBoardRoom = gameRoomSession.takeCreatedSharedBoardRoom();
+    hydrateCreatedRoomCode(room?.roomId);
+
+    if (room?.sessionId) {
+      setSharedBoardGamePlayerId(room.sessionId);
+    }
+
+    const initialSharedBoardRoomId = resolveSharedBoardRoomId(
+      latestState,
+      latestRoundState,
+      typeof room?.state?.sharedBoardRoomId === "string"
+        ? room.state.sharedBoardRoomId
+        : pairedSharedBoardRoom?.roomId ?? "",
+    );
+    if (initialSharedBoardRoomId.length > 0) {
+      rememberSharedBoardRoomId(initialSharedBoardRoomId);
+    }
+
+    if (client) {
+      const sharedBoardRoomId = resolveSharedBoardRoomId(latestState, latestRoundState, initialSharedBoardRoomId);
+      await connectSharedBoard(client, {
+        roomId: sharedBoardRoomId,
+        existingRoom: pairedSharedBoardRoom,
+      });
+    }
+  } catch (_error) {
+    if (statusCopy instanceof HTMLElement) {
+      statusCopy.textContent = "ルーム作成に失敗しました。もう一度作成してください。";
     }
   }
 }
@@ -851,6 +1214,7 @@ function handlePlayerShopBuy(slotIndex) {
     return;
   }
 
+  triggerPlayerUiPulse(shopSlotElements[slotIndex], "player-ui-pulse-buy");
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
     shopBuySlotIndex: slotIndex,
@@ -866,6 +1230,7 @@ function handlePlayerBossShopBuy(slotIndex) {
     return;
   }
 
+  triggerPlayerUiPulse(bossShopSlotElements[slotIndex], "player-ui-pulse-buy");
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
     bossShopBuySlotIndex: slotIndex,
@@ -881,6 +1246,7 @@ function handlePlayerHeroExclusiveShopBuy(slotIndex) {
     return;
   }
 
+  triggerPlayerUiPulse(heroExclusiveShopSlotElements[slotIndex], "player-ui-pulse-buy");
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
     heroExclusiveShopBuySlotIndex: slotIndex,
@@ -896,6 +1262,7 @@ function handlePlayerShopRefresh() {
     return;
   }
 
+  triggerPlayerUiPulse(shopRefreshButton, "player-ui-pulse-soft");
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
     shopRefreshCount: 1,
@@ -911,6 +1278,7 @@ function handlePlayerBuyXp() {
     return;
   }
 
+  triggerPlayerUiPulse(buyXpButton, "player-ui-pulse-buy");
   gameRoomSession.send(CLIENT_MESSAGE_TYPES.PREP_COMMAND, {
     cmdSeq: nextCmdSeq(),
     specialUnitUpgradeCount: 1,
@@ -982,6 +1350,7 @@ function handlePlayerBenchSelect(index) {
     return;
   }
 
+  triggerPlayerUiPulse(benchSlotElements[index], "player-ui-pulse-soft");
   selectedBenchIndex = selectedBenchIndex === index ? null : index;
   renderPlayerPrepSurface();
 }
@@ -1501,13 +1870,22 @@ function renderRoleSelectionActions(state, player) {
       for (const hero of HERO_OPTIONS) {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "player-choice-btn";
-        button.textContent = `${hero.name} / ${hero.role}`;
+        button.className = "player-choice-btn player-role-option-card";
+        button.innerHTML = `
+          <span class="player-role-option-portrait">
+            <img src="${resolveFrontPortraitUrl(hero.id)}" alt="${hero.name}" loading="lazy" />
+          </span>
+          <span class="player-role-option-body">
+            <span class="player-role-option-name">${hero.name}</span>
+            <span class="player-role-option-meta">${HERO_ROLE_LABELS[hero.role] ?? hero.role}</span>
+          </span>
+        `;
         if ((player?.selectedHeroId ?? selectedHeroId) === hero.id) {
           button.classList.add("selected");
         }
         button.addEventListener("click", () => {
           selectedHeroId = hero.id;
+          renderPlayerTitleScreen();
           gameRoomSession.send(CLIENT_MESSAGE_TYPES.HERO_SELECT, { heroId: hero.id });
         });
         heroOptionsElement.appendChild(button);
@@ -1522,13 +1900,22 @@ function renderRoleSelectionActions(state, player) {
       for (const boss of BOSS_OPTIONS) {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "player-choice-btn";
-        button.textContent = `${boss.name} / ${boss.roleCopy}`;
+        button.className = "player-choice-btn player-role-option-card player-role-option-boss";
+        button.innerHTML = `
+          <span class="player-role-option-portrait">
+            <img src="${resolveFrontPortraitUrl(boss.id)}" alt="${boss.name}" loading="lazy" />
+          </span>
+          <span class="player-role-option-body">
+            <span class="player-role-option-name">${boss.name}</span>
+            <span class="player-role-option-meta">${boss.roleCopy}</span>
+          </span>
+        `;
         if ((player?.selectedBossId ?? selectedBossId) === boss.id) {
           button.classList.add("selected");
         }
         button.addEventListener("click", () => {
           selectedBossId = boss.id;
+          renderPlayerTitleScreen();
           gameRoomSession.send(CLIENT_MESSAGE_TYPES.BOSS_SELECT, { bossId: boss.id });
         });
         bossOptionsElement.appendChild(button);

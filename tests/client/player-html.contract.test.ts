@@ -18,6 +18,53 @@ function extractPhaseSection(html: string, phaseName: string): string {
 }
 
 describe("player.html contract", () => {
+  test("player title screen uses the decided game title", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    expect(html.includes('<base href="/src/client/" />')).toBe(true);
+    expect(html.includes("<title>東方盤上演 ～ Incident Re:Stage ～</title>")).toBe(true);
+    expect(html.includes('<h1 class="player-title">東方盤上演</h1>')).toBe(true);
+    expect(html.includes('<p class="player-phase-tag">Incident Re:Stage</p>')).toBe(true);
+    expect(html.includes("title-stage-board-remilia-v3.png")).toBe(true);
+    expect(html.includes("title-stage-board-yuyuko.png")).toBe(true);
+    expect(html.includes("title-logo-touhou-banjouen-generated-custom-v2.png")).toBe(true);
+    expect(html.includes('class="player-title-command-logo"')).toBe(true);
+    expect(html.includes('alt="東方盤上演 Incident Re:Stage"')).toBe(true);
+    expect(html.includes("Co-op Board Raid")).toBe(false);
+    expect(html.includes("player-title-command-subtitle")).toBe(false);
+    expect(html.includes("title-panel-yuyuko-frame-v1.png")).toBe(true);
+    expect(html.includes("aspect-ratio: 3 / 2")).toBe(true);
+    expect(html.includes("--title-command-content-y: 4px")).toBe(true);
+    expect(html.includes("--title-panel-art")).toBe(true);
+    expect(html.includes("--title-action-art")).toBe(true);
+    expect(html.includes("--title-stage-ornaments")).toBe(true);
+    expect(html.includes("--title-stage-ornaments: none")).toBe(true);
+    expect(html.includes("--title-hero-art-scale")).toBe(true);
+    expect(html.includes("--title-boss-art-scale")).toBe(true);
+    expect(html.includes("--title-hero-art-side")).toBe(true);
+    expect(html.includes("--title-boss-art-side")).toBe(true);
+    expect(html.includes("--title-boss-art-y")).toBe(true);
+    expect(html.includes('data-title-hero-id="jyoon"')).toBe(true);
+    expect(html.includes('data-title-boss-id="yuyuko"')).toBe(true);
+    expect(html.includes("player-title-hero-is-fading")).toBe(true);
+    expect(html.includes("player-title-boss-is-fading")).toBe(true);
+    expect(html.includes("player-title-bg-is-fading")).toBe(true);
+    expect(html.includes("player-title-command-theme")).toBe(true);
+    expect(html.includes(".player-shell.player-title-bg-is-fading .player-title-command-theme")).toBe(true);
+    expect(html.includes('[data-title-boss-theme="yuyuko"] .player-title-command::before')).toBe(true);
+    expect(html.includes('[data-title-boss-theme="yuyuko"] .player-title-command::after')).toBe(true);
+    expect(html.includes("player-title-effects")).toBe(true);
+    expect(html.includes('[data-title-boss-theme="remilia"] .player-title-effects')).toBe(true);
+    expect(html.includes("player-title-effect-petals")).toBe(true);
+    expect(html.includes("player-title-effect-snow")).toBe(true);
+    expect(html.includes("player-title-effect-spirits")).toBe(true);
+    expect(html.includes("title-remilia-crimson-mist")).toBe(true);
+    expect(html.includes("title-remilia-moon-pulse")).toBe(true);
+    expect(html.includes("title-remilia-wing-shadows")).toBe(true);
+    expect(html.includes("title-panel-yuyuko-frame-v1.png")).toBe(true);
+    expect(html.includes("prefers-reduced-motion: reduce")).toBe(true);
+  });
+
   test("phase-driven player shell を持ち operator-only controls を含まない", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
     const lobbySection = extractPhaseSection(html, "lobby");
@@ -26,6 +73,7 @@ describe("player.html contract", () => {
 
     const requiredAttributes = [
       "data-player-shell",
+      'data-player-phase="title"',
       'data-player-phase="lobby"',
       'data-player-phase="selection"',
       'data-player-phase="prep"',
@@ -35,7 +83,13 @@ describe("player.html contract", () => {
       "data-player-battle-start-round",
       "data-player-status-copy",
       "data-player-room-code-input",
+      "data-player-name-input",
       "data-player-connect-btn",
+      "data-player-create-room-btn",
+      "data-player-title-screen",
+      "data-title-stage",
+      "data-title-hero-art",
+      "data-title-boss-art",
       "data-player-room-copy",
       "data-player-participant-summary",
       "data-player-preference-copy",
@@ -101,14 +155,16 @@ describe("player.html contract", () => {
     expect(html).toMatch(/<script\s+type="module"\s+src="\.\/player-app\.js"><\/script>/);
   });
 
-  test("initial load では lobby 以外の phase を hidden にしておく", () => {
+  test("initial load では title だけを表示しておく", () => {
     const html = readFileSync(playerHtmlPath, "utf-8");
+    const titleSection = extractPhaseSection(html, "title");
     const lobbySection = extractPhaseSection(html, "lobby");
     const selectionSection = extractPhaseSection(html, "selection");
     const prepSection = extractPhaseSection(html, "prep");
     const resultSection = extractPhaseSection(html, "result");
 
-    expect(lobbySection).not.toMatch(/data-player-phase="lobby"[^>]*hidden/);
+    expect(titleSection).not.toMatch(/data-player-phase="title"[^>]*hidden/);
+    expect(lobbySection).toMatch(/data-player-phase="lobby"[^>]*hidden/);
     expect(selectionSection).toMatch(/data-player-phase="selection"[^>]*hidden/);
     expect(prepSection).toMatch(/data-player-phase="prep"[^>]*hidden/);
     expect(resultSection).toMatch(/data-player-phase="result"[^>]*hidden/);
@@ -144,8 +200,12 @@ describe("player.html contract", () => {
       'data-player-board-sell-button',
       'data-player-bench-sell-button',
       'data-player-board-return-button',
-      'placeholder="Room code"',
+      'placeholder="ルームコード"',
+      'placeholder="ユーザーネーム"',
+      'autocomplete="nickname"',
       'data-player-connect-btn',
+      'data-player-create-room-btn',
+      '>ルーム作成<',
     ];
 
     for (const attribute of requiredAttributes) {
@@ -178,7 +238,7 @@ describe("player.html contract", () => {
     expect(html.includes("center 4x2")).toBe(false);
     expect(html.includes("中央 4x2")).toBe(false);
     expect(html.includes("open lane")).toBe(false);
-    expect(html.includes("Boss は上半分、raid は下半分の配置セルを使います。")).toBe(true);
+    expect(html.includes("ボスは上半分、レイドは下半分の配置セルを使います。")).toBe(true);
     expect(html.includes("highlighted raid cells")).toBe(false);
   });
 
@@ -244,8 +304,7 @@ describe("player.html contract", () => {
     expect(prepSection.includes("data-player-room-summary")).toBe(false);
     expect(prepSection.includes("data-player-synergy-copy")).toBe(false);
     expect(prepSection.includes("Gold、HP、残機、成長状況")).toBe(false);
-    expect(prepSection.includes("Placement")).toBe(true);
-    expect(prepSection.includes("State")).toBe(true);
+    expect(prepSection.includes("配置数と状態")).toBe(true);
   });
 
   test("shared board shell keeps board and guide heights stable to avoid layout jumps", () => {
@@ -312,5 +371,102 @@ describe("player.html contract", () => {
     expect(benchSlotCount).toBe(8);
     expect(html.includes('data-player-bench-slot="7"')).toBe(true);
     expect(html.includes('data-player-bench-slot="8"')).toBe(false);
+  });
+
+  test("real player prep shell adopts the battle and shop mock theme layers", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const prepSection = extractPhaseSection(html, "prep");
+
+    const requiredMarkers = [
+      'data-player-runtime-theme="remilia"',
+      "data-player-runtime-stage-layer",
+      "data-player-runtime-shop-counter-surface",
+      "data-player-runtime-board-floor",
+      "--player-theme-stage-illustration",
+      "--player-theme-board-floor",
+      "--player-theme-shop-counter",
+      "--player-theme-panel-skin",
+      "--player-theme-hud-frame",
+      "--player-theme-action-button",
+      "--player-theme-stat-plate",
+      "--player-theme-label-ribbon",
+      "--player-theme-portrait-frame",
+      "--player-theme-unit-slot",
+      "--player-theme-hp-gauge",
+      "--player-theme-coin-badge",
+      "--player-theme-status-chip",
+      "--player-theme-ready-button",
+      "generated-remilia-stage-bg-v3-crimson-dusk.png",
+      "generated-remilia-board-floor-v1.png",
+      "generated-remilia-panel-skin-v1.png",
+      "generated-remilia-hud-frame-v1.png",
+      "generated-remilia-shop-counter-v1.png",
+      "generated-remilia-action-button-v1.png",
+      "generated-remilia-stat-plate-v1.png",
+      "generated-remilia-label-ribbon-v1.png",
+      "generated-remilia-portrait-frame-v1.png",
+      "generated-remilia-unit-slot-v1.png",
+      "generated-remilia-hp-gauge-v1.png",
+      "generated-remilia-coin-badge-v1.png",
+      "generated-remilia-status-chip-v1.png",
+      "generated-remilia-ready-button-v1.png",
+      ".player-runtime-stage-layer",
+      ".player-runtime-shop-counter-surface",
+      ".player-runtime-board-floor",
+    ];
+
+    for (const marker of requiredMarkers) {
+      expect(html.includes(marker)).toBe(true);
+    }
+
+    expect(prepSection.includes("data-player-runtime-stage-layer")).toBe(true);
+    expect(prepSection.includes("data-player-runtime-shop-counter-surface")).toBe(true);
+    expect(prepSection.includes("data-player-runtime-board-floor")).toBe(true);
+  });
+
+  test("runtime surfaces include static decision aids and accessible focus styling", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+    const requiredCss = [
+      ".player-shop-summary",
+      ".player-shop-offer-badges",
+      ".player-ready-checklist",
+      ".player-board-cell-recommended",
+      ".player-battle-intel",
+      ".player-battle-player-hp",
+      ".player-battle-player-row .player-bench-slot-state",
+      ".player-board .shared-board-zone-label",
+      ".player-shell[data-player-facing-phase=\"battle\"] .player-board .shared-board-unit-meta-wrap",
+      "shared-board-battle-strike-flash",
+      "shared-board-battle-projectile-shot",
+      "shared-board-battle-damage-float",
+      "shared-board-battle-defeat-fade",
+      ".shared-board-unit-card > img",
+      "button:focus-visible",
+    ];
+
+    for (const css of requiredCss) {
+      expect(html.includes(css)).toBe(true);
+    }
+  });
+
+  test("battle themed runtime shell hides deploy-only board help and controls", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    expect(html.includes('.player-shell[data-player-facing-phase="battle"] [data-shared-board-help]')).toBe(true);
+    expect(html.includes('.player-shell[data-player-facing-phase="battle"] [data-player-board-copy]')).toBe(true);
+    expect(html.includes('.player-shell[data-player-facing-phase="battle"] [data-shared-board-status-legend]')).toBe(true);
+    expect(html.includes('.player-shell[data-player-facing-phase="battle"] [data-player-board-return-button]')).toBe(true);
+  });
+
+  test("themed runtime shell keeps responsive and short-viewport escape hatches", () => {
+    const html = readFileSync(playerHtmlPath, "utf-8");
+
+    expect(html.includes("@media (max-height: 820px) and (min-width: 1121px)")).toBe(true);
+    expect(html.includes("@media (max-width: 1120px)")).toBe(true);
+    expect(html.includes('.player-shell[data-player-facing-phase="purchase"] [data-player-phase-notes-card]')).toBe(true);
+    expect(html.includes("position: relative")).toBe(true);
+    expect(html.includes('.player-shell[data-player-facing-phase="battle"] .player-prep-grid')).toBe(true);
+    expect(html.includes("grid-template-rows: minmax(0, 1fr)")).toBe(true);
+    expect(html.includes("aspect-ratio: auto !important")).toBe(true);
   });
 });

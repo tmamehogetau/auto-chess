@@ -14,6 +14,7 @@ export const BOT_BALANCE_BASELINE_PORT_OFFSET_STRIDE = 500;
 export const DEFAULT_BOT_BALANCE_BASELINE_PORT_OFFSET_BASE = 10_000;
 export const DEFAULT_BOT_BALANCE_BASELINE_HELPER_POLICY = "strength";
 export const DEFAULT_BOT_BALANCE_BASELINE_OPTIMIZATION_VARIANT = "full";
+export const DEFAULT_BOT_BALANCE_BASELINE_BATTLE_SEED_BASE = 20_260_504;
 const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_BASE = 2_570;
 const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_HASH_RANGE = 200;
 const BOT_BALANCE_BASELINE_TEST_SERVER_PORT_MAX = 65_535;
@@ -61,6 +62,9 @@ export type BaselineChunkConfigSnapshot = {
   ];
   raidHeroIds: BotBalanceBaselineRaidHeroIds | null;
   optimizationVariant: BotBalanceBaselineOptimizationVariant;
+  bossExtraPrepIncome: number;
+  bossExtraTotalPrepIncome: number;
+  battleSeedBase: number;
 };
 
 export function resolveBotBalanceBaselineHelperPolicy(
@@ -129,6 +133,39 @@ export function resolveBotBalanceBaselineOptimizationVariant(
     : DEFAULT_BOT_BALANCE_BASELINE_OPTIMIZATION_VARIANT;
 }
 
+export function resolveBotBalanceBaselineBossExtraPrepIncome(
+  rawValue: string | number | undefined | null,
+): number {
+  const parsedValue = typeof rawValue === "number"
+    ? rawValue
+    : Number.parseInt(String(rawValue ?? ""), 10);
+  return Number.isFinite(parsedValue)
+    ? Math.max(0, Math.trunc(parsedValue))
+    : 0;
+}
+
+export function resolveBotBalanceBaselineBossExtraTotalPrepIncome(
+  rawValue: string | number | undefined | null,
+): number {
+  const parsedValue = typeof rawValue === "number"
+    ? rawValue
+    : Number.parseInt(String(rawValue ?? ""), 10);
+  return Number.isFinite(parsedValue)
+    ? Math.max(0, Math.trunc(parsedValue))
+    : 0;
+}
+
+export function resolveBotBalanceBaselineBattleSeedBase(
+  rawValue: string | number | undefined | null,
+): number {
+  const parsedValue = typeof rawValue === "number"
+    ? rawValue
+    : Number.parseInt(String(rawValue ?? ""), 10);
+  return Number.isFinite(parsedValue)
+    ? Math.max(0, Math.trunc(parsedValue))
+    : DEFAULT_BOT_BALANCE_BASELINE_BATTLE_SEED_BASE;
+}
+
 export function createBotBalanceBaselineHelperConfigs(options: {
   bossPolicy?: BotBalanceBaselineHelperPolicy;
   raidPolicies?: BotBalanceBaselineHelperPolicy[];
@@ -162,6 +199,9 @@ export function createBaselineChunkConfigSnapshot(options: {
   raidPolicies: BotBalanceBaselineHelperPolicy[];
   raidHeroIds?: BotBalanceBaselineRaidHeroIds | null;
   optimizationVariant?: BotBalanceBaselineOptimizationVariant;
+  bossExtraPrepIncome?: number;
+  bossExtraTotalPrepIncome?: number;
+  battleSeedBase?: number;
 }): BaselineChunkConfigSnapshot {
   return {
     requestedMatchCount: Math.max(0, Math.trunc(options.requestedMatchCount)),
@@ -173,6 +213,9 @@ export function createBaselineChunkConfigSnapshot(options: {
     ],
     raidHeroIds: options.raidHeroIds ?? null,
     optimizationVariant: resolveBotBalanceBaselineOptimizationVariant(options.optimizationVariant),
+    bossExtraPrepIncome: resolveBotBalanceBaselineBossExtraPrepIncome(options.bossExtraPrepIncome),
+    bossExtraTotalPrepIncome: resolveBotBalanceBaselineBossExtraTotalPrepIncome(options.bossExtraTotalPrepIncome),
+    battleSeedBase: resolveBotBalanceBaselineBattleSeedBase(options.battleSeedBase),
   };
 }
 
@@ -190,7 +233,13 @@ export function baselineChunkConfigMatches(
     && actual.raidPolicies.every((policy, index) => policy === expected.raidPolicies[index])
     && JSON.stringify(actual.raidHeroIds ?? null) === JSON.stringify(expected.raidHeroIds ?? null)
     && resolveBotBalanceBaselineOptimizationVariant(actual.optimizationVariant)
-      === resolveBotBalanceBaselineOptimizationVariant(expected.optimizationVariant);
+      === resolveBotBalanceBaselineOptimizationVariant(expected.optimizationVariant)
+    && resolveBotBalanceBaselineBossExtraPrepIncome(actual.bossExtraPrepIncome)
+      === resolveBotBalanceBaselineBossExtraPrepIncome(expected.bossExtraPrepIncome)
+    && resolveBotBalanceBaselineBossExtraTotalPrepIncome(actual.bossExtraTotalPrepIncome)
+      === resolveBotBalanceBaselineBossExtraTotalPrepIncome(expected.bossExtraTotalPrepIncome)
+    && resolveBotBalanceBaselineBattleSeedBase(actual.battleSeedBase)
+      === resolveBotBalanceBaselineBattleSeedBase(expected.battleSeedBase);
 }
 
 function resolveRuntimeAvailableParallelism(): number {

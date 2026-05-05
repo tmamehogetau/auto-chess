@@ -554,7 +554,7 @@ describe("hero skill regressions", () => {
     expect(log[0]).toContain("プライベートスクウェア");
   });
 
-  test("Patchouli uses Royal Flare as a heavy mana burst around herself", () => {
+  test("Patchouli uses Royal Flare as a heavy mana burst around her attack target", () => {
     const patchouliSkill = resolveUnitSkillDefinition(createBattleUnit({
       id: "boss-unit-1",
       sourceUnitId: "patchouli",
@@ -567,8 +567,9 @@ describe("hero skill regressions", () => {
       type: "mage",
       attackPower: 100,
       cell: 0,
+      currentTargetId: "enemy-3",
     });
-    const closeEnemy = createBattleUnit({
+    const nearCasterEnemy = createBattleUnit({
       id: "enemy-1",
       sourceUnitId: "enemy-1",
       battleSide: "left",
@@ -576,29 +577,29 @@ describe("hero skill regressions", () => {
       maxHp: 500,
       cell: 1,
     });
-    const midEnemy = createBattleUnit({
+    const targetSplashEnemy = createBattleUnit({
       id: "enemy-2",
       sourceUnitId: "enemy-2",
       battleSide: "left",
       hp: 500,
       maxHp: 500,
-      cell: 2,
+      cell: 11,
     });
-    const edgeEnemy = createBattleUnit({
+    const attackTarget = createBattleUnit({
       id: "enemy-3",
       sourceUnitId: "enemy-3",
       battleSide: "left",
       hp: 500,
       maxHp: 500,
-      cell: 3,
+      cell: 10,
     });
-    const sideEnemy = createBattleUnit({
+    const targetSideEnemy = createBattleUnit({
       id: "enemy-4",
       sourceUnitId: "enemy-4",
       battleSide: "left",
       hp: 500,
       maxHp: 500,
-      cell: 6,
+      cell: 16,
     });
     const untouchedEnemy = createBattleUnit({
       id: "enemy-5",
@@ -606,14 +607,14 @@ describe("hero skill regressions", () => {
       battleSide: "left",
       hp: 500,
       maxHp: 500,
-      cell: 4,
+      cell: 18,
     });
     const log: string[] = [];
 
     patchouliSkill?.execute(
       caster,
       [caster],
-      [untouchedEnemy, edgeEnemy, sideEnemy, midEnemy, closeEnemy],
+      [untouchedEnemy, attackTarget, targetSideEnemy, targetSplashEnemy, nearCasterEnemy],
       log,
     );
 
@@ -626,10 +627,10 @@ describe("hero skill regressions", () => {
       manaGainOnAttack: 8,
       manaGainOnDamageTakenRatio: 20,
     });
-    expect(closeEnemy.hp).toBe(370);
-    expect(midEnemy.hp).toBe(370);
-    expect(edgeEnemy.hp).toBe(370);
-    expect(sideEnemy.hp).toBe(370);
+    expect(nearCasterEnemy.hp).toBe(500);
+    expect(targetSplashEnemy.hp).toBe(370);
+    expect(attackTarget.hp).toBe(370);
+    expect(targetSideEnemy.hp).toBe(370);
     expect(untouchedEnemy.hp).toBe(500);
     expect(log[0]).toContain("ロイヤルフレア");
 

@@ -86,6 +86,46 @@ describe("prep-command-logging", () => {
       });
     });
 
+    it("logs bot purchase construction reason metadata when provided", () => {
+      const payload = {
+        shopBuySlotIndex: 1,
+        botPurchaseReason: "raid_archetype_construction",
+        botPurchasePlanId: "kou_ryuudou_core",
+        botPurchasePlanAnchorUnitId: "megumu",
+        botPurchasePlanBonus: 260,
+        botArchetypeDecision: "completed_and_bought",
+        botArchetypeDecisionPlanId: "grassroot_core",
+        botArchetypeDecisionCandidateUnitId: "wakasagihime",
+        botArchetypeDecisionCandidateCost: 1,
+        botArchetypeDecisionBlocker: "all_deploy_slots_full",
+        botArchetypeDecisionCombatPlanUnitCount: 1,
+        botArchetypeDecisionReservePlanUnitCount: 2,
+        botArchetypeDecisionAvailableMainSlots: 0,
+        botArchetypeDecisionAvailableSubSlots: 0,
+      };
+
+      logPrepCommandActions("player1", payload, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.details).toMatchObject({
+        unitType: "ranger",
+        cost: 2,
+        botPurchaseReason: "raid_archetype_construction",
+        botPurchasePlanId: "kou_ryuudou_core",
+        botPurchasePlanAnchorUnitId: "megumu",
+        botPurchasePlanBonus: 260,
+        botArchetypeDecision: "completed_and_bought",
+        botArchetypeDecisionPlanId: "grassroot_core",
+        botArchetypeDecisionCandidateUnitId: "wakasagihime",
+        botArchetypeDecisionCandidateCost: 1,
+        botArchetypeDecisionBlocker: "all_deploy_slots_full",
+        botArchetypeDecisionCombatPlanUnitCount: 1,
+        botArchetypeDecisionReservePlanUnitCount: 2,
+        botArchetypeDecisionAvailableMainSlots: 0,
+        botArchetypeDecisionAvailableSubSlots: 0,
+      });
+    });
+
     it("should not include a Chimata acquisition coin in buy_unit goldAfter", () => {
       mockGetShopOffers = vi.fn(() => [
         { unitType: "mage", unitId: "chimata", cost: 2 },
@@ -165,6 +205,36 @@ describe("prep-command-logging", () => {
       expect(loggedActions[0]!.details).toMatchObject({
         benchIndex: 1,
         toCell: 5,
+        goldBefore: 10,
+        goldAfter: 10,
+      });
+    });
+
+    it("should log board_move action when boardUnitMove is provided", () => {
+      logPrepCommandActions("player1", {
+        boardUnitMove: { fromCell: 9, toCell: 14 },
+      }, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("board_move");
+      expect(loggedActions[0]!.details).toMatchObject({
+        fromCell: 9,
+        toCell: 14,
+        goldBefore: 10,
+        goldAfter: 10,
+      });
+    });
+
+    it("should log board_swap action when boardUnitSwap is provided", () => {
+      logPrepCommandActions("player1", {
+        boardUnitSwap: { fromCell: 14, toCell: 8 },
+      }, deps);
+
+      expect(loggedActions).toHaveLength(1);
+      expect(loggedActions[0]!.action).toBe("board_swap");
+      expect(loggedActions[0]!.details).toMatchObject({
+        fromCell: 14,
+        toCell: 8,
         goldBefore: 10,
         goldAfter: 10,
       });
@@ -577,6 +647,8 @@ describe("prep-command-logging", () => {
         shopRefreshCount: 1,
         specialUnitUpgradeCount: 1,
         boardSellIndex: 0,
+        boardUnitMove: { fromCell: 1, toCell: 2 },
+        boardUnitSwap: { fromCell: 3, toCell: 4 },
         bossShopBuySlotIndex: 0,
         shopLock: true,
         mergeUnits: { unitType: "vanguard", unitLevel: 2, benchIndices: [0, 1, 2] },
@@ -584,7 +656,7 @@ describe("prep-command-logging", () => {
 
       logPrepCommandActions("player1", payload, deps);
 
-      expect(loggedActions).toHaveLength(9);
+      expect(loggedActions).toHaveLength(11);
     });
   });
 });

@@ -1050,6 +1050,35 @@ describe("PrepCommandValidator", () => {
       expect(result).toBeNull();
     });
 
+    test("boardUnitSwap accepts two occupied main-board cells", () => {
+      const deps = createDependencies({
+        getBoardPlacements: vi.fn().mockReturnValue([
+          { cell: 8, unitType: "vanguard" },
+          { cell: 9, unitType: "vanguard" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardUnitSwap: { fromCell: 9, toCell: 8 },
+      }, deps);
+
+      expect(result).toBeNull();
+    });
+
+    test("boardUnitSwap rejects an empty target cell", () => {
+      const deps = createDependencies({
+        getBoardPlacements: vi.fn().mockReturnValue([
+          { cell: 9, unitType: "vanguard" },
+        ]),
+      });
+
+      const result = validatePrepCommand("p1", 1, 1000, {
+        boardUnitSwap: { fromCell: 9, toCell: 8 },
+      }, deps);
+
+      expect(result).toEqual({ accepted: false, code: "INVALID_PAYLOAD" });
+    });
+
     test("boardUnitMove slot=sub rejects a source host that already carries a sub unit", () => {
       const deps = createDependencies({
         isSubUnitSystemEnabled: vi.fn().mockReturnValue(true),

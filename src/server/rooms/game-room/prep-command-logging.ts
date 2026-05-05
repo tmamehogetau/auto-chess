@@ -95,6 +95,45 @@ export function logPrepCommandActions(
         ...(typeof offer.displayName === "string" && { unitName: offer.displayName }),
         cost: offer.cost,
         ...(offer.isRumorUnit === true && { isRumorUnit: true }),
+        ...(typeof commandPayload.botPurchaseReason === "string" && {
+          botPurchaseReason: commandPayload.botPurchaseReason,
+        }),
+        ...(typeof commandPayload.botPurchasePlanId === "string" && {
+          botPurchasePlanId: commandPayload.botPurchasePlanId,
+        }),
+        ...(typeof commandPayload.botPurchasePlanAnchorUnitId === "string" && {
+          botPurchasePlanAnchorUnitId: commandPayload.botPurchasePlanAnchorUnitId,
+        }),
+        ...(typeof commandPayload.botPurchasePlanBonus === "number" && {
+          botPurchasePlanBonus: commandPayload.botPurchasePlanBonus,
+        }),
+        ...(typeof commandPayload.botArchetypeDecision === "string" && {
+          botArchetypeDecision: commandPayload.botArchetypeDecision,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionPlanId === "string" && {
+          botArchetypeDecisionPlanId: commandPayload.botArchetypeDecisionPlanId,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionCandidateUnitId === "string" && {
+          botArchetypeDecisionCandidateUnitId: commandPayload.botArchetypeDecisionCandidateUnitId,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionCandidateCost === "number" && {
+          botArchetypeDecisionCandidateCost: commandPayload.botArchetypeDecisionCandidateCost,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionBlocker === "string" && {
+          botArchetypeDecisionBlocker: commandPayload.botArchetypeDecisionBlocker,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionCombatPlanUnitCount === "number" && {
+          botArchetypeDecisionCombatPlanUnitCount: commandPayload.botArchetypeDecisionCombatPlanUnitCount,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionReservePlanUnitCount === "number" && {
+          botArchetypeDecisionReservePlanUnitCount: commandPayload.botArchetypeDecisionReservePlanUnitCount,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionAvailableMainSlots === "number" && {
+          botArchetypeDecisionAvailableMainSlots: commandPayload.botArchetypeDecisionAvailableMainSlots,
+        }),
+        ...(typeof commandPayload.botArchetypeDecisionAvailableSubSlots === "number" && {
+          botArchetypeDecisionAvailableSubSlots: commandPayload.botArchetypeDecisionAvailableSubSlots,
+        }),
         goldBefore,
         goldAfter: goldBefore - offer.cost,
       });
@@ -131,6 +170,24 @@ export function logPrepCommandActions(
   if (commandPayload.boardToBenchCell !== undefined) {
     deps.logger.logAction(sessionId, roundIndex, "undeploy", {
       cell: commandPayload.boardToBenchCell.cell,
+      goldBefore,
+      goldAfter: goldBefore,
+    });
+  }
+
+  if (commandPayload.boardUnitMove !== undefined) {
+    deps.logger.logAction(sessionId, roundIndex, "board_move", {
+      fromCell: commandPayload.boardUnitMove.fromCell,
+      toCell: commandPayload.boardUnitMove.toCell,
+      goldBefore,
+      goldAfter: goldBefore,
+    });
+  }
+
+  if (commandPayload.boardUnitSwap !== undefined) {
+    deps.logger.logAction(sessionId, roundIndex, "board_swap", {
+      fromCell: commandPayload.boardUnitSwap.fromCell,
+      toCell: commandPayload.boardUnitSwap.toCell,
       goldBefore,
       goldAfter: goldBefore,
     });

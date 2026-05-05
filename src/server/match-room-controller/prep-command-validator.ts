@@ -45,6 +45,19 @@ export interface CommandPayload {
   specialUnitUpgradeCount?: number;
   shopRefreshCount?: number;
   shopBuySlotIndex?: number;
+  botPurchaseReason?: string;
+  botPurchasePlanId?: string;
+  botPurchasePlanAnchorUnitId?: string;
+  botPurchasePlanBonus?: number;
+  botArchetypeDecision?: string;
+  botArchetypeDecisionPlanId?: string;
+  botArchetypeDecisionCandidateUnitId?: string;
+  botArchetypeDecisionCandidateCost?: number;
+  botArchetypeDecisionBlocker?: string;
+  botArchetypeDecisionCombatPlanUnitCount?: number;
+  botArchetypeDecisionReservePlanUnitCount?: number;
+  botArchetypeDecisionAvailableMainSlots?: number;
+  botArchetypeDecisionAvailableSubSlots?: number;
   heroExclusiveShopBuySlotIndex?: number;
   shopLock?: boolean;
   benchToBoardCell?: {
@@ -59,6 +72,10 @@ export interface CommandPayload {
     fromCell: number;
     toCell: number;
     slot?: "main" | "sub";
+  };
+  boardUnitSwap?: {
+    fromCell: number;
+    toCell: number;
   };
   subUnitToBenchCell?: {
     cell: number;
@@ -381,6 +398,20 @@ function validatePayload(
     }
   }
 
+  if (payload.boardUnitSwap !== undefined) {
+    const { fromCell, toCell } = payload.boardUnitSwap;
+    if (
+      !Number.isInteger(fromCell) ||
+      fromCell < SHARED_BOARD_MIN_INDEX ||
+      fromCell > SHARED_BOARD_MAX_INDEX ||
+      !Number.isInteger(toCell) ||
+      toCell < SHARED_BOARD_MIN_INDEX ||
+      toCell > SHARED_BOARD_MAX_INDEX
+    ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
+    }
+  }
+
   if (payload.subUnitToBenchCell !== undefined) {
     if (
       !Number.isInteger(payload.subUnitToBenchCell.cell) ||
@@ -453,6 +484,7 @@ function validateCommandConflicts(
   const hasSubUnitCommand =
     payload.heroPlacementCell !== undefined
     || payload.boardUnitMove !== undefined
+    || payload.boardUnitSwap !== undefined
     || payload.subUnitToBenchCell !== undefined
     || payload.subUnitMove !== undefined
     || payload.subUnitSwapBench !== undefined;
@@ -479,8 +511,12 @@ function validateCommandConflicts(
 
   if (
     (payload.boardUnitMove !== undefined && payload.subUnitToBenchCell !== undefined)
+    || (payload.boardUnitMove !== undefined && payload.boardUnitSwap !== undefined)
     || (payload.boardUnitMove !== undefined && payload.subUnitMove !== undefined)
     || (payload.boardUnitMove !== undefined && payload.subUnitSwapBench !== undefined)
+    || (payload.boardUnitSwap !== undefined && payload.subUnitToBenchCell !== undefined)
+    || (payload.boardUnitSwap !== undefined && payload.subUnitMove !== undefined)
+    || (payload.boardUnitSwap !== undefined && payload.subUnitSwapBench !== undefined)
     || (payload.subUnitToBenchCell !== undefined && payload.subUnitMove !== undefined)
     || (payload.subUnitToBenchCell !== undefined && payload.subUnitSwapBench !== undefined)
     || (payload.subUnitMove !== undefined && payload.subUnitSwapBench !== undefined)
@@ -495,6 +531,7 @@ function validateCommandConflicts(
       || payload.boardToBenchCell !== undefined
       || payload.boardPlacements !== undefined
       || payload.boardUnitMove !== undefined
+      || payload.boardUnitSwap !== undefined
       || payload.subUnitToBenchCell !== undefined
       || payload.subUnitMove !== undefined
       || payload.subUnitSwapBench !== undefined
@@ -732,6 +769,25 @@ function validatePreconditions(
       if (heroAttachedSubUnit !== null) {
         return { accepted: false, code: "INVALID_PAYLOAD" };
       }
+    }
+  }
+
+  if (payload.boardUnitSwap !== undefined) {
+    const boardPlacements = deps.getBoardPlacements(playerId);
+    const sourcePlacement = boardPlacements.find((placement) => placement.cell === payload.boardUnitSwap?.fromCell);
+    const targetPlacement = boardPlacements.find((placement) => placement.cell === payload.boardUnitSwap?.toCell);
+    const heroPlacement = deps.getHeroPlacementForPlayer?.(playerId) ?? null;
+
+    if (
+      !sourcePlacement ||
+      !targetPlacement ||
+      payload.boardUnitSwap.fromCell === payload.boardUnitSwap.toCell ||
+      heroPlacement === payload.boardUnitSwap.fromCell ||
+      heroPlacement === payload.boardUnitSwap.toCell ||
+      reservedBoardCells.has(payload.boardUnitSwap.fromCell) ||
+      reservedBoardCells.has(payload.boardUnitSwap.toCell)
+    ) {
+      return { accepted: false, code: "INVALID_PAYLOAD" };
     }
   }
 

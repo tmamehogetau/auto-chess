@@ -80,6 +80,7 @@ class FakeHelperRoom {
       benchSellIndex?: number;
       boardSellIndex?: number;
       benchToBoardCell?: { benchIndex: number; cell: number; slot?: "main" | "sub" };
+      boardUnitSwap?: { fromCell: number; toCell: number };
     };
     const player = this.state?.players.get(this.sessionId);
     if (!player) {
@@ -211,6 +212,11 @@ class FakeHelperRoom {
       player.boardSubUnits = [...(player.boardSubUnits ?? []).filter((token) => !token.startsWith(`${sellCell}:`))];
       player.gold += 1;
       player.lastCmdSeq = payload.cmdSeq ?? player.lastCmdSeq;
+      this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
+      return;
+    }
+
+    if (payload.boardUnitSwap) {
       this.emitMessage(SERVER_MESSAGE_TYPES.COMMAND_RESULT, { accepted: true });
       return;
     }
@@ -756,6 +762,128 @@ describe("helper automation wrapper", () => {
     });
   });
 
+  test("wrapper follows a factionless carry construction target around Zanmu", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 4,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:reimu", "31:zanmu"],
+          boardSubUnits: [],
+          shopOffers: [
+            { unitType: "ranger", unitId: "nazrin", factionId: "myourenji", cost: 1 },
+            { unitType: "vanguard", unitId: "junko", factionId: "kanjuden", cost: 4 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0, { strategy: "upgrade" });
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        shopBuySlotIndex: 1,
+      }),
+    });
+  });
+
+  test("wrapper advances a Chireiden carry construction target around Utsuho", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 2,
+          specialUnitLevel: 7,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:reimu", "31:utsuho", "32:rin"],
+          boardSubUnits: [],
+          shopOffers: [
+            { unitType: "ranger", unitId: "nazrin", factionId: "myourenji", cost: 1 },
+            { unitType: "assassin", unitId: "koishi", factionId: "chireiden", cost: 2 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0, { strategy: "upgrade" });
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        shopBuySlotIndex: 1,
+      }),
+    });
+  });
+
+  test("wrapper advances a Kou Ryuudou construction target before the next faction tier is immediate", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "purchase",
+      players: new Map([
+        ["player-1", {
+          role: "raid",
+          ready: false,
+          gold: 2,
+          specialUnitLevel: 7,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: ["30:reimu", "31:megumu", "32:tsukasa"],
+          boardSubUnits: [],
+          shopOffers: [
+            { unitType: "ranger", unitId: "nazrin", factionId: "myourenji", cost: 1 },
+            { unitType: "mage", unitId: "chimata", factionId: "kou_ryuudou", cost: 2 },
+          ],
+          bossShopOffers: [],
+          selectedHeroId: "reimu",
+          selectedBossId: "",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0, { strategy: "upgrade" });
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        shopBuySlotIndex: 1,
+        botPurchaseReason: "raid_archetype_construction",
+        botPurchasePlanId: "kou_ryuudou_core",
+        botPurchasePlanAnchorUnitId: "megumu",
+      }),
+    });
+  });
+
   test("wrapper can drive a growth-policy boss helper that buys the expensive boss offer first", () => {
     const state: FakeHelperState = {
       phase: "Prep",
@@ -1105,7 +1233,8 @@ describe("helper automation wrapper", () => {
           gold: 0,
           benchUnits: [],
           benchUnitIds: [],
-          boardUnits: ["30:yoshika", "31:hecatia", "32:nazrin"],
+          specialUnitLevel: 4,
+          boardUnits: ["30:yoshika", "31:hecatia:4", "32:nazrin"],
           boardSubUnits: [],
           shopOffers: [],
           bossShopOffers: [],
@@ -1126,6 +1255,102 @@ describe("helper automation wrapper", () => {
       message: expect.objectContaining({
         cmdSeq: 1,
         heroPlacementCell: 31,
+      }),
+    });
+  });
+
+  test("wrapper does not repeat a boss body guard swap while waiting for state sync", async () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      roundIndex: 11,
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 0,
+          benchUnits: [],
+          benchUnitIds: [],
+          boardUnits: [
+            "2:boss:5",
+            "8:vanguard:2",
+            "9:vanguard:7",
+            "3:mage:4",
+          ],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(room.sentMessages.filter(({ message }) =>
+      (message as { boardUnitSwap?: unknown })?.boardUnitSwap !== undefined
+    )).toEqual([
+      expect.objectContaining({
+        message: expect.objectContaining({
+          boardUnitSwap: {
+            fromCell: 9,
+            toCell: 8,
+          },
+        }),
+      }),
+    ]);
+  });
+
+  test("wrapper prioritizes final boss body guard swap before bench refit", () => {
+    const state: FakeHelperState = {
+      phase: "Prep",
+      playerPhase: "deploy",
+      roundIndex: 11,
+      players: new Map([
+        ["player-1", {
+          role: "boss",
+          ready: false,
+          gold: 0,
+          benchUnits: [{ unitType: "mage", unitId: "hecatia", unitLevel: 7, cost: 5 }],
+          benchUnitIds: ["hecatia"],
+          boardUnits: [
+            "2:boss:5",
+            "8:yoshika:2",
+            "9:nazrin:3",
+            "10:sakuya:4",
+            "14:meiling:7",
+            "15:patchouli:4",
+            "16:miko:5",
+          ],
+          boardSubUnits: [],
+          shopOffers: [],
+          bossShopOffers: [],
+          selectedHeroId: "",
+          selectedBossId: "remilia",
+          lastCmdSeq: 0,
+        }],
+      ]),
+    };
+    const room = new FakeHelperRoom(state);
+
+    attachAutoFillHelperAutomationForTest(room, 0);
+
+    room.emitState();
+
+    expect(room.sentMessages[0]).toMatchObject({
+      type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
+      message: expect.objectContaining({
+        cmdSeq: 1,
+        boardUnitSwap: {
+          fromCell: 14,
+          toCell: 8,
+        },
       }),
     });
   });
@@ -1174,7 +1399,8 @@ describe("helper automation wrapper", () => {
           gold: 0,
           benchUnits: [],
           benchUnitIds: [],
-          boardUnits: ["30:yoshika", "31:hecatia"],
+          specialUnitLevel: 4,
+          boardUnits: ["30:yoshika", "31:hecatia:4"],
           boardSubUnits: ["30:hero:okina"],
           shopOffers: [],
           bossShopOffers: [],
@@ -1273,7 +1499,7 @@ describe("helper automation wrapper", () => {
       type: CLIENT_MESSAGE_TYPES.PREP_COMMAND,
       message: expect.objectContaining({
         cmdSeq: 1,
-        benchSellIndex: 7,
+        benchSellIndex: 1,
       }),
     });
     expect(room.sentMessages[1]).toMatchObject({
@@ -1285,12 +1511,12 @@ describe("helper automation wrapper", () => {
     });
     expect(state.players.get("player-1")?.benchUnitIds).toEqual([
       "yoshika",
-      "rin",
       "wakasagihime",
       "momoyo",
       "tojiko",
       "kagerou",
       "megumu",
+      "miko",
       "nazrin",
     ]);
   });

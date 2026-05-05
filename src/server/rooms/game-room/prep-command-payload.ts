@@ -26,6 +26,7 @@ export function buildPrepCommandPayload(
     message.benchToBoardCell === undefined &&
     message.boardToBenchCell === undefined &&
     message.boardUnitMove === undefined &&
+    message.boardUnitSwap === undefined &&
     message.subUnitToBenchCell === undefined &&
     message.subUnitMove === undefined &&
     message.subUnitSwapBench === undefined &&
@@ -46,11 +47,47 @@ export function buildPrepCommandPayload(
       specialUnitUpgradeCount: message.specialUnitUpgradeCount,
     }),
     ...(message.shopRefreshCount !== undefined && { shopRefreshCount: message.shopRefreshCount }),
-    ...(message.shopBuySlotIndex !== undefined && { shopBuySlotIndex: message.shopBuySlotIndex }),
+    ...(message.shopBuySlotIndex !== undefined && {
+      shopBuySlotIndex: message.shopBuySlotIndex,
+      ...(message.botPurchaseReason !== undefined && { botPurchaseReason: message.botPurchaseReason }),
+      ...(message.botPurchasePlanId !== undefined && { botPurchasePlanId: message.botPurchasePlanId }),
+      ...(message.botPurchasePlanAnchorUnitId !== undefined && {
+        botPurchasePlanAnchorUnitId: message.botPurchasePlanAnchorUnitId,
+      }),
+      ...(message.botPurchasePlanBonus !== undefined && { botPurchasePlanBonus: message.botPurchasePlanBonus }),
+      ...(message.botArchetypeDecision !== undefined && {
+        botArchetypeDecision: message.botArchetypeDecision,
+      }),
+      ...(message.botArchetypeDecisionPlanId !== undefined && {
+        botArchetypeDecisionPlanId: message.botArchetypeDecisionPlanId,
+      }),
+      ...(message.botArchetypeDecisionCandidateUnitId !== undefined && {
+        botArchetypeDecisionCandidateUnitId: message.botArchetypeDecisionCandidateUnitId,
+      }),
+      ...(message.botArchetypeDecisionCandidateCost !== undefined && {
+        botArchetypeDecisionCandidateCost: message.botArchetypeDecisionCandidateCost,
+      }),
+      ...(message.botArchetypeDecisionBlocker !== undefined && {
+        botArchetypeDecisionBlocker: message.botArchetypeDecisionBlocker,
+      }),
+      ...(message.botArchetypeDecisionCombatPlanUnitCount !== undefined && {
+        botArchetypeDecisionCombatPlanUnitCount: message.botArchetypeDecisionCombatPlanUnitCount,
+      }),
+      ...(message.botArchetypeDecisionReservePlanUnitCount !== undefined && {
+        botArchetypeDecisionReservePlanUnitCount: message.botArchetypeDecisionReservePlanUnitCount,
+      }),
+      ...(message.botArchetypeDecisionAvailableMainSlots !== undefined && {
+        botArchetypeDecisionAvailableMainSlots: message.botArchetypeDecisionAvailableMainSlots,
+      }),
+      ...(message.botArchetypeDecisionAvailableSubSlots !== undefined && {
+        botArchetypeDecisionAvailableSubSlots: message.botArchetypeDecisionAvailableSubSlots,
+      }),
+    }),
     ...(message.shopLock !== undefined && { shopLock: message.shopLock }),
     ...(message.benchToBoardCell !== undefined && { benchToBoardCell: message.benchToBoardCell }),
     ...(message.boardToBenchCell !== undefined && { boardToBenchCell: message.boardToBenchCell }),
     ...(message.boardUnitMove !== undefined && { boardUnitMove: message.boardUnitMove }),
+    ...(message.boardUnitSwap !== undefined && { boardUnitSwap: message.boardUnitSwap }),
     ...(message.subUnitToBenchCell !== undefined && { subUnitToBenchCell: message.subUnitToBenchCell }),
     ...(message.subUnitMove !== undefined && { subUnitMove: message.subUnitMove }),
     ...(message.subUnitSwapBench !== undefined && { subUnitSwapBench: message.subUnitSwapBench }),

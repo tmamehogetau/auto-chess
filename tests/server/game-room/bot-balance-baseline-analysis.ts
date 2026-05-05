@@ -2,6 +2,7 @@ import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
 import type {
   BotOnlyBaselineAggregateReport,
   BotOnlyBaselineBattleEndReason,
+  BotOnlyBaselineRoundUnitDetail,
 } from "./bot-balance-baseline-aggregate";
 import type { BotBalanceBaselineSummary } from "./bot-balance-baseline-human-report";
 
@@ -91,6 +92,59 @@ export type FinalBattleBossBodyProtectionAnalysis = {
   averageBossSurvivorsWhenBodyDefeated: number;
   averageBossSurvivorsWhenBossWins: number;
   averageRaidSurvivorsWhenBodyDefeated: number;
+  directGuardAliveWhenBodyBreachedCount: number;
+  directGuardAliveWhenBodyBreachedRate: number;
+  directGuardDefeatedWhenBodyBreachedCount: number;
+  directGuardDefeatedWhenBodyBreachedRate: number;
+  directGuardOutcomesWhenBodyBreached: FinalBattleDirectGuardOutcomeBreakdown[];
+  survivingBossUnitsWhenBodyBreached: FinalBattleUnitPresenceBreakdown[];
+  raidBodyDamageContributorsWhenBodyBreached: FinalBattleRaidBodyDamageContributorBreakdown[];
+};
+
+export type FinalBattleUnitPresenceBreakdown = {
+  unitId: string;
+  unitName: string;
+  unitType: string;
+  sampleCount: number;
+  sampleRate: number;
+  averageUnitLevel: number;
+  averageFinalHp: number;
+};
+
+export type FinalBattleRaidBodyDamageContributorBreakdown = FinalBattleUnitPresenceBreakdown & {
+  totalPhaseContributionDamage: number;
+  phaseContributionShare: number;
+  averagePhaseContributionDamage: number;
+  averageTotalDamage: number;
+};
+
+export type FinalBattleRaidUnitOutcomeBreakdown = FinalBattleUnitPresenceBreakdown & {
+  totalDamage: number;
+  totalPhaseContributionDamage: number;
+  averageTotalDamage: number;
+  averagePhaseContributionDamage: number;
+};
+
+export type FinalBattleBossDamageContributorBreakdown = FinalBattleUnitPresenceBreakdown & {
+  totalDamage: number;
+  damageShare: number;
+  averageTotalDamage: number;
+};
+
+export type FinalBattleDirectGuardOutcomeBreakdown = FinalBattleUnitPresenceBreakdown & {
+  aliveAtBattleEndCount: number;
+  aliveAtBattleEndRate: number;
+  defeatedAtBattleEndCount: number;
+  defeatedAtBattleEndRate: number;
+  averageDamageTaken: number;
+  matchedDecisionUnitCount: number;
+  matchedDecisionUnitRate: number;
+};
+
+export type FinalBattleBossOffenseAnalysis = {
+  defeatedRaidUnitsWhenBossWins: FinalBattleRaidUnitOutcomeBreakdown[];
+  bossDamageContributorsWhenBossWins: FinalBattleBossDamageContributorBreakdown[];
+  survivingRaidDamageContributorsWhenBodyBreached: FinalBattleRaidBodyDamageContributorBreakdown[];
 };
 
 export type FinalBattleBossSpellAnalysis = {
@@ -102,6 +156,48 @@ export type FinalBattleBossSpellAnalysis = {
   averageTickCount: number;
   averageTotalDamage: number;
   averageMaxStack: number | null;
+};
+
+export type FinalBattleOutcomeContrast = {
+  winner: "boss" | "raid";
+  sampleCount: number;
+  sampleRate: number;
+  bossBodyDefeatRate: number;
+  averageBossBodyDamage: number;
+  averageBossRemainingHp: number;
+  averageBossSurvivors: number;
+  averageRaidSurvivors: number;
+  averageRaidPlayersWipedOut: number;
+  averageRaidPlayersEliminatedAfterRound: number;
+  averageBattleStartUnitsPerRaidPlayer: number;
+  directGuardAliveRate: number;
+  averageDirectGuardDamageTaken: number;
+  averageBossDamage: number;
+  averageRaidDamage: number;
+  averageRaidPhaseContributionDamage: number;
+  averageBossSpellDamage: number;
+  averageBattleEndSeconds: number;
+  averageBattleEndRealPlaySeconds: number;
+};
+
+export type FinalBattleBossWinBodyDamageBucket = {
+  bucketId: "zero" | "low" | "mid" | "near";
+  label: string;
+  minBossBodyDamage: number;
+  maxBossBodyDamage: number;
+  sampleCount: number;
+  sampleRate: number;
+  averageBossBodyDamage: number;
+  averageBossRemainingHp: number;
+  averageBossSurvivors: number;
+  averageRaidSurvivors: number;
+  averageRaidPlayersWipedOut: number;
+  averageBattleStartUnitsPerRaidPlayer: number;
+  directGuardAliveRate: number;
+  averageDirectGuardDamageTaken: number;
+  averageBossDamage: number;
+  averageRaidDamage: number;
+  averageBossSpellDamage: number;
 };
 
 export type FinalBattleAnalysis = {
@@ -117,7 +213,10 @@ export type FinalBattleAnalysis = {
   averageBossRemainingHp: number;
   averageBattleEndSeconds: number;
   averageBattleEndRealPlaySeconds: number;
+  outcomeContrasts: FinalBattleOutcomeContrast[];
+  bossWinBodyDamageBuckets: FinalBattleBossWinBodyDamageBucket[];
   bodyProtection: FinalBattleBossBodyProtectionAnalysis;
+  bossOffense: FinalBattleBossOffenseAnalysis;
   bossSpells: FinalBattleBossSpellAnalysis[];
   endReasonCounts: Partial<Record<BotOnlyBaselineBattleEndReason, number>>;
   samples: Array<{
@@ -377,7 +476,10 @@ function buildEmptyFinalBattle(): FinalBattleAnalysis {
     averageBossRemainingHp: FINAL_BOSS_BODY_HP_FALLBACK,
     averageBattleEndSeconds: 0,
     averageBattleEndRealPlaySeconds: 0,
+    outcomeContrasts: [],
+    bossWinBodyDamageBuckets: [],
     bodyProtection: buildEmptyFinalBattleBossBodyProtection(),
+    bossOffense: buildEmptyFinalBattleBossOffense(),
     bossSpells: [],
     endReasonCounts: {},
     samples: [],
@@ -392,6 +494,21 @@ function buildEmptyFinalBattleBossBodyProtection(): FinalBattleBossBodyProtectio
     averageBossSurvivorsWhenBodyDefeated: 0,
     averageBossSurvivorsWhenBossWins: 0,
     averageRaidSurvivorsWhenBodyDefeated: 0,
+    directGuardAliveWhenBodyBreachedCount: 0,
+    directGuardAliveWhenBodyBreachedRate: 0,
+    directGuardDefeatedWhenBodyBreachedCount: 0,
+    directGuardDefeatedWhenBodyBreachedRate: 0,
+    directGuardOutcomesWhenBodyBreached: [],
+    survivingBossUnitsWhenBodyBreached: [],
+    raidBodyDamageContributorsWhenBodyBreached: [],
+  };
+}
+
+function buildEmptyFinalBattleBossOffense(): FinalBattleBossOffenseAnalysis {
+  return {
+    defeatedRaidUnitsWhenBossWins: [],
+    bossDamageContributorsWhenBossWins: [],
+    survivingRaidDamageContributorsWhenBodyBreached: [],
   };
 }
 
@@ -399,12 +516,38 @@ function average(values: number[]): number {
   return values.length > 0 ? values.reduce((total, value) => total + value, 0) / values.length : 0;
 }
 
+type FinalBattleRoundDetail = NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number];
+
+type FinalBattleUnitAccumulator = {
+  unitId: string;
+  unitName: string;
+  unitType: string;
+  sampleCount: number;
+  totalUnitLevel: number;
+  totalFinalHp: number;
+  totalPhaseContributionDamage: number;
+  totalDamage: number;
+};
+
+type FinalBattleDirectGuardOutcomeAccumulator = FinalBattleUnitAccumulator & {
+  aliveAtBattleEndCount: number;
+  defeatedAtBattleEndCount: number;
+  totalDamageTaken: number;
+  matchedDecisionUnitCount: number;
+};
+
 function secondsFromMs(ms: number): number {
   return ms / 1000;
 }
 
 function realPlaySecondsFromMs(ms: number, timeScale: number): number {
   return timeScale > 0 ? ms / timeScale / 1000 : secondsFromMs(ms);
+}
+
+function averageDefined(values: Array<number | null | undefined>): number {
+  const defined = values.filter((value): value is number =>
+    typeof value === "number" && Number.isFinite(value));
+  return average(defined);
 }
 
 function resolveBattleTimeScale(aggregate: BotOnlyBaselineAggregateReport): number {
@@ -448,6 +591,455 @@ function buildFinalBattleBossSpells(
         averageMaxStack: maxStacks.length > 0 ? average(maxStacks) : null,
       };
     });
+}
+
+function buildFinalBattleBodyProtection(
+  rounds: FinalBattleRoundDetail[],
+  samples: FinalBattleAnalysis["samples"],
+): FinalBattleBossBodyProtectionAnalysis {
+  const bossWinSamples = samples.filter((sample) => sample.finalBattleWinner === "boss");
+  const bodyDefeatedSamples = samples.filter((sample) => sample.bossDefeated);
+  const bodyBreachedSamples = bodyDefeatedSamples.filter((sample) =>
+    sample.bossBodyDefeatedWithBossSurvivors);
+  const bodyBreachedMatchKeys = new Set(bodyBreachedSamples.map((sample) =>
+    `${sample.matchIndex}:${sample.roundIndex}`));
+  const bodyBreachedRounds = rounds.filter((round) =>
+    bodyBreachedMatchKeys.has(`${round.matchIndex}:${round.roundIndex}`));
+  const directGuardAliveCount = bodyBreachedRounds.filter((round) =>
+    isDirectGuardAliveAtBattleEnd(round)).length;
+  const directGuardDefeatedCount = bodyBreachedRounds.filter((round) =>
+    isDirectGuardDefeatedAtBattleEnd(round)).length;
+
+  return {
+    bossBodyDefeatedWithBossSurvivorsCount: bodyBreachedSamples.length,
+    bossBodyDefeatedWithBossSurvivorsSampleRate: bodyBreachedSamples.length / samples.length,
+    bossBodyDefeatedWithBossSurvivorsDefeatRate: bodyDefeatedSamples.length > 0
+      ? bodyBreachedSamples.length / bodyDefeatedSamples.length
+      : 0,
+    averageBossSurvivorsWhenBodyDefeated: average(bodyDefeatedSamples.map((sample) => sample.bossSurvivors)),
+    averageBossSurvivorsWhenBossWins: average(bossWinSamples.map((sample) => sample.bossSurvivors)),
+    averageRaidSurvivorsWhenBodyDefeated: average(bodyDefeatedSamples.map((sample) => sample.raidSurvivors)),
+    directGuardAliveWhenBodyBreachedCount: directGuardAliveCount,
+    directGuardAliveWhenBodyBreachedRate: bodyBreachedRounds.length > 0
+      ? directGuardAliveCount / bodyBreachedRounds.length
+      : 0,
+    directGuardDefeatedWhenBodyBreachedCount: directGuardDefeatedCount,
+    directGuardDefeatedWhenBodyBreachedRate: bodyBreachedRounds.length > 0
+      ? directGuardDefeatedCount / bodyBreachedRounds.length
+      : 0,
+    directGuardOutcomesWhenBodyBreached: buildFinalBattleDirectGuardOutcomeBreakdown(bodyBreachedRounds),
+    survivingBossUnitsWhenBodyBreached: buildFinalBattleUnitPresenceBreakdown(
+      bodyBreachedRounds,
+      (round) => round.topBossUnits.filter((unit) => unit.alive && unit.finalHp > 0),
+    ),
+    raidBodyDamageContributorsWhenBodyBreached: buildFinalBattleRaidBodyDamageContributorBreakdown(
+      bodyBreachedRounds,
+    ),
+  };
+}
+
+function isFinalBossBodyDefeated(round: FinalBattleRoundDetail): boolean {
+  return round.bossSurvivors <= 0 || round.battleEndReasons.includes("boss_defeated");
+}
+
+function getFinalBattleWinner(round: FinalBattleRoundDetail): "boss" | "raid" {
+  return isFinalBossBodyDefeated(round) ? "raid" : "boss";
+}
+
+function getRoundBossBodyDamage(round: FinalBattleRoundDetail): number {
+  return Math.max(0, round.phaseDamageDealt);
+}
+
+function getRoundBossRemainingHp(round: FinalBattleRoundDetail): number {
+  return Math.max(0, FINAL_BOSS_BODY_HP_FALLBACK - getRoundBossBodyDamage(round));
+}
+
+function getRoundBossSpellDamage(round: FinalBattleRoundDetail): number {
+  return (round.bossSpellMetrics ?? []).reduce((total, metric) =>
+    total + Math.max(0, metric.totalDamage), 0);
+}
+
+function getAverageBattleStartUnitsPerRaidPlayer(round: FinalBattleRoundDetail): number {
+  return average(round.raidPlayerConsequences.map((player) =>
+    Math.max(0, player.battleStartUnitCount)));
+}
+
+function buildFinalBattleOutcomeContrasts(
+  rounds: FinalBattleRoundDetail[],
+  timeScale: number,
+): FinalBattleOutcomeContrast[] {
+  return (["boss", "raid"] as const)
+    .map((winner) => {
+      const winnerRounds = rounds.filter((round) => getFinalBattleWinner(round) === winner);
+
+      return {
+        winner,
+        sampleCount: winnerRounds.length,
+        sampleRate: rounds.length > 0 ? winnerRounds.length / rounds.length : 0,
+        bossBodyDefeatRate: winnerRounds.length > 0
+          ? winnerRounds.filter((round) => isFinalBossBodyDefeated(round)).length / winnerRounds.length
+          : 0,
+        averageBossBodyDamage: average(winnerRounds.map(getRoundBossBodyDamage)),
+        averageBossRemainingHp: average(winnerRounds.map(getRoundBossRemainingHp)),
+        averageBossSurvivors: average(winnerRounds.map((round) => Math.max(0, round.bossSurvivors))),
+        averageRaidSurvivors: average(winnerRounds.map((round) => Math.max(0, round.raidSurvivors))),
+        averageRaidPlayersWipedOut: average(winnerRounds.map((round) =>
+          Math.max(0, round.raidPlayersWipedOut))),
+        averageRaidPlayersEliminatedAfterRound: average(winnerRounds.map((round) =>
+          Math.max(0, round.raidPlayersEliminatedAfterRound))),
+        averageBattleStartUnitsPerRaidPlayer: average(winnerRounds.map(
+          getAverageBattleStartUnitsPerRaidPlayer,
+        )),
+        directGuardAliveRate: winnerRounds.length > 0
+          ? winnerRounds.filter((round) => isDirectGuardAliveAtBattleEnd(round)).length / winnerRounds.length
+          : 0,
+        averageDirectGuardDamageTaken: averageDefined(winnerRounds.map((round) =>
+          round.bossBodyDirectGuardOutcome?.damageTaken)),
+        averageBossDamage: average(winnerRounds.map((round) => Math.max(0, round.bossTotalDamage))),
+        averageRaidDamage: average(winnerRounds.map((round) => Math.max(0, round.raidTotalDamage))),
+        averageRaidPhaseContributionDamage: average(winnerRounds.map((round) =>
+          Math.max(0, round.raidPhaseContributionDamage))),
+        averageBossSpellDamage: average(winnerRounds.map(getRoundBossSpellDamage)),
+        averageBattleEndSeconds: average(winnerRounds.map((round) => secondsFromMs(round.battleEndTimeMs))),
+        averageBattleEndRealPlaySeconds: average(winnerRounds.map((round) =>
+          realPlaySecondsFromMs(round.battleEndTimeMs, timeScale))),
+      };
+    })
+    .filter((entry) => entry.sampleCount > 0);
+}
+
+function buildFinalBattleBossWinBodyDamageBuckets(
+  rounds: FinalBattleRoundDetail[],
+): FinalBattleBossWinBodyDamageBucket[] {
+  const bossWinRounds = rounds.filter((round) => getFinalBattleWinner(round) === "boss");
+  const buckets: Array<Pick<
+    FinalBattleBossWinBodyDamageBucket,
+    "bucketId" | "label" | "minBossBodyDamage" | "maxBossBodyDamage"
+  >> = [
+    { bucketId: "zero", label: "0", minBossBodyDamage: 0, maxBossBodyDamage: 0 },
+    { bucketId: "low", label: "1-999", minBossBodyDamage: 1, maxBossBodyDamage: 999 },
+    { bucketId: "mid", label: "1000-2499", minBossBodyDamage: 1000, maxBossBodyDamage: 2499 },
+    {
+      bucketId: "near",
+      label: `2500-${FINAL_BOSS_BODY_HP_FALLBACK - 1}`,
+      minBossBodyDamage: 2500,
+      maxBossBodyDamage: FINAL_BOSS_BODY_HP_FALLBACK - 1,
+    },
+  ];
+
+  return buckets.map((bucket) => {
+    const bucketRounds = bossWinRounds.filter((round) => {
+      const damage = getRoundBossBodyDamage(round);
+      return damage >= bucket.minBossBodyDamage && damage <= bucket.maxBossBodyDamage;
+    });
+
+    return {
+      ...bucket,
+      sampleCount: bucketRounds.length,
+      sampleRate: bossWinRounds.length > 0 ? bucketRounds.length / bossWinRounds.length : 0,
+      averageBossBodyDamage: average(bucketRounds.map(getRoundBossBodyDamage)),
+      averageBossRemainingHp: average(bucketRounds.map(getRoundBossRemainingHp)),
+      averageBossSurvivors: average(bucketRounds.map((round) => Math.max(0, round.bossSurvivors))),
+      averageRaidSurvivors: average(bucketRounds.map((round) => Math.max(0, round.raidSurvivors))),
+      averageRaidPlayersWipedOut: average(bucketRounds.map((round) =>
+        Math.max(0, round.raidPlayersWipedOut))),
+      averageBattleStartUnitsPerRaidPlayer: average(bucketRounds.map(
+        getAverageBattleStartUnitsPerRaidPlayer,
+      )),
+      directGuardAliveRate: bucketRounds.length > 0
+        ? bucketRounds.filter((round) => isDirectGuardAliveAtBattleEnd(round)).length / bucketRounds.length
+        : 0,
+      averageDirectGuardDamageTaken: averageDefined(bucketRounds.map((round) =>
+        round.bossBodyDirectGuardOutcome?.damageTaken)),
+      averageBossDamage: average(bucketRounds.map((round) => Math.max(0, round.bossTotalDamage))),
+      averageRaidDamage: average(bucketRounds.map((round) => Math.max(0, round.raidTotalDamage))),
+      averageBossSpellDamage: average(bucketRounds.map(getRoundBossSpellDamage)),
+    };
+  });
+}
+
+function buildFinalBattleBossOffense(rounds: FinalBattleRoundDetail[]): FinalBattleBossOffenseAnalysis {
+  const bossWinRounds = rounds.filter((round) => getFinalBattleWinner(round) === "boss");
+  const bodyBreachedRounds = rounds.filter((round) =>
+    isFinalBossBodyDefeated(round) && round.bossSurvivors > 0);
+
+  return {
+    defeatedRaidUnitsWhenBossWins: buildFinalBattleRaidUnitOutcomeBreakdown(
+      bossWinRounds,
+      (round) => round.topRaidUnits.filter((unit) => !unit.alive || unit.finalHp <= 0),
+    ),
+    bossDamageContributorsWhenBossWins: buildFinalBattleBossDamageContributorBreakdown(
+      bossWinRounds,
+    ),
+    survivingRaidDamageContributorsWhenBodyBreached: buildFinalBattleRaidBodyDamageContributorBreakdown(
+      bodyBreachedRounds,
+      { onlyAlive: true },
+    ),
+  };
+}
+
+function buildFinalBattleBossDamageContributorBreakdown(
+  rounds: FinalBattleRoundDetail[],
+): FinalBattleBossDamageContributorBreakdown[] {
+  const accumulators = new Map<string, FinalBattleUnitAccumulator>();
+  const totalBossDamage = rounds.reduce((roundTotal, round) =>
+    roundTotal + round.topBossUnits.reduce((unitTotal, unit) =>
+      unitTotal + Math.max(0, unit.totalDamage), 0), 0);
+
+  for (const round of rounds) {
+    const seenUnitIds = new Set<string>();
+    for (const unit of round.topBossUnits.filter((candidate) => candidate.totalDamage > 0)) {
+      const existing = accumulators.get(unit.unitId) ?? createFinalBattleUnitAccumulator(unit);
+      if (!seenUnitIds.has(unit.unitId)) {
+        existing.sampleCount += 1;
+        existing.totalUnitLevel += unit.unitLevel;
+        existing.totalFinalHp += Math.max(0, unit.finalHp);
+        seenUnitIds.add(unit.unitId);
+      }
+      existing.totalDamage += Math.max(0, unit.totalDamage);
+      accumulators.set(unit.unitId, existing);
+    }
+  }
+
+  return Array.from(accumulators.values())
+    .map((entry) => ({
+      unitId: entry.unitId,
+      unitName: entry.unitName,
+      unitType: entry.unitType,
+      sampleCount: entry.sampleCount,
+      sampleRate: rounds.length > 0 ? entry.sampleCount / rounds.length : 0,
+      averageUnitLevel: entry.totalUnitLevel / entry.sampleCount,
+      averageFinalHp: entry.totalFinalHp / entry.sampleCount,
+      totalDamage: entry.totalDamage,
+      damageShare: totalBossDamage > 0 ? entry.totalDamage / totalBossDamage : 0,
+      averageTotalDamage: entry.totalDamage / entry.sampleCount,
+    }))
+    .sort((left, right) =>
+      right.totalDamage - left.totalDamage
+      || left.unitId.localeCompare(right.unitId));
+}
+
+function isDirectGuardAliveAtBattleEnd(round: FinalBattleRoundDetail): boolean {
+  if (round.bossBodyDirectGuardOutcome) {
+    return round.bossBodyDirectGuardOutcome.alive && round.bossBodyDirectGuardOutcome.finalHp > 0;
+  }
+
+  const directGuardUnitId = round.bossBodyGuardDecision?.directGuardUnitId;
+  if (directGuardUnitId == null) {
+    return false;
+  }
+
+  return round.topBossUnits.some((unit) =>
+    unit.unitId === directGuardUnitId && unit.alive && unit.finalHp > 0);
+}
+
+function isDirectGuardDefeatedAtBattleEnd(round: FinalBattleRoundDetail): boolean {
+  if (round.bossBodyDirectGuardOutcome) {
+    return !round.bossBodyDirectGuardOutcome.alive || round.bossBodyDirectGuardOutcome.finalHp <= 0;
+  }
+
+  const directGuardUnitId = round.bossBodyGuardDecision?.directGuardUnitId;
+  if (directGuardUnitId == null) {
+    return false;
+  }
+
+  return round.topBossUnits.some((unit) =>
+    unit.unitId === directGuardUnitId && (!unit.alive || unit.finalHp <= 0));
+}
+
+function buildFinalBattleDirectGuardOutcomeBreakdown(
+  rounds: FinalBattleRoundDetail[],
+): FinalBattleDirectGuardOutcomeBreakdown[] {
+  const accumulators = new Map<string, FinalBattleDirectGuardOutcomeAccumulator>();
+
+  for (const round of rounds) {
+    const guard = round.bossBodyDirectGuardOutcome;
+    if (!guard) {
+      continue;
+    }
+
+    const existing = accumulators.get(guard.unitId) ?? {
+      ...createFinalBattleUnitAccumulator(guard),
+      aliveAtBattleEndCount: 0,
+      defeatedAtBattleEndCount: 0,
+      totalDamageTaken: 0,
+      matchedDecisionUnitCount: 0,
+    };
+    existing.sampleCount += 1;
+    existing.totalUnitLevel += guard.unitLevel;
+    existing.totalFinalHp += Math.max(0, guard.finalHp);
+    existing.totalDamageTaken += Math.max(0, guard.damageTaken ?? 0);
+    if (guard.alive && guard.finalHp > 0) {
+      existing.aliveAtBattleEndCount += 1;
+    } else {
+      existing.defeatedAtBattleEndCount += 1;
+    }
+    if (guard.matchedDecisionUnit === true) {
+      existing.matchedDecisionUnitCount += 1;
+    }
+    accumulators.set(guard.unitId, existing);
+  }
+
+  return Array.from(accumulators.values())
+    .map((entry) => ({
+      unitId: entry.unitId,
+      unitName: entry.unitName,
+      unitType: entry.unitType,
+      sampleCount: entry.sampleCount,
+      sampleRate: rounds.length > 0 ? entry.sampleCount / rounds.length : 0,
+      averageUnitLevel: entry.totalUnitLevel / entry.sampleCount,
+      averageFinalHp: entry.totalFinalHp / entry.sampleCount,
+      aliveAtBattleEndCount: entry.aliveAtBattleEndCount,
+      aliveAtBattleEndRate: entry.aliveAtBattleEndCount / entry.sampleCount,
+      defeatedAtBattleEndCount: entry.defeatedAtBattleEndCount,
+      defeatedAtBattleEndRate: entry.defeatedAtBattleEndCount / entry.sampleCount,
+      averageDamageTaken: entry.totalDamageTaken / entry.sampleCount,
+      matchedDecisionUnitCount: entry.matchedDecisionUnitCount,
+      matchedDecisionUnitRate: entry.matchedDecisionUnitCount / entry.sampleCount,
+    }))
+    .sort((left, right) =>
+      right.sampleCount - left.sampleCount
+      || left.unitId.localeCompare(right.unitId));
+}
+
+function buildFinalBattleUnitPresenceBreakdown(
+  rounds: FinalBattleRoundDetail[],
+  selectUnits: (round: FinalBattleRoundDetail) => BotOnlyBaselineRoundUnitDetail[],
+): FinalBattleUnitPresenceBreakdown[] {
+  const accumulators = new Map<string, FinalBattleUnitAccumulator>();
+
+  for (const round of rounds) {
+    const seenUnitIds = new Set<string>();
+    for (const unit of selectUnits(round)) {
+      if (seenUnitIds.has(unit.unitId)) {
+        continue;
+      }
+      seenUnitIds.add(unit.unitId);
+      const existing = accumulators.get(unit.unitId) ?? createFinalBattleUnitAccumulator(unit);
+      existing.sampleCount += 1;
+      existing.totalUnitLevel += unit.unitLevel;
+      existing.totalFinalHp += unit.finalHp;
+      accumulators.set(unit.unitId, existing);
+    }
+  }
+
+  return Array.from(accumulators.values())
+    .map((entry) => ({
+      unitId: entry.unitId,
+      unitName: entry.unitName,
+      unitType: entry.unitType,
+      sampleCount: entry.sampleCount,
+      sampleRate: rounds.length > 0 ? entry.sampleCount / rounds.length : 0,
+      averageUnitLevel: entry.totalUnitLevel / entry.sampleCount,
+      averageFinalHp: entry.totalFinalHp / entry.sampleCount,
+    }))
+    .sort((left, right) =>
+      right.sampleCount - left.sampleCount
+      || left.unitId.localeCompare(right.unitId));
+}
+
+function buildFinalBattleRaidBodyDamageContributorBreakdown(
+  rounds: FinalBattleRoundDetail[],
+  options: { onlyAlive?: boolean } = {},
+): FinalBattleRaidBodyDamageContributorBreakdown[] {
+  const accumulators = new Map<string, FinalBattleUnitAccumulator>();
+  const totalBodyDamage = rounds.reduce((total, round) =>
+    total + Math.max(0, round.bossBodyFocus?.damageTaken ?? round.phaseDamageDealt), 0);
+
+  for (const round of rounds) {
+    const seenUnitIds = new Set<string>();
+    for (const unit of round.topRaidUnits.filter((candidate) =>
+      candidate.phaseContributionDamage > 0
+      && (!options.onlyAlive || (candidate.alive && candidate.finalHp > 0)))) {
+      const existing = accumulators.get(unit.unitId) ?? createFinalBattleUnitAccumulator(unit);
+      if (!seenUnitIds.has(unit.unitId)) {
+        existing.sampleCount += 1;
+        existing.totalUnitLevel += unit.unitLevel;
+        existing.totalFinalHp += unit.finalHp;
+        seenUnitIds.add(unit.unitId);
+      }
+      existing.totalPhaseContributionDamage += unit.phaseContributionDamage;
+      existing.totalDamage += unit.totalDamage;
+      accumulators.set(unit.unitId, existing);
+    }
+  }
+
+  return Array.from(accumulators.values())
+    .map((entry) => ({
+      unitId: entry.unitId,
+      unitName: entry.unitName,
+      unitType: entry.unitType,
+      sampleCount: entry.sampleCount,
+      sampleRate: rounds.length > 0 ? entry.sampleCount / rounds.length : 0,
+      averageUnitLevel: entry.totalUnitLevel / entry.sampleCount,
+      averageFinalHp: entry.totalFinalHp / entry.sampleCount,
+      totalPhaseContributionDamage: entry.totalPhaseContributionDamage,
+      phaseContributionShare: totalBodyDamage > 0
+        ? entry.totalPhaseContributionDamage / totalBodyDamage
+        : 0,
+      averagePhaseContributionDamage: entry.totalPhaseContributionDamage / entry.sampleCount,
+      averageTotalDamage: entry.totalDamage / entry.sampleCount,
+    }))
+    .sort((left, right) =>
+      right.totalPhaseContributionDamage - left.totalPhaseContributionDamage
+      || left.unitId.localeCompare(right.unitId));
+}
+
+function buildFinalBattleRaidUnitOutcomeBreakdown(
+  rounds: FinalBattleRoundDetail[],
+  selectUnits: (round: FinalBattleRoundDetail) => BotOnlyBaselineRoundUnitDetail[],
+): FinalBattleRaidUnitOutcomeBreakdown[] {
+  const accumulators = new Map<string, FinalBattleUnitAccumulator>();
+
+  for (const round of rounds) {
+    const seenUnitIds = new Set<string>();
+    for (const unit of selectUnits(round)) {
+      const existing = accumulators.get(unit.unitId) ?? createFinalBattleUnitAccumulator(unit);
+      if (!seenUnitIds.has(unit.unitId)) {
+        existing.sampleCount += 1;
+        existing.totalUnitLevel += unit.unitLevel;
+        existing.totalFinalHp += Math.max(0, unit.finalHp);
+        seenUnitIds.add(unit.unitId);
+      }
+      existing.totalDamage += unit.totalDamage;
+      existing.totalPhaseContributionDamage += unit.phaseContributionDamage;
+      accumulators.set(unit.unitId, existing);
+    }
+  }
+
+  return Array.from(accumulators.values())
+    .map((entry) => ({
+      unitId: entry.unitId,
+      unitName: entry.unitName,
+      unitType: entry.unitType,
+      sampleCount: entry.sampleCount,
+      sampleRate: rounds.length > 0 ? entry.sampleCount / rounds.length : 0,
+      averageUnitLevel: entry.totalUnitLevel / entry.sampleCount,
+      averageFinalHp: entry.totalFinalHp / entry.sampleCount,
+      totalDamage: entry.totalDamage,
+      totalPhaseContributionDamage: entry.totalPhaseContributionDamage,
+      averageTotalDamage: entry.totalDamage / entry.sampleCount,
+      averagePhaseContributionDamage: entry.totalPhaseContributionDamage / entry.sampleCount,
+    }))
+    .sort((left, right) =>
+      right.sampleCount - left.sampleCount
+      || right.totalDamage - left.totalDamage
+      || left.unitId.localeCompare(right.unitId));
+}
+
+function createFinalBattleUnitAccumulator(
+  unit: BotOnlyBaselineRoundUnitDetail,
+): FinalBattleUnitAccumulator {
+  return {
+    unitId: unit.unitId,
+    unitName: unit.unitName,
+    unitType: unit.unitType ?? "unknown",
+    sampleCount: 0,
+    totalUnitLevel: 0,
+    totalFinalHp: 0,
+    totalPhaseContributionDamage: 0,
+    totalDamage: 0,
+  };
 }
 
 function buildRounds(aggregate: BotOnlyBaselineAggregateReport): RoundPhaseAnalysis[] {
@@ -503,9 +1095,9 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
   }
 
   const samples = rounds.map((round) => {
-    const bossBodyDamage = Math.max(0, round.phaseDamageDealt);
-    const bossDefeated = round.bossSurvivors <= 0 || round.battleEndReasons.includes("boss_defeated");
-    const finalBattleWinner: "boss" | "raid" = bossDefeated ? "raid" : "boss";
+    const bossBodyDamage = getRoundBossBodyDamage(round);
+    const bossDefeated = isFinalBossBodyDefeated(round);
+    const finalBattleWinner = getFinalBattleWinner(round);
     const bossBodyDefeatedWithBossSurvivors = bossDefeated && round.bossSurvivors > 0;
 
     return {
@@ -523,10 +1115,6 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
   });
   const bossDefeatCount = samples.filter((sample) => sample.bossDefeated).length;
   const raidWinCount = samples.filter((sample) => sample.finalBattleWinner === "raid").length;
-  const bossWinSamples = samples.filter((sample) => sample.finalBattleWinner === "boss");
-  const bodyDefeatedSamples = samples.filter((sample) => sample.bossDefeated);
-  const bodyDefeatedWithBossSurvivors = bodyDefeatedSamples.filter((sample) =>
-    sample.bossBodyDefeatedWithBossSurvivors);
   const endReasonCounts: Partial<Record<BotOnlyBaselineBattleEndReason, number>> = {};
   const timeScale = resolveBattleTimeScale(aggregate);
 
@@ -551,16 +1139,10 @@ function buildFinalBattle(aggregate: BotOnlyBaselineAggregateReport): FinalBattl
     averageBattleEndSeconds: average(rounds.map((round) => secondsFromMs(round.battleEndTimeMs))),
     averageBattleEndRealPlaySeconds: average(rounds.map((round) =>
       realPlaySecondsFromMs(round.battleEndTimeMs, timeScale))),
-    bodyProtection: {
-      bossBodyDefeatedWithBossSurvivorsCount: bodyDefeatedWithBossSurvivors.length,
-      bossBodyDefeatedWithBossSurvivorsSampleRate: bodyDefeatedWithBossSurvivors.length / samples.length,
-      bossBodyDefeatedWithBossSurvivorsDefeatRate: bodyDefeatedSamples.length > 0
-        ? bodyDefeatedWithBossSurvivors.length / bodyDefeatedSamples.length
-        : 0,
-      averageBossSurvivorsWhenBodyDefeated: average(bodyDefeatedSamples.map((sample) => sample.bossSurvivors)),
-      averageBossSurvivorsWhenBossWins: average(bossWinSamples.map((sample) => sample.bossSurvivors)),
-      averageRaidSurvivorsWhenBodyDefeated: average(bodyDefeatedSamples.map((sample) => sample.raidSurvivors)),
-    },
+    outcomeContrasts: buildFinalBattleOutcomeContrasts(rounds, timeScale),
+    bossWinBodyDamageBuckets: buildFinalBattleBossWinBodyDamageBuckets(rounds),
+    bodyProtection: buildFinalBattleBodyProtection(rounds, samples),
+    bossOffense: buildFinalBattleBossOffense(rounds),
     bossSpells: buildFinalBattleBossSpells(rounds),
     endReasonCounts,
     samples,

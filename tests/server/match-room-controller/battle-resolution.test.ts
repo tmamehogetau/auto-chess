@@ -159,6 +159,47 @@ describe("BattleResolutionService", () => {
       expect(result.rightBattleResult.timeline).toEqual(mockTimeline);
     });
 
+    it("uses a per-battle seeded simulator when a battle seed is provided", () => {
+      const leftBattleUnits = [{
+        ...createMockBattleUnit("left-strong", "left"),
+        attackPower: 500,
+      }];
+      const rightBattleUnits = [{
+        ...createMockBattleUnit("right-weak", "right"),
+        hp: 20,
+        maxHp: 20,
+        attackPower: 1,
+      }];
+
+      mockBattleSimulator.simulateBattle.mockReturnValue({
+        winner: "right",
+        leftSurvivors: [],
+        rightSurvivors: [rightBattleUnits[0]],
+        combatLog: [],
+        durationMs: 1000,
+        damageDealt: { left: 0, right: 100 },
+        timeline: [],
+      });
+
+      const result = service.resolveMatchup({
+        battleId: "r12-player1-player2-0",
+        roundIndex: 12,
+        leftPlayerId: "player1",
+        rightPlayerId: "player2",
+        leftPlacements: mockLeftPlacements,
+        rightPlacements: mockRightPlacements,
+        leftBattleUnits,
+        rightBattleUnits,
+        leftHeroSynergyBonusType: null,
+        rightHeroSynergyBonusType: null,
+        battleIndex: 0,
+        battleSeed: 123_456,
+      });
+
+      expect(mockBattleSimulator.simulateBattle).not.toHaveBeenCalled();
+      expect(result.outcome.winnerId).toBe("player1");
+    });
+
     it("should resolve matchup with right winner", () => {
       const leftBattleUnits = [createMockBattleUnit("unit1", "left")];
       const rightBattleUnits = [createMockBattleUnit("unit2", "right")];

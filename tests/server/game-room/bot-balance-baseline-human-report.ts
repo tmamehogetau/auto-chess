@@ -38,6 +38,9 @@ export type BotBalanceBaselineSummary = {
   bossPolicy: BotBalanceBaselineHelperPolicy;
   raidPolicies: BotBalanceBaselineHelperPolicy[];
   optimizationVariant: BotBalanceBaselineOptimizationVariant;
+  bossExtraPrepIncome?: number;
+  bossExtraTotalPrepIncome?: number;
+  battleSeedBase?: number;
   helperConfigs: BotBalanceBaselineHelperConfig[];
   chunkCount: number;
   outputDir: string;
@@ -212,6 +215,7 @@ export function buildBotBalanceBaselineJapaneseJson(
   };
   const highCostOfferMetrics = aggregate.highCostOfferMetrics ?? [];
   const battleTimelineTimeScale = resolveBattleTimelineTimeScale(aggregate);
+  const analysis = buildBotBalanceBaselineAnalysis(summary);
 
   return {
     "実行条件": {
@@ -222,6 +226,8 @@ export function buildBotBalanceBaselineJapaneseJson(
       "ボス購入方針": summary.bossPolicy,
       "レイド購入方針": summary.raidPolicies,
       "最適化variant": summary.optimizationVariant,
+      "ボス追加Prep収入": summary.bossExtraPrepIncome ?? 0,
+      "ボス累計追加Prep収入": summary.bossExtraTotalPrepIncome ?? 0,
       "helper設定": summary.helperConfigs.map((helperConfig, helperIndex) => ({
         "bot": `bot${helperIndex + 1}`,
         "ボス希望": helperConfig.wantsBoss,
@@ -273,6 +279,42 @@ export function buildBotBalanceBaselineJapaneseJson(
         "割合": aggregate.battleMetrics.totalBattles > 0 ? count / aggregate.battleMetrics.totalBattles : 0,
       })),
     },
+    "R12最終戦_勝者別変換": analysis.finalBattle.outcomeContrasts.map((metric) => ({
+      "勝者": metric.winner,
+      "件数": metric.sampleCount,
+      "全R12比率": metric.sampleRate,
+      "ボス本体撃破率": metric.bossBodyDefeatRate,
+      "平均ボス本体ダメージ": metric.averageBossBodyDamage,
+      "平均ボス残HP": metric.averageBossRemainingHp,
+      "平均ボス生存数": metric.averageBossSurvivors,
+      "平均レイド生存数": metric.averageRaidSurvivors,
+      "平均レイド全滅人数": metric.averageRaidPlayersWipedOut,
+      "平均レイド戦闘開始ユニット数": metric.averageBattleStartUnitsPerRaidPlayer,
+      "直衛生存率": metric.directGuardAliveRate,
+      "平均直衛被ダメ": metric.averageDirectGuardDamageTaken,
+      "平均ボス総ダメージ": metric.averageBossDamage,
+      "平均レイド総ダメージ": metric.averageRaidDamage,
+      "平均レイド本体寄与ダメージ": metric.averageRaidPhaseContributionDamage,
+      "平均ボススペルダメージ": metric.averageBossSpellDamage,
+      "平均終了秒(高速)": metric.averageBattleEndSeconds,
+      "平均終了秒(通常換算)": metric.averageBattleEndRealPlaySeconds,
+    })),
+    "R12ボス勝利_本体ダメージ帯": analysis.finalBattle.bossWinBodyDamageBuckets.map((metric) => ({
+      "ダメージ帯": metric.label,
+      "件数": metric.sampleCount,
+      "ボス勝利内比率": metric.sampleRate,
+      "平均ボス本体ダメージ": metric.averageBossBodyDamage,
+      "平均ボス残HP": metric.averageBossRemainingHp,
+      "平均ボス生存数": metric.averageBossSurvivors,
+      "平均レイド生存数": metric.averageRaidSurvivors,
+      "平均レイド全滅人数": metric.averageRaidPlayersWipedOut,
+      "平均レイド戦闘開始ユニット数": metric.averageBattleStartUnitsPerRaidPlayer,
+      "直衛生存率": metric.directGuardAliveRate,
+      "平均直衛被ダメ": metric.averageDirectGuardDamageTaken,
+      "平均ボス総ダメージ": metric.averageBossDamage,
+      "平均レイド総ダメージ": metric.averageRaidDamage,
+      "平均ボススペルダメージ": metric.averageBossSpellDamage,
+    })),
     "ラウンド別生存診断": (aggregate.roundSurvivalDiagnostics ?? []).map((metric) => ({
       "ラウンド": metric.roundIndex,
       "戦闘サンプル": metric.battleSamples,
@@ -314,6 +356,144 @@ export function buildBotBalanceBaselineJapaneseJson(
       "平均与ダメージ": metric.averageDamagePerBattle,
       "0ダメージ戦闘率": metric.zeroDamageBattleRate,
     })),
+    "ラウンド別盤面強度": (aggregate.roundBoardStrengthMetrics ?? []).map((metric) => ({
+      "R": metric.roundIndex,
+      "陣営": metric.side,
+      "戦闘サンプル": metric.battleSamples,
+      "平均ユニット数": metric.averageUnitCount,
+      "平均生存数": metric.averageSurvivorCount,
+      "平均投資score": metric.averageInvestmentScore,
+      "平均推定耐久score": metric.averageEstimatedDurabilityScore,
+      "平均推定火力score": metric.averageEstimatedDamageScore,
+      "平均推定盤面強度score": metric.averageBoardStrengthScore,
+      "平均実与ダメ": metric.averageRealizedDamage,
+      "平均吸収ダメ": metric.averageAbsorbedDamage,
+      "平均残HP": metric.averageRemainingHp,
+      "平均実戦score": metric.averageRealizedBattleScore,
+    })),
+    "ラウンド別盤面強度変換": (aggregate.roundBoardStrengthComparisonMetrics ?? []).map((metric) => ({
+      "R": metric.roundIndex,
+      "戦闘サンプル": metric.battleSamples,
+      "ボス推定盤面強度score": metric.averageBossBoardStrengthScore,
+      "レイド推定盤面強度score": metric.averageRaidBoardStrengthScore,
+      "ボス/レイド推定強度比": metric.averageBossToRaidBoardStrengthRatio,
+      "ボス実戦score": metric.averageBossRealizedBattleScore,
+      "レイド実戦score": metric.averageRaidRealizedBattleScore,
+      "ボス/レイド実戦比": metric.averageBossToRaidRealizedBattleRatio,
+      "ボス推定優位率": metric.bossEstimatedAdvantageRate,
+      "ボス実戦優位率": metric.bossRealizedAdvantageRate,
+      "ボス戦闘勝率": metric.bossBattleWinRate,
+      "レイド戦闘勝率": metric.raidBattleWinRate,
+      "ボス推定優位だが敗北率": metric.bossEstimatedAdvantageButBattleLossRate,
+      "ボス推定優位だが実戦劣位率": metric.bossEstimatedAdvantageButRealizedDisadvantageRate,
+    })),
+    "ラウンド別盤面強度変換_勝者別": (aggregate.roundBoardStrengthOutcomeMetrics ?? []).map((metric) => ({
+      "R": metric.roundIndex,
+      "勝者": metric.winnerRole,
+      "戦闘サンプル": metric.battleSamples,
+      "ボス推定盤面強度score": metric.averageBossBoardStrengthScore,
+      "レイド推定盤面強度score": metric.averageRaidBoardStrengthScore,
+      "ボス/レイド推定強度比": metric.averageBossToRaidBoardStrengthRatio,
+      "ボス実戦score": metric.averageBossRealizedBattleScore,
+      "レイド実戦score": metric.averageRaidRealizedBattleScore,
+      "ボス/レイド実戦比": metric.averageBossToRaidRealizedBattleRatio,
+      "ボス推定優位率": metric.bossEstimatedAdvantageRate,
+      "ボス実戦優位率": metric.bossRealizedAdvantageRate,
+      "ボス推定優位だが敗北率": metric.bossEstimatedAdvantageButBattleLossRate,
+      "ボス推定優位だが実戦劣位率": metric.bossEstimatedAdvantageButRealizedDisadvantageRate,
+    })),
+    "ユニット別戦力変換": (aggregate.unitStrengthConversionMetrics ?? []).map((metric) => ({
+      "陣営": metric.side,
+      "ユニット名": metric.unitName,
+      "ユニットID": metric.unitId,
+      "ユニット種別": metric.unitType,
+      "戦闘登場回数": metric.battleAppearances,
+      "登場試合数": metric.matchesPresent,
+      "平均Lv": metric.averageUnitLevel,
+      "平均投資score": metric.averageInvestmentScore,
+      "平均推定耐久score": metric.averageEstimatedDurabilityScore,
+      "平均推定火力score": metric.averageEstimatedDamageScore,
+      "平均推定戦力score": metric.averageEstimatedStrengthScore,
+      "平均実与ダメ": metric.averageRealizedDamage,
+      "平均吸収ダメ": metric.averageAbsorbedDamage,
+      "平均残HP": metric.averageRemainingHp,
+      "平均実効戦力score": metric.averageEffectiveStrengthScore,
+      "実効-推定score": metric.averageStrengthScoreDelta,
+      "実効/推定比": metric.averageEffectiveToEstimatedRatio,
+      "陣営基準変換率": metric.sideBaselineEffectiveToEstimatedRatio,
+      "陣営補正変換指数": metric.sideAdjustedEffectiveToEstimatedIndex,
+      "陣営補正差分score": metric.sideAdjustedStrengthScoreDelta,
+      "推定割れ率": metric.underperformedBattleRate,
+      "0ダメ率": metric.zeroDamageBattleRate,
+      "生存率": metric.survivedBattleRate,
+      "サンプル品質": metric.sampleQuality,
+    })),
+    "ユニットLv別戦力変換": (aggregate.unitLevelStrengthConversionMetrics ?? []).map((metric) => ({
+      "陣営": metric.side,
+      "ユニット名": metric.unitName,
+      "ユニットID": metric.unitId,
+      "ユニット種別": metric.unitType,
+      "Lv": metric.unitLevel,
+      "戦闘登場回数": metric.battleAppearances,
+      "登場試合数": metric.matchesPresent,
+      "平均推定戦力score": metric.averageEstimatedStrengthScore,
+      "平均実効戦力score": metric.averageEffectiveStrengthScore,
+      "前Lv実効戦力score": metric.previousLevelEffectiveStrengthScore,
+      "前Lv差分score": metric.effectiveStrengthScoreDeltaFromPreviousLevel,
+      "前Lv成長率": metric.effectiveStrengthScoreGrowthRatioFromPreviousLevel,
+      "実効/推定比": metric.averageEffectiveToEstimatedRatio,
+      "陣営補正変換指数": metric.sideAdjustedEffectiveToEstimatedIndex,
+      "補正差分score": metric.sideAdjustedStrengthScoreDelta,
+      "推定割れ率": metric.underperformedBattleRate,
+      "0ダメ率": metric.zeroDamageBattleRate,
+      "生存率": metric.survivedBattleRate,
+      "サンプル品質": metric.sampleQuality,
+    })),
+    "ユニットアーキタイプ依存度": (aggregate.unitArchetypeDependencyMetrics ?? []).map((metric) => ({
+      "陣営": metric.side,
+      "ユニット名": metric.unitName,
+      "ユニットID": metric.unitId,
+      "ユニット種別": metric.unitType,
+      "主要アーキタイプ": metric.primaryArchetypeTag,
+      "戦闘登場回数": metric.battleAppearances,
+      "登場試合数": metric.matchesPresent,
+      "適合戦闘数": metric.archetypeFitBattleAppearances,
+      "非適合戦闘数": metric.nonArchetypeBattleAppearances,
+      "適合率": metric.archetypeFitRate,
+      "平均Lv": metric.averageUnitLevel,
+      "適合時平均Lv": metric.averageArchetypeUnitLevel,
+      "非適合時平均Lv": metric.averageNonArchetypeUnitLevel,
+      "平均R": metric.averageRoundIndex,
+      "適合時平均R": metric.averageArchetypeRoundIndex,
+      "非適合時平均R": metric.averageNonArchetypeRoundIndex,
+      "汎用実効score": metric.averageEffectiveStrengthScore,
+      "適合時実効score": metric.averageArchetypeEffectiveStrengthScore,
+      "非適合時実効score": metric.averageNonArchetypeEffectiveStrengthScore,
+      "適合リフトscore": metric.archetypeEffectiveStrengthLift,
+      "依存指数": metric.archetypeDependencyIndex,
+      "R/Lv補正比較戦闘数": metric.roundLevelComparisonBattleAppearances,
+      "R/Lv補正適合時実効score": metric.roundLevelAdjustedArchetypeEffectiveStrengthScore,
+      "R/Lv補正非適合時実効score": metric.roundLevelAdjustedNonArchetypeEffectiveStrengthScore,
+      "R/Lv補正リフトscore": metric.roundLevelAdjustedArchetypeEffectiveStrengthLift,
+      "R/Lv補正依存指数": metric.roundLevelAdjustedArchetypeDependencyIndex,
+      "平均ユニーク陣営数": metric.averageUniqueFactionCount,
+      "平均同陣営数": metric.averageSameFactionCount,
+      "pair率": metric.pairLinkedBattleRate,
+      "サンプル品質": metric.sampleQuality,
+    })),
+    "陣営効果推定価値": (aggregate.factionEffectValueMetrics ?? []).map((metric) => ({
+      "陣営": metric.side,
+      "陣営ID": metric.factionId,
+      "戦闘サンプル": metric.battleSamples,
+      "平均同陣営数": metric.averageFactionUnitCount,
+      "平均tier": metric.averageTier,
+      "効果なし推定score": metric.averageBaseEstimatedStrengthScore,
+      "効果あり推定score": metric.averageFactionAdjustedEstimatedStrengthScore,
+      "推定リフトscore": metric.averageEstimatedStrengthLift,
+      "陣営内リフト率": metric.averageEstimatedStrengthLiftRate,
+      "盤面全体リフト率": metric.averageTeamEstimatedStrengthLiftShare,
+      "サンプル品質": metric.sampleQuality,
+    })),
     "ラウンド分布": Object.entries(aggregate.roundHistogram).map(([round, count]) => ({
       "ラウンド": Number(round),
       "件数": count,
@@ -337,6 +517,7 @@ export function buildBotBalanceBaselineJapaneseJson(
           "最終HP": round.bossBodyFocus.finalHp,
         }
         : null,
+      "ボス直衛判断": formatBossBodyGuardDecisionJson(round.bossBodyGuardDecision ?? null),
       "ラウンド結果": round.phaseResult,
       "レイド全員撃破": round.allRaidPlayersWipedOut,
       "撃破されたレイド人数": round.raidPlayersWipedOut,
@@ -568,6 +749,48 @@ export function buildBotBalanceBaselineJapaneseJson(
         ? null
         : `${entry.mostFrequentOutgoingReason} x${entry.mostFrequentOutgoingReasonSamples ?? 0}`,
     })),
+    "ラウンド別ボス直衛判断診断": (aggregate.bossBodyGuardDecisionRoundMetrics ?? []).map((entry) => ({
+      "R": entry.roundIndex,
+      "診断回数": entry.samples,
+      "直衛空き埋め": entry.directFillSamples,
+      "直衛交換": entry.directSwapSamples,
+      "側面護衛": entry.sideFlankMoveSamples,
+      "盤面移動指示": entry.boardMovementActionSamples,
+      "accepted盤面移動一致": entry.acceptedBoardMovementActionSamples,
+      "accepted盤面移動一致率": entry.acceptedBoardMovementActionRate,
+      "見送り": entry.noActionSamples,
+      "直衛空き": entry.directEmptySamples,
+      "bench前衛待ち": entry.benchFrontlineBlockedSamples,
+      "直衛外に強前衛": entry.strongerOffDirectSamples,
+      "平均直衛Lv": entry.averageDirectGuardLevel,
+      "平均最強前衛Lv": entry.averageStrongestGuardLevel,
+      "最多直衛": entry.mostFrequentDirectGuardUnitId === null
+        ? null
+        : `${entry.mostFrequentDirectGuardUnitName ?? entry.mostFrequentDirectGuardUnitId} (${entry.mostFrequentDirectGuardUnitId}) x${entry.mostFrequentDirectGuardSamples}`,
+      "最多最強前衛": entry.mostFrequentStrongestGuardUnitId === null
+        ? null
+        : `${entry.mostFrequentStrongestGuardUnitName ?? entry.mostFrequentStrongestGuardUnitId} (${entry.mostFrequentStrongestGuardUnitId}) x${entry.mostFrequentStrongestGuardSamples}`,
+      "最多理由": entry.mostFrequentReason == null
+        ? null
+        : `${entry.mostFrequentReason} x${entry.mostFrequentReasonSamples}`,
+    })),
+    "ロール・ラウンド別accepted盤面移動": (aggregate.boardMovementRoundMetrics ?? []).map((entry) => ({
+      "ロール": entry.role,
+      "R": entry.roundIndex,
+      "accepted移動回数": entry.samples,
+      "board_move": entry.moveSamples,
+      "board_swap": entry.swapSamples,
+    })),
+    "accepted盤面移動ルート": (aggregate.boardMovementRouteMetrics ?? []).map((entry) => ({
+      "ロール": entry.role,
+      "R": entry.roundIndex,
+      "種別": entry.actionType,
+      "from": entry.fromCell,
+      "to": entry.toCell,
+      "回数": entry.samples,
+      "逆方向回数": entry.reverseSamples,
+      "差分": entry.netSamples,
+    })),
     "ロール別盤面再編成診断": (aggregate.boardRefitDecisionRoleMetrics ?? []).map((entry) => ({
       "ロール": entry.role,
       "診断回数": entry.samples,
@@ -627,6 +850,86 @@ export function buildBotBalanceBaselineJapaneseJson(
       "平均特殊ユニット数": entry.averageSpecialUnitCount,
       "平均通常ユニット数": entry.averageStandardUnitCount,
     })),
+    "R12ボス盤面ceiling診断": aggregate.bossR12CeilingDiagnostics
+      ? {
+        "サンプル数": aggregate.bossR12CeilingDiagnostics.sampleCount,
+        "平均ボスユニット数": aggregate.bossR12CeilingDiagnostics.averageBossUnitCount,
+        "平均資産価値": aggregate.bossR12CeilingDiagnostics.averageAssetValue,
+        "P50資産価値": aggregate.bossR12CeilingDiagnostics.p50AssetValue,
+        "P75資産価値": aggregate.bossR12CeilingDiagnostics.p75AssetValue,
+        "P90資産価値": aggregate.bossR12CeilingDiagnostics.p90AssetValue,
+        "最大資産価値": aggregate.bossR12CeilingDiagnostics.maxAssetValue,
+        "平均RemiliaLv": aggregate.bossR12CeilingDiagnostics.averageRemiliaLevel,
+        "RemiliaLv7率": aggregate.bossR12CeilingDiagnostics.remiliaLevel7Rate,
+        "ScarletCore目標到達率": aggregate.bossR12CeilingDiagnostics.scarletCoreTargetReachedRate,
+        "平均通常高コスト数": aggregate.bossR12CeilingDiagnostics.averageLateCarryCount,
+        "平均通常高コストLv4+数": aggregate.bossR12CeilingDiagnostics.averageLateCarryLevel4PlusCount,
+        "最大通常高コストLv4+数": aggregate.bossR12CeilingDiagnostics.maxLateCarryLevel4PlusCount,
+        "通常高コストLv4+が2体以上の率": aggregate.bossR12CeilingDiagnostics.twoLateCarryLevel4PlusRate,
+        "通常高コストLv6+が1体以上の率": aggregate.bossR12CeilingDiagnostics.oneLateCarryLevel6PlusRate,
+        "最大通常高コストLv": aggregate.bossR12CeilingDiagnostics.maxLateCarryLevel,
+        "平均目標コンポーネント到達数": aggregate.bossR12CeilingDiagnostics.averageTargetComponentsMet,
+        "最大目標コンポーネント到達数": aggregate.bossR12CeilingDiagnostics.maxTargetComponentsMet,
+        "目標盤面到達率": aggregate.bossR12CeilingDiagnostics.targetBoardReachedRate,
+        "平均推定不足Gold": aggregate.bossR12CeilingDiagnostics.averageEstimatedMissingGold,
+        "P50推定不足Gold": aggregate.bossR12CeilingDiagnostics.p50EstimatedMissingGold,
+        "P75推定不足Gold": aggregate.bossR12CeilingDiagnostics.p75EstimatedMissingGold,
+        "P90推定不足Gold": aggregate.bossR12CeilingDiagnostics.p90EstimatedMissingGold,
+        "最小推定不足Gold": aggregate.bossR12CeilingDiagnostics.minEstimatedMissingGold,
+        "平均最終Gold差引後不足Gold": aggregate.bossR12CeilingDiagnostics.averageNetEstimatedMissingGold,
+        "P50最終Gold差引後不足Gold": aggregate.bossR12CeilingDiagnostics.p50NetEstimatedMissingGold,
+        "P75最終Gold差引後不足Gold": aggregate.bossR12CeilingDiagnostics.p75NetEstimatedMissingGold,
+        "P90最終Gold差引後不足Gold": aggregate.bossR12CeilingDiagnostics.p90NetEstimatedMissingGold,
+        "最小最終Gold差引後不足Gold": aggregate.bossR12CeilingDiagnostics.minNetEstimatedMissingGold,
+        "最終Goldで不足分を賄える率": aggregate.bossR12CeilingDiagnostics.finalGoldCoversEstimatedGapRate,
+        "仮想追加収入breakpoint": aggregate.bossR12CeilingDiagnostics.virtualIncomeBreakpoints.map((entry) => ({
+          "追加Gold": entry.extraGold,
+          "目標到達可能率": entry.targetReachableRate,
+          "平均残不足Gold": entry.averageRemainingNetGap,
+        })),
+        "平均Remilia不足Gold": aggregate.bossR12CeilingDiagnostics.averageRemiliaMissingUpgradeCost,
+        "平均ScarletCore不足Gold": aggregate.bossR12CeilingDiagnostics.averageScarletCoreMissingCopyCost,
+        "平均通常高コスト不足Gold": aggregate.bossR12CeilingDiagnostics.averageLateCarryMissingCopyCost,
+        "平均ボス獲得Gold": aggregate.bossR12CeilingDiagnostics.averageBossGoldEarned,
+        "平均ボス消費Gold": aggregate.bossR12CeilingDiagnostics.averageBossGoldSpent,
+        "平均ボス最終Gold": aggregate.bossR12CeilingDiagnostics.averageBossFinalGold,
+        "平均通常ショップ支出": aggregate.bossR12CeilingDiagnostics.averageBossNormalShopSpend,
+        "平均ボスショップ支出": aggregate.bossR12CeilingDiagnostics.averageBossShopSpend,
+        "平均リロール支出": aggregate.bossR12CeilingDiagnostics.averageBossRefreshSpend,
+        "平均Remilia強化支出": aggregate.bossR12CeilingDiagnostics.averageBossSpecialUnitUpgradeSpend,
+        "最大資産サンプル": aggregate.bossR12CeilingDiagnostics.topAssetValueSamples.map((sample) => ({
+          "試合": sample.matchIndex,
+          "戦闘": sample.battleIndex,
+          "資産価値": sample.assetValue,
+          "RemiliaLv": sample.remiliaLevel,
+          "MeilingLv": sample.meilingLevel,
+          "SakuyaLv": sample.sakuyaLevel,
+          "PatchouliLv": sample.patchouliLevel,
+          "通常高コストLv4+数": sample.lateCarryLevel4PlusCount,
+          "目標コンポーネント到達数": sample.targetComponentsMet,
+          "推定不足Gold": sample.targetEstimatedMissingGold,
+          "Remilia不足Gold": sample.remiliaMissingUpgradeCost,
+          "ScarletCore不足Gold": sample.scarletCoreMissingCopyCost,
+          "通常高コスト不足Gold": sample.lateCarryMissingCopyCost,
+          "最終Gold": sample.bossFinalGold,
+          "勝者": sample.finalBattleWinner,
+          "盤面": sample.boardSignature,
+        })),
+        "目標最近傍サンプル": aggregate.bossR12CeilingDiagnostics.nearestTargetSamples.map((sample) => ({
+          "試合": sample.matchIndex,
+          "戦闘": sample.battleIndex,
+          "資産価値": sample.assetValue,
+          "推定不足Gold": sample.targetEstimatedMissingGold,
+          "Remilia不足Gold": sample.remiliaMissingUpgradeCost,
+          "ScarletCore不足Gold": sample.scarletCoreMissingCopyCost,
+          "通常高コスト不足Gold": sample.lateCarryMissingCopyCost,
+          "最終Gold": sample.bossFinalGold,
+          "目標コンポーネント到達数": sample.targetComponentsMet,
+          "勝者": sample.finalBattleWinner,
+          "盤面": sample.boardSignature,
+        })),
+      }
+      : null,
     "ボス側戦闘テレメトリ": aggregate.bossBattleUnitMetrics.map((unit) => ({
       "ユニットID": unit.unitId,
       "ユニット種別": unit.unitType,
@@ -691,6 +994,77 @@ export function buildBotBalanceBaselineJapaneseJson(
       "提示回数": unit.observationCount,
       "提示試合数": unit.matchesPresent,
       "提示試合率": unit.offeredMatchRate,
+    })),
+    "レイド構築プラン診断": (aggregate.raidArchetypeConstructionMetrics ?? []).map((metric) => ({
+      "プラン": metric.planId,
+      "アンカー": metric.anchorUnitId,
+      "対象ユニット": metric.unitIds.join(", "),
+      "対象購入回数": metric.purchaseCount,
+      "構築理由購入回数": metric.constructionPurchaseCount,
+      "構築理由購入率": metric.constructionPurchaseRate,
+      "構築購入最終main数": metric.constructionFinalMainUnitCount,
+      "構築購入最終sub数": metric.constructionFinalSubUnitCount,
+      "構築購入最終欠落数": metric.constructionFinalMissingUnitCount,
+      "構築購入最終bench数": metric.constructionFinalBenchUnitCount,
+      "構築購入最終完全欠落数": metric.constructionFinalAbsentUnitCount,
+      "構築購入戦闘登場数": metric.constructionEverBattleUnitCount,
+      "構築購入戦闘未登場数": metric.constructionNeverBattleUnitCount,
+      "構築購入戦闘登場率": metric.constructionEverBattleRate,
+      "構築購入最終保持率": metric.constructionFinalRetentionRate,
+      "構築購入最終総保持率": metric.constructionFinalTotalRetentionRate,
+      "最終盤面サンプル": metric.finalPlayerSamples,
+      "アンカー最終採用数": metric.finalAnchorPlayerCount,
+      "プラン成立数": metric.finalPlanHitPlayerCount,
+      "プラン成立率": metric.finalPlanHitRate,
+      "平均最終プランユニット数": metric.averageFinalPlanUnitCount,
+    })),
+    "レイド構築ユニット別診断": (aggregate.raidArchetypeConstructionUnitMetrics ?? []).map((metric) => ({
+      "プラン": metric.planId,
+      "アンカー": metric.anchorUnitId,
+      "ユニットID": metric.unitId,
+      "ユニット名": metric.unitName,
+      "構築理由購入回数": metric.constructionPurchaseCount,
+      "構築購入最終main数": metric.constructionFinalMainUnitCount,
+      "構築購入最終sub数": metric.constructionFinalSubUnitCount,
+      "構築購入最終bench数": metric.constructionFinalBenchUnitCount,
+      "構築購入最終欠落数": metric.constructionFinalMissingUnitCount,
+      "構築購入最終完全欠落数": metric.constructionFinalAbsentUnitCount,
+      "構築購入戦闘登場数": metric.constructionEverBattleUnitCount,
+      "構築購入戦闘未登場数": metric.constructionNeverBattleUnitCount,
+      "構築購入戦闘登場率": metric.constructionEverBattleRate,
+      "構築購入最終盤面保持率": metric.constructionFinalRetentionRate,
+      "構築購入最終総保持率": metric.constructionFinalTotalRetentionRate,
+    })),
+    "レイド構築ラウンド進捗": (aggregate.raidArchetypeRoundProgressMetrics ?? []).map((metric) => ({
+      "R": metric.roundIndex,
+      "プラン": metric.planId,
+      "アンカー": metric.anchorUnitId,
+      "対象ユニット": metric.unitIds.join(", "),
+      "プレイヤーサンプル": metric.playerSamples,
+      "アンカー保持数": metric.anchorPlayerCount,
+      "ラウンド成立数": metric.planHitPlayerCount,
+      "ラウンド成立率": metric.planHitRate,
+      "平均プランユニット数": metric.averagePlanUnitCount,
+      "0体": metric.unitCount0PlayerCount,
+      "1体": metric.unitCount1PlayerCount,
+      "2体": metric.unitCount2PlayerCount,
+      "3体以上": metric.unitCount3PlusPlayerCount,
+    })),
+    "レイド構築ショップ判断": (aggregate.raidArchetypeShopDecisionMetrics ?? []).map((metric) => ({
+      "R": metric.roundIndex,
+      "プラン": metric.planId,
+      "判断": metric.decision,
+      "阻害理由": metric.blocker ?? "",
+      "候補ユニット": metric.candidateUnitId,
+      "候補コスト": metric.candidateCost,
+      "サンプル": metric.samples,
+      "プラン対象購入数": metric.planUnitPurchaseCount,
+      "高コスト購入数": metric.highCostPurchaseCount,
+      "平均購入コスト": metric.averagePurchasedCost,
+      "平均盤面プラン数": metric.averageCombatPlanUnitCount ?? null,
+      "平均控えプラン数": metric.averageReservePlanUnitCount ?? null,
+      "平均main空き": metric.averageAvailableMainSlots ?? null,
+      "平均sub空き": metric.averageAvailableSubSlots ?? null,
     })),
     "ボス通常高コスト成熟診断": (aggregate.bossNormalHighCostMaturationMetrics ?? []).map((unit) => ({
       "ユニットID": unit.unitId,
@@ -943,6 +1317,8 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     `- ボス購入方針: ${summary.bossPolicy}`,
     `- レイド購入方針: ${summary.raidPolicies.join(", ")}`,
     `- 最適化variant: ${summary.optimizationVariant}`,
+    `- ボス追加Prep収入: ${summary.bossExtraPrepIncome ?? 0}`,
+    `- ボス累計追加Prep収入: ${summary.bossExtraTotalPrepIncome ?? 0}`,
     `- チャンク数: ${summary.chunkCount}`,
     `- 出力先: ${summary.outputDir}`,
   ];
@@ -1050,6 +1426,55 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
       .map((metric) =>
         `| ${metric.roundIndex} | ${metric.side} | ${escapeMarkdownCell(metric.unitName)} | ${escapeMarkdownCell(metric.unitId)} | ${metric.battleAppearances} | ${formatNumber(metric.averageUnitLevel)} | ${formatPercent(metric.survivalRate)} | ${formatNumber(metric.averageFinalHp)} | ${formatNullablePercent(metric.remainingHpRate)} | ${formatNumber(metric.averageDamageTaken)} | ${formatNumber(metric.averageLifetimeMs)} | ${formatNumber(metric.averageDamagePerBattle)} | ${formatPercent(metric.zeroDamageBattleRate)} |`),
     "",
+    "## ラウンド別盤面強度",
+    "",
+    "| R | 陣営 | 戦闘数 | 平均ユニット数 | 平均生存数 | 投資score | 推定耐久score | 推定火力score | 推定盤面強度score | 実与ダメ | 吸収ダメ | 残HP | 実戦score |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.roundBoardStrengthMetrics ?? []).map((metric) =>
+      `| ${metric.roundIndex} | ${metric.side} | ${metric.battleSamples} | ${formatNumber(metric.averageUnitCount)} | ${formatNumber(metric.averageSurvivorCount)} | ${formatNumber(metric.averageInvestmentScore)} | ${formatNumber(metric.averageEstimatedDurabilityScore)} | ${formatNumber(metric.averageEstimatedDamageScore)} | ${formatNumber(metric.averageBoardStrengthScore)} | ${formatNumber(metric.averageRealizedDamage)} | ${formatNumber(metric.averageAbsorbedDamage)} | ${formatNumber(metric.averageRemainingHp)} | ${formatNumber(metric.averageRealizedBattleScore)} |`),
+    "",
+    "## ラウンド別盤面強度変換",
+    "",
+    "| R | 戦闘数 | boss推定score | raid推定score | boss/raid推定比 | boss実戦score | raid実戦score | boss/raid実戦比 | boss推定優位率 | boss実戦優位率 | boss戦闘勝率 | raid戦闘勝率 | 推定優位だが敗北 | 推定優位だが実戦劣位 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.roundBoardStrengthComparisonMetrics ?? []).map((metric) =>
+      `| ${metric.roundIndex} | ${metric.battleSamples} | ${formatNumber(metric.averageBossBoardStrengthScore)} | ${formatNumber(metric.averageRaidBoardStrengthScore)} | ${formatNullableNumber(metric.averageBossToRaidBoardStrengthRatio)} | ${formatNumber(metric.averageBossRealizedBattleScore)} | ${formatNumber(metric.averageRaidRealizedBattleScore)} | ${formatNullableNumber(metric.averageBossToRaidRealizedBattleRatio)} | ${formatPercent(metric.bossEstimatedAdvantageRate)} | ${formatPercent(metric.bossRealizedAdvantageRate)} | ${formatPercent(metric.bossBattleWinRate)} | ${formatPercent(metric.raidBattleWinRate)} | ${formatPercent(metric.bossEstimatedAdvantageButBattleLossRate)} | ${formatPercent(metric.bossEstimatedAdvantageButRealizedDisadvantageRate)} |`),
+    "",
+    "## ラウンド別盤面強度変換 勝者別",
+    "",
+    "| R | 勝者 | 戦闘数 | boss推定score | raid推定score | boss/raid推定比 | boss実戦score | raid実戦score | boss/raid実戦比 | boss推定優位率 | boss実戦優位率 | 推定優位だが敗北 | 推定優位だが実戦劣位 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.roundBoardStrengthOutcomeMetrics ?? []).map((metric) =>
+      `| ${metric.roundIndex} | ${metric.winnerRole} | ${metric.battleSamples} | ${formatNumber(metric.averageBossBoardStrengthScore)} | ${formatNumber(metric.averageRaidBoardStrengthScore)} | ${formatNullableNumber(metric.averageBossToRaidBoardStrengthRatio)} | ${formatNumber(metric.averageBossRealizedBattleScore)} | ${formatNumber(metric.averageRaidRealizedBattleScore)} | ${formatNullableNumber(metric.averageBossToRaidRealizedBattleRatio)} | ${formatPercent(metric.bossEstimatedAdvantageRate)} | ${formatPercent(metric.bossRealizedAdvantageRate)} | ${formatPercent(metric.bossEstimatedAdvantageButBattleLossRate)} | ${formatPercent(metric.bossEstimatedAdvantageButRealizedDisadvantageRate)} |`),
+    "",
+    "## ユニット別戦力変換",
+    "",
+    "| 陣営 | ユニット名 | ユニットID | ユニット種別 | 戦闘登場回数 | 平均Lv | 推定戦力score | 実効戦力score | 実効-推定 | 実効/推定比 | 陣営基準 | 補正指数 | 補正差分 | 推定割れ率 | 0ダメ率 | 生存率 | サンプル品質 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.unitStrengthConversionMetrics ?? []).map((metric) =>
+      `| ${metric.side} | ${escapeMarkdownCell(metric.unitName)} | ${escapeMarkdownCell(metric.unitId)} | ${escapeMarkdownCell(metric.unitType)} | ${metric.battleAppearances} | ${formatNumber(metric.averageUnitLevel)} | ${formatNumber(metric.averageEstimatedStrengthScore)} | ${formatNumber(metric.averageEffectiveStrengthScore)} | ${formatNumber(metric.averageStrengthScoreDelta)} | ${formatNullableNumber(metric.averageEffectiveToEstimatedRatio)} | ${formatNullableNumber(metric.sideBaselineEffectiveToEstimatedRatio)} | ${formatNullableNumber(metric.sideAdjustedEffectiveToEstimatedIndex)} | ${formatNullableNumber(metric.sideAdjustedStrengthScoreDelta)} | ${formatPercent(metric.underperformedBattleRate)} | ${formatPercent(metric.zeroDamageBattleRate)} | ${formatPercent(metric.survivedBattleRate)} | ${metric.sampleQuality} |`),
+    "",
+    "## ユニットLv別戦力変換",
+    "",
+    "| 陣営 | ユニット名 | ユニットID | 種別 | Lv | 戦闘登場回数 | 実効score | 前Lv実効score | 前Lv差分 | 前Lv成長率 | 補正指数 | 生存率 | サンプル品質 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.unitLevelStrengthConversionMetrics ?? []).map((metric) =>
+      `| ${metric.side} | ${escapeMarkdownCell(metric.unitName)} | ${escapeMarkdownCell(metric.unitId)} | ${escapeMarkdownCell(metric.unitType)} | ${metric.unitLevel} | ${metric.battleAppearances} | ${formatNumber(metric.averageEffectiveStrengthScore)} | ${formatNullableNumber(metric.previousLevelEffectiveStrengthScore)} | ${formatNullableNumber(metric.effectiveStrengthScoreDeltaFromPreviousLevel)} | ${formatNullableNumber(metric.effectiveStrengthScoreGrowthRatioFromPreviousLevel)} | ${formatNullableNumber(metric.sideAdjustedEffectiveToEstimatedIndex)} | ${formatPercent(metric.survivedBattleRate)} | ${metric.sampleQuality} |`),
+    "",
+    "## ユニットアーキタイプ依存度",
+    "",
+    "| 陣営 | ユニット名 | ユニットID | 種別 | 主要アーキタイプ | 戦闘数 | 適合数 | 適合率 | 平均Lv | 適合時Lv | 非適合時Lv | 平均R | 適合時R | 非適合時R | 実効score | 適合時score | 非適合時score | リフト | 依存指数 | R/Lv補正比較数 | R/Lv補正適合時score | R/Lv補正非適合時score | R/Lv補正リフト | R/Lv補正指数 | 平均ユニーク陣営 | 平均同陣営数 | pair率 | サンプル品質 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.unitArchetypeDependencyMetrics ?? []).map((metric) =>
+      `| ${metric.side} | ${escapeMarkdownCell(metric.unitName)} | ${escapeMarkdownCell(metric.unitId)} | ${escapeMarkdownCell(metric.unitType)} | ${escapeMarkdownCell(metric.primaryArchetypeTag)} | ${metric.battleAppearances} | ${metric.archetypeFitBattleAppearances} | ${formatPercent(metric.archetypeFitRate)} | ${formatNumber(metric.averageUnitLevel)} | ${formatNullableNumber(metric.averageArchetypeUnitLevel)} | ${formatNullableNumber(metric.averageNonArchetypeUnitLevel)} | ${formatNumber(metric.averageRoundIndex)} | ${formatNullableNumber(metric.averageArchetypeRoundIndex)} | ${formatNullableNumber(metric.averageNonArchetypeRoundIndex)} | ${formatNumber(metric.averageEffectiveStrengthScore)} | ${formatNullableNumber(metric.averageArchetypeEffectiveStrengthScore)} | ${formatNullableNumber(metric.averageNonArchetypeEffectiveStrengthScore)} | ${formatNullableNumber(metric.archetypeEffectiveStrengthLift)} | ${formatNullableNumber(metric.archetypeDependencyIndex)} | ${metric.roundLevelComparisonBattleAppearances} | ${formatNullableNumber(metric.roundLevelAdjustedArchetypeEffectiveStrengthScore)} | ${formatNullableNumber(metric.roundLevelAdjustedNonArchetypeEffectiveStrengthScore)} | ${formatNullableNumber(metric.roundLevelAdjustedArchetypeEffectiveStrengthLift)} | ${formatNullableNumber(metric.roundLevelAdjustedArchetypeDependencyIndex)} | ${formatNumber(metric.averageUniqueFactionCount)} | ${formatNumber(metric.averageSameFactionCount)} | ${formatPercent(metric.pairLinkedBattleRate)} | ${metric.sampleQuality} |`),
+    "",
+    "## 陣営効果推定価値",
+    "",
+    "| 陣営 | 陣営ID | 戦闘サンプル | 平均同陣営数 | 平均tier | 効果なし推定score | 効果あり推定score | 推定リフト | 陣営内リフト率 | 盤面全体リフト率 | サンプル品質 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...(aggregate.factionEffectValueMetrics ?? []).map((metric) =>
+      `| ${metric.side} | ${escapeMarkdownCell(metric.factionId)} | ${metric.battleSamples} | ${formatNumber(metric.averageFactionUnitCount)} | ${formatNumber(metric.averageTier)} | ${formatNumber(metric.averageBaseEstimatedStrengthScore)} | ${formatNumber(metric.averageFactionAdjustedEstimatedStrengthScore)} | ${formatNumber(metric.averageEstimatedStrengthLift)} | ${formatNullablePercent(metric.averageEstimatedStrengthLiftRate)} | ${formatNullablePercent(metric.averageTeamEstimatedStrengthLiftShare)} | ${metric.sampleQuality} |`),
+    "",
     "## ラウンド分布",
     "",
     "| ラウンド | 件数 |",
@@ -1078,12 +1503,148 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
 
   lines.push(
     "",
+    "### R12勝者別変換ギャップ",
+    "",
+    "| 勝者 | 件数 | 全R12比率 | 本体撃破率 | 本体ダメージ | ボス残HP | ボス生存 | レイド生存 | レイド全滅人数 | レイド開始ユニット | 直衛生存率 | 直衛被ダメ | ボス総ダメ | レイド総ダメ | レイド本体寄与 | ボススペルダメ | 終了秒(通常換算) |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.outcomeContrasts.length === 0) {
+    lines.push("| - | 0 | 0.0% | 0.0% | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 0 | 0 | 0 | 0 | 0 |");
+  } else {
+    for (const metric of analysis.finalBattle.outcomeContrasts) {
+      lines.push(
+        `| ${metric.winner} | ${metric.sampleCount} | ${formatPercent(metric.sampleRate)} | ${formatPercent(metric.bossBodyDefeatRate)} | ${formatNumber(metric.averageBossBodyDamage)} | ${formatNumber(metric.averageBossRemainingHp)} | ${formatNumber(metric.averageBossSurvivors)} | ${formatNumber(metric.averageRaidSurvivors)} | ${formatNumber(metric.averageRaidPlayersWipedOut)} | ${formatNumber(metric.averageBattleStartUnitsPerRaidPlayer)} | ${formatPercent(metric.directGuardAliveRate)} | ${formatNumber(metric.averageDirectGuardDamageTaken)} | ${formatNumber(metric.averageBossDamage)} | ${formatNumber(metric.averageRaidDamage)} | ${formatNumber(metric.averageRaidPhaseContributionDamage)} | ${formatNumber(metric.averageBossSpellDamage)} | ${formatNumber(metric.averageBattleEndRealPlaySeconds)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "### R12ボス勝利時の本体ダメージ帯",
+    "",
+    "| ダメージ帯 | 件数 | ボス勝利内比率 | 本体ダメージ | ボス残HP | ボス生存 | レイド生存 | レイド全滅人数 | レイド開始ユニット | 直衛生存率 | 直衛被ダメ | ボス総ダメ | レイド総ダメ | ボススペルダメ |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const metric of analysis.finalBattle.bossWinBodyDamageBuckets) {
+    lines.push(
+      `| ${metric.label} | ${metric.sampleCount} | ${formatPercent(metric.sampleRate)} | ${formatNumber(metric.averageBossBodyDamage)} | ${formatNumber(metric.averageBossRemainingHp)} | ${formatNumber(metric.averageBossSurvivors)} | ${formatNumber(metric.averageRaidSurvivors)} | ${formatNumber(metric.averageRaidPlayersWipedOut)} | ${formatNumber(metric.averageBattleStartUnitsPerRaidPlayer)} | ${formatPercent(metric.directGuardAliveRate)} | ${formatNumber(metric.averageDirectGuardDamageTaken)} | ${formatNumber(metric.averageBossDamage)} | ${formatNumber(metric.averageRaidDamage)} | ${formatNumber(metric.averageBossSpellDamage)} |`,
+    );
+  }
+
+  lines.push(
+    "",
     "### R12本体保護",
     "",
     "| 本体撃破時にボス生存あり | 全R12比率 | 本体撃破内比率 | 本体撃破時の平均ボス生存 | ボス勝利時の平均ボス生存 | 本体撃破時の平均レイド生存 |",
     "| --- | --- | --- | --- | --- | --- |",
     `| ${analysis.finalBattle.bodyProtection.bossBodyDefeatedWithBossSurvivorsCount} | ${formatPercent(analysis.finalBattle.bodyProtection.bossBodyDefeatedWithBossSurvivorsSampleRate)} | ${formatPercent(analysis.finalBattle.bodyProtection.bossBodyDefeatedWithBossSurvivorsDefeatRate)} | ${formatNumber(analysis.finalBattle.bodyProtection.averageBossSurvivorsWhenBodyDefeated)} | ${formatNumber(analysis.finalBattle.bodyProtection.averageBossSurvivorsWhenBossWins)} | ${formatNumber(analysis.finalBattle.bodyProtection.averageRaidSurvivorsWhenBodyDefeated)} |`,
   );
+
+  lines.push(
+    "",
+    "| 直衛生存で本体撃破 | 本体突破内比率 | 直衛撃破後に本体撃破 | 本体突破内比率 |",
+    "| --- | --- | --- | --- |",
+    `| ${analysis.finalBattle.bodyProtection.directGuardAliveWhenBodyBreachedCount} | ${formatPercent(analysis.finalBattle.bodyProtection.directGuardAliveWhenBodyBreachedRate)} | ${analysis.finalBattle.bodyProtection.directGuardDefeatedWhenBodyBreachedCount} | ${formatPercent(analysis.finalBattle.bodyProtection.directGuardDefeatedWhenBodyBreachedRate)} |`,
+    "",
+    "### R12本体突破時の実直衛結果",
+    "",
+    "| ユニット名 | ユニットID | 種別 | 件数 | 本体突破内比率 | 生存率 | 撃破率 | 平均Lv | 平均残HP | 平均被ダメ | 判断一致率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.bodyProtection.directGuardOutcomesWhenBodyBreached.length === 0) {
+    lines.push("| - | - | - | 0 | 0.0% | 0.0% | 0.0% | 0 | 0 | 0 | 0.0% |");
+  } else {
+    for (const unit of analysis.finalBattle.bodyProtection.directGuardOutcomesWhenBodyBreached) {
+      lines.push(
+        `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.sampleCount} | ${formatPercent(unit.sampleRate)} | ${formatPercent(unit.aliveAtBattleEndRate)} | ${formatPercent(unit.defeatedAtBattleEndRate)} | ${formatNumber(unit.averageUnitLevel)} | ${formatNumber(unit.averageFinalHp)} | ${formatNumber(unit.averageDamageTaken)} | ${formatPercent(unit.matchedDecisionUnitRate)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "### R12本体突破時の生存ボス内訳",
+    "",
+    "| ユニット名 | ユニットID | 種別 | 件数 | 本体突破内比率 | 平均Lv | 平均残HP |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.bodyProtection.survivingBossUnitsWhenBodyBreached.length === 0) {
+    lines.push("| - | - | - | 0 | 0.0% | 0 | 0 |");
+  } else {
+    for (const unit of analysis.finalBattle.bodyProtection.survivingBossUnitsWhenBodyBreached) {
+      lines.push(
+        `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.sampleCount} | ${formatPercent(unit.sampleRate)} | ${formatNumber(unit.averageUnitLevel)} | ${formatNumber(unit.averageFinalHp)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "### R12本体突破時のレイド本体ダメージ寄与",
+    "",
+    "| ユニット名 | ユニットID | 種別 | 件数 | 本体突破内比率 | 合計本体ダメージ | 寄与率 | 平均本体ダメージ | 平均総ダメージ | 平均Lv |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.bodyProtection.raidBodyDamageContributorsWhenBodyBreached.length === 0) {
+    lines.push("| - | - | - | 0 | 0.0% | 0 | 0.0% | 0 | 0 | 0 |");
+  } else {
+    for (const unit of analysis.finalBattle.bodyProtection.raidBodyDamageContributorsWhenBodyBreached) {
+      lines.push(
+        `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.sampleCount} | ${formatPercent(unit.sampleRate)} | ${formatNumber(unit.totalPhaseContributionDamage)} | ${formatPercent(unit.phaseContributionShare)} | ${formatNumber(unit.averagePhaseContributionDamage)} | ${formatNumber(unit.averageTotalDamage)} | ${formatNumber(unit.averageUnitLevel)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "### R12ボス勝利時のボス火力",
+    "",
+    "| ユニット名 | ユニットID | 種別 | 件数 | ボス勝利内比率 | 合計ダメージ | 寄与率 | 平均総ダメージ | 平均Lv | 平均残HP |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.bossOffense.bossDamageContributorsWhenBossWins.length === 0) {
+    lines.push("| - | - | - | 0 | 0.0% | 0 | 0.0% | 0 | 0 | 0 |");
+  } else {
+    for (const unit of analysis.finalBattle.bossOffense.bossDamageContributorsWhenBossWins) {
+      lines.push(
+        `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.sampleCount} | ${formatPercent(unit.sampleRate)} | ${formatNumber(unit.totalDamage)} | ${formatPercent(unit.damageShare)} | ${formatNumber(unit.averageTotalDamage)} | ${formatNumber(unit.averageUnitLevel)} | ${formatNumber(unit.averageFinalHp)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "### R12ボス攻撃結果",
+    "",
+    "| ユニット名 | ユニットID | 種別 | 件数 | ボス勝利内比率 | 平均Lv | 平均総ダメージ | 平均本体ダメージ | 平均残HP |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.bossOffense.defeatedRaidUnitsWhenBossWins.length === 0) {
+    lines.push("| - | - | - | 0 | 0.0% | 0 | 0 | 0 | 0 |");
+  } else {
+    for (const unit of analysis.finalBattle.bossOffense.defeatedRaidUnitsWhenBossWins) {
+      lines.push(
+        `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.sampleCount} | ${formatPercent(unit.sampleRate)} | ${formatNumber(unit.averageUnitLevel)} | ${formatNumber(unit.averageTotalDamage)} | ${formatNumber(unit.averagePhaseContributionDamage)} | ${formatNumber(unit.averageFinalHp)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "### R12本体突破時の生存レイド火力",
+    "",
+    "| ユニット名 | ユニットID | 種別 | 件数 | 本体突破内比率 | 合計本体ダメージ | 寄与率 | 平均本体ダメージ | 平均総ダメージ | 平均Lv |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (analysis.finalBattle.bossOffense.survivingRaidDamageContributorsWhenBodyBreached.length === 0) {
+    lines.push("| - | - | - | 0 | 0.0% | 0 | 0.0% | 0 | 0 | 0 |");
+  } else {
+    for (const unit of analysis.finalBattle.bossOffense.survivingRaidDamageContributorsWhenBodyBreached) {
+      lines.push(
+        `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.sampleCount} | ${formatPercent(unit.sampleRate)} | ${formatNumber(unit.totalPhaseContributionDamage)} | ${formatPercent(unit.phaseContributionShare)} | ${formatNumber(unit.averagePhaseContributionDamage)} | ${formatNumber(unit.averageTotalDamage)} | ${formatNumber(unit.averageUnitLevel)} |`,
+      );
+    }
+  }
 
   lines.push(
     "",
@@ -1098,6 +1659,80 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     for (const spell of analysis.finalBattle.bossSpells) {
       lines.push(
         `| ${escapeMarkdownCell(spell.spellId)} | ${formatPercent(spell.activationRate)} | ${spell.activationCount} | ${formatNullableNumber(spell.averageFirstActivationMs)} | ${formatNumber(spell.averageTickCount)} | ${formatNumber(spell.averageTotalDamage)} | ${formatNullableNumber(spell.averageMaxStack)} |`,
+      );
+    }
+  }
+
+  const bossR12Ceiling = aggregate.bossR12CeilingDiagnostics;
+  lines.push(
+    "",
+    "### R12ボス盤面ceiling診断",
+    "",
+    "| サンプル数 | 平均資産価値 | P50 | P75 | P90 | 最大資産価値 | Remilia Lv7率 | Scarlet core目標到達率 | 通常高コストLv4+平均数 | 通常高コストLv4+最大数 | 2体Lv4+率 | 1体Lv6+率 | 目標到達率 | 平均不足Gold | P75不足 | 最小不足 | 平均差引後不足 | P75差引後不足 | 最終Gold充足率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (!bossR12Ceiling || bossR12Ceiling.sampleCount === 0) {
+    lines.push("| 0 | 0 | - | - | - | 0 | 0.0% | 0.0% | 0 | 0 | 0.0% | 0.0% | 0.0% | 0 | - | 0 | 0 | - | 0.0% |");
+  } else {
+    lines.push(
+      `| ${bossR12Ceiling.sampleCount} | ${formatNumber(bossR12Ceiling.averageAssetValue)} | ${formatNullableNumber(bossR12Ceiling.p50AssetValue)} | ${formatNullableNumber(bossR12Ceiling.p75AssetValue)} | ${formatNullableNumber(bossR12Ceiling.p90AssetValue)} | ${formatNumber(bossR12Ceiling.maxAssetValue)} | ${formatPercent(bossR12Ceiling.remiliaLevel7Rate)} | ${formatPercent(bossR12Ceiling.scarletCoreTargetReachedRate)} | ${formatNumber(bossR12Ceiling.averageLateCarryLevel4PlusCount)} | ${formatNumber(bossR12Ceiling.maxLateCarryLevel4PlusCount)} | ${formatPercent(bossR12Ceiling.twoLateCarryLevel4PlusRate)} | ${formatPercent(bossR12Ceiling.oneLateCarryLevel6PlusRate)} | ${formatPercent(bossR12Ceiling.targetBoardReachedRate)} | ${formatNumber(bossR12Ceiling.averageEstimatedMissingGold)} | ${formatNullableNumber(bossR12Ceiling.p75EstimatedMissingGold)} | ${formatNumber(bossR12Ceiling.minEstimatedMissingGold)} | ${formatNumber(bossR12Ceiling.averageNetEstimatedMissingGold)} | ${formatNullableNumber(bossR12Ceiling.p75NetEstimatedMissingGold)} | ${formatPercent(bossR12Ceiling.finalGoldCoversEstimatedGapRate)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "| 仮想追加Gold | 目標到達可能率 | 平均残不足Gold |",
+    "| --- | --- | --- |",
+  );
+  if (!bossR12Ceiling || bossR12Ceiling.virtualIncomeBreakpoints.length === 0) {
+    lines.push("| - | 0.0% | 0 |");
+  } else {
+    for (const entry of bossR12Ceiling.virtualIncomeBreakpoints) {
+      lines.push(
+        `| +${entry.extraGold} | ${formatPercent(entry.targetReachableRate)} | ${formatNumber(entry.averageRemainingNetGap)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "| 不足内訳 | Remilia不足 | Scarlet core不足 | 通常高コスト不足 | 平均ボス獲得Gold | 平均ボス消費Gold | 平均最終Gold | 通常shop支出 | bossShop支出 | リロール支出 | Remilia強化支出 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (!bossR12Ceiling || bossR12Ceiling.sampleCount === 0) {
+    lines.push("| 平均 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |");
+  } else {
+    lines.push(
+      `| 平均 | ${formatNumber(bossR12Ceiling.averageRemiliaMissingUpgradeCost)} | ${formatNumber(bossR12Ceiling.averageScarletCoreMissingCopyCost)} | ${formatNumber(bossR12Ceiling.averageLateCarryMissingCopyCost)} | ${formatNumber(bossR12Ceiling.averageBossGoldEarned)} | ${formatNumber(bossR12Ceiling.averageBossGoldSpent)} | ${formatNumber(bossR12Ceiling.averageBossFinalGold)} | ${formatNumber(bossR12Ceiling.averageBossNormalShopSpend)} | ${formatNumber(bossR12Ceiling.averageBossShopSpend)} | ${formatNumber(bossR12Ceiling.averageBossRefreshSpend)} | ${formatNumber(bossR12Ceiling.averageBossSpecialUnitUpgradeSpend)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "| 試合 | 戦闘 | 勝者 | 資産価値 | Remilia | Meiling | Sakuya | Patchouli | 通常高コストLv4+ | 目標要素 | 不足Gold | 最終Gold | 盤面 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (!bossR12Ceiling || bossR12Ceiling.topAssetValueSamples.length === 0) {
+    lines.push("| - | - | - | 0 | 0 | 0 | 0 | 0 | 0 | 0/6 | 0 | 0 | - |");
+  } else {
+    for (const sample of bossR12Ceiling.topAssetValueSamples) {
+      lines.push(
+        `| ${sample.matchIndex} | ${sample.battleIndex} | ${sample.finalBattleWinner} | ${formatNumber(sample.assetValue)} | ${sample.remiliaLevel} | ${sample.meilingLevel} | ${sample.sakuyaLevel} | ${sample.patchouliLevel} | ${sample.lateCarryLevel4PlusCount} | ${sample.targetComponentsMet}/6 | ${formatNumber(sample.targetEstimatedMissingGold)} | ${formatNumber(sample.bossFinalGold)} | ${escapeMarkdownCell(sample.boardSignature)} |`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "| 目標最近傍: 試合 | 戦闘 | 勝者 | 資産価値 | 目標要素 | 不足Gold | Remilia不足 | Scarlet不足 | 通常高コスト不足 | 最終Gold | 盤面 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (!bossR12Ceiling || bossR12Ceiling.nearestTargetSamples.length === 0) {
+    lines.push("| - | - | - | 0 | 0/6 | 0 | 0 | 0 | 0 | 0 | - |");
+  } else {
+    for (const sample of bossR12Ceiling.nearestTargetSamples) {
+      lines.push(
+        `| ${sample.matchIndex} | ${sample.battleIndex} | ${sample.finalBattleWinner} | ${formatNumber(sample.assetValue)} | ${sample.targetComponentsMet}/6 | ${formatNumber(sample.targetEstimatedMissingGold)} | ${formatNumber(sample.remiliaMissingUpgradeCost)} | ${formatNumber(sample.scarletCoreMissingCopyCost)} | ${formatNumber(sample.lateCarryMissingCopyCost)} | ${formatNumber(sample.bossFinalGold)} | ${escapeMarkdownCell(sample.boardSignature)} |`,
       );
     }
   }
@@ -1328,6 +1963,77 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
     }
   }
 
+  const bossBodyGuardDecisionRoundMetrics = aggregate.bossBodyGuardDecisionRoundMetrics ?? [];
+  lines.push(
+    "",
+    "## ラウンド別ボス直衛判断診断",
+    "",
+    "| R | 診断回数 | 空き埋め | 交換 | 側面護衛 | 盤面移動指示 | accepted一致 | accepted率 | 見送り | 直衛空き | bench前衛待ち | 直衛外に強前衛 | 平均直衛Lv | 平均最強前衛Lv | 最多直衛 | 最多最強前衛 | 最多理由 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (bossBodyGuardDecisionRoundMetrics.length === 0) {
+    lines.push("| - | 0 | 0 | 0 | 0 | 0 | 0 | - | 0 | 0 | 0 | 0 | - | - | - | - | - |");
+  } else {
+    for (const entry of bossBodyGuardDecisionRoundMetrics) {
+      const directGuardLabel = entry.mostFrequentDirectGuardUnitId === null
+        ? "-"
+        : `${entry.mostFrequentDirectGuardUnitName ?? entry.mostFrequentDirectGuardUnitId} (${entry.mostFrequentDirectGuardUnitId}) x${entry.mostFrequentDirectGuardSamples}`;
+      const strongestGuardLabel = entry.mostFrequentStrongestGuardUnitId === null
+        ? "-"
+        : `${entry.mostFrequentStrongestGuardUnitName ?? entry.mostFrequentStrongestGuardUnitId} (${entry.mostFrequentStrongestGuardUnitId}) x${entry.mostFrequentStrongestGuardSamples}`;
+      const reasonLabel = entry.mostFrequentReason === null
+        ? "-"
+        : `${entry.mostFrequentReason} x${entry.mostFrequentReasonSamples}`;
+      lines.push(
+        `| ${entry.roundIndex} | ${entry.samples} | ${entry.directFillSamples} | ${entry.directSwapSamples} | ${entry.sideFlankMoveSamples} | ${entry.boardMovementActionSamples} | ${entry.acceptedBoardMovementActionSamples} | ${formatNullablePercent(entry.acceptedBoardMovementActionRate)} | ${entry.noActionSamples} | ${entry.directEmptySamples} | ${entry.benchFrontlineBlockedSamples} | ${entry.strongerOffDirectSamples} | ${formatNullableNumber(entry.averageDirectGuardLevel)} | ${formatNullableNumber(entry.averageStrongestGuardLevel)} | ${escapeMarkdownCell(directGuardLabel)} | ${escapeMarkdownCell(strongestGuardLabel)} | ${escapeMarkdownCell(reasonLabel)} |`,
+      );
+    }
+  }
+
+  const boardMovementRoundMetrics = aggregate.boardMovementRoundMetrics ?? [];
+  lines.push(
+    "",
+    "## ロール・ラウンド別accepted盤面移動",
+    "",
+    "| ロール | R | accepted移動回数 | board_move | board_swap |",
+    "| --- | --- | --- | --- | --- |",
+  );
+  if (boardMovementRoundMetrics.length === 0) {
+    lines.push("| - | - | 0 | 0 | 0 |");
+  } else {
+    for (const entry of boardMovementRoundMetrics) {
+      lines.push(
+        `| ${entry.role} | ${entry.roundIndex} | ${entry.samples} | ${entry.moveSamples} | ${entry.swapSamples} |`,
+      );
+    }
+  }
+
+  const boardMovementRouteMetrics = (aggregate.boardMovementRouteMetrics ?? [])
+    .filter((entry) => entry.roundIndex >= 10)
+    .sort((left, right) =>
+      right.samples - left.samples
+      || left.role.localeCompare(right.role)
+      || left.roundIndex - right.roundIndex
+      || left.fromCell - right.fromCell
+      || left.toCell - right.toCell)
+    .slice(0, 40);
+  lines.push(
+    "",
+    "## accepted盤面移動ルート上位",
+    "",
+    "| ロール | R | 種別 | from | to | 回数 | 逆方向 | 差分 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  if (boardMovementRouteMetrics.length === 0) {
+    lines.push("| - | - | - | - | - | 0 | 0 | 0 |");
+  } else {
+    for (const entry of boardMovementRouteMetrics) {
+      lines.push(
+        `| ${entry.role} | ${entry.roundIndex} | ${entry.actionType} | ${entry.fromCell} | ${entry.toCell} | ${entry.samples} | ${entry.reverseSamples} | ${entry.netSamples} |`,
+      );
+    }
+  }
+
   const boardRefitDecisionRoleMetrics = aggregate.boardRefitDecisionRoleMetrics ?? [];
   lines.push(
     "",
@@ -1474,6 +2180,58 @@ export function buildBotBalanceBaselineJapaneseMarkdown(
   for (const unit of highCostOfferMetrics) {
     lines.push(
       `| ${escapeMarkdownCell(unit.unitName)} | ${escapeMarkdownCell(unit.unitId)} | ${escapeMarkdownCell(unit.unitType)} | ${unit.role} | ${unit.source} | ${formatNumber(unit.cost)} | ${formatNumber(unit.observationCount)} | ${formatNumber(unit.matchesPresent)} | ${formatPercent(unit.offeredMatchRate)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## レイド構築プラン診断",
+    "",
+    "| プラン | アンカー | 対象ユニット | 対象購入回数 | 構築理由購入回数 | 構築理由購入率 | 構築購入最終main | 構築購入最終sub | 構築購入最終bench | 構築購入最終欠落 | 構築購入完全欠落 | 構築購入戦闘登場 | 構築購入戦闘未登場 | 構築購入戦闘登場率 | 構築購入盤面保持率 | 構築購入総保持率 | 最終盤面サンプル | アンカー最終採用数 | プラン成立数 | プラン成立率 | 平均最終プランユニット数 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const metric of aggregate.raidArchetypeConstructionMetrics ?? []) {
+    lines.push(
+      `| ${escapeMarkdownCell(metric.planId)} | ${escapeMarkdownCell(metric.anchorUnitId)} | ${escapeMarkdownCell(metric.unitIds.join(", "))} | ${formatNumber(metric.purchaseCount)} | ${formatNumber(metric.constructionPurchaseCount)} | ${formatPercent(metric.constructionPurchaseRate)} | ${formatNumber(metric.constructionFinalMainUnitCount)} | ${formatNumber(metric.constructionFinalSubUnitCount)} | ${formatNumber(metric.constructionFinalBenchUnitCount)} | ${formatNumber(metric.constructionFinalMissingUnitCount)} | ${formatNumber(metric.constructionFinalAbsentUnitCount)} | ${formatNumber(metric.constructionEverBattleUnitCount)} | ${formatNumber(metric.constructionNeverBattleUnitCount)} | ${formatPercent(metric.constructionEverBattleRate)} | ${formatPercent(metric.constructionFinalRetentionRate)} | ${formatPercent(metric.constructionFinalTotalRetentionRate)} | ${formatNumber(metric.finalPlayerSamples)} | ${formatNumber(metric.finalAnchorPlayerCount)} | ${formatNumber(metric.finalPlanHitPlayerCount)} | ${formatPercent(metric.finalPlanHitRate)} | ${formatNumber(metric.averageFinalPlanUnitCount)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## レイド構築ユニット別診断",
+    "",
+    "| プラン | ユニット | ユニットID | 構築理由購入回数 | 最終main | 最終sub | 最終bench | 最終欠落 | 完全欠落 | 戦闘登場 | 戦闘未登場 | 戦闘登場率 | 盤面保持率 | 総保持率 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const metric of aggregate.raidArchetypeConstructionUnitMetrics ?? []) {
+    lines.push(
+      `| ${escapeMarkdownCell(metric.planId)} | ${escapeMarkdownCell(metric.unitName)} | ${escapeMarkdownCell(metric.unitId)} | ${formatNumber(metric.constructionPurchaseCount)} | ${formatNumber(metric.constructionFinalMainUnitCount)} | ${formatNumber(metric.constructionFinalSubUnitCount)} | ${formatNumber(metric.constructionFinalBenchUnitCount)} | ${formatNumber(metric.constructionFinalMissingUnitCount)} | ${formatNumber(metric.constructionFinalAbsentUnitCount)} | ${formatNumber(metric.constructionEverBattleUnitCount)} | ${formatNumber(metric.constructionNeverBattleUnitCount)} | ${formatPercent(metric.constructionEverBattleRate)} | ${formatPercent(metric.constructionFinalRetentionRate)} | ${formatPercent(metric.constructionFinalTotalRetentionRate)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## レイド構築ラウンド進捗",
+    "",
+    "| R | プラン | アンカー | 対象ユニット | プレイヤーサンプル | アンカー保持数 | ラウンド成立数 | ラウンド成立率 | 平均プランユニット数 | 0体 | 1体 | 2体 | 3体以上 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const metric of aggregate.raidArchetypeRoundProgressMetrics ?? []) {
+    lines.push(
+      `| ${metric.roundIndex} | ${escapeMarkdownCell(metric.planId)} | ${escapeMarkdownCell(metric.anchorUnitId)} | ${escapeMarkdownCell(metric.unitIds.join(", "))} | ${formatNumber(metric.playerSamples)} | ${formatNumber(metric.anchorPlayerCount)} | ${formatNumber(metric.planHitPlayerCount)} | ${formatPercent(metric.planHitRate)} | ${formatNumber(metric.averagePlanUnitCount)} | ${formatNumber(metric.unitCount0PlayerCount)} | ${formatNumber(metric.unitCount1PlayerCount)} | ${formatNumber(metric.unitCount2PlayerCount)} | ${formatNumber(metric.unitCount3PlusPlayerCount)} |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## レイド構築ショップ判断",
+    "",
+    "| R | プラン | 判断 | 阻害理由 | 候補ユニット | 候補コスト | サンプル | プラン対象購入 | 高コスト購入 | 平均購入コスト | 平均盤面プラン数 | 平均控えプラン数 | 平均main空き | 平均sub空き |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const metric of aggregate.raidArchetypeShopDecisionMetrics ?? []) {
+    lines.push(
+      `| ${metric.roundIndex} | ${escapeMarkdownCell(metric.planId)} | ${escapeMarkdownCell(metric.decision)} | ${escapeMarkdownCell(metric.blocker ?? "")} | ${escapeMarkdownCell(metric.candidateUnitId)} | ${formatNumber(metric.candidateCost)} | ${formatNumber(metric.samples)} | ${formatNumber(metric.planUnitPurchaseCount)} | ${formatNumber(metric.highCostPurchaseCount)} | ${formatNumber(metric.averagePurchasedCost)} | ${formatNullableNumber(metric.averageCombatPlanUnitCount ?? null)} | ${formatNullableNumber(metric.averageReservePlanUnitCount ?? null)} | ${formatNullableNumber(metric.averageAvailableMainSlots ?? null)} | ${formatNullableNumber(metric.averageAvailableSubSlots ?? null)} |`,
     );
   }
 
@@ -1643,13 +2401,13 @@ export function buildBotBalanceBaselineRoundDetailsJapaneseMarkdown(
     "",
     "## 各ラウンド詳細",
     "",
-    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| 試合 | R | 終了時間(実プレイ秒) | 最終勝利 | ラウンド結果 | 目的進捗 | 達成率 | 推定フェーズHP火力指数 | レミリア集中 | ボス直衛判断 | レイド全滅 | レイド撃破数 | ボス生存 | レイド生存 | 終了理由 | 戦闘勝利 | レイド別残機 | 上位レイド火力 | 上位ボス火力 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
 
   for (const round of aggregate.roundDetails ?? []) {
     lines.push(
-      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${formatNullableNumber(round.phaseHpPowerIndex ?? null)} | ${escapeMarkdownCell(formatBossBodyFocusDetail(round.bossBodyFocus ?? null))} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
+      `| ${round.matchIndex} | ${round.roundIndex} | ${formatNumber(toRealPlaySeconds(round.battleEndTimeMs, battleTimelineTimeScale))} | ${round.matchWinnerRole} | ${round.phaseResult} | ${escapeMarkdownCell(formatRoundObjectiveProgress(round))} | ${formatPercent(round.phaseCompletionRate)} | ${formatNullableNumber(round.phaseHpPowerIndex ?? null)} | ${escapeMarkdownCell(formatBossBodyFocusDetail(round.bossBodyFocus ?? null))} | ${escapeMarkdownCell(formatBossBodyGuardDecisionDetail(round.bossBodyGuardDecision ?? null))} | ${round.allRaidPlayersWipedOut ? "YES" : "NO"} | ${round.raidPlayersWipedOut} | ${round.bossSurvivors} | ${round.raidSurvivors} | ${escapeMarkdownCell(round.battleEndReasons.map((reason) => localizeBattleEndReason(reason)).join(", "))} | ${escapeMarkdownCell(round.battleWinnerRoles.join(", "))} | ${escapeMarkdownCell(formatRoundPlayerConsequences(round.raidPlayerConsequences))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topRaidUnits, "raid"))} | ${escapeMarkdownCell(formatRoundUnitDetails(round.topBossUnits, "boss"))} |`,
     );
   }
 
@@ -1678,6 +2436,93 @@ function formatBossBodyFocusDetail(
     : "";
   const hp = focus.finalHp === null ? "-" : formatNumber(focus.finalHp);
   return `${formatBossBodyFocusCell(focus)}, dmg=${formatNumber(focus.damageTaken)}, phase=${formatNumber(focus.directPhaseDamage)}, hp=${hp}, ${focus.defeated ? "撃破" : "生存"}${firstDamage}`;
+}
+
+function formatBossBodyGuardUnitLabel(
+  unitName: string | null,
+  unitId: string | null,
+  unitLevel: number | null,
+  cell: number | null,
+): string {
+  if (unitId === null) {
+    return "-";
+  }
+
+  const level = unitLevel === null ? "?" : String(unitLevel);
+  const cellLabel = cell === null ? "?" : String(cell);
+  return `${unitName ?? unitId} (${unitId}) Lv${level} cell ${cellLabel}`;
+}
+
+function formatBossBodyGuardCompactUnitLabel(
+  unitName: string | null,
+  unitId: string | null,
+  unitLevel: number | null,
+  cell: number | null,
+): string {
+  if (unitId === null) {
+    return "-";
+  }
+
+  const level = unitLevel === null ? "?" : String(unitLevel);
+  const cellLabel = cell === null ? "?" : String(cell);
+  return `${unitName ?? unitId}(${unitId})Lv${level}@${cellLabel}`;
+}
+
+function formatBossBodyGuardDecisionJson(
+  decision: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["bossBodyGuardDecision"] | null,
+): Record<string, unknown> | null {
+  if (!decision) {
+    return null;
+  }
+
+  return {
+    "判断": decision.decision,
+    "理由": decision.reason,
+    "直衛": formatBossBodyGuardUnitLabel(
+      decision.directGuardUnitName,
+      decision.directGuardUnitId,
+      decision.directGuardLevel,
+      decision.directGuardCell,
+    ),
+    "最強前衛": formatBossBodyGuardUnitLabel(
+      decision.strongestGuardUnitName,
+      decision.strongestGuardUnitId,
+      decision.strongestGuardLevel,
+      decision.strongestGuardCell,
+    ),
+    "直衛空き": decision.directEmpty,
+    "bench前衛数": decision.benchFrontlineCount,
+    "直衛外に強前衛": decision.strongerOffDirect,
+    "予定移動": decision.actionFromCell === null || decision.actionToCell === null
+      ? "-"
+      : `${decision.actionFromCell} -> ${decision.actionToCell}`,
+  };
+}
+
+function formatBossBodyGuardDecisionDetail(
+  decision: NonNullable<BotOnlyBaselineAggregateReport["roundDetails"]>[number]["bossBodyGuardDecision"] | null,
+): string {
+  if (!decision) {
+    return "-";
+  }
+
+  const directGuard = formatBossBodyGuardCompactUnitLabel(
+    decision.directGuardUnitName,
+    decision.directGuardUnitId,
+    decision.directGuardLevel,
+    decision.directGuardCell,
+  );
+  const strongestGuard = formatBossBodyGuardCompactUnitLabel(
+    decision.strongestGuardUnitName,
+    decision.strongestGuardUnitId,
+    decision.strongestGuardLevel,
+    decision.strongestGuardCell,
+  );
+  const action = decision.actionFromCell === null || decision.actionToCell === null
+    ? "-"
+    : `${decision.actionFromCell}->${decision.actionToCell}`;
+
+  return `${decision.decision}/${decision.reason}; direct=${directGuard}; strongest=${strongestGuard}; strongerOffDirect=${decision.strongerOffDirect ? "YES" : "NO"}; action=${action}`;
 }
 
 function formatRoundPlayerConsequences(

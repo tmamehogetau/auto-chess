@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import type { BotOnlyBaselineAggregateReport } from "./bot-balance-baseline-aggregate";
+import type {
+  BotOnlyBaselineAggregateReport,
+  BotOnlyBaselineBossBodyGuardDecisionSnapshot,
+  BotOnlyBaselineMatchRoundDetail,
+  BotOnlyBaselineRoundPlayerConsequence,
+  BotOnlyBaselineRoundUnitDetail,
+} from "./bot-balance-baseline-aggregate";
 import type { BotBalanceBaselineSummary } from "./bot-balance-baseline-human-report";
 import { buildBotBalanceBaselineAnalysis } from "./bot-balance-baseline-analysis";
 
@@ -70,6 +76,115 @@ function createSummary(overrides: Partial<BotBalanceBaselineSummary> = {}): BotB
     failures: [],
     chunks: [],
     aggregate: createSampleAggregate(),
+    ...overrides,
+  };
+}
+
+function createRoundUnit(
+  overrides: Partial<BotOnlyBaselineRoundUnitDetail>,
+): BotOnlyBaselineRoundUnitDetail {
+  return {
+    playerId: "P1",
+    label: "P1",
+    unitId: "meiling",
+    unitName: "紅美鈴",
+    unitType: "vanguard",
+    side: "boss",
+    totalDamage: 0,
+    phaseContributionDamage: 0,
+    finalHp: 0,
+    alive: false,
+    unitLevel: 1,
+    ...overrides,
+  };
+}
+
+function createBossBodyGuardDecision(
+  overrides: Partial<BotOnlyBaselineBossBodyGuardDecisionSnapshot> = {},
+): BotOnlyBaselineBossBodyGuardDecisionSnapshot {
+  return {
+    roundIndex: 12,
+    playerId: "P1",
+    label: "P1",
+    decision: "none",
+    reason: "side_backline_guarded",
+    bossCell: 2,
+    directGuardCell: 8,
+    directGuardUnitId: "meiling",
+    directGuardUnitName: "紅美鈴",
+    directGuardUnitType: "vanguard",
+    directGuardLevel: 7,
+    strongestGuardCell: 9,
+    strongestGuardUnitId: "junko",
+    strongestGuardUnitName: "純狐",
+    strongestGuardUnitType: "vanguard",
+    strongestGuardLevel: 3,
+    benchFrontlineCount: 0,
+    directEmpty: false,
+    strongerOffDirect: false,
+    actionFromCell: null,
+    actionToCell: null,
+    ...overrides,
+  };
+}
+
+function createRaidPlayerConsequence(
+  overrides: Partial<BotOnlyBaselineRoundPlayerConsequence>,
+): BotOnlyBaselineRoundPlayerConsequence {
+  return {
+    playerId: "raid-1",
+    label: "P1",
+    role: "raid",
+    battleStartUnitCount: 3,
+    playerWipedOut: false,
+    remainingLivesBefore: 2,
+    remainingLivesAfter: 2,
+    eliminatedAfter: false,
+    ...overrides,
+  };
+}
+
+function createFinalBattleRound(
+  overrides: Partial<BotOnlyBaselineMatchRoundDetail>,
+): BotOnlyBaselineMatchRoundDetail {
+  return {
+    matchIndex: 0,
+    matchWinnerRole: "raid",
+    totalRounds: 12,
+    roundIndex: 12,
+    battleEndTimeMs: 20_000,
+    phaseHpTarget: 0,
+    phaseDamageDealt: 3_000,
+    phaseCompletionRate: 0,
+    phaseHpPowerIndex: null,
+    phaseResult: "success",
+    allRaidPlayersWipedOut: false,
+    raidPlayersWipedOut: 0,
+    raidPlayersEliminatedAfterRound: 0,
+    bossSurvivors: 1,
+    raidSurvivors: 5,
+    bossTotalDamage: 1_000,
+    raidTotalDamage: 5_000,
+    raidPhaseContributionDamage: 3_000,
+    battleEndReasons: ["boss_defeated"],
+    battleWinnerRoles: ["raid"],
+    raidPlayerConsequences: [],
+    bossBodyFocus: {
+      unitId: "remilia",
+      unitName: "レミリア",
+      cell: 2,
+      x: 2,
+      y: 0,
+      unitLevel: 4,
+      damageTaken: 3_000,
+      directPhaseDamage: 3_000,
+      firstDamageAtMs: null,
+      defeated: true,
+      finalHp: 0,
+    },
+    bossBodyGuardDecision: createBossBodyGuardDecision(),
+    topBossUnits: [],
+    topRaidUnits: [],
     ...overrides,
   };
 }
@@ -252,6 +367,560 @@ describe("bot balance baseline analysis report", () => {
       raidSurvivors: 5,
       bossBodyDefeatedWithBossSurvivors: true,
     });
+  });
+
+  test("summarizes R12 body breaches by direct guard state and unit contributors", () => {
+    const summary = createSummary({
+      aggregate: createSampleAggregate({
+        completedMatches: 4,
+        roundDetails: [
+          createFinalBattleRound({
+            matchIndex: 0,
+            bossSurvivors: 2,
+            bossBodyDirectGuardOutcome: {
+              ...createRoundUnit({
+                unitId: "byakuren",
+                unitName: "聖白蓮",
+                unitType: "vanguard",
+                alive: true,
+                finalHp: 1_100,
+                damageTaken: 450,
+                unitLevel: 6,
+              }),
+              bossCell: 2,
+              expectedCell: 8,
+              matchedDecisionUnit: false,
+            },
+            topBossUnits: [
+              createRoundUnit({ unitId: "meiling", unitName: "紅美鈴", alive: true, finalHp: 900, unitLevel: 7 }),
+              createRoundUnit({
+                unitId: "utsuho",
+                unitName: "霊烏路空",
+                unitType: "mage",
+                alive: true,
+                finalHp: 700,
+                unitLevel: 2,
+              }),
+            ],
+            topRaidUnits: [
+              createRoundUnit({
+                playerId: "P2",
+                label: "P2",
+                unitId: "shion",
+                unitName: "依神紫苑",
+                unitType: "assassin",
+                side: "raid",
+                totalDamage: 4_200,
+                phaseContributionDamage: 1_200,
+                finalHp: 800,
+                alive: true,
+                unitLevel: 7,
+              }),
+              createRoundUnit({
+                playerId: "P3",
+                label: "P3",
+                unitId: "ariya",
+                unitName: "磐永阿梨夜",
+                unitType: "vanguard",
+                side: "raid",
+                totalDamage: 5_000,
+                phaseContributionDamage: 1_800,
+                finalHp: 600,
+                alive: true,
+                unitLevel: 7,
+              }),
+            ],
+          }),
+          createFinalBattleRound({
+            matchIndex: 1,
+            bossSurvivors: 1,
+            bossBodyDirectGuardOutcome: {
+              ...createRoundUnit({
+                unitId: "meiling",
+                unitName: "紅美鈴",
+                alive: false,
+                finalHp: 0,
+                damageTaken: 1_250,
+                unitLevel: 7,
+              }),
+              bossCell: 2,
+              expectedCell: 8,
+              matchedDecisionUnit: true,
+            },
+            topBossUnits: [
+              createRoundUnit({ unitId: "meiling", unitName: "紅美鈴", alive: false, finalHp: 0, unitLevel: 7 }),
+              createRoundUnit({
+                unitId: "patchouli",
+                unitName: "パチュリー・ノーレッジ",
+                unitType: "mage",
+                alive: true,
+                finalHp: 950,
+                unitLevel: 6,
+              }),
+            ],
+            topRaidUnits: [
+              createRoundUnit({
+                playerId: "P2",
+                label: "P2",
+                unitId: "mayumi",
+                unitName: "杖刀偶磨弓",
+                unitType: "ranger",
+                side: "raid",
+                totalDamage: 4_000,
+                phaseContributionDamage: 1_500,
+                finalHp: 500,
+                alive: true,
+                unitLevel: 5,
+              }),
+              createRoundUnit({
+                playerId: "P3",
+                label: "P3",
+                unitId: "marisa",
+                unitName: "霧雨魔理沙",
+                unitType: "hero",
+                side: "raid",
+                totalDamage: 3_500,
+                phaseContributionDamage: 1_500,
+                finalHp: 500,
+                alive: true,
+                unitLevel: 7,
+              }),
+            ],
+          }),
+          createFinalBattleRound({
+            matchIndex: 2,
+            bossSurvivors: 0,
+            topBossUnits: [
+              createRoundUnit({ unitId: "meiling", unitName: "紅美鈴", alive: false, finalHp: 0, unitLevel: 7 }),
+            ],
+            topRaidUnits: [
+              createRoundUnit({
+                playerId: "P2",
+                label: "P2",
+                unitId: "shion",
+                unitName: "依神紫苑",
+                unitType: "assassin",
+                side: "raid",
+                totalDamage: 4_300,
+                phaseContributionDamage: 3_000,
+                finalHp: 700,
+                alive: true,
+                unitLevel: 7,
+              }),
+            ],
+          }),
+          createFinalBattleRound({
+            matchIndex: 3,
+            matchWinnerRole: "boss",
+            phaseDamageDealt: 800,
+            phaseResult: "failed",
+            bossSurvivors: 4,
+            raidSurvivors: 0,
+            battleEndReasons: ["annihilation"],
+            battleWinnerRoles: ["boss"],
+            bossBodyFocus: {
+              unitId: "remilia",
+              unitName: "レミリア",
+              cell: 2,
+              x: 2,
+              y: 0,
+              unitLevel: 4,
+              damageTaken: 800,
+              directPhaseDamage: 800,
+              firstDamageAtMs: null,
+              defeated: false,
+              finalHp: 2_200,
+            },
+            topBossUnits: [
+              createRoundUnit({
+                unitId: "hecatia",
+                unitName: "ヘカーティア・ラピスラズリ",
+                unitType: "mage",
+                totalDamage: 3_600,
+                alive: true,
+                finalHp: 900,
+                unitLevel: 4,
+              }),
+              createRoundUnit({
+                unitId: "remilia",
+                unitName: "レミリア",
+                unitType: "hero",
+                totalDamage: 2_400,
+                alive: true,
+                finalHp: 2_200,
+                unitLevel: 7,
+              }),
+              createRoundUnit({
+                unitId: "meiling",
+                unitName: "紅美鈴",
+                totalDamage: 1_100,
+                alive: true,
+                finalHp: 1_200,
+                unitLevel: 7,
+              }),
+            ],
+            topRaidUnits: [
+              createRoundUnit({
+                playerId: "P2",
+                label: "P2",
+                unitId: "ariya",
+                unitName: "磐永阿梨夜",
+                unitType: "vanguard",
+                side: "raid",
+                totalDamage: 2_200,
+                phaseContributionDamage: 300,
+                finalHp: 0,
+                alive: false,
+                unitLevel: 7,
+              }),
+              createRoundUnit({
+                playerId: "P3",
+                label: "P3",
+                unitId: "marisa",
+                unitName: "霧雨魔理沙",
+                unitType: "hero",
+                side: "raid",
+                totalDamage: 1_700,
+                phaseContributionDamage: 250,
+                finalHp: 0,
+                alive: false,
+                unitLevel: 7,
+              }),
+            ],
+          }),
+        ],
+      }),
+    });
+
+    const analysis = buildBotBalanceBaselineAnalysis(summary);
+
+    expect(analysis.finalBattle.bodyProtection).toMatchObject({
+      bossBodyDefeatedWithBossSurvivorsCount: 2,
+      directGuardAliveWhenBodyBreachedCount: 1,
+      directGuardAliveWhenBodyBreachedRate: 0.5,
+      directGuardDefeatedWhenBodyBreachedCount: 1,
+      directGuardDefeatedWhenBodyBreachedRate: 0.5,
+    });
+    expect(analysis.finalBattle.bodyProtection.directGuardOutcomesWhenBodyBreached).toEqual([
+      expect.objectContaining({
+        unitId: "byakuren",
+        sampleCount: 1,
+        aliveAtBattleEndCount: 1,
+        aliveAtBattleEndRate: 1,
+        averageDamageTaken: 450,
+        matchedDecisionUnitRate: 0,
+      }),
+      expect.objectContaining({
+        unitId: "meiling",
+        sampleCount: 1,
+        defeatedAtBattleEndCount: 1,
+        defeatedAtBattleEndRate: 1,
+        averageDamageTaken: 1_250,
+        matchedDecisionUnitRate: 1,
+      }),
+    ]);
+    expect(analysis.finalBattle.bodyProtection.survivingBossUnitsWhenBodyBreached).toEqual([
+      expect.objectContaining({
+        unitId: "meiling",
+        sampleCount: 1,
+        sampleRate: 0.5,
+        averageUnitLevel: 7,
+        averageFinalHp: 900,
+      }),
+      expect.objectContaining({
+        unitId: "patchouli",
+        sampleCount: 1,
+        sampleRate: 0.5,
+        averageUnitLevel: 6,
+        averageFinalHp: 950,
+      }),
+      expect.objectContaining({
+        unitId: "utsuho",
+        sampleCount: 1,
+        sampleRate: 0.5,
+        averageUnitLevel: 2,
+        averageFinalHp: 700,
+      }),
+    ]);
+    expect(analysis.finalBattle.bodyProtection.raidBodyDamageContributorsWhenBodyBreached).toEqual([
+      expect.objectContaining({
+        unitId: "ariya",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_800,
+        phaseContributionShare: 0.3,
+      }),
+      expect.objectContaining({
+        unitId: "marisa",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_500,
+        phaseContributionShare: 0.25,
+      }),
+      expect.objectContaining({
+        unitId: "mayumi",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_500,
+        phaseContributionShare: 0.25,
+      }),
+      expect.objectContaining({
+        unitId: "shion",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_200,
+        phaseContributionShare: 0.2,
+      }),
+    ]);
+    expect(analysis.finalBattle.bossOffense.defeatedRaidUnitsWhenBossWins).toEqual([
+      expect.objectContaining({
+        unitId: "ariya",
+        sampleCount: 1,
+        sampleRate: 1,
+        averageUnitLevel: 7,
+        averageTotalDamage: 2_200,
+      }),
+      expect.objectContaining({
+        unitId: "marisa",
+        sampleCount: 1,
+        sampleRate: 1,
+        averageUnitLevel: 7,
+        averageTotalDamage: 1_700,
+      }),
+    ]);
+    expect(analysis.finalBattle.bossOffense.bossDamageContributorsWhenBossWins).toEqual([
+      expect.objectContaining({
+        unitId: "hecatia",
+        sampleCount: 1,
+        sampleRate: 1,
+        totalDamage: 3_600,
+        damageShare: 3_600 / 7_100,
+        averageTotalDamage: 3_600,
+        averageUnitLevel: 4,
+      }),
+      expect.objectContaining({
+        unitId: "remilia",
+        sampleCount: 1,
+        sampleRate: 1,
+        totalDamage: 2_400,
+        damageShare: 2_400 / 7_100,
+        averageTotalDamage: 2_400,
+        averageUnitLevel: 7,
+      }),
+      expect.objectContaining({
+        unitId: "meiling",
+        sampleCount: 1,
+        sampleRate: 1,
+        totalDamage: 1_100,
+        damageShare: 1_100 / 7_100,
+        averageTotalDamage: 1_100,
+        averageUnitLevel: 7,
+      }),
+    ]);
+    expect(analysis.finalBattle.bossOffense.survivingRaidDamageContributorsWhenBodyBreached).toEqual([
+      expect.objectContaining({
+        unitId: "ariya",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_800,
+        phaseContributionShare: 0.3,
+      }),
+      expect.objectContaining({
+        unitId: "marisa",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_500,
+        phaseContributionShare: 0.25,
+      }),
+      expect.objectContaining({
+        unitId: "mayumi",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_500,
+        phaseContributionShare: 0.25,
+      }),
+      expect.objectContaining({
+        unitId: "shion",
+        sampleCount: 1,
+        totalPhaseContributionDamage: 1_200,
+        phaseContributionShare: 0.2,
+      }),
+    ]);
+  });
+
+  test("contrasts R12 final battle conversion by winner and boss win damage buckets", () => {
+    const createSpellMetric = (totalDamage: number) => ({
+      spellId: "remilia_last_word",
+      casterBattleUnitId: "remilia:0",
+      activationCount: 1,
+      firstActivationAtMs: 100,
+      lastActivationAtMs: 100,
+      tickCount: 1,
+      firstTickAtMs: 100,
+      lastTickAtMs: 100,
+      totalDamage,
+      maxStack: 1,
+    });
+    const createGuardOutcome = (alive: boolean, finalHp: number, damageTaken: number) => ({
+      ...createRoundUnit({
+        unitId: "meiling",
+        unitName: "紅美鈴",
+        side: "boss" as const,
+        finalHp,
+        alive,
+        unitLevel: 7,
+        damageTaken,
+      }),
+      bossCell: 2,
+      expectedCell: 8,
+      matchedDecisionUnit: true,
+    });
+    const summary = createSummary({
+      aggregate: createSampleAggregate({
+        completedMatches: 3,
+        roundHistogram: { "12": 3 },
+        roundDetails: [
+          createFinalBattleRound({
+            matchIndex: 0,
+            matchWinnerRole: "boss",
+            phaseDamageDealt: 0,
+            phaseResult: "failed",
+            allRaidPlayersWipedOut: true,
+            raidPlayersWipedOut: 3,
+            raidPlayersEliminatedAfterRound: 1,
+            bossSurvivors: 5,
+            raidSurvivors: 0,
+            bossTotalDamage: 9_000,
+            raidTotalDamage: 4_000,
+            raidPhaseContributionDamage: 0,
+            battleEndReasons: ["annihilation"],
+            battleWinnerRoles: ["boss"],
+            raidPlayerConsequences: [
+              createRaidPlayerConsequence({
+                playerId: "raid-1",
+                label: "P1",
+                battleStartUnitCount: 3,
+                playerWipedOut: true,
+                remainingLivesBefore: 1,
+                remainingLivesAfter: 0,
+                eliminatedAfter: true,
+              }),
+              createRaidPlayerConsequence({
+                playerId: "raid-2",
+                label: "P2",
+                battleStartUnitCount: 2,
+                playerWipedOut: true,
+                remainingLivesAfter: 1,
+              }),
+              createRaidPlayerConsequence({
+                playerId: "raid-3",
+                label: "P3",
+                battleStartUnitCount: 1,
+                playerWipedOut: true,
+                remainingLivesAfter: 1,
+              }),
+            ],
+            bossBodyDirectGuardOutcome: createGuardOutcome(true, 700, 500),
+            bossSpellMetrics: [createSpellMetric(1_000)],
+          }),
+          createFinalBattleRound({
+            matchIndex: 1,
+            matchWinnerRole: "boss",
+            phaseDamageDealt: 2_700,
+            phaseResult: "failed",
+            allRaidPlayersWipedOut: true,
+            raidPlayersWipedOut: 2,
+            bossSurvivors: 2,
+            raidSurvivors: 0,
+            bossTotalDamage: 8_000,
+            raidTotalDamage: 8_500,
+            raidPhaseContributionDamage: 2_700,
+            battleEndReasons: ["annihilation"],
+            battleWinnerRoles: ["boss"],
+            raidPlayerConsequences: [
+              createRaidPlayerConsequence({ playerId: "raid-1", label: "P1" }),
+              createRaidPlayerConsequence({ playerId: "raid-2", label: "P2" }),
+              createRaidPlayerConsequence({
+                playerId: "raid-3",
+                label: "P3",
+                playerWipedOut: true,
+                remainingLivesAfter: 1,
+              }),
+            ],
+            bossBodyDirectGuardOutcome: createGuardOutcome(false, 0, 1_800),
+            bossSpellMetrics: [createSpellMetric(900)],
+          }),
+          createFinalBattleRound({
+            matchIndex: 2,
+            matchWinnerRole: "raid",
+            phaseDamageDealt: 3_200,
+            phaseResult: "success",
+            allRaidPlayersWipedOut: false,
+            raidPlayersWipedOut: 0,
+            bossSurvivors: 0,
+            raidSurvivors: 6,
+            bossTotalDamage: 6_000,
+            raidTotalDamage: 12_000,
+            raidPhaseContributionDamage: 3_200,
+            battleEndReasons: ["boss_defeated"],
+            battleWinnerRoles: ["raid"],
+            raidPlayerConsequences: [
+              createRaidPlayerConsequence({ playerId: "raid-1", label: "P1" }),
+              createRaidPlayerConsequence({ playerId: "raid-2", label: "P2" }),
+              createRaidPlayerConsequence({ playerId: "raid-3", label: "P3" }),
+            ],
+            bossBodyDirectGuardOutcome: createGuardOutcome(false, 0, 2_400),
+            bossSpellMetrics: [createSpellMetric(800)],
+          }),
+        ],
+      }),
+    });
+
+    const analysis = buildBotBalanceBaselineAnalysis(summary);
+
+    expect(analysis.finalBattle.outcomeContrasts).toEqual([
+      expect.objectContaining({
+        winner: "boss",
+        sampleCount: 2,
+        sampleRate: 2 / 3,
+        averageBossBodyDamage: 1_350,
+        averageRaidSurvivors: 0,
+        averageRaidPlayersWipedOut: 2.5,
+        averageBattleStartUnitsPerRaidPlayer: 2.5,
+        directGuardAliveRate: 0.5,
+        averageDirectGuardDamageTaken: 1_150,
+        averageBossDamage: 8_500,
+        averageRaidDamage: 6_250,
+        averageBossSpellDamage: 950,
+      }),
+      expect.objectContaining({
+        winner: "raid",
+        sampleCount: 1,
+        sampleRate: 1 / 3,
+        bossBodyDefeatRate: 1,
+        averageBossBodyDamage: 3_200,
+        averageRaidSurvivors: 6,
+        averageBattleStartUnitsPerRaidPlayer: 3,
+        directGuardAliveRate: 0,
+        averageDirectGuardDamageTaken: 2_400,
+        averageBossDamage: 6_000,
+        averageRaidDamage: 12_000,
+        averageBossSpellDamage: 800,
+      }),
+    ]);
+    expect(analysis.finalBattle.bossWinBodyDamageBuckets).toEqual([
+      expect.objectContaining({
+        bucketId: "zero",
+        sampleCount: 1,
+        sampleRate: 0.5,
+        averageBossBodyDamage: 0,
+        directGuardAliveRate: 1,
+        averageBattleStartUnitsPerRaidPlayer: 2,
+      }),
+      expect.objectContaining({ bucketId: "low", sampleCount: 0 }),
+      expect.objectContaining({ bucketId: "mid", sampleCount: 0 }),
+      expect.objectContaining({
+        bucketId: "near",
+        sampleCount: 1,
+        sampleRate: 0.5,
+        averageBossBodyDamage: 2_700,
+        directGuardAliveRate: 0,
+        averageBattleStartUnitsPerRaidPlayer: 3,
+      }),
+    ]);
   });
 
   test("summarizes early Remilia body focus from R1-R3 details", () => {

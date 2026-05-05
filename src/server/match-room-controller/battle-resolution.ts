@@ -4,11 +4,13 @@
  * with dependency injection for testability
  */
 
-import type {
-  BattleUnit,
-  BattleResult as SimulatorBattleResult,
-  BossSpellBattleMetric,
+import {
+  BattleSimulator,
+  type BattleUnit,
+  type BattleResult as SimulatorBattleResult,
+  type BossSpellBattleMetric,
 } from "../combat/battle-simulator";
+import { createSeededBattleRng } from "../combat/battle-rng";
 import type { BattleTimelineEvent, BoardUnitPlacement } from "../../shared/room-messages";
 import type { MatchLogger } from "../match-logger";
 import type { FeatureFlags } from "../../shared/feature-flags";
@@ -191,6 +193,7 @@ export interface ResolveMatchupInput {
   leftHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null;
   rightHeroSynergyBonusType: BoardUnitType | BoardUnitType[] | null;
   battleIndex: number;
+  battleSeed?: number;
 }
 
 /**
@@ -227,10 +230,14 @@ export class BattleResolutionService {
       leftHeroSynergyBonusType,
       rightHeroSynergyBonusType,
       battleIndex,
+      battleSeed,
     } = input;
 
     // Run battle simulation
-    const battleResult = this.deps.battleSimulator.simulateBattle(
+    const battleSimulator = typeof battleSeed === "number"
+      ? new BattleSimulator({ rng: createSeededBattleRng(battleSeed) })
+      : this.deps.battleSimulator;
+    const battleResult = battleSimulator.simulateBattle(
       leftBattleUnits,
       rightBattleUnits,
       leftPlacements,

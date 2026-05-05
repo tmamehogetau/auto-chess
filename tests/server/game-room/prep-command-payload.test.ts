@@ -52,6 +52,17 @@ describe("prep-command-payload", () => {
     });
   });
 
+  it("preserves boardUnitSwap commands", () => {
+    const message: PrepCommandMessage = {
+      cmdSeq: 5,
+      boardUnitSwap: { fromCell: 9, toCell: 8 },
+    };
+
+    expect(buildPrepCommandPayload(message)).toEqual({
+      boardUnitSwap: { fromCell: 9, toCell: 8 },
+    });
+  });
+
   it("preserves heroPlacementCell for dedicated hero placement commands", () => {
     const message: PrepCommandMessage = {
       cmdSeq: 5,

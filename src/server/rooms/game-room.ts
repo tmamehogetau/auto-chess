@@ -77,10 +77,13 @@ interface GameRoomOptions {
   eliminationDurationMs?: number;
   selectionTimeoutMs?: number;
   battleTimelineTimeScale?: number;
+  battleSeedBase?: number;
   setId?: UnitEffectSetId;
   sharedBoardRoomId?: string;
   forcedFeatureFlags?: FeatureFlags;
   spectator?: boolean;
+  bossExtraPrepIncome?: number;
+  bossExtraTotalPrepIncome?: number;
 }
 
 export class GameRoom extends Room<{ state: MatchRoomState }> {
@@ -105,6 +108,12 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
   private selectionTimeoutMs = DEFAULT_GAME_ROOM_OPTIONS.selectionTimeoutMs;
 
   private battleTimelineTimeScale = DEFAULT_GAME_ROOM_OPTIONS.battleTimelineTimeScale;
+
+  private battleSeedBase: number | undefined;
+
+  private bossExtraPrepIncome = 0;
+
+  private bossExtraTotalPrepIncome = 0;
 
   private featureFlags: FeatureFlags = { ...DEFAULT_FLAGS };
 
@@ -156,6 +165,15 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
     this.selectionTimeoutMs = options.selectionTimeoutMs ?? this.selectionTimeoutMs;
     this.battleTimelineTimeScale =
       options.battleTimelineTimeScale ?? this.battleTimelineTimeScale;
+    const battleSeedBaseOption = options.battleSeedBase;
+    this.battleSeedBase = typeof battleSeedBaseOption === "number" && Number.isFinite(battleSeedBaseOption)
+      ? Math.trunc(battleSeedBaseOption)
+      : undefined;
+    this.bossExtraPrepIncome = Math.max(0, Math.trunc(options.bossExtraPrepIncome ?? this.bossExtraPrepIncome));
+    this.bossExtraTotalPrepIncome = Math.max(
+      0,
+      Math.trunc(options.bossExtraTotalPrepIncome ?? this.bossExtraTotalPrepIncome),
+    );
     this.setId = rawSetId ?? this.setId;
     this.sharedBoardRoomId = options.sharedBoardRoomId;
     this.state.setId = this.setId;
@@ -295,6 +313,9 @@ export class GameRoom extends Room<{ state: MatchRoomState }> {
         settleDurationMs: this.settleDurationMs,
         eliminationDurationMs: this.eliminationDurationMs,
         battleTimelineTimeScale: this.battleTimelineTimeScale,
+        ...(this.battleSeedBase !== undefined ? { battleSeedBase: this.battleSeedBase } : {}),
+        bossExtraPrepIncome: this.bossExtraPrepIncome,
+        bossExtraTotalPrepIncome: this.bossExtraTotalPrepIncome,
         setId: this.setId,
         featureFlags: this.featureFlags,
       },

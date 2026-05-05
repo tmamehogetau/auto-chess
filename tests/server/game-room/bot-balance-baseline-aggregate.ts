@@ -1,13 +1,22 @@
 import { HERO_EXCLUSIVE_UNITS } from "../../../src/data/hero-exclusive-units";
 import { HEROES } from "../../../src/data/heroes";
 import { SCARLET_MANSION_UNITS } from "../../../src/data/scarlet-mansion-units";
-import { TOUHOU_UNITS } from "../../../src/data/touhou-units";
+import { TOUHOU_UNITS, type TouhouFactionId } from "../../../src/data/touhou-units";
 import { calculateSpecialUnitUpgradeCost } from "../../../src/server/special-unit-level-config";
 import { getUnitLevelCombatMultiplier } from "../../../src/server/unit-level-config";
 import type { BossSpellBattleMetric } from "../../../src/server/combat/battle-simulator";
+import {
+  getSynergyTier,
+  getTouhouFactionTierEffect,
+  TOUHOU_FACTION_THRESHOLDS,
+} from "../../../src/server/combat/synergy-definitions";
 import { BOSS_CHARACTERS } from "../../../src/shared/boss-characters";
-import { sharedBoardCoordinateToIndex } from "../../../src/shared/shared-board-config";
+import {
+  DEFAULT_SHARED_BOARD_CONFIG,
+  sharedBoardCoordinateToIndex,
+} from "../../../src/shared/shared-board-config";
 import { getMvpPhase1Boss } from "../../../src/shared/types";
+import type { BotBattleOnlyScenarioRecord } from "./bot-battle-diagnostic";
 
 export type BotOnlyReportMetadata = {
   mode: "real-play" | "fast-parity" | "custom";
@@ -141,6 +150,44 @@ export type BotOnlyBaselineRoundDamageEfficiencyMetric = {
   damagePerInvestmentCost: number | null;
 };
 
+export type BotOnlyBaselineRoundBoardStrengthMetric = {
+  roundIndex: number;
+  side: "boss" | "raid";
+  battleSamples: number;
+  averageUnitCount: number;
+  averageSurvivorCount: number;
+  averageInvestmentScore: number;
+  averageEstimatedDurabilityScore: number;
+  averageEstimatedDamageScore: number;
+  averageBoardStrengthScore: number;
+  averageRealizedDamage: number;
+  averageAbsorbedDamage: number;
+  averageRemainingHp: number;
+  averageRealizedBattleScore: number;
+};
+
+export type BotOnlyBaselineRoundBoardStrengthComparisonMetric = {
+  roundIndex: number;
+  battleSamples: number;
+  averageBossBoardStrengthScore: number;
+  averageRaidBoardStrengthScore: number;
+  averageBossToRaidBoardStrengthRatio: number | null;
+  averageBossRealizedBattleScore: number;
+  averageRaidRealizedBattleScore: number;
+  averageBossToRaidRealizedBattleRatio: number | null;
+  bossEstimatedAdvantageRate: number;
+  bossRealizedAdvantageRate: number;
+  bossBattleWinRate: number;
+  raidBattleWinRate: number;
+  bossEstimatedAdvantageButBattleLossRate: number;
+  bossEstimatedAdvantageButRealizedDisadvantageRate: number;
+};
+
+export type BotOnlyBaselineRoundBoardStrengthOutcomeMetric =
+  BotOnlyBaselineRoundBoardStrengthComparisonMetric & {
+    winnerRole: "boss" | "raid" | "draw";
+  };
+
 export type BotOnlyBaselineUnitDamageEfficiencyMetric = {
   side: "boss" | "raid";
   unitId: string;
@@ -154,6 +201,98 @@ export type BotOnlyBaselineUnitDamageEfficiencyMetric = {
   totalInvestmentCost: number;
   weightedDamagePerInvestmentCost: number | null;
   sampleQuality: "usable" | "low";
+};
+
+export type BotOnlyBaselineUnitStrengthConversionMetric = {
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  averageUnitLevel: number;
+  averageInvestmentScore: number;
+  averageEstimatedDurabilityScore: number;
+  averageEstimatedDamageScore: number;
+  averageEstimatedStrengthScore: number;
+  averageRealizedDamage: number;
+  averageAbsorbedDamage: number;
+  averageRemainingHp: number;
+  averageEffectiveStrengthScore: number;
+  averageStrengthScoreDelta: number;
+  averageEffectiveToEstimatedRatio: number | null;
+  sideBaselineEffectiveToEstimatedRatio: number | null;
+  sideAdjustedEffectiveToEstimatedIndex: number | null;
+  sideAdjustedStrengthScoreDelta: number | null;
+  underperformedBattleRate: number;
+  zeroDamageBattleRate: number;
+  survivedBattleRate: number;
+  sampleQuality: "usable" | "low";
+};
+
+export type BotOnlyBaselineUnitLevelStrengthConversionMetric =
+  BotOnlyBaselineUnitStrengthConversionMetric & {
+    unitLevel: number;
+    previousLevelEffectiveStrengthScore: number | null;
+    effectiveStrengthScoreDeltaFromPreviousLevel: number | null;
+    effectiveStrengthScoreGrowthRatioFromPreviousLevel: number | null;
+  };
+
+export type BotOnlyBaselineUnitArchetypeDependencyMetric = {
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  primaryArchetypeTag: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  archetypeFitBattleAppearances: number;
+  nonArchetypeBattleAppearances: number;
+  archetypeFitRate: number;
+  averageUnitLevel: number;
+  averageArchetypeUnitLevel: number | null;
+  averageNonArchetypeUnitLevel: number | null;
+  averageRoundIndex: number;
+  averageArchetypeRoundIndex: number | null;
+  averageNonArchetypeRoundIndex: number | null;
+  averageEffectiveStrengthScore: number;
+  averageArchetypeEffectiveStrengthScore: number | null;
+  averageNonArchetypeEffectiveStrengthScore: number | null;
+  archetypeEffectiveStrengthLift: number | null;
+  archetypeDependencyIndex: number | null;
+  roundLevelComparisonBattleAppearances: number;
+  roundLevelAdjustedArchetypeEffectiveStrengthScore: number | null;
+  roundLevelAdjustedNonArchetypeEffectiveStrengthScore: number | null;
+  roundLevelAdjustedArchetypeEffectiveStrengthLift: number | null;
+  roundLevelAdjustedArchetypeDependencyIndex: number | null;
+  roundLevelFitComparisonBuckets?: BotOnlyBaselineUnitArchetypeRoundLevelComparisonBucket[];
+  averageUniqueFactionCount: number;
+  averageSameFactionCount: number;
+  pairLinkedBattleRate: number;
+  sampleQuality: "usable" | "low";
+};
+
+export type BotOnlyBaselineFactionEffectValueMetric = {
+  side: "boss" | "raid";
+  factionId: TouhouFactionId;
+  battleSamples: number;
+  averageFactionUnitCount: number;
+  averageTier: number;
+  averageBaseEstimatedStrengthScore: number;
+  averageFactionAdjustedEstimatedStrengthScore: number;
+  averageEstimatedStrengthLift: number;
+  averageEstimatedStrengthLiftRate: number | null;
+  averageTeamEstimatedStrengthLiftShare: number | null;
+  sampleQuality: "usable" | "low";
+};
+
+export type BotOnlyBaselineUnitArchetypeRoundLevelComparisonBucket = {
+  roundIndex: number;
+  unitLevel: number;
+  archetypeFitBattleAppearances: number;
+  nonArchetypeBattleAppearances: number;
+  totalArchetypeEffectiveStrengthScore: number;
+  totalNonArchetypeEffectiveStrengthScore: number;
 };
 
 export type BotOnlyBaselineRoundSurvivalDiagnosticMetric = {
@@ -208,6 +347,19 @@ export type BotOnlyBaselinePurchase = {
   unitId?: string;
   unitName?: string;
   cost: number;
+  botPurchaseReason?: string;
+  botPurchasePlanId?: string;
+  botPurchasePlanAnchorUnitId?: string;
+  botPurchasePlanBonus?: number;
+  botArchetypeDecision?: string;
+  botArchetypeDecisionPlanId?: string;
+  botArchetypeDecisionCandidateUnitId?: string;
+  botArchetypeDecisionCandidateCost?: number;
+  botArchetypeDecisionBlocker?: string;
+  botArchetypeDecisionCombatPlanUnitCount?: number;
+  botArchetypeDecisionReservePlanUnitCount?: number;
+  botArchetypeDecisionAvailableMainSlots?: number;
+  botArchetypeDecisionAvailableSubSlots?: number;
 };
 
 export type BotOnlyBaselineObservedShopOffer = {
@@ -254,6 +406,81 @@ export type BotOnlyBaselineShopOfferMetric = BotOnlyBaselineHighCostOfferMetric 
   finalBoardAdoptionRate: number;
 };
 
+export type BotOnlyBaselineRaidArchetypeConstructionMetric = {
+  planId: string;
+  anchorUnitId: string;
+  unitIds: string[];
+  purchaseCount: number;
+  constructionPurchaseCount: number;
+  constructionPurchaseRate: number;
+  constructionFinalMainUnitCount: number;
+  constructionFinalSubUnitCount: number;
+  constructionFinalMissingUnitCount: number;
+  constructionFinalBenchUnitCount: number;
+  constructionFinalAbsentUnitCount: number;
+  constructionEverBattleUnitCount: number;
+  constructionNeverBattleUnitCount: number;
+  constructionEverBattleRate: number;
+  constructionFinalRetentionRate: number;
+  constructionFinalTotalRetentionRate: number;
+  finalPlayerSamples: number;
+  finalAnchorPlayerCount: number;
+  finalPlanHitPlayerCount: number;
+  averageFinalPlanUnitCount: number;
+  finalPlanHitRate: number;
+};
+
+export type BotOnlyBaselineRaidArchetypeConstructionUnitMetric = {
+  planId: string;
+  anchorUnitId: string;
+  unitId: string;
+  unitName: string;
+  constructionPurchaseCount: number;
+  constructionFinalMainUnitCount: number;
+  constructionFinalSubUnitCount: number;
+  constructionFinalBenchUnitCount: number;
+  constructionFinalMissingUnitCount: number;
+  constructionFinalAbsentUnitCount: number;
+  constructionEverBattleUnitCount: number;
+  constructionNeverBattleUnitCount: number;
+  constructionEverBattleRate: number;
+  constructionFinalRetentionRate: number;
+  constructionFinalTotalRetentionRate: number;
+};
+
+export type BotOnlyBaselineRaidArchetypeShopDecisionMetric = {
+  roundIndex: number;
+  planId: string;
+  decision: string;
+  candidateUnitId: string;
+  candidateCost: number;
+  blocker?: string;
+  samples: number;
+  planUnitPurchaseCount: number;
+  highCostPurchaseCount: number;
+  averagePurchasedCost: number;
+  averageCombatPlanUnitCount?: number;
+  averageReservePlanUnitCount?: number;
+  averageAvailableMainSlots?: number;
+  averageAvailableSubSlots?: number;
+};
+
+export type BotOnlyBaselineRaidArchetypeRoundProgressMetric = {
+  planId: string;
+  anchorUnitId: string;
+  unitIds: string[];
+  roundIndex: number;
+  playerSamples: number;
+  anchorPlayerCount: number;
+  planHitPlayerCount: number;
+  unitCount0PlayerCount: number;
+  unitCount1PlayerCount: number;
+  unitCount2PlayerCount: number;
+  unitCount3PlusPlayerCount: number;
+  averagePlanUnitCount: number;
+  planHitRate: number;
+};
+
 export type BotOnlyBaselineBossNormalHighCostMaturationMetric = {
   unitId: string;
   unitName: string;
@@ -278,6 +505,96 @@ export type BotOnlyBaselineBossNormalHighCostMaturationMetric = {
   maxFinalUnitLevel: number;
   finalLevel4Rate: number;
   finalLevel7Rate: number;
+};
+
+export type BotOnlyBaselineBossR12CeilingSample = {
+  matchIndex: number;
+  battleIndex: number;
+  finalBattleWinner: "boss" | "raid";
+  matchWinnerRole: "boss" | "raid";
+  bossUnitCount: number;
+  assetValue: number;
+  remiliaLevel: number;
+  meilingLevel: number;
+  sakuyaLevel: number;
+  patchouliLevel: number;
+  scarletCorePresentCount: number;
+  scarletCoreLevelSum: number;
+  scarletCoreTargetReached: boolean;
+  lateCarryCount: number;
+  lateCarryLevel4PlusCount: number;
+  lateCarryLevel6PlusCount: number;
+  maxLateCarryLevel: number;
+  targetComponentsMet: number;
+  targetBoardReached: boolean;
+  remiliaMissingUpgradeCost: number;
+  scarletCoreMissingCopyCost: number;
+  lateCarryMissingCopyCost: number;
+  targetEstimatedMissingGold: number;
+  finalGoldCoversEstimatedGap: boolean;
+  bossGoldEarned: number;
+  bossGoldSpent: number;
+  bossFinalGold: number;
+  bossNormalShopSpend: number;
+  bossShopSpend: number;
+  bossRefreshSpend: number;
+  bossSpecialUnitUpgradeSpend: number;
+  boardSignature: string;
+};
+
+export type BotOnlyBaselineBossR12VirtualIncomeBreakpoint = {
+  extraGold: number;
+  targetReachableRate: number;
+  averageRemainingNetGap: number;
+};
+
+export type BotOnlyBaselineBossR12CeilingDiagnostics = {
+  sampleCount: number;
+  averageBossUnitCount: number;
+  averageAssetValue: number;
+  p50AssetValue: number | null;
+  p75AssetValue: number | null;
+  p90AssetValue: number | null;
+  maxAssetValue: number;
+  averageRemiliaLevel: number;
+  remiliaLevel7Rate: number;
+  averageScarletCorePresentCount: number;
+  averageScarletCoreLevelSum: number;
+  scarletCoreTargetReachedRate: number;
+  averageLateCarryCount: number;
+  averageLateCarryLevel4PlusCount: number;
+  maxLateCarryLevel4PlusCount: number;
+  twoLateCarryLevel4PlusRate: number;
+  oneLateCarryLevel6PlusRate: number;
+  maxLateCarryLevel: number;
+  averageTargetComponentsMet: number;
+  maxTargetComponentsMet: number;
+  targetBoardReachedRate: number;
+  averageEstimatedMissingGold: number;
+  p50EstimatedMissingGold: number | null;
+  p75EstimatedMissingGold: number | null;
+  p90EstimatedMissingGold: number | null;
+  minEstimatedMissingGold: number;
+  averageNetEstimatedMissingGold: number;
+  p50NetEstimatedMissingGold: number | null;
+  p75NetEstimatedMissingGold: number | null;
+  p90NetEstimatedMissingGold: number | null;
+  minNetEstimatedMissingGold: number;
+  finalGoldCoversEstimatedGapRate: number;
+  virtualIncomeBreakpoints: BotOnlyBaselineBossR12VirtualIncomeBreakpoint[];
+  averageRemiliaMissingUpgradeCost: number;
+  averageScarletCoreMissingCopyCost: number;
+  averageLateCarryMissingCopyCost: number;
+  averageBossGoldEarned: number;
+  averageBossGoldSpent: number;
+  averageBossFinalGold: number;
+  averageBossNormalShopSpend: number;
+  averageBossShopSpend: number;
+  averageBossRefreshSpend: number;
+  averageBossSpecialUnitUpgradeSpend: number;
+  topAssetValueSamples: BotOnlyBaselineBossR12CeilingSample[];
+  nearestTargetSamples: BotOnlyBaselineBossR12CeilingSample[];
+  samples?: BotOnlyBaselineBossR12CeilingSample[];
 };
 
 export type BotOnlyBaselineBossExclusiveRoundLevelMetric = {
@@ -450,8 +767,13 @@ export type BotOnlyBaselineFinalBoardUnit = {
   unitName: string;
   unitType: string;
   unitId: string;
+  factionId?: string | null;
   unitLevel: number;
   subUnitName: string;
+  attachedSubUnitId?: string;
+  attachedSubUnitName?: string;
+  attachedSubUnitType?: string;
+  attachedSubUnitFactionId?: string | null;
 };
 
 export type BotOnlyBaselineFinalPlayer = {
@@ -472,6 +794,7 @@ export type BotOnlyBaselineFinalPlayer = {
   refreshCount: number;
   sellCount: number;
   specialUnitUpgradeCount?: number;
+  benchUnitIds?: string[];
   boardUnits: BotOnlyBaselineFinalBoardUnit[];
 };
 
@@ -565,6 +888,7 @@ export type BotOnlyBaselineBattleSummary = {
   battleEndReason?: BotOnlyBaselineBattleEndReason;
   bossSurvivors?: number;
   raidSurvivors?: number;
+  battleSeed?: number;
   unitDamageBreakdown: BotOnlyBaselineBattleDamageContribution[];
   unitOutcomes: BotOnlyBaselineBattleUnitOutcome[];
   bossSpellMetrics?: BossSpellBattleMetric[];
@@ -608,6 +932,7 @@ export type BotOnlyBaselineRoundBattleDetail = {
   battleEndReason?: BotOnlyBaselineBattleEndReason;
   bossSurvivors?: number;
   raidSurvivors?: number;
+  battleSeed?: number;
   leftDamageDealt: number;
   rightDamageDealt: number;
   unitOutcomes: BotOnlyBaselineBattleUnitOutcome[];
@@ -651,6 +976,8 @@ export type BotOnlyBaselineMatchRoundDetail = {
   bossSpellMetrics?: BossSpellBattleMetric[];
   raidPlayerConsequences: BotOnlyBaselineRoundPlayerConsequence[];
   bossBodyFocus?: BotOnlyBaselineBossBodyFocusDetail | null;
+  bossBodyDirectGuardOutcome?: BotOnlyBaselineBossBodyDirectGuardOutcomeDetail | null;
+  bossBodyGuardDecision?: BotOnlyBaselineBossBodyGuardDecisionSnapshot | null;
   topBossUnits: BotOnlyBaselineRoundUnitDetail[];
   topBossDamageTakenUnits?: BotOnlyBaselineRoundUnitDetail[];
   topRaidUnits: BotOnlyBaselineRoundUnitDetail[];
@@ -670,6 +997,13 @@ export type BotOnlyBaselineBossBodyFocusDetail = {
   finalHp: number | null;
 };
 
+export type BotOnlyBaselineBossBodyDirectGuardOutcomeDetail =
+  BotOnlyBaselineRoundUnitDetail & {
+    bossCell: number | null;
+    expectedCell: number | null;
+    matchedDecisionUnit: boolean | null;
+  };
+
 export type BotOnlyBaselineMatchSummary = {
   metadata?: BotOnlyReportMetadata;
   totalRounds: number;
@@ -683,6 +1017,9 @@ export type BotOnlyBaselineMatchSummary = {
   observedShopOffers?: BotOnlyBaselineObservedShopOffer[];
   okinaHeroSubDecisionSnapshots?: BotOnlyBaselineOkinaHeroSubDecisionSnapshot[];
   boardRefitDecisionSnapshots?: BotOnlyBaselineBoardRefitDecisionSnapshot[];
+  bossBodyGuardDecisionSnapshots?: BotOnlyBaselineBossBodyGuardDecisionSnapshot[];
+  boardMovementActions?: BotOnlyBaselineBoardMovementAction[];
+  battleDiagnosticScenarios?: BotBattleOnlyScenarioRecord[];
 };
 
 export type BotOnlyBaselineAggregateReport = {
@@ -711,17 +1048,32 @@ export type BotOnlyBaselineAggregateReport = {
   highCostSummary?: BotOnlyBaselineHighCostSummary;
   highCostOfferMetrics?: BotOnlyBaselineHighCostOfferMetric[];
   shopOfferMetrics?: BotOnlyBaselineShopOfferMetric[];
+  raidArchetypeConstructionMetrics?: BotOnlyBaselineRaidArchetypeConstructionMetric[];
+  raidArchetypeConstructionUnitMetrics?: BotOnlyBaselineRaidArchetypeConstructionUnitMetric[];
+  raidArchetypeShopDecisionMetrics?: BotOnlyBaselineRaidArchetypeShopDecisionMetric[];
+  raidArchetypeRoundProgressMetrics?: BotOnlyBaselineRaidArchetypeRoundProgressMetric[];
   bossNormalHighCostMaturationMetrics?: BotOnlyBaselineBossNormalHighCostMaturationMetric[];
+  bossR12CeilingDiagnostics?: BotOnlyBaselineBossR12CeilingDiagnostics;
   bossExclusiveRoundLevelMetrics?: BotOnlyBaselineBossExclusiveRoundLevelMetric[];
   highCostRoundMetrics?: BotOnlyBaselineHighCostRoundMetric[];
   roundDamageEfficiencyMetrics?: BotOnlyBaselineRoundDamageEfficiencyMetric[];
+  roundBoardStrengthMetrics?: BotOnlyBaselineRoundBoardStrengthMetric[];
+  roundBoardStrengthComparisonMetrics?: BotOnlyBaselineRoundBoardStrengthComparisonMetric[];
+  roundBoardStrengthOutcomeMetrics?: BotOnlyBaselineRoundBoardStrengthOutcomeMetric[];
   unitDamageEfficiencyMetrics?: BotOnlyBaselineUnitDamageEfficiencyMetric[];
+  unitStrengthConversionMetrics?: BotOnlyBaselineUnitStrengthConversionMetric[];
+  unitLevelStrengthConversionMetrics?: BotOnlyBaselineUnitLevelStrengthConversionMetric[];
+  unitArchetypeDependencyMetrics?: BotOnlyBaselineUnitArchetypeDependencyMetric[];
+  factionEffectValueMetrics?: BotOnlyBaselineFactionEffectValueMetric[];
   okinaSubHostMetrics?: BotOnlyBaselineOkinaSubHostMetric[];
   okinaSubHostRoundMetrics?: BotOnlyBaselineOkinaSubHostRoundMetric[];
   okinaHeroSubDecisionRoundMetrics?: BotOnlyBaselineOkinaHeroSubDecisionRoundMetric[];
   boardRefitDecisionRoundMetrics?: BotOnlyBaselineBoardRefitDecisionRoundMetric[];
   boardRefitDecisionRoleMetrics?: BotOnlyBaselineBoardRefitDecisionRoleMetric[];
   boardRefitDecisionRoleRoundMetrics?: BotOnlyBaselineBoardRefitDecisionRoleRoundMetric[];
+  bossBodyGuardDecisionRoundMetrics?: BotOnlyBaselineBossBodyGuardDecisionRoundMetric[];
+  boardMovementRoundMetrics?: BotOnlyBaselineBoardMovementRoundMetric[];
+  boardMovementRouteMetrics?: BotOnlyBaselineBoardMovementRouteMetric[];
   finalPlayerBoardMetrics?: BotOnlyBaselineFinalPlayerBoardMetric[];
   roundSurvivalDiagnostics?: BotOnlyBaselineRoundSurvivalDiagnosticMetric[];
   roundUnitSurvivalDiagnostics?: BotOnlyBaselineRoundUnitSurvivalDiagnosticMetric[];
@@ -731,6 +1083,7 @@ export type BotOnlyBaselineAggregateReport = {
   raidMeleeCohortMetrics?: BotOnlyBaselineRaidMeleeCohortMetric[];
   raidSpecialMeleeUnitDiagnostics?: BotOnlyBaselineRaidSpecialMeleeUnitDiagnostic[];
   roundDetails?: BotOnlyBaselineMatchRoundDetail[];
+  battleDiagnosticScenarios?: BotBattleOnlyScenarioRecord[];
 };
 
 export type BotOnlyBaselineOkinaSubHostMetric = {
@@ -873,6 +1226,86 @@ export type BotOnlyBaselineBoardRefitDecisionRoleRoundMetric =
     role: "boss" | "raid";
   };
 
+export type BotOnlyBaselineBossBodyGuardDecisionSnapshot = {
+  roundIndex: number;
+  playerId: string;
+  label: string;
+  decision: "direct_fill" | "direct_swap" | "direct_lane_fill" | "side_flank_move" | "none";
+  reason: string;
+  bossCell: number | null;
+  directGuardCell: number | null;
+  directGuardUnitId: string | null;
+  directGuardUnitName: string | null;
+  directGuardUnitType: string | null;
+  directGuardLevel: number | null;
+  strongestGuardCell: number | null;
+  strongestGuardUnitId: string | null;
+  strongestGuardUnitName: string | null;
+  strongestGuardUnitType: string | null;
+  strongestGuardLevel: number | null;
+  benchFrontlineCount: number;
+  directEmpty: boolean;
+  strongerOffDirect: boolean;
+  actionFromCell: number | null;
+  actionToCell: number | null;
+};
+
+export type BotOnlyBaselineBoardMovementAction = {
+  roundIndex: number;
+  playerId: string;
+  label: string;
+  role: "boss" | "raid" | "unknown";
+  actionType: "board_move" | "board_swap";
+  fromCell: number;
+  toCell: number;
+};
+
+export type BotOnlyBaselineBoardMovementRoundMetric = {
+  roundIndex: number;
+  role: "boss" | "raid" | "unknown";
+  samples: number;
+  moveSamples: number;
+  swapSamples: number;
+};
+
+export type BotOnlyBaselineBoardMovementRouteMetric = {
+  roundIndex: number;
+  role: "boss" | "raid" | "unknown";
+  actionType: "board_move" | "board_swap";
+  fromCell: number;
+  toCell: number;
+  samples: number;
+  reverseSamples: number;
+  netSamples: number;
+};
+
+export type BotOnlyBaselineBossBodyGuardDecisionRoundMetric = {
+  roundIndex: number;
+  samples: number;
+  directFillSamples: number;
+  directSwapSamples: number;
+  sideFlankMoveSamples: number;
+  boardMovementActionSamples: number;
+  acceptedBoardMovementActionSamples: number;
+  acceptedBoardMovementActionRate: number | null;
+  noActionSamples: number;
+  directEmptySamples: number;
+  benchFrontlineBlockedSamples: number;
+  strongerOffDirectSamples: number;
+  averageDirectGuardLevel: number | null;
+  directGuardLevelSamples: number;
+  averageStrongestGuardLevel: number | null;
+  strongestGuardLevelSamples: number;
+  mostFrequentDirectGuardUnitId: string | null;
+  mostFrequentDirectGuardUnitName: string | null;
+  mostFrequentDirectGuardSamples: number;
+  mostFrequentStrongestGuardUnitId: string | null;
+  mostFrequentStrongestGuardUnitName: string | null;
+  mostFrequentStrongestGuardSamples: number;
+  mostFrequentReason: string | null;
+  mostFrequentReasonSamples: number;
+};
+
 export type BotOnlyBaselineFinalPlayerBoardMetric = {
   label: string;
   role: string;
@@ -913,6 +1346,44 @@ const ESTIMATED_RAID_PREP_BASE_INCOME = 5;
 const ESTIMATED_BOSS_PREP_BASE_INCOME = 9;
 const ESTIMATED_RAID_PHASE_SUCCESS_BONUS = 2;
 const LATE_SINGLE_ATTACK_THRESHOLD_RATIO = 0.6;
+const RAID_ARCHETYPE_CONSTRUCTION_PLANS = [
+  {
+    planId: "zanmu_factionless_carry",
+    anchorUnitId: "zanmu",
+    unitIds: ["zanmu", "junko", "seiga", "megumu", "kagerou"],
+    finalPlanHitUnitThreshold: 3,
+  },
+  {
+    planId: "myourenji_core",
+    anchorUnitId: "byakuren",
+    unitIds: ["byakuren", "nazrin", "ichirin", "murasa", "shou"],
+    finalPlanHitUnitThreshold: 3,
+  },
+  {
+    planId: "chireiden_core",
+    anchorUnitId: "utsuho",
+    unitIds: ["utsuho", "rin", "satori", "koishi"],
+    finalPlanHitUnitThreshold: 3,
+  },
+  {
+    planId: "shinreibyou_core",
+    anchorUnitId: "miko",
+    unitIds: ["miko", "yoshika", "seiga", "tojiko", "futo"],
+    finalPlanHitUnitThreshold: 3,
+  },
+  {
+    planId: "kou_ryuudou_core",
+    anchorUnitId: "megumu",
+    unitIds: ["megumu", "tsukasa", "chimata", "momoyo"],
+    finalPlanHitUnitThreshold: 3,
+  },
+  {
+    planId: "grassroot_core",
+    anchorUnitId: "kagerou",
+    unitIds: ["kagerou", "wakasagihime", "sekibanki"],
+    finalPlanHitUnitThreshold: 3,
+  },
+] as const;
 const BOT_ONLY_BASELINE_BATTLE_END_REASONS: BotOnlyBaselineBattleEndReason[] = [
   "annihilation",
   "mutual_annihilation",
@@ -958,6 +1429,36 @@ const CHARACTER_BODY_UNIT_IDS = new Set<string>([
 const BOSS_EXCLUSIVE_UNIT_IDS = new Set<string>([
   ...SCARLET_MANSION_UNITS.flatMap((unit) => [unit.id, unit.unitId]),
 ]);
+const UNIT_FACTION_BY_ID = new Map<string, TouhouFactionId | null>([
+  ...TOUHOU_UNITS.map((unit) => [unit.unitId, unit.factionId] as const),
+]);
+const FACTION_ARCHETYPE_THRESHOLD_BY_ID = new Map<string, number>([
+  ["chireiden", 2],
+  ["myourenji", 3],
+  ["shinreibyou", 3],
+  ["grassroot_network", 2],
+  ["kou_ryuudou", 2],
+  ["kanjuden", 2],
+]);
+const PAIR_SUB_TARGETS_BY_SUB_UNIT_ID = new Map<string, ReadonlySet<string>>([
+  ["seiga", new Set(["yoshika"])],
+  ["satori", new Set(["koishi"])],
+  ["koishi", new Set(["satori"])],
+  ["hecatia", new Set(["junko"])],
+  ["junko", new Set(["hecatia"])],
+  ["tsukasa", new Set(["megumu"])],
+  ["nazrin", new Set(["shou"])],
+  ["futo", new Set(["miko"])],
+  ["tojiko", new Set(["miko"])],
+  ["mayumi", new Set(["keiki"])],
+  ["shion", new Set(["jyoon"])],
+]);
+const SCARLET_CORE_UNIT_IDS = ["meiling", "sakuya", "patchouli"] as const;
+const SCARLET_CORE_TARGET_LEVEL_BY_ID: Record<typeof SCARLET_CORE_UNIT_IDS[number], number> = {
+  meiling: 7,
+  sakuya: 7,
+  patchouli: 4,
+};
 
 function createEmptyPlayerEconomyBreakdown(): BotOnlyBaselinePlayerEconomyBreakdown {
   return {
@@ -1119,6 +1620,20 @@ const UNIT_COMBAT_PROFILE_BY_ID = new Map<string, UnitCombatProfile>([
     range: hero.range,
     usesStarMultiplier: false,
   }] as const),
+  ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [
+    [unit.id, {
+      attack: unit.attack,
+      attackSpeed: unit.attackSpeed,
+      range: unit.range,
+      usesStarMultiplier: true,
+    }] as const,
+    [unit.unitId, {
+      attack: unit.attack,
+      attackSpeed: unit.attackSpeed,
+      range: unit.range,
+      usesStarMultiplier: true,
+    }] as const,
+  ]),
   ...SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, {
     attack: unit.attack,
     attackSpeed: unit.attackSpeed,
@@ -1152,6 +1667,20 @@ const UNIT_COMBAT_PROFILE_BY_TYPE = new Map<string, UnitCombatProfile>([
     range: hero.range,
     usesStarMultiplier: false,
   }] as const),
+  ...HERO_EXCLUSIVE_UNITS.flatMap((unit) => [
+    [unit.id, {
+      attack: unit.attack,
+      attackSpeed: unit.attackSpeed,
+      range: unit.range,
+      usesStarMultiplier: true,
+    }] as const,
+    [unit.unitId, {
+      attack: unit.attack,
+      attackSpeed: unit.attackSpeed,
+      range: unit.range,
+      usesStarMultiplier: true,
+    }] as const,
+  ]),
   ...SCARLET_MANSION_UNITS.map((unit) => [unit.unitId, {
     attack: unit.attack,
     attackSpeed: unit.attackSpeed,
@@ -1236,6 +1765,162 @@ type BossNormalHighCostMaturationAccumulator = {
   finalLevel7Copies: number;
 };
 
+function getFinalBoardUnitIdsIncludingAttachedSubUnits(
+  boardUnits: BotOnlyBaselineFinalBoardUnit[],
+): Set<string> {
+  const unitIds = new Set<string>();
+
+  for (const unit of boardUnits) {
+    if (unit.unitId.length > 0) {
+      unitIds.add(unit.unitId);
+    }
+
+    const attachedSubUnitId = unit.attachedSubUnitId?.trim().toLowerCase() ?? "";
+    if (attachedSubUnitId.length > 0) {
+      unitIds.add(attachedSubUnitId);
+    }
+  }
+
+  return unitIds;
+}
+
+function getFinalBoardUnitLocationSets(
+  boardUnits: BotOnlyBaselineFinalBoardUnit[],
+): { mainUnitIds: Set<string>; subUnitIds: Set<string> } {
+  const mainUnitIds = new Set<string>();
+  const subUnitIds = new Set<string>();
+
+  for (const unit of boardUnits) {
+    const mainUnitId = unit.unitId.trim().toLowerCase();
+    if (mainUnitId.length > 0) {
+      mainUnitIds.add(mainUnitId);
+    }
+
+    const attachedSubUnitId = unit.attachedSubUnitId?.trim().toLowerCase() ?? "";
+    if (attachedSubUnitId.length > 0) {
+      subUnitIds.add(attachedSubUnitId);
+    }
+  }
+
+  return { mainUnitIds, subUnitIds };
+}
+
+function getFinalBenchUnitIds(benchUnitIds: string[] | undefined): Set<string> {
+  return new Set(
+    (benchUnitIds ?? [])
+      .map((unitId) => unitId.trim().toLowerCase())
+      .filter((unitId) => unitId.length > 0),
+  );
+}
+
+function battleOutcomeHasUnitId(
+  outcome: BotOnlyBaselineBattleUnitOutcome,
+  unitId: string,
+): boolean {
+  const mainUnitId = outcome.unitId.trim().toLowerCase();
+  const attachedSubUnitId = outcome.attachedSubUnitId?.trim().toLowerCase() ?? "";
+  return mainUnitId === unitId || attachedSubUnitId === unitId;
+}
+
+function didPurchasedUnitAppearInBattle(
+  report: BotOnlyBaselineMatchSummary,
+  playerId: string,
+  unitId: string,
+  purchaseRoundIndex: number | undefined,
+): boolean {
+  const normalizedUnitId = unitId.trim().toLowerCase();
+  if (normalizedUnitId.length === 0) {
+    return false;
+  }
+
+  if (Array.isArray(report.rounds) && report.rounds.length > 0) {
+    const firstEligibleRound = purchaseRoundIndex ?? Number.NEGATIVE_INFINITY;
+    return report.rounds.some((round) =>
+      round.roundIndex >= firstEligibleRound
+      && round.battles.some((battle) =>
+        battle.unitOutcomes.some((outcome) =>
+          outcome.playerId === playerId && battleOutcomeHasUnitId(outcome, normalizedUnitId)
+        )
+      )
+    );
+  }
+
+  return report.battles.some((battle) =>
+    battle.unitOutcomes.some((outcome) =>
+      outcome.playerId === playerId && battleOutcomeHasUnitId(outcome, normalizedUnitId)
+    )
+  );
+}
+
+type RaidArchetypeConstructionAccumulator = {
+  planId: string;
+  anchorUnitId: string;
+  unitIds: string[];
+  finalPlanHitUnitThreshold: number;
+  purchaseCount: number;
+  constructionPurchaseCount: number;
+  constructionFinalMainUnitCount: number;
+  constructionFinalSubUnitCount: number;
+  constructionFinalMissingUnitCount: number;
+  constructionFinalBenchUnitCount: number;
+  constructionFinalAbsentUnitCount: number;
+  constructionEverBattleUnitCount: number;
+  constructionNeverBattleUnitCount: number;
+  finalPlayerSamples: number;
+  finalAnchorPlayerCount: number;
+  finalPlanHitPlayerCount: number;
+  totalFinalPlanUnitCount: number;
+};
+
+type RaidArchetypeConstructionUnitAccumulator = {
+  planId: string;
+  anchorUnitId: string;
+  unitId: string;
+  unitName: string;
+  constructionPurchaseCount: number;
+  constructionFinalMainUnitCount: number;
+  constructionFinalSubUnitCount: number;
+  constructionFinalBenchUnitCount: number;
+  constructionFinalMissingUnitCount: number;
+  constructionFinalAbsentUnitCount: number;
+  constructionEverBattleUnitCount: number;
+  constructionNeverBattleUnitCount: number;
+};
+
+type RaidArchetypeShopDecisionAccumulator = {
+  roundIndex: number;
+  planId: string;
+  decision: string;
+  candidateUnitId: string;
+  candidateCost: number;
+  blocker?: string;
+  samples: number;
+  planUnitPurchaseCount: number;
+  highCostPurchaseCount: number;
+  totalPurchasedCost: number;
+  fieldingDiagnosticSamples: number;
+  totalCombatPlanUnitCount: number;
+  totalReservePlanUnitCount: number;
+  totalAvailableMainSlots: number;
+  totalAvailableSubSlots: number;
+};
+
+type RaidArchetypeRoundProgressAccumulator = {
+  planId: string;
+  anchorUnitId: string;
+  unitIds: string[];
+  finalPlanHitUnitThreshold: number;
+  roundIndex: number;
+  playerSamples: number;
+  anchorPlayerCount: number;
+  planHitPlayerCount: number;
+  unitCount0PlayerCount: number;
+  unitCount1PlayerCount: number;
+  unitCount2PlayerCount: number;
+  unitCount3PlusPlayerCount: number;
+  totalPlanUnitCount: number;
+};
+
 type OkinaSubHostAccumulator = {
   hostUnitId: string;
   hostUnitType: string;
@@ -1312,6 +1997,52 @@ type BoardRefitDecisionRoleRoundAccumulator = BoardRefitDecisionRoundAccumulator
   role: "boss" | "raid";
 };
 
+type BossBodyGuardDecisionRoundAccumulator = {
+  roundIndex: number;
+  samples: number;
+  directFillSamples: number;
+  directSwapSamples: number;
+  sideFlankMoveSamples: number;
+  boardMovementActionSamples: number;
+  acceptedBoardMovementActionSamples: number;
+  noActionSamples: number;
+  directEmptySamples: number;
+  benchFrontlineBlockedSamples: number;
+  strongerOffDirectSamples: number;
+  totalDirectGuardLevel: number;
+  directGuardLevelSamples: number;
+  totalStrongestGuardLevel: number;
+  strongestGuardLevelSamples: number;
+  directGuardSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+  strongestGuardSamplesById: Map<string, {
+    unitId: string;
+    unitName: string;
+    samples: number;
+  }>;
+  reasonSamplesByReason: Map<string, number>;
+};
+
+type BoardMovementRoundAccumulator = {
+  roundIndex: number;
+  role: "boss" | "raid" | "unknown";
+  samples: number;
+  moveSamples: number;
+  swapSamples: number;
+};
+
+type BoardMovementRouteAccumulator = {
+  roundIndex: number;
+  role: "boss" | "raid" | "unknown";
+  actionType: "board_move" | "board_swap";
+  fromCell: number;
+  toCell: number;
+  samples: number;
+};
+
 type FinalPlayerBoardAccumulator = {
   label: string;
   role: string;
@@ -1371,6 +2102,55 @@ type RoundDamageEfficiencyAccumulator = {
   totalInvestmentCost: number;
 };
 
+type RoundBoardStrengthAccumulator = {
+  roundIndex: number;
+  side: "boss" | "raid";
+  battleSamples: number;
+  totalUnitCount: number;
+  totalSurvivorCount: number;
+  totalInvestmentScore: number;
+  totalEstimatedDurabilityScore: number;
+  totalEstimatedDamageScore: number;
+  totalBoardStrengthScore: number;
+  totalRealizedDamage: number;
+  totalAbsorbedDamage: number;
+  totalRemainingHp: number;
+  totalRealizedBattleScore: number;
+};
+
+type RoundBoardStrengthSample = {
+  unitCount: number;
+  survivorCount: number;
+  investmentScore: number;
+  estimatedDurabilityScore: number;
+  estimatedDamageScore: number;
+  boardStrengthScore: number;
+  realizedDamage: number;
+  absorbedDamage: number;
+  remainingHp: number;
+  realizedBattleScore: number;
+};
+
+type RoundBoardStrengthComparisonAccumulator = {
+  roundIndex: number;
+  winnerRole?: "boss" | "raid" | "draw";
+  battleSamples: number;
+  totalBossBoardStrengthScore: number;
+  totalRaidBoardStrengthScore: number;
+  totalBossToRaidBoardStrengthRatio: number;
+  boardStrengthRatioSamples: number;
+  totalBossRealizedBattleScore: number;
+  totalRaidRealizedBattleScore: number;
+  totalBossToRaidRealizedBattleRatio: number;
+  realizedBattleRatioSamples: number;
+  bossEstimatedAdvantageBattles: number;
+  bossRealizedAdvantageBattles: number;
+  bossBattleWins: number;
+  raidBattleWins: number;
+  bossEstimatedAdvantageButBattleLosses: number;
+  bossEstimatedAdvantageButRealizedDisadvantages: number;
+};
+
 type UnitDamageEfficiencyAccumulator = {
   side: "boss" | "raid";
   unitId: string;
@@ -1382,6 +2162,70 @@ type UnitDamageEfficiencyAccumulator = {
   totalUnitLevel: number;
   totalDamage: number;
   totalInvestmentCost: number;
+};
+
+type UnitStrengthConversionAccumulator = {
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  totalUnitLevel: number;
+  totalInvestmentScore: number;
+  totalEstimatedDurabilityScore: number;
+  totalEstimatedDamageScore: number;
+  totalEstimatedStrengthScore: number;
+  totalRealizedDamage: number;
+  totalAbsorbedDamage: number;
+  totalRemainingHp: number;
+  totalEffectiveStrengthScore: number;
+  totalStrengthScoreDelta: number;
+  totalEffectiveToEstimatedRatio: number;
+  effectiveToEstimatedRatioSamples: number;
+  underperformedBattles: number;
+  zeroDamageBattles: number;
+  survivedBattles: number;
+};
+
+type UnitArchetypeDependencyAccumulator = {
+  side: "boss" | "raid";
+  unitId: string;
+  unitType: string;
+  unitName: string;
+  primaryArchetypeTag: string;
+  battleAppearances: number;
+  matchesPresent: number;
+  totalUnitLevel: number;
+  totalRoundIndex: number;
+  totalEffectiveStrengthScore: number;
+  archetypeFitBattleAppearances: number;
+  totalArchetypeUnitLevel: number;
+  totalArchetypeRoundIndex: number;
+  totalArchetypeEffectiveStrengthScore: number;
+  nonArchetypeBattleAppearances: number;
+  totalNonArchetypeUnitLevel: number;
+  totalNonArchetypeRoundIndex: number;
+  totalNonArchetypeEffectiveStrengthScore: number;
+  totalUniqueFactionCount: number;
+  totalSameFactionCount: number;
+  pairLinkedBattleAppearances: number;
+  roundLevelBuckets: Map<string, BotOnlyBaselineUnitArchetypeRoundLevelComparisonBucket>;
+};
+
+type FactionEffectValueAccumulator = {
+  side: "boss" | "raid";
+  factionId: TouhouFactionId;
+  battleSamples: number;
+  totalFactionUnitCount: number;
+  totalTier: number;
+  totalBaseEstimatedStrengthScore: number;
+  totalFactionAdjustedEstimatedStrengthScore: number;
+  totalEstimatedStrengthLift: number;
+  totalEstimatedStrengthLiftRate: number;
+  estimatedStrengthLiftRateSamples: number;
+  totalTeamEstimatedStrengthLiftShare: number;
+  teamEstimatedStrengthLiftShareSamples: number;
 };
 
 type RoundSurvivalDiagnosticAccumulator = {
@@ -1807,6 +2651,86 @@ function createBoardRefitDecisionRoleRoundAccumulator(
   };
 }
 
+function createBossBodyGuardDecisionRoundAccumulator(
+  roundIndex: number,
+): BossBodyGuardDecisionRoundAccumulator {
+  return {
+    roundIndex,
+    samples: 0,
+    directFillSamples: 0,
+    directSwapSamples: 0,
+    sideFlankMoveSamples: 0,
+    boardMovementActionSamples: 0,
+    acceptedBoardMovementActionSamples: 0,
+    noActionSamples: 0,
+    directEmptySamples: 0,
+    benchFrontlineBlockedSamples: 0,
+    strongerOffDirectSamples: 0,
+    totalDirectGuardLevel: 0,
+    directGuardLevelSamples: 0,
+    totalStrongestGuardLevel: 0,
+    strongestGuardLevelSamples: 0,
+    directGuardSamplesById: new Map(),
+    strongestGuardSamplesById: new Map(),
+    reasonSamplesByReason: new Map(),
+  };
+}
+
+function createBoardMovementRoundAccumulator(
+  roundIndex: number,
+  role: "boss" | "raid" | "unknown",
+): BoardMovementRoundAccumulator {
+  return {
+    roundIndex,
+    role,
+    samples: 0,
+    moveSamples: 0,
+    swapSamples: 0,
+  };
+}
+
+function buildAcceptedBoardMovementKey(
+  roundIndex: number,
+  playerId: string,
+  fromCell: number,
+  toCell: number,
+): string {
+  return `${roundIndex}:${playerId}:${fromCell}:${toCell}`;
+}
+
+function buildBoardMovementRouteKey(
+  role: "boss" | "raid" | "unknown",
+  roundIndex: number,
+  actionType: "board_move" | "board_swap",
+  fromCell: number,
+  toCell: number,
+): string {
+  return `${role}:${roundIndex}:${actionType}:${fromCell}:${toCell}`;
+}
+
+function recordBoardMovementRoute(
+  movement: BotOnlyBaselineBoardMovementAction,
+  routesByKey: Map<string, BoardMovementRouteAccumulator>,
+): void {
+  const routeKey = buildBoardMovementRouteKey(
+    movement.role,
+    movement.roundIndex,
+    movement.actionType,
+    movement.fromCell,
+    movement.toCell,
+  );
+  const route = routesByKey.get(routeKey) ?? {
+    roundIndex: movement.roundIndex,
+    role: movement.role,
+    actionType: movement.actionType,
+    fromCell: movement.fromCell,
+    toCell: movement.toCell,
+    samples: 0,
+  };
+  route.samples += 1;
+  routesByKey.set(routeKey, route);
+}
+
 function createFinalPlayerBoardAccumulator(
   label: string,
   role: string,
@@ -2064,6 +2988,53 @@ function buildBossBodyFocusDetail(
   };
 }
 
+function buildBossBodyDirectGuardOutcomeDetail(
+  bossUnitOutcomes: BotOnlyBaselineBattleUnitOutcome[],
+  decision: BotOnlyBaselineBossBodyGuardDecisionSnapshot | null,
+): BotOnlyBaselineBossBodyDirectGuardOutcomeDetail | null {
+  const bossBody = bossUnitOutcomes.find((unit) => unit.unitId === "remilia");
+  if (
+    !bossBody
+    || typeof bossBody.initialColumn !== "number"
+    || typeof bossBody.initialRow !== "number"
+  ) {
+    return null;
+  }
+
+  const bossCell = sharedBoardCoordinateToIndex({
+    x: bossBody.initialColumn,
+    y: bossBody.initialRow,
+  });
+  const expectedCoordinate = {
+    x: bossBody.initialColumn,
+    y: bossBody.initialRow + 1,
+  };
+  if (
+    expectedCoordinate.y < 0
+    || expectedCoordinate.y >= DEFAULT_SHARED_BOARD_CONFIG.height
+  ) {
+    return null;
+  }
+
+  const expectedCell = sharedBoardCoordinateToIndex(expectedCoordinate);
+  const directGuard = bossUnitOutcomes.find((unit) =>
+    unit.unitId !== bossBody.unitId
+    && unit.initialColumn === expectedCoordinate.x
+    && unit.initialRow === expectedCoordinate.y);
+  if (!directGuard) {
+    return null;
+  }
+
+  return {
+    ...toRoundUnitDetail(directGuard),
+    bossCell,
+    expectedCell,
+    matchedDecisionUnit: decision?.directGuardUnitId
+      ? decision.directGuardUnitId === directGuard.unitId
+      : null,
+  };
+}
+
 function buildRoundDetailsForMatch(
   report: BotOnlyBaselineMatchSummary,
   matchIndex: number,
@@ -2072,6 +3043,12 @@ function buildRoundDetailsForMatch(
     report.finalPlayers.map((player) => [player.playerId, player] as const),
   );
   const matchWinnerRole = report.ranking[0] === report.bossPlayerId ? "boss" : "raid";
+  const bossBodyGuardDecisionByRound = new Map(
+    (report.bossBodyGuardDecisionSnapshots ?? []).map((snapshot) => [
+      snapshot.roundIndex,
+      snapshot,
+    ] as const),
+  );
 
   return (report.rounds ?? []).map((round) => {
     const raidPlayerConsequences = round.playerConsequences.filter(
@@ -2101,6 +3078,9 @@ function buildRoundDetailsForMatch(
       ?? battleEndTimeMs;
     const targetReached = round.phaseResult === "success"
       || (round.phaseHpTarget > 0 && round.phaseDamageDealt >= round.phaseHpTarget);
+    const bossBodyGuardDecision = bossBodyGuardDecisionByRound.has(round.roundIndex)
+      ? { ...bossBodyGuardDecisionByRound.get(round.roundIndex)! }
+      : null;
 
     return {
       matchIndex,
@@ -2139,6 +3119,11 @@ function buildRoundDetailsForMatch(
         (battle.bossSpellMetrics ?? []).map((metric) => ({ ...metric }))),
       raidPlayerConsequences,
       bossBodyFocus: buildBossBodyFocusDetail(bossUnitOutcomes),
+      bossBodyDirectGuardOutcome: buildBossBodyDirectGuardOutcomeDetail(
+        bossUnitOutcomes,
+        bossBodyGuardDecision,
+      ),
+      bossBodyGuardDecision,
       topBossUnits: bossUnitOutcomes
         .map((unit) => toRoundUnitDetail(unit))
         .sort((left, right) =>
@@ -2248,6 +3233,52 @@ function createRoundSurvivalDiagnosticAccumulator(
   };
 }
 
+function createRoundBoardStrengthAccumulator(
+  roundIndex: number,
+  side: "boss" | "raid",
+): RoundBoardStrengthAccumulator {
+  return {
+    roundIndex,
+    side,
+    battleSamples: 0,
+    totalUnitCount: 0,
+    totalSurvivorCount: 0,
+    totalInvestmentScore: 0,
+    totalEstimatedDurabilityScore: 0,
+    totalEstimatedDamageScore: 0,
+    totalBoardStrengthScore: 0,
+    totalRealizedDamage: 0,
+    totalAbsorbedDamage: 0,
+    totalRemainingHp: 0,
+    totalRealizedBattleScore: 0,
+  };
+}
+
+function createRoundBoardStrengthComparisonAccumulator(
+  roundIndex: number,
+  winnerRole?: "boss" | "raid" | "draw",
+): RoundBoardStrengthComparisonAccumulator {
+  return {
+    roundIndex,
+    ...(winnerRole !== undefined ? { winnerRole } : {}),
+    battleSamples: 0,
+    totalBossBoardStrengthScore: 0,
+    totalRaidBoardStrengthScore: 0,
+    totalBossToRaidBoardStrengthRatio: 0,
+    boardStrengthRatioSamples: 0,
+    totalBossRealizedBattleScore: 0,
+    totalRaidRealizedBattleScore: 0,
+    totalBossToRaidRealizedBattleRatio: 0,
+    realizedBattleRatioSamples: 0,
+    bossEstimatedAdvantageBattles: 0,
+    bossRealizedAdvantageBattles: 0,
+    bossBattleWins: 0,
+    raidBattleWins: 0,
+    bossEstimatedAdvantageButBattleLosses: 0,
+    bossEstimatedAdvantageButRealizedDisadvantages: 0,
+  };
+}
+
 function createRoundUnitSurvivalDiagnosticAccumulator(
   roundIndex: number,
   side: "boss" | "raid",
@@ -2274,12 +3305,248 @@ function createRoundUnitSurvivalDiagnosticAccumulator(
   };
 }
 
+function estimateOutcomeDamageThreatScore(outcome: BotOnlyBaselineBattleUnitOutcome): number {
+  const combatProfile = resolveUnitCombatProfile(outcome.unitId, outcome.unitType ?? outcome.unitId);
+  if (combatProfile == null || combatProfile.attackSpeed <= 0) {
+    return 0;
+  }
+
+  const attackMultiplier = combatProfile.usesStarMultiplier
+    ? getUnitLevelCombatMultiplier(outcome.unitLevel)
+    : 1;
+  const rangeMultiplier = combatProfile.range >= 4
+    ? 1.12
+    : combatProfile.range >= 3
+      ? 1.08
+      : combatProfile.range >= 2
+        ? 1.04
+        : 1;
+  return combatProfile.attack * combatProfile.attackSpeed * attackMultiplier * rangeMultiplier;
+}
+
+function calculateEstimatedBoardStrengthScore(
+  investmentScore: number,
+  estimatedDurabilityScore: number,
+  estimatedDamageScore: number,
+): number {
+  return investmentScore * 25
+    + estimatedDurabilityScore * 0.15
+    + estimatedDamageScore * 60;
+}
+
+function calculateRealizedBattleScore(
+  realizedDamage: number,
+  absorbedDamage: number,
+  remainingHp: number,
+): number {
+  return realizedDamage
+    + absorbedDamage * 0.35
+    + remainingHp * 0.5;
+}
+
+function calculateOutcomeEstimatedStrengthScore(outcome: BotOnlyBaselineBattleUnitOutcome): number {
+  return calculateEstimatedBoardStrengthScore(
+    resolveBattleUnitInvestmentCost(outcome),
+    resolveOutcomeEstimatedMaxHp(outcome),
+    estimateOutcomeDamageThreatScore(outcome),
+  );
+}
+
+function calculateOutcomeEffectiveStrengthScore(outcome: BotOnlyBaselineBattleUnitOutcome): number {
+  return calculateRealizedBattleScore(
+    Math.max(0, outcome.totalDamage),
+    Math.max(0, outcome.damageTaken ?? 0),
+    Math.max(0, outcome.finalHp),
+  );
+}
+
+function recordRoundBoardStrength(
+  roundIndex: number,
+  side: "boss" | "raid",
+  outcomes: BotOnlyBaselineBattleUnitOutcome[],
+  roundBoardStrengthByKey: Map<string, RoundBoardStrengthAccumulator>,
+): RoundBoardStrengthSample {
+  const key = `${roundIndex}::${side}`;
+  const entry = roundBoardStrengthByKey.get(key)
+    ?? createRoundBoardStrengthAccumulator(roundIndex, side);
+  const investmentScore = outcomes.reduce(
+    (total, outcome) => total + resolveBattleUnitInvestmentCost(outcome),
+    0,
+  );
+  const estimatedDurabilityScore = outcomes.reduce(
+    (total, outcome) => total + resolveOutcomeEstimatedMaxHp(outcome),
+    0,
+  );
+  const estimatedDamageScore = outcomes.reduce(
+    (total, outcome) => total + estimateOutcomeDamageThreatScore(outcome),
+    0,
+  );
+  const realizedDamage = outcomes.reduce(
+    (total, outcome) => total + Math.max(0, outcome.totalDamage),
+    0,
+  );
+  const absorbedDamage = outcomes.reduce(
+    (total, outcome) => total + Math.max(0, outcome.damageTaken ?? 0),
+    0,
+  );
+  const remainingHp = outcomes.reduce(
+    (total, outcome) => total + Math.max(0, outcome.finalHp),
+    0,
+  );
+  const boardStrengthScore = calculateEstimatedBoardStrengthScore(
+    investmentScore,
+    estimatedDurabilityScore,
+    estimatedDamageScore,
+  );
+  const realizedBattleScore = calculateRealizedBattleScore(realizedDamage, absorbedDamage, remainingHp);
+  const survivorCount = outcomes.filter((outcome) => outcome.alive && outcome.finalHp > 0).length;
+
+  entry.battleSamples += 1;
+  entry.totalUnitCount += outcomes.length;
+  entry.totalSurvivorCount += survivorCount;
+  entry.totalInvestmentScore += investmentScore;
+  entry.totalEstimatedDurabilityScore += estimatedDurabilityScore;
+  entry.totalEstimatedDamageScore += estimatedDamageScore;
+  entry.totalBoardStrengthScore += boardStrengthScore;
+  entry.totalRealizedDamage += realizedDamage;
+  entry.totalAbsorbedDamage += absorbedDamage;
+  entry.totalRemainingHp += remainingHp;
+  entry.totalRealizedBattleScore += realizedBattleScore;
+  roundBoardStrengthByKey.set(key, entry);
+
+  return {
+    unitCount: outcomes.length,
+    survivorCount,
+    investmentScore,
+    estimatedDurabilityScore,
+    estimatedDamageScore,
+    boardStrengthScore,
+    realizedDamage,
+    absorbedDamage,
+    remainingHp,
+    realizedBattleScore,
+  };
+}
+
+function recordRoundBoardStrengthComparison(
+  roundIndex: number,
+  bossSample: RoundBoardStrengthSample,
+  raidSample: RoundBoardStrengthSample,
+  winnerRole: "boss" | "raid" | null,
+  roundBoardStrengthComparisonByRound: Map<number, RoundBoardStrengthComparisonAccumulator>,
+  roundBoardStrengthOutcomeByKey?: Map<string, RoundBoardStrengthComparisonAccumulator>,
+): void {
+  const entry = roundBoardStrengthComparisonByRound.get(roundIndex)
+    ?? createRoundBoardStrengthComparisonAccumulator(roundIndex);
+  recordRoundBoardStrengthComparisonSample(entry, bossSample, raidSample, winnerRole);
+  roundBoardStrengthComparisonByRound.set(roundIndex, entry);
+
+  if (roundBoardStrengthOutcomeByKey) {
+    const outcomeWinnerRole = winnerRole ?? "draw";
+    const key = `${roundIndex}::${outcomeWinnerRole}`;
+    const outcomeEntry = roundBoardStrengthOutcomeByKey.get(key)
+      ?? createRoundBoardStrengthComparisonAccumulator(roundIndex, outcomeWinnerRole);
+    recordRoundBoardStrengthComparisonSample(outcomeEntry, bossSample, raidSample, winnerRole);
+    roundBoardStrengthOutcomeByKey.set(key, outcomeEntry);
+  }
+}
+
+function recordRoundBoardStrengthComparisonSample(
+  entry: RoundBoardStrengthComparisonAccumulator,
+  bossSample: RoundBoardStrengthSample,
+  raidSample: RoundBoardStrengthSample,
+  winnerRole: "boss" | "raid" | null,
+): void {
+  const bossEstimatedAdvantage = bossSample.boardStrengthScore >= raidSample.boardStrengthScore;
+  const bossRealizedAdvantage = bossSample.realizedBattleScore >= raidSample.realizedBattleScore;
+
+  entry.battleSamples += 1;
+  entry.totalBossBoardStrengthScore += bossSample.boardStrengthScore;
+  entry.totalRaidBoardStrengthScore += raidSample.boardStrengthScore;
+  if (raidSample.boardStrengthScore > 0) {
+    entry.totalBossToRaidBoardStrengthRatio += bossSample.boardStrengthScore / raidSample.boardStrengthScore;
+    entry.boardStrengthRatioSamples += 1;
+  }
+  entry.totalBossRealizedBattleScore += bossSample.realizedBattleScore;
+  entry.totalRaidRealizedBattleScore += raidSample.realizedBattleScore;
+  if (raidSample.realizedBattleScore > 0) {
+    entry.totalBossToRaidRealizedBattleRatio += bossSample.realizedBattleScore / raidSample.realizedBattleScore;
+    entry.realizedBattleRatioSamples += 1;
+  }
+  entry.bossEstimatedAdvantageBattles += bossEstimatedAdvantage ? 1 : 0;
+  entry.bossRealizedAdvantageBattles += bossRealizedAdvantage ? 1 : 0;
+  entry.bossBattleWins += winnerRole === "boss" ? 1 : 0;
+  entry.raidBattleWins += winnerRole === "raid" ? 1 : 0;
+  entry.bossEstimatedAdvantageButBattleLosses += bossEstimatedAdvantage && winnerRole === "raid" ? 1 : 0;
+  entry.bossEstimatedAdvantageButRealizedDisadvantages += bossEstimatedAdvantage && !bossRealizedAdvantage ? 1 : 0;
+}
+
 function resolveOutcomeEstimatedMaxHp(outcome: BotOnlyBaselineBattleUnitOutcome): number {
   const finalHp = Number.isFinite(outcome.finalHp) ? Math.max(0, outcome.finalHp) : 0;
   const damageTaken = Number.isFinite(outcome.damageTaken ?? Number.NaN)
     ? Math.max(0, outcome.damageTaken ?? 0)
     : 0;
   return finalHp + damageTaken;
+}
+
+function buildRoundBoardStrengthMetric(
+  entry: RoundBoardStrengthAccumulator,
+): BotOnlyBaselineRoundBoardStrengthMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    side: entry.side,
+    battleSamples: entry.battleSamples,
+    averageUnitCount: divideOrZero(entry.totalUnitCount, entry.battleSamples),
+    averageSurvivorCount: divideOrZero(entry.totalSurvivorCount, entry.battleSamples),
+    averageInvestmentScore: divideOrZero(entry.totalInvestmentScore, entry.battleSamples),
+    averageEstimatedDurabilityScore: divideOrZero(entry.totalEstimatedDurabilityScore, entry.battleSamples),
+    averageEstimatedDamageScore: divideOrZero(entry.totalEstimatedDamageScore, entry.battleSamples),
+    averageBoardStrengthScore: divideOrZero(entry.totalBoardStrengthScore, entry.battleSamples),
+    averageRealizedDamage: divideOrZero(entry.totalRealizedDamage, entry.battleSamples),
+    averageAbsorbedDamage: divideOrZero(entry.totalAbsorbedDamage, entry.battleSamples),
+    averageRemainingHp: divideOrZero(entry.totalRemainingHp, entry.battleSamples),
+    averageRealizedBattleScore: divideOrZero(entry.totalRealizedBattleScore, entry.battleSamples),
+  };
+}
+
+function buildRoundBoardStrengthComparisonMetric(
+  entry: RoundBoardStrengthComparisonAccumulator,
+): BotOnlyBaselineRoundBoardStrengthComparisonMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    battleSamples: entry.battleSamples,
+    averageBossBoardStrengthScore: divideOrZero(entry.totalBossBoardStrengthScore, entry.battleSamples),
+    averageRaidBoardStrengthScore: divideOrZero(entry.totalRaidBoardStrengthScore, entry.battleSamples),
+    averageBossToRaidBoardStrengthRatio: entry.boardStrengthRatioSamples > 0
+      ? entry.totalBossToRaidBoardStrengthRatio / entry.boardStrengthRatioSamples
+      : null,
+    averageBossRealizedBattleScore: divideOrZero(entry.totalBossRealizedBattleScore, entry.battleSamples),
+    averageRaidRealizedBattleScore: divideOrZero(entry.totalRaidRealizedBattleScore, entry.battleSamples),
+    averageBossToRaidRealizedBattleRatio: entry.realizedBattleRatioSamples > 0
+      ? entry.totalBossToRaidRealizedBattleRatio / entry.realizedBattleRatioSamples
+      : null,
+    bossEstimatedAdvantageRate: divideOrZero(entry.bossEstimatedAdvantageBattles, entry.battleSamples),
+    bossRealizedAdvantageRate: divideOrZero(entry.bossRealizedAdvantageBattles, entry.battleSamples),
+    bossBattleWinRate: divideOrZero(entry.bossBattleWins, entry.battleSamples),
+    raidBattleWinRate: divideOrZero(entry.raidBattleWins, entry.battleSamples),
+    bossEstimatedAdvantageButBattleLossRate: divideOrZero(
+      entry.bossEstimatedAdvantageButBattleLosses,
+      entry.battleSamples,
+    ),
+    bossEstimatedAdvantageButRealizedDisadvantageRate: divideOrZero(
+      entry.bossEstimatedAdvantageButRealizedDisadvantages,
+      entry.battleSamples,
+    ),
+  };
+}
+
+function buildRoundBoardStrengthOutcomeMetric(
+  entry: RoundBoardStrengthComparisonAccumulator,
+): BotOnlyBaselineRoundBoardStrengthOutcomeMetric {
+  return {
+    ...buildRoundBoardStrengthComparisonMetric(entry),
+    winnerRole: entry.winnerRole ?? "draw",
+  };
 }
 
 function buildRoundSurvivalDiagnosticMetric(
@@ -2452,6 +3719,282 @@ function buildHighCostRoundMetric(
   };
 }
 
+function createRaidArchetypeConstructionAccumulator(
+  plan: typeof RAID_ARCHETYPE_CONSTRUCTION_PLANS[number],
+): RaidArchetypeConstructionAccumulator {
+  return {
+    planId: plan.planId,
+    anchorUnitId: plan.anchorUnitId,
+    unitIds: [...plan.unitIds],
+    finalPlanHitUnitThreshold: plan.finalPlanHitUnitThreshold,
+    purchaseCount: 0,
+    constructionPurchaseCount: 0,
+    constructionFinalMainUnitCount: 0,
+    constructionFinalSubUnitCount: 0,
+    constructionFinalMissingUnitCount: 0,
+    constructionFinalBenchUnitCount: 0,
+    constructionFinalAbsentUnitCount: 0,
+    constructionEverBattleUnitCount: 0,
+    constructionNeverBattleUnitCount: 0,
+    finalPlayerSamples: 0,
+    finalAnchorPlayerCount: 0,
+    finalPlanHitPlayerCount: 0,
+    totalFinalPlanUnitCount: 0,
+  };
+}
+
+function buildRaidArchetypeConstructionMetric(
+  entry: RaidArchetypeConstructionAccumulator,
+): BotOnlyBaselineRaidArchetypeConstructionMetric {
+  return {
+    planId: entry.planId,
+    anchorUnitId: entry.anchorUnitId,
+    unitIds: [...entry.unitIds],
+    purchaseCount: entry.purchaseCount,
+    constructionPurchaseCount: entry.constructionPurchaseCount,
+    constructionPurchaseRate: divideOrZero(entry.constructionPurchaseCount, entry.purchaseCount),
+    constructionFinalMainUnitCount: entry.constructionFinalMainUnitCount,
+    constructionFinalSubUnitCount: entry.constructionFinalSubUnitCount,
+    constructionFinalMissingUnitCount: entry.constructionFinalMissingUnitCount,
+    constructionFinalBenchUnitCount: entry.constructionFinalBenchUnitCount,
+    constructionFinalAbsentUnitCount: entry.constructionFinalAbsentUnitCount,
+    constructionEverBattleUnitCount: entry.constructionEverBattleUnitCount,
+    constructionNeverBattleUnitCount: entry.constructionNeverBattleUnitCount,
+    constructionEverBattleRate: divideOrZero(
+      entry.constructionEverBattleUnitCount,
+      entry.constructionPurchaseCount,
+    ),
+    constructionFinalRetentionRate: divideOrZero(
+      entry.constructionFinalMainUnitCount + entry.constructionFinalSubUnitCount,
+      entry.constructionPurchaseCount,
+    ),
+    constructionFinalTotalRetentionRate: divideOrZero(
+      entry.constructionFinalMainUnitCount
+        + entry.constructionFinalSubUnitCount
+        + entry.constructionFinalBenchUnitCount,
+      entry.constructionPurchaseCount,
+    ),
+    finalPlayerSamples: entry.finalPlayerSamples,
+    finalAnchorPlayerCount: entry.finalAnchorPlayerCount,
+    finalPlanHitPlayerCount: entry.finalPlanHitPlayerCount,
+    averageFinalPlanUnitCount: divideOrZero(entry.totalFinalPlanUnitCount, entry.finalPlayerSamples),
+    finalPlanHitRate: divideOrZero(entry.finalPlanHitPlayerCount, entry.finalPlayerSamples),
+  };
+}
+
+function createRaidArchetypeConstructionUnitAccumulator(
+  plan: typeof RAID_ARCHETYPE_CONSTRUCTION_PLANS[number],
+  unitId: string,
+  unitName = resolveBaselineUnitName(unitId, unitId),
+): RaidArchetypeConstructionUnitAccumulator {
+  return {
+    planId: plan.planId,
+    anchorUnitId: plan.anchorUnitId,
+    unitId,
+    unitName,
+    constructionPurchaseCount: 0,
+    constructionFinalMainUnitCount: 0,
+    constructionFinalSubUnitCount: 0,
+    constructionFinalBenchUnitCount: 0,
+    constructionFinalMissingUnitCount: 0,
+    constructionFinalAbsentUnitCount: 0,
+    constructionEverBattleUnitCount: 0,
+    constructionNeverBattleUnitCount: 0,
+  };
+}
+
+function buildRaidArchetypeConstructionUnitMetric(
+  entry: RaidArchetypeConstructionUnitAccumulator,
+): BotOnlyBaselineRaidArchetypeConstructionUnitMetric {
+  return {
+    planId: entry.planId,
+    anchorUnitId: entry.anchorUnitId,
+    unitId: entry.unitId,
+    unitName: entry.unitName,
+    constructionPurchaseCount: entry.constructionPurchaseCount,
+    constructionFinalMainUnitCount: entry.constructionFinalMainUnitCount,
+    constructionFinalSubUnitCount: entry.constructionFinalSubUnitCount,
+    constructionFinalBenchUnitCount: entry.constructionFinalBenchUnitCount,
+    constructionFinalMissingUnitCount: entry.constructionFinalMissingUnitCount,
+    constructionFinalAbsentUnitCount: entry.constructionFinalAbsentUnitCount,
+    constructionEverBattleUnitCount: entry.constructionEverBattleUnitCount,
+    constructionNeverBattleUnitCount: entry.constructionNeverBattleUnitCount,
+    constructionEverBattleRate: divideOrZero(
+      entry.constructionEverBattleUnitCount,
+      entry.constructionPurchaseCount,
+    ),
+    constructionFinalRetentionRate: divideOrZero(
+      entry.constructionFinalMainUnitCount + entry.constructionFinalSubUnitCount,
+      entry.constructionPurchaseCount,
+    ),
+    constructionFinalTotalRetentionRate: divideOrZero(
+      entry.constructionFinalMainUnitCount
+        + entry.constructionFinalSubUnitCount
+        + entry.constructionFinalBenchUnitCount,
+      entry.constructionPurchaseCount,
+    ),
+  };
+}
+
+function createRaidArchetypeShopDecisionAccumulator(
+  roundIndex: number,
+  planId: string,
+  decision: string,
+  candidateUnitId: string,
+  candidateCost: number,
+  blocker?: string,
+): RaidArchetypeShopDecisionAccumulator {
+  return {
+    roundIndex,
+    planId,
+    decision,
+    candidateUnitId,
+    candidateCost,
+    ...(blocker !== undefined && blocker.length > 0 && { blocker }),
+    samples: 0,
+    planUnitPurchaseCount: 0,
+    highCostPurchaseCount: 0,
+    totalPurchasedCost: 0,
+    fieldingDiagnosticSamples: 0,
+    totalCombatPlanUnitCount: 0,
+    totalReservePlanUnitCount: 0,
+    totalAvailableMainSlots: 0,
+    totalAvailableSubSlots: 0,
+  };
+}
+
+function buildRaidArchetypeShopDecisionMetric(
+  entry: RaidArchetypeShopDecisionAccumulator,
+): BotOnlyBaselineRaidArchetypeShopDecisionMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    planId: entry.planId,
+    decision: entry.decision,
+    candidateUnitId: entry.candidateUnitId,
+    candidateCost: entry.candidateCost,
+    ...(entry.blocker !== undefined && { blocker: entry.blocker }),
+    samples: entry.samples,
+    planUnitPurchaseCount: entry.planUnitPurchaseCount,
+    highCostPurchaseCount: entry.highCostPurchaseCount,
+    averagePurchasedCost: divideOrZero(entry.totalPurchasedCost, entry.samples),
+    ...(entry.fieldingDiagnosticSamples > 0 && {
+      averageCombatPlanUnitCount: divideOrZero(
+        entry.totalCombatPlanUnitCount,
+        entry.fieldingDiagnosticSamples,
+      ),
+      averageReservePlanUnitCount: divideOrZero(
+        entry.totalReservePlanUnitCount,
+        entry.fieldingDiagnosticSamples,
+      ),
+      averageAvailableMainSlots: divideOrZero(
+        entry.totalAvailableMainSlots,
+        entry.fieldingDiagnosticSamples,
+      ),
+      averageAvailableSubSlots: divideOrZero(
+        entry.totalAvailableSubSlots,
+        entry.fieldingDiagnosticSamples,
+      ),
+    }),
+  };
+}
+
+function createRaidArchetypeRoundProgressAccumulator(
+  plan: typeof RAID_ARCHETYPE_CONSTRUCTION_PLANS[number],
+  roundIndex: number,
+): RaidArchetypeRoundProgressAccumulator {
+  return {
+    planId: plan.planId,
+    anchorUnitId: plan.anchorUnitId,
+    unitIds: [...plan.unitIds],
+    finalPlanHitUnitThreshold: plan.finalPlanHitUnitThreshold,
+    roundIndex,
+    playerSamples: 0,
+    anchorPlayerCount: 0,
+    planHitPlayerCount: 0,
+    unitCount0PlayerCount: 0,
+    unitCount1PlayerCount: 0,
+    unitCount2PlayerCount: 0,
+    unitCount3PlusPlayerCount: 0,
+    totalPlanUnitCount: 0,
+  };
+}
+
+function buildRaidArchetypeRoundProgressMetric(
+  entry: RaidArchetypeRoundProgressAccumulator,
+): BotOnlyBaselineRaidArchetypeRoundProgressMetric {
+  return {
+    planId: entry.planId,
+    anchorUnitId: entry.anchorUnitId,
+    unitIds: [...entry.unitIds],
+    roundIndex: entry.roundIndex,
+    playerSamples: entry.playerSamples,
+    anchorPlayerCount: entry.anchorPlayerCount,
+    planHitPlayerCount: entry.planHitPlayerCount,
+    unitCount0PlayerCount: entry.unitCount0PlayerCount,
+    unitCount1PlayerCount: entry.unitCount1PlayerCount,
+    unitCount2PlayerCount: entry.unitCount2PlayerCount,
+    unitCount3PlusPlayerCount: entry.unitCount3PlusPlayerCount,
+    averagePlanUnitCount: divideOrZero(entry.totalPlanUnitCount, entry.playerSamples),
+    planHitRate: divideOrZero(entry.planHitPlayerCount, entry.playerSamples),
+  };
+}
+
+function recordRaidArchetypeRoundProgressForMatch(
+  report: BotOnlyBaselineMatchSummary,
+  raidArchetypeRoundProgressByKey: Map<string, RaidArchetypeRoundProgressAccumulator>,
+): void {
+  for (const round of report.rounds ?? []) {
+    const unitIdsByPlayerId = new Map<string, Set<string>>();
+    for (const consequence of round.playerConsequences) {
+      if (consequence.role === "raid") {
+        unitIdsByPlayerId.set(consequence.playerId, new Set());
+      }
+    }
+
+    for (const battle of round.battles) {
+      for (const outcome of battle.unitOutcomes) {
+        if (outcome.side !== "raid") {
+          continue;
+        }
+
+        const unitIds = unitIdsByPlayerId.get(outcome.playerId) ?? new Set<string>();
+        unitIds.add(outcome.unitId);
+        if (outcome.attachedSubUnitId !== undefined && outcome.attachedSubUnitId.length > 0) {
+          unitIds.add(outcome.attachedSubUnitId);
+        }
+        unitIdsByPlayerId.set(outcome.playerId, unitIds);
+      }
+    }
+
+    for (const unitIds of unitIdsByPlayerId.values()) {
+      for (const plan of RAID_ARCHETYPE_CONSTRUCTION_PLANS) {
+        const key = `${round.roundIndex}::${plan.planId}`;
+        const entry = raidArchetypeRoundProgressByKey.get(key)
+          ?? createRaidArchetypeRoundProgressAccumulator(plan, round.roundIndex);
+        const planUnitCount = plan.unitIds
+          .filter((unitId) => unitIds.has(unitId))
+          .length;
+        const hasAnchor = unitIds.has(plan.anchorUnitId);
+
+        entry.playerSamples += 1;
+        entry.anchorPlayerCount += hasAnchor ? 1 : 0;
+        entry.planHitPlayerCount += hasAnchor && planUnitCount >= plan.finalPlanHitUnitThreshold ? 1 : 0;
+        entry.totalPlanUnitCount += planUnitCount;
+        if (planUnitCount <= 0) {
+          entry.unitCount0PlayerCount += 1;
+        } else if (planUnitCount === 1) {
+          entry.unitCount1PlayerCount += 1;
+        } else if (planUnitCount === 2) {
+          entry.unitCount2PlayerCount += 1;
+        } else {
+          entry.unitCount3PlusPlayerCount += 1;
+        }
+        raidArchetypeRoundProgressByKey.set(key, entry);
+      }
+    }
+  }
+}
+
 function createUnitDamageEfficiencyAccumulator(
   side: "boss" | "raid",
   unitId: string,
@@ -2522,6 +4065,766 @@ function buildUnitDamageEfficiencyMetrics(
       || ((right.weightedDamagePerInvestmentCost ?? -1) - (left.weightedDamagePerInvestmentCost ?? -1))
       || right.totalDamage - left.totalDamage
       || left.unitId.localeCompare(right.unitId));
+}
+
+function createUnitStrengthConversionAccumulator(
+  side: "boss" | "raid",
+  unitId: string,
+  unitType: string,
+  unitName: string,
+): UnitStrengthConversionAccumulator {
+  return {
+    side,
+    unitId,
+    unitType,
+    unitName,
+    battleAppearances: 0,
+    matchesPresent: 0,
+    totalUnitLevel: 0,
+    totalInvestmentScore: 0,
+    totalEstimatedDurabilityScore: 0,
+    totalEstimatedDamageScore: 0,
+    totalEstimatedStrengthScore: 0,
+    totalRealizedDamage: 0,
+    totalAbsorbedDamage: 0,
+    totalRemainingHp: 0,
+    totalEffectiveStrengthScore: 0,
+    totalStrengthScoreDelta: 0,
+    totalEffectiveToEstimatedRatio: 0,
+    effectiveToEstimatedRatioSamples: 0,
+    underperformedBattles: 0,
+    zeroDamageBattles: 0,
+    survivedBattles: 0,
+  };
+}
+
+function recordUnitStrengthConversion(
+  outcome: BotOnlyBaselineBattleUnitOutcome,
+  unitName: string,
+  unitType: string,
+  matchUnitKey: string,
+  seenUnitStrengthMatchKeys: Set<string>,
+  unitStrengthConversionByKey: Map<string, UnitStrengthConversionAccumulator>,
+  aggregateKey = `${outcome.side}::${outcome.unitId}`,
+): void {
+  const key = aggregateKey;
+  const entry = unitStrengthConversionByKey.get(key)
+    ?? createUnitStrengthConversionAccumulator(outcome.side, outcome.unitId, unitType, unitName);
+  const investmentScore = resolveBattleUnitInvestmentCost(outcome);
+  const estimatedDurabilityScore = resolveOutcomeEstimatedMaxHp(outcome);
+  const estimatedDamageScore = estimateOutcomeDamageThreatScore(outcome);
+  const estimatedStrengthScore = calculateOutcomeEstimatedStrengthScore(outcome);
+  const realizedDamage = Math.max(0, outcome.totalDamage);
+  const absorbedDamage = Math.max(0, outcome.damageTaken ?? 0);
+  const remainingHp = Math.max(0, outcome.finalHp);
+  const effectiveStrengthScore = calculateOutcomeEffectiveStrengthScore(outcome);
+
+  entry.battleAppearances += 1;
+  entry.totalUnitLevel += outcome.unitLevel;
+  entry.totalInvestmentScore += investmentScore;
+  entry.totalEstimatedDurabilityScore += estimatedDurabilityScore;
+  entry.totalEstimatedDamageScore += estimatedDamageScore;
+  entry.totalEstimatedStrengthScore += estimatedStrengthScore;
+  entry.totalRealizedDamage += realizedDamage;
+  entry.totalAbsorbedDamage += absorbedDamage;
+  entry.totalRemainingHp += remainingHp;
+  entry.totalEffectiveStrengthScore += effectiveStrengthScore;
+  entry.totalStrengthScoreDelta += effectiveStrengthScore - estimatedStrengthScore;
+  if (estimatedStrengthScore > 0) {
+    entry.totalEffectiveToEstimatedRatio += effectiveStrengthScore / estimatedStrengthScore;
+    entry.effectiveToEstimatedRatioSamples += 1;
+  }
+  entry.underperformedBattles += effectiveStrengthScore < estimatedStrengthScore ? 1 : 0;
+  entry.zeroDamageBattles += realizedDamage <= 0 ? 1 : 0;
+  entry.survivedBattles += outcome.alive && outcome.finalHp > 0 ? 1 : 0;
+  if (!seenUnitStrengthMatchKeys.has(matchUnitKey)) {
+    entry.matchesPresent += 1;
+    seenUnitStrengthMatchKeys.add(matchUnitKey);
+  }
+  unitStrengthConversionByKey.set(key, entry);
+}
+
+function buildUnitStrengthConversionMetric(
+  entry: UnitStrengthConversionAccumulator,
+  sideBaselineEffectiveToEstimatedRatio: number | null,
+): BotOnlyBaselineUnitStrengthConversionMetric {
+  const averageEstimatedStrengthScore = divideOrZero(entry.totalEstimatedStrengthScore, entry.battleAppearances);
+  const averageEffectiveStrengthScore = divideOrZero(entry.totalEffectiveStrengthScore, entry.battleAppearances);
+  const averageEffectiveToEstimatedRatio = entry.effectiveToEstimatedRatioSamples > 0
+    ? entry.totalEffectiveToEstimatedRatio / entry.effectiveToEstimatedRatioSamples
+    : null;
+  const sideAdjustedEffectiveToEstimatedIndex = averageEffectiveToEstimatedRatio != null
+    && sideBaselineEffectiveToEstimatedRatio != null
+    && sideBaselineEffectiveToEstimatedRatio > 0
+      ? averageEffectiveToEstimatedRatio / sideBaselineEffectiveToEstimatedRatio
+      : null;
+  const sideAdjustedStrengthScoreDelta = sideBaselineEffectiveToEstimatedRatio != null
+    ? averageEffectiveStrengthScore - averageEstimatedStrengthScore * sideBaselineEffectiveToEstimatedRatio
+    : null;
+
+  return {
+    side: entry.side,
+    unitId: entry.unitId,
+    unitType: entry.unitType,
+    unitName: entry.unitName,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchesPresent,
+    averageUnitLevel: divideOrZero(entry.totalUnitLevel, entry.battleAppearances),
+    averageInvestmentScore: divideOrZero(entry.totalInvestmentScore, entry.battleAppearances),
+    averageEstimatedDurabilityScore: divideOrZero(entry.totalEstimatedDurabilityScore, entry.battleAppearances),
+    averageEstimatedDamageScore: divideOrZero(entry.totalEstimatedDamageScore, entry.battleAppearances),
+    averageEstimatedStrengthScore,
+    averageRealizedDamage: divideOrZero(entry.totalRealizedDamage, entry.battleAppearances),
+    averageAbsorbedDamage: divideOrZero(entry.totalAbsorbedDamage, entry.battleAppearances),
+    averageRemainingHp: divideOrZero(entry.totalRemainingHp, entry.battleAppearances),
+    averageEffectiveStrengthScore,
+    averageStrengthScoreDelta: divideOrZero(entry.totalStrengthScoreDelta, entry.battleAppearances),
+    averageEffectiveToEstimatedRatio,
+    sideBaselineEffectiveToEstimatedRatio,
+    sideAdjustedEffectiveToEstimatedIndex,
+    sideAdjustedStrengthScoreDelta,
+    underperformedBattleRate: divideOrZero(entry.underperformedBattles, entry.battleAppearances),
+    zeroDamageBattleRate: divideOrZero(entry.zeroDamageBattles, entry.battleAppearances),
+    survivedBattleRate: divideOrZero(entry.survivedBattles, entry.battleAppearances),
+    sampleQuality: entry.battleAppearances >= 10 ? "usable" : "low",
+  };
+}
+
+function buildUnitStrengthConversionSideBaselines(
+  entries: UnitStrengthConversionAccumulator[],
+): Map<"boss" | "raid", number | null> {
+  const totals = new Map<"boss" | "raid", { effective: number; estimated: number }>();
+  for (const entry of entries) {
+    const sideTotals = totals.get(entry.side) ?? { effective: 0, estimated: 0 };
+    sideTotals.effective += entry.totalEffectiveStrengthScore;
+    sideTotals.estimated += entry.totalEstimatedStrengthScore;
+    totals.set(entry.side, sideTotals);
+  }
+
+  return new Map(
+    Array.from(totals.entries()).map(([side, sideTotals]) => [
+      side,
+      sideTotals.estimated > 0 ? sideTotals.effective / sideTotals.estimated : null,
+    ]),
+  );
+}
+
+function buildUnitStrengthConversionMetrics(
+  entries: Iterable<UnitStrengthConversionAccumulator>,
+): BotOnlyBaselineUnitStrengthConversionMetric[] {
+  const entryList = Array.from(entries);
+  const sideBaselines = buildUnitStrengthConversionSideBaselines(entryList);
+  return entryList
+    .map((entry) => buildUnitStrengthConversionMetric(
+      entry,
+      sideBaselines.get(entry.side) ?? null,
+    ))
+    .sort((left, right) =>
+      left.side.localeCompare(right.side)
+      || (left.sideAdjustedEffectiveToEstimatedIndex ?? Number.POSITIVE_INFINITY)
+        - (right.sideAdjustedEffectiveToEstimatedIndex ?? Number.POSITIVE_INFINITY)
+      || (left.sideAdjustedStrengthScoreDelta ?? Number.POSITIVE_INFINITY)
+        - (right.sideAdjustedStrengthScoreDelta ?? Number.POSITIVE_INFINITY)
+      || left.unitId.localeCompare(right.unitId));
+}
+
+function buildUnitLevelStrengthConversionMetrics(
+  entries: Iterable<UnitStrengthConversionAccumulator>,
+): BotOnlyBaselineUnitLevelStrengthConversionMetric[] {
+  const metrics = buildUnitStrengthConversionMetrics(entries).map((metric) => ({
+    ...metric,
+    unitLevel: Math.max(1, Math.round(metric.averageUnitLevel)),
+    previousLevelEffectiveStrengthScore: null,
+    effectiveStrengthScoreDeltaFromPreviousLevel: null,
+    effectiveStrengthScoreGrowthRatioFromPreviousLevel: null,
+  } satisfies BotOnlyBaselineUnitLevelStrengthConversionMetric));
+  const byUnit = new Map<string, BotOnlyBaselineUnitLevelStrengthConversionMetric[]>();
+  for (const metric of metrics) {
+    const key = `${metric.side}::${metric.unitId}`;
+    const unitMetrics = byUnit.get(key) ?? [];
+    unitMetrics.push(metric);
+    byUnit.set(key, unitMetrics);
+  }
+
+  for (const unitMetrics of byUnit.values()) {
+    unitMetrics.sort((left, right) => left.unitLevel - right.unitLevel);
+    let previous: BotOnlyBaselineUnitLevelStrengthConversionMetric | null = null;
+    for (const metric of unitMetrics) {
+      if (previous != null) {
+        metric.previousLevelEffectiveStrengthScore = previous.averageEffectiveStrengthScore;
+        metric.effectiveStrengthScoreDeltaFromPreviousLevel =
+          metric.averageEffectiveStrengthScore - previous.averageEffectiveStrengthScore;
+        metric.effectiveStrengthScoreGrowthRatioFromPreviousLevel =
+          previous.averageEffectiveStrengthScore > 0
+            ? metric.averageEffectiveStrengthScore / previous.averageEffectiveStrengthScore
+            : null;
+      }
+      previous = metric;
+    }
+  }
+
+  return metrics.sort((left, right) =>
+    left.side.localeCompare(right.side)
+    || left.unitId.localeCompare(right.unitId)
+    || left.unitLevel - right.unitLevel);
+}
+
+function createFactionEffectValueAccumulator(
+  side: "boss" | "raid",
+  factionId: TouhouFactionId,
+): FactionEffectValueAccumulator {
+  return {
+    side,
+    factionId,
+    battleSamples: 0,
+    totalFactionUnitCount: 0,
+    totalTier: 0,
+    totalBaseEstimatedStrengthScore: 0,
+    totalFactionAdjustedEstimatedStrengthScore: 0,
+    totalEstimatedStrengthLift: 0,
+    totalEstimatedStrengthLiftRate: 0,
+    estimatedStrengthLiftRateSamples: 0,
+    totalTeamEstimatedStrengthLiftShare: 0,
+    teamEstimatedStrengthLiftShareSamples: 0,
+  };
+}
+
+function estimateFactionAdjustedOutcomeStrengthScore(
+  outcome: BotOnlyBaselineBattleUnitOutcome,
+  factionId: TouhouFactionId,
+  tier: 1 | 2 | 3,
+  applyBattleStartTempo: boolean,
+): number {
+  const effect = getTouhouFactionTierEffect(factionId, tier);
+  if (!effect) {
+    return calculateOutcomeEstimatedStrengthScore(outcome);
+  }
+
+  const investmentScore = resolveBattleUnitInvestmentCost(outcome);
+  let durabilityScore = resolveOutcomeEstimatedMaxHp(outcome);
+  let damageScore = estimateOutcomeDamageThreatScore(outcome);
+  const hpMultiplier = effect.statModifiers?.hpMultiplier;
+  if (hpMultiplier !== undefined) {
+    durabilityScore *= hpMultiplier;
+  }
+  if (effect.special?.battleStartShieldMaxHpRatio !== undefined) {
+    durabilityScore += durabilityScore * effect.special.battleStartShieldMaxHpRatio;
+  }
+  if (
+    effect.special?.factionDamageTakenMultiplier !== undefined
+    && effect.special.factionDamageTakenMultiplier > 0
+  ) {
+    durabilityScore /= effect.special.factionDamageTakenMultiplier;
+  }
+  if (effect.special?.debuffImmunityCategories !== undefined) {
+    durabilityScore *= 1 + Math.min(0.12, effect.special.debuffImmunityCategories.length * 0.04);
+  }
+
+  if (effect.statModifiers?.attackSpeedMultiplier !== undefined) {
+    damageScore *= effect.statModifiers.attackSpeedMultiplier;
+  }
+  if (effect.statModifiers?.attackPower !== undefined) {
+    const combatProfile = resolveUnitCombatProfile(outcome.unitId, outcome.unitType ?? outcome.unitId);
+    damageScore += effect.statModifiers.attackPower * (combatProfile?.attackSpeed ?? 1);
+  }
+  if (effect.special?.damageDealtMultiplier !== undefined) {
+    damageScore *= effect.special.damageDealtMultiplier;
+  }
+  if (effect.special?.ultimateDamageMultiplier !== undefined) {
+    damageScore *= 1 + (effect.special.ultimateDamageMultiplier - 1) * 0.4;
+  }
+  if (effect.special?.bonusDamageVsDebuffedTarget !== undefined) {
+    damageScore *= 1 + effect.special.bonusDamageVsDebuffedTarget * 0.35;
+  }
+  if (effect.special?.bonusDamageVsLowHpTarget !== undefined) {
+    damageScore *= 1 + effect.special.bonusDamageVsLowHpTarget * 0.25;
+  }
+  if (effect.special?.initialManaBonus !== undefined) {
+    damageScore *= 1 + Math.min(0.18, effect.special.initialManaBonus / 250);
+  }
+  if (effect.special?.manaGainMultiplier !== undefined) {
+    damageScore *= 1 + (effect.special.manaGainMultiplier - 1) * 0.35;
+  }
+  if (
+    applyBattleStartTempo
+    && effect.special?.battleStartAttackSpeedMultiplier !== undefined
+    && effect.special.battleStartAttackSpeedMultiplier > 0
+  ) {
+    const durationShare = Math.min(0.35, (effect.special.battleStartAttackSpeedDurationMs ?? 0) / 24_000);
+    damageScore *= 1 + (effect.special.battleStartAttackSpeedMultiplier - 1) * durationShare;
+  }
+
+  return calculateEstimatedBoardStrengthScore(investmentScore, durabilityScore, damageScore);
+}
+
+function recordFactionEffectValue(
+  side: "boss" | "raid",
+  outcomes: BotOnlyBaselineBattleUnitOutcome[],
+  factionEffectValueByKey: Map<string, FactionEffectValueAccumulator>,
+): void {
+  if (outcomes.length === 0) {
+    return;
+  }
+
+  const outcomesByFaction = new Map<TouhouFactionId, BotOnlyBaselineBattleUnitOutcome[]>();
+  for (const outcome of outcomes) {
+    const factionId = getUnitFactionId(outcome.unitId);
+    if (!factionId) {
+      continue;
+    }
+
+    const factionOutcomes = outcomesByFaction.get(factionId) ?? [];
+    factionOutcomes.push(outcome);
+    outcomesByFaction.set(factionId, factionOutcomes);
+  }
+
+  const teamBaseEstimatedStrengthScore = outcomes.reduce(
+    (total, outcome) => total + calculateOutcomeEstimatedStrengthScore(outcome),
+    0,
+  );
+
+  for (const [factionId, factionOutcomes] of outcomesByFaction) {
+    const tier = getSynergyTier(factionOutcomes.length, TOUHOU_FACTION_THRESHOLDS[factionId]);
+    if (tier <= 0) {
+      continue;
+    }
+
+    const key = `${side}::${factionId}`;
+    const entry = factionEffectValueByKey.get(key)
+      ?? createFactionEffectValueAccumulator(side, factionId);
+    const activeTier = tier as 1 | 2 | 3;
+    const baseEstimatedStrengthScore = factionOutcomes.reduce(
+      (total, outcome) => total + calculateOutcomeEstimatedStrengthScore(outcome),
+      0,
+    );
+    const tempoTarget = factionOutcomes.reduce<BotOnlyBaselineBattleUnitOutcome | null>(
+      (best, outcome) => {
+        if (!best) {
+          return outcome;
+        }
+
+        return estimateOutcomeDamageThreatScore(outcome) > estimateOutcomeDamageThreatScore(best)
+          ? outcome
+          : best;
+      },
+      null,
+    );
+    const adjustedEstimatedStrengthScore = factionOutcomes.reduce(
+      (total, outcome) => total + estimateFactionAdjustedOutcomeStrengthScore(
+        outcome,
+        factionId,
+        activeTier,
+        outcome === tempoTarget,
+      ),
+      0,
+    );
+    const estimatedStrengthLift = adjustedEstimatedStrengthScore - baseEstimatedStrengthScore;
+
+    entry.battleSamples += 1;
+    entry.totalFactionUnitCount += factionOutcomes.length;
+    entry.totalTier += activeTier;
+    entry.totalBaseEstimatedStrengthScore += baseEstimatedStrengthScore;
+    entry.totalFactionAdjustedEstimatedStrengthScore += adjustedEstimatedStrengthScore;
+    entry.totalEstimatedStrengthLift += estimatedStrengthLift;
+    if (baseEstimatedStrengthScore > 0) {
+      entry.totalEstimatedStrengthLiftRate += estimatedStrengthLift / baseEstimatedStrengthScore;
+      entry.estimatedStrengthLiftRateSamples += 1;
+    }
+    if (teamBaseEstimatedStrengthScore > 0) {
+      entry.totalTeamEstimatedStrengthLiftShare += estimatedStrengthLift / teamBaseEstimatedStrengthScore;
+      entry.teamEstimatedStrengthLiftShareSamples += 1;
+    }
+    factionEffectValueByKey.set(key, entry);
+  }
+}
+
+function buildFactionEffectValueMetric(
+  entry: FactionEffectValueAccumulator,
+): BotOnlyBaselineFactionEffectValueMetric {
+  return {
+    side: entry.side,
+    factionId: entry.factionId,
+    battleSamples: entry.battleSamples,
+    averageFactionUnitCount: divideOrZero(entry.totalFactionUnitCount, entry.battleSamples),
+    averageTier: divideOrZero(entry.totalTier, entry.battleSamples),
+    averageBaseEstimatedStrengthScore: divideOrZero(entry.totalBaseEstimatedStrengthScore, entry.battleSamples),
+    averageFactionAdjustedEstimatedStrengthScore: divideOrZero(
+      entry.totalFactionAdjustedEstimatedStrengthScore,
+      entry.battleSamples,
+    ),
+    averageEstimatedStrengthLift: divideOrZero(entry.totalEstimatedStrengthLift, entry.battleSamples),
+    averageEstimatedStrengthLiftRate: entry.estimatedStrengthLiftRateSamples > 0
+      ? entry.totalEstimatedStrengthLiftRate / entry.estimatedStrengthLiftRateSamples
+      : null,
+    averageTeamEstimatedStrengthLiftShare: entry.teamEstimatedStrengthLiftShareSamples > 0
+      ? entry.totalTeamEstimatedStrengthLiftShare / entry.teamEstimatedStrengthLiftShareSamples
+      : null,
+    sampleQuality: entry.battleSamples >= 10 ? "usable" : "low",
+  };
+}
+
+function buildFactionEffectValueMetrics(
+  entries: Iterable<FactionEffectValueAccumulator>,
+): BotOnlyBaselineFactionEffectValueMetric[] {
+  return Array.from(entries)
+    .map((entry) => buildFactionEffectValueMetric(entry))
+    .sort((left, right) =>
+      left.side.localeCompare(right.side)
+      || ((right.averageTeamEstimatedStrengthLiftShare ?? -1) - (left.averageTeamEstimatedStrengthLiftShare ?? -1))
+      || right.averageEstimatedStrengthLift - left.averageEstimatedStrengthLift
+      || left.factionId.localeCompare(right.factionId));
+}
+
+function createUnitArchetypeDependencyAccumulator(
+  side: "boss" | "raid",
+  unitId: string,
+  unitType: string,
+  unitName: string,
+  primaryArchetypeTag: string,
+): UnitArchetypeDependencyAccumulator {
+  return {
+    side,
+    unitId,
+    unitType,
+    unitName,
+    primaryArchetypeTag,
+    battleAppearances: 0,
+    matchesPresent: 0,
+    totalUnitLevel: 0,
+    totalRoundIndex: 0,
+    totalEffectiveStrengthScore: 0,
+    archetypeFitBattleAppearances: 0,
+    totalArchetypeUnitLevel: 0,
+    totalArchetypeRoundIndex: 0,
+    totalArchetypeEffectiveStrengthScore: 0,
+    nonArchetypeBattleAppearances: 0,
+    totalNonArchetypeUnitLevel: 0,
+    totalNonArchetypeRoundIndex: 0,
+    totalNonArchetypeEffectiveStrengthScore: 0,
+    totalUniqueFactionCount: 0,
+    totalSameFactionCount: 0,
+    pairLinkedBattleAppearances: 0,
+    roundLevelBuckets: new Map(),
+  };
+}
+
+function getRoundLevelBucketKey(roundIndex: number, unitLevel: number): string {
+  return `${roundIndex}::${unitLevel}`;
+}
+
+function getOrCreateRoundLevelBucket(
+  entry: UnitArchetypeDependencyAccumulator,
+  roundIndex: number,
+  unitLevel: number,
+): BotOnlyBaselineUnitArchetypeRoundLevelComparisonBucket {
+  const key = getRoundLevelBucketKey(roundIndex, unitLevel);
+  const bucket = entry.roundLevelBuckets.get(key) ?? {
+    roundIndex,
+    unitLevel,
+    archetypeFitBattleAppearances: 0,
+    nonArchetypeBattleAppearances: 0,
+    totalArchetypeEffectiveStrengthScore: 0,
+    totalNonArchetypeEffectiveStrengthScore: 0,
+  };
+  entry.roundLevelBuckets.set(key, bucket);
+  return bucket;
+}
+
+function getUnitFactionId(unitId: string): TouhouFactionId | null {
+  return UNIT_FACTION_BY_ID.get(unitId) ?? null;
+}
+
+function countUniqueUnitsWithFaction(
+  alliedOutcomes: BotOnlyBaselineBattleUnitOutcome[],
+  factionId: string,
+): number {
+  return new Set(
+    alliedOutcomes
+      .filter((outcome) => getUnitFactionId(outcome.unitId) === factionId)
+      .map((outcome) => outcome.unitId),
+  ).size;
+}
+
+function countUniqueFactionIds(alliedOutcomes: BotOnlyBaselineBattleUnitOutcome[]): number {
+  return new Set(
+    alliedOutcomes
+      .map((outcome) => getUnitFactionId(outcome.unitId))
+      .filter((factionId): factionId is TouhouFactionId => factionId !== null),
+  ).size;
+}
+
+function hasPairLinkedSubUnit(outcome: BotOnlyBaselineBattleUnitOutcome): boolean {
+  const subUnitId = outcome.attachedSubUnitId;
+  if (!subUnitId) {
+    return false;
+  }
+
+  return PAIR_SUB_TARGETS_BY_SUB_UNIT_ID.get(subUnitId)?.has(outcome.unitId) ?? false;
+}
+
+function resolveUnitArchetypeContext(
+  outcome: BotOnlyBaselineBattleUnitOutcome,
+  alliedOutcomes: BotOnlyBaselineBattleUnitOutcome[],
+): {
+  primaryArchetypeTag: string;
+  archetypeFit: boolean;
+  uniqueFactionCount: number;
+  sameFactionCount: number;
+  pairLinked: boolean;
+} {
+  const uniqueFactionCount = countUniqueFactionIds(alliedOutcomes);
+  const unitFactionId = getUnitFactionId(outcome.unitId);
+  const sameFactionCount = unitFactionId ? countUniqueUnitsWithFaction(alliedOutcomes, unitFactionId) : 0;
+  const pairLinked = hasPairLinkedSubUnit(outcome);
+
+  if (outcome.unitId === "zanmu") {
+    return {
+      primaryArchetypeTag: "mixed_faction_core",
+      archetypeFit: uniqueFactionCount >= 3,
+      uniqueFactionCount,
+      sameFactionCount,
+      pairLinked,
+    };
+  }
+
+  if (outcome.unitId === "byakuren") {
+    const myourenjiCount = countUniqueUnitsWithFaction(alliedOutcomes, "myourenji");
+    return {
+      primaryArchetypeTag: "myourenji_core",
+      archetypeFit: myourenjiCount >= 3,
+      uniqueFactionCount,
+      sameFactionCount: myourenjiCount,
+      pairLinked,
+    };
+  }
+
+  if (SCARLET_CORE_UNIT_IDS.includes(outcome.unitId as typeof SCARLET_CORE_UNIT_IDS[number])) {
+    const scarletCoreCount = new Set(
+      alliedOutcomes
+        .map((ally) => ally.unitId)
+        .filter((unitId) => SCARLET_CORE_UNIT_IDS.includes(unitId as typeof SCARLET_CORE_UNIT_IDS[number])),
+    ).size;
+    return {
+      primaryArchetypeTag: "scarlet_core",
+      archetypeFit: scarletCoreCount >= 2,
+      uniqueFactionCount,
+      sameFactionCount: scarletCoreCount,
+      pairLinked,
+    };
+  }
+
+  if (unitFactionId) {
+    const threshold = FACTION_ARCHETYPE_THRESHOLD_BY_ID.get(unitFactionId) ?? 2;
+    return {
+      primaryArchetypeTag: `${unitFactionId}_core`,
+      archetypeFit: sameFactionCount >= threshold,
+      uniqueFactionCount,
+      sameFactionCount,
+      pairLinked,
+    };
+  }
+
+  return {
+    primaryArchetypeTag: pairLinked ? "pair_core" : "generic",
+    archetypeFit: pairLinked,
+    uniqueFactionCount,
+    sameFactionCount,
+    pairLinked,
+  };
+}
+
+function recordUnitArchetypeDependency(
+  roundIndex: number,
+  outcome: BotOnlyBaselineBattleUnitOutcome,
+  alliedOutcomes: BotOnlyBaselineBattleUnitOutcome[],
+  unitName: string,
+  unitType: string,
+  matchUnitKey: string,
+  seenUnitArchetypeMatchKeys: Set<string>,
+  unitArchetypeDependencyByKey: Map<string, UnitArchetypeDependencyAccumulator>,
+): void {
+  const context = resolveUnitArchetypeContext(outcome, alliedOutcomes);
+  const key = `${outcome.side}::${outcome.unitId}::${context.primaryArchetypeTag}`;
+  const entry = unitArchetypeDependencyByKey.get(key)
+    ?? createUnitArchetypeDependencyAccumulator(
+      outcome.side,
+      outcome.unitId,
+      unitType,
+      unitName,
+      context.primaryArchetypeTag,
+    );
+  const effectiveStrengthScore = calculateOutcomeEffectiveStrengthScore(outcome);
+
+  entry.battleAppearances += 1;
+  entry.totalUnitLevel += outcome.unitLevel;
+  entry.totalRoundIndex += roundIndex;
+  entry.totalEffectiveStrengthScore += effectiveStrengthScore;
+  entry.totalUniqueFactionCount += context.uniqueFactionCount;
+  entry.totalSameFactionCount += context.sameFactionCount;
+  entry.pairLinkedBattleAppearances += context.pairLinked ? 1 : 0;
+  const normalizedUnitLevel = Math.max(1, Math.floor(outcome.unitLevel));
+  const roundLevelBucket = getOrCreateRoundLevelBucket(entry, roundIndex, normalizedUnitLevel);
+  if (context.archetypeFit) {
+    entry.archetypeFitBattleAppearances += 1;
+    entry.totalArchetypeUnitLevel += outcome.unitLevel;
+    entry.totalArchetypeRoundIndex += roundIndex;
+    entry.totalArchetypeEffectiveStrengthScore += effectiveStrengthScore;
+    roundLevelBucket.archetypeFitBattleAppearances += 1;
+    roundLevelBucket.totalArchetypeEffectiveStrengthScore += effectiveStrengthScore;
+  } else {
+    entry.nonArchetypeBattleAppearances += 1;
+    entry.totalNonArchetypeUnitLevel += outcome.unitLevel;
+    entry.totalNonArchetypeRoundIndex += roundIndex;
+    entry.totalNonArchetypeEffectiveStrengthScore += effectiveStrengthScore;
+    roundLevelBucket.nonArchetypeBattleAppearances += 1;
+    roundLevelBucket.totalNonArchetypeEffectiveStrengthScore += effectiveStrengthScore;
+  }
+
+  if (!seenUnitArchetypeMatchKeys.has(matchUnitKey)) {
+    entry.matchesPresent += 1;
+    seenUnitArchetypeMatchKeys.add(matchUnitKey);
+  }
+  unitArchetypeDependencyByKey.set(key, entry);
+}
+
+function buildRoundLevelAdjustedArchetypeComparison(
+  buckets: Iterable<BotOnlyBaselineUnitArchetypeRoundLevelComparisonBucket>,
+): Pick<
+  BotOnlyBaselineUnitArchetypeDependencyMetric,
+  | "roundLevelComparisonBattleAppearances"
+  | "roundLevelAdjustedArchetypeEffectiveStrengthScore"
+  | "roundLevelAdjustedNonArchetypeEffectiveStrengthScore"
+  | "roundLevelAdjustedArchetypeEffectiveStrengthLift"
+  | "roundLevelAdjustedArchetypeDependencyIndex"
+  | "roundLevelFitComparisonBuckets"
+> {
+  let comparablePairSamples = 0;
+  let totalAdjustedArchetypeEffectiveStrengthScore = 0;
+  let totalAdjustedNonArchetypeEffectiveStrengthScore = 0;
+  const roundLevelFitComparisonBuckets: BotOnlyBaselineUnitArchetypeRoundLevelComparisonBucket[] = [];
+
+  for (const bucket of buckets) {
+    roundLevelFitComparisonBuckets.push({ ...bucket });
+    if (bucket.archetypeFitBattleAppearances <= 0 || bucket.nonArchetypeBattleAppearances <= 0) {
+      continue;
+    }
+
+    const comparableSamples = Math.min(bucket.archetypeFitBattleAppearances, bucket.nonArchetypeBattleAppearances);
+    comparablePairSamples += comparableSamples;
+    totalAdjustedArchetypeEffectiveStrengthScore +=
+      (bucket.totalArchetypeEffectiveStrengthScore / bucket.archetypeFitBattleAppearances) * comparableSamples;
+    totalAdjustedNonArchetypeEffectiveStrengthScore +=
+      (bucket.totalNonArchetypeEffectiveStrengthScore / bucket.nonArchetypeBattleAppearances) * comparableSamples;
+  }
+
+  roundLevelFitComparisonBuckets.sort((left, right) =>
+    left.roundIndex - right.roundIndex
+    || left.unitLevel - right.unitLevel);
+
+  const roundLevelAdjustedArchetypeEffectiveStrengthScore = comparablePairSamples > 0
+    ? totalAdjustedArchetypeEffectiveStrengthScore / comparablePairSamples
+    : null;
+  const roundLevelAdjustedNonArchetypeEffectiveStrengthScore = comparablePairSamples > 0
+    ? totalAdjustedNonArchetypeEffectiveStrengthScore / comparablePairSamples
+    : null;
+  const roundLevelAdjustedArchetypeEffectiveStrengthLift =
+    roundLevelAdjustedArchetypeEffectiveStrengthScore !== null
+    && roundLevelAdjustedNonArchetypeEffectiveStrengthScore !== null
+      ? roundLevelAdjustedArchetypeEffectiveStrengthScore - roundLevelAdjustedNonArchetypeEffectiveStrengthScore
+      : null;
+  const roundLevelAdjustedArchetypeDependencyIndex =
+    roundLevelAdjustedArchetypeEffectiveStrengthScore !== null
+    && roundLevelAdjustedNonArchetypeEffectiveStrengthScore !== null
+    && roundLevelAdjustedNonArchetypeEffectiveStrengthScore > 0
+      ? roundLevelAdjustedArchetypeEffectiveStrengthScore / roundLevelAdjustedNonArchetypeEffectiveStrengthScore
+      : null;
+
+  return {
+    roundLevelComparisonBattleAppearances: comparablePairSamples * 2,
+    roundLevelAdjustedArchetypeEffectiveStrengthScore,
+    roundLevelAdjustedNonArchetypeEffectiveStrengthScore,
+    roundLevelAdjustedArchetypeEffectiveStrengthLift,
+    roundLevelAdjustedArchetypeDependencyIndex,
+    roundLevelFitComparisonBuckets,
+  };
+}
+
+function buildUnitArchetypeDependencyMetric(
+  entry: UnitArchetypeDependencyAccumulator,
+): BotOnlyBaselineUnitArchetypeDependencyMetric {
+  const averageArchetypeEffectiveStrengthScore = entry.archetypeFitBattleAppearances > 0
+    ? entry.totalArchetypeEffectiveStrengthScore / entry.archetypeFitBattleAppearances
+    : null;
+  const averageNonArchetypeEffectiveStrengthScore = entry.nonArchetypeBattleAppearances > 0
+    ? entry.totalNonArchetypeEffectiveStrengthScore / entry.nonArchetypeBattleAppearances
+    : null;
+  const averageArchetypeUnitLevel = entry.archetypeFitBattleAppearances > 0
+    ? entry.totalArchetypeUnitLevel / entry.archetypeFitBattleAppearances
+    : null;
+  const averageNonArchetypeUnitLevel = entry.nonArchetypeBattleAppearances > 0
+    ? entry.totalNonArchetypeUnitLevel / entry.nonArchetypeBattleAppearances
+    : null;
+  const averageArchetypeRoundIndex = entry.archetypeFitBattleAppearances > 0
+    ? entry.totalArchetypeRoundIndex / entry.archetypeFitBattleAppearances
+    : null;
+  const averageNonArchetypeRoundIndex = entry.nonArchetypeBattleAppearances > 0
+    ? entry.totalNonArchetypeRoundIndex / entry.nonArchetypeBattleAppearances
+    : null;
+  const archetypeEffectiveStrengthLift = averageArchetypeEffectiveStrengthScore !== null
+    && averageNonArchetypeEffectiveStrengthScore !== null
+      ? averageArchetypeEffectiveStrengthScore - averageNonArchetypeEffectiveStrengthScore
+      : null;
+  const archetypeDependencyIndex = averageArchetypeEffectiveStrengthScore !== null
+    && averageNonArchetypeEffectiveStrengthScore !== null
+    && averageNonArchetypeEffectiveStrengthScore > 0
+      ? averageArchetypeEffectiveStrengthScore / averageNonArchetypeEffectiveStrengthScore
+      : null;
+  const roundLevelAdjustedComparison = buildRoundLevelAdjustedArchetypeComparison(
+    entry.roundLevelBuckets.values(),
+  );
+
+  return {
+    side: entry.side,
+    unitId: entry.unitId,
+    unitType: entry.unitType,
+    unitName: entry.unitName,
+    primaryArchetypeTag: entry.primaryArchetypeTag,
+    battleAppearances: entry.battleAppearances,
+    matchesPresent: entry.matchesPresent,
+    archetypeFitBattleAppearances: entry.archetypeFitBattleAppearances,
+    nonArchetypeBattleAppearances: entry.nonArchetypeBattleAppearances,
+    archetypeFitRate: divideOrZero(entry.archetypeFitBattleAppearances, entry.battleAppearances),
+    averageUnitLevel: divideOrZero(entry.totalUnitLevel, entry.battleAppearances),
+    averageArchetypeUnitLevel,
+    averageNonArchetypeUnitLevel,
+    averageRoundIndex: divideOrZero(entry.totalRoundIndex, entry.battleAppearances),
+    averageArchetypeRoundIndex,
+    averageNonArchetypeRoundIndex,
+    averageEffectiveStrengthScore: divideOrZero(entry.totalEffectiveStrengthScore, entry.battleAppearances),
+    averageArchetypeEffectiveStrengthScore,
+    averageNonArchetypeEffectiveStrengthScore,
+    archetypeEffectiveStrengthLift,
+    archetypeDependencyIndex,
+    ...roundLevelAdjustedComparison,
+    averageUniqueFactionCount: divideOrZero(entry.totalUniqueFactionCount, entry.battleAppearances),
+    averageSameFactionCount: divideOrZero(entry.totalSameFactionCount, entry.battleAppearances),
+    pairLinkedBattleRate: divideOrZero(entry.pairLinkedBattleAppearances, entry.battleAppearances),
+    sampleQuality: entry.battleAppearances >= 10 ? "usable" : "low",
+  };
+}
+
+function buildUnitArchetypeDependencyMetrics(
+  entries: Iterable<UnitArchetypeDependencyAccumulator>,
+): BotOnlyBaselineUnitArchetypeDependencyMetric[] {
+  return Array.from(entries)
+    .map((entry) => buildUnitArchetypeDependencyMetric(entry))
+    .sort((left, right) =>
+      left.side.localeCompare(right.side)
+      || ((right.archetypeDependencyIndex ?? -1) - (left.archetypeDependencyIndex ?? -1))
+      || ((right.archetypeEffectiveStrengthLift ?? Number.NEGATIVE_INFINITY)
+        - (left.archetypeEffectiveStrengthLift ?? Number.NEGATIVE_INFINITY))
+      || left.unitId.localeCompare(right.unitId)
+      || left.primaryArchetypeTag.localeCompare(right.primaryArchetypeTag));
 }
 
 function buildRangeDamageEfficiencyMetric(
@@ -3287,6 +5590,108 @@ function buildBoardRefitDecisionRoleRoundMetric(
   };
 }
 
+function buildBossBodyGuardDecisionRoundMetric(
+  entry: BossBodyGuardDecisionRoundAccumulator,
+): BotOnlyBaselineBossBodyGuardDecisionRoundMetric {
+  const mostFrequentDirectGuard = Array.from(entry.directGuardSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+  const mostFrequentStrongestGuard = Array.from(entry.strongestGuardSamplesById.values())
+    .sort((left, right) => right.samples - left.samples || left.unitId.localeCompare(right.unitId))[0] ?? null;
+  const mostFrequentReason = getMostFrequentReasonSample(entry.reasonSamplesByReason);
+
+  return {
+    roundIndex: entry.roundIndex,
+    samples: entry.samples,
+    directFillSamples: entry.directFillSamples,
+    directSwapSamples: entry.directSwapSamples,
+    sideFlankMoveSamples: entry.sideFlankMoveSamples,
+    boardMovementActionSamples: entry.boardMovementActionSamples,
+    acceptedBoardMovementActionSamples: entry.acceptedBoardMovementActionSamples,
+    acceptedBoardMovementActionRate: entry.boardMovementActionSamples > 0
+      ? entry.acceptedBoardMovementActionSamples / entry.boardMovementActionSamples
+      : null,
+    noActionSamples: entry.noActionSamples,
+    directEmptySamples: entry.directEmptySamples,
+    benchFrontlineBlockedSamples: entry.benchFrontlineBlockedSamples,
+    strongerOffDirectSamples: entry.strongerOffDirectSamples,
+    averageDirectGuardLevel: entry.directGuardLevelSamples > 0
+      ? entry.totalDirectGuardLevel / entry.directGuardLevelSamples
+      : null,
+    directGuardLevelSamples: entry.directGuardLevelSamples,
+    averageStrongestGuardLevel: entry.strongestGuardLevelSamples > 0
+      ? entry.totalStrongestGuardLevel / entry.strongestGuardLevelSamples
+      : null,
+    strongestGuardLevelSamples: entry.strongestGuardLevelSamples,
+    mostFrequentDirectGuardUnitId: mostFrequentDirectGuard?.unitId ?? null,
+    mostFrequentDirectGuardUnitName: mostFrequentDirectGuard?.unitName ?? null,
+    mostFrequentDirectGuardSamples: mostFrequentDirectGuard?.samples ?? 0,
+    mostFrequentStrongestGuardUnitId: mostFrequentStrongestGuard?.unitId ?? null,
+    mostFrequentStrongestGuardUnitName: mostFrequentStrongestGuard?.unitName ?? null,
+    mostFrequentStrongestGuardSamples: mostFrequentStrongestGuard?.samples ?? 0,
+    mostFrequentReason: mostFrequentReason?.reason ?? null,
+    mostFrequentReasonSamples: mostFrequentReason?.samples ?? 0,
+  };
+}
+
+function buildBoardMovementRoundMetric(
+  entry: BoardMovementRoundAccumulator,
+): BotOnlyBaselineBoardMovementRoundMetric {
+  return {
+    roundIndex: entry.roundIndex,
+    role: entry.role,
+    samples: entry.samples,
+    moveSamples: entry.moveSamples,
+    swapSamples: entry.swapSamples,
+  };
+}
+
+function buildBoardMovementRouteMetrics(
+  entries: BoardMovementRouteAccumulator[],
+): BotOnlyBaselineBoardMovementRouteMetric[] {
+  const samplesByKey = new Map(
+    entries.map((entry) => [
+      buildBoardMovementRouteKey(
+        entry.role,
+        entry.roundIndex,
+        entry.actionType,
+        entry.fromCell,
+        entry.toCell,
+      ),
+      entry.samples,
+    ] as const),
+  );
+
+  return entries
+    .map((entry) => {
+      const reverseSamples = samplesByKey.get(
+        buildBoardMovementRouteKey(
+          entry.role,
+          entry.roundIndex,
+          entry.actionType,
+          entry.toCell,
+          entry.fromCell,
+        ),
+      ) ?? 0;
+      return {
+        roundIndex: entry.roundIndex,
+        role: entry.role,
+        actionType: entry.actionType,
+        fromCell: entry.fromCell,
+        toCell: entry.toCell,
+        samples: entry.samples,
+        reverseSamples,
+        netSamples: entry.samples - reverseSamples,
+      };
+    })
+    .sort((left, right) =>
+      left.role.localeCompare(right.role)
+      || left.roundIndex - right.roundIndex
+      || right.samples - left.samples
+      || left.actionType.localeCompare(right.actionType)
+      || left.fromCell - right.fromCell
+      || left.toCell - right.toCell);
+}
+
 function buildFinalPlayerBoardMetric(
   entry: FinalPlayerBoardAccumulator,
 ): BotOnlyBaselineFinalPlayerBoardMetric {
@@ -3436,6 +5841,101 @@ function mergeBoardRefitDecisionMetricIntoAccumulator(
   }
 }
 
+function recordBossBodyGuardDecisionSnapshot(
+  snapshot: BotOnlyBaselineBossBodyGuardDecisionSnapshot,
+  decisionsByRound: Map<number, BossBodyGuardDecisionRoundAccumulator>,
+  acceptedBoardMovementKeys?: Set<string>,
+): void {
+  const entry = decisionsByRound.get(snapshot.roundIndex)
+    ?? createBossBodyGuardDecisionRoundAccumulator(snapshot.roundIndex);
+  entry.samples += 1;
+  entry.directFillSamples += snapshot.decision === "direct_fill" || snapshot.decision === "direct_lane_fill" ? 1 : 0;
+  entry.directSwapSamples += snapshot.decision === "direct_swap" ? 1 : 0;
+  entry.sideFlankMoveSamples += snapshot.decision === "side_flank_move" ? 1 : 0;
+  if (snapshot.actionFromCell !== null && snapshot.actionToCell !== null) {
+    entry.boardMovementActionSamples += 1;
+    const movementKey = buildAcceptedBoardMovementKey(
+      snapshot.roundIndex,
+      snapshot.playerId,
+      snapshot.actionFromCell,
+      snapshot.actionToCell,
+    );
+    entry.acceptedBoardMovementActionSamples += acceptedBoardMovementKeys?.has(movementKey) ? 1 : 0;
+  }
+  entry.noActionSamples += snapshot.decision === "none" ? 1 : 0;
+  entry.directEmptySamples += snapshot.directEmpty ? 1 : 0;
+  entry.benchFrontlineBlockedSamples += snapshot.reason === "bench_frontline_pending" ? 1 : 0;
+  entry.strongerOffDirectSamples += snapshot.strongerOffDirect ? 1 : 0;
+  if (snapshot.directGuardLevel !== null) {
+    entry.totalDirectGuardLevel += snapshot.directGuardLevel;
+    entry.directGuardLevelSamples += 1;
+  }
+  if (snapshot.strongestGuardLevel !== null) {
+    entry.totalStrongestGuardLevel += snapshot.strongestGuardLevel;
+    entry.strongestGuardLevelSamples += 1;
+  }
+  recordUnitSample(
+    entry.directGuardSamplesById,
+    snapshot.directGuardUnitId,
+    snapshot.directGuardUnitName,
+  );
+  recordUnitSample(
+    entry.strongestGuardSamplesById,
+    snapshot.strongestGuardUnitId,
+    snapshot.strongestGuardUnitName,
+  );
+  recordReasonSample(entry.reasonSamplesByReason, snapshot.reason);
+  decisionsByRound.set(snapshot.roundIndex, entry);
+}
+
+function mergeBossBodyGuardDecisionMetricIntoAccumulator(
+  entry: BotOnlyBaselineBossBodyGuardDecisionRoundMetric,
+  existing: BossBodyGuardDecisionRoundAccumulator,
+): void {
+  existing.samples += entry.samples;
+  existing.directFillSamples += entry.directFillSamples;
+  existing.directSwapSamples += entry.directSwapSamples;
+  existing.sideFlankMoveSamples += entry.sideFlankMoveSamples;
+  existing.boardMovementActionSamples += entry.boardMovementActionSamples;
+  existing.acceptedBoardMovementActionSamples += entry.acceptedBoardMovementActionSamples;
+  existing.noActionSamples += entry.noActionSamples;
+  existing.directEmptySamples += entry.directEmptySamples;
+  existing.benchFrontlineBlockedSamples += entry.benchFrontlineBlockedSamples;
+  existing.strongerOffDirectSamples += entry.strongerOffDirectSamples;
+  if (entry.averageDirectGuardLevel !== null) {
+    existing.totalDirectGuardLevel += entry.averageDirectGuardLevel * entry.directGuardLevelSamples;
+    existing.directGuardLevelSamples += entry.directGuardLevelSamples;
+  }
+  if (entry.averageStrongestGuardLevel !== null) {
+    existing.totalStrongestGuardLevel += entry.averageStrongestGuardLevel * entry.strongestGuardLevelSamples;
+    existing.strongestGuardLevelSamples += entry.strongestGuardLevelSamples;
+  }
+  if (entry.mostFrequentDirectGuardUnitId !== null && entry.mostFrequentDirectGuardSamples > 0) {
+    const directGuard = existing.directGuardSamplesById.get(entry.mostFrequentDirectGuardUnitId) ?? {
+      unitId: entry.mostFrequentDirectGuardUnitId,
+      unitName: entry.mostFrequentDirectGuardUnitName ?? entry.mostFrequentDirectGuardUnitId,
+      samples: 0,
+    };
+    directGuard.samples += entry.mostFrequentDirectGuardSamples;
+    existing.directGuardSamplesById.set(entry.mostFrequentDirectGuardUnitId, directGuard);
+  }
+  if (entry.mostFrequentStrongestGuardUnitId !== null && entry.mostFrequentStrongestGuardSamples > 0) {
+    const strongestGuard = existing.strongestGuardSamplesById.get(entry.mostFrequentStrongestGuardUnitId) ?? {
+      unitId: entry.mostFrequentStrongestGuardUnitId,
+      unitName: entry.mostFrequentStrongestGuardUnitName ?? entry.mostFrequentStrongestGuardUnitId,
+      samples: 0,
+    };
+    strongestGuard.samples += entry.mostFrequentStrongestGuardSamples;
+    existing.strongestGuardSamplesById.set(entry.mostFrequentStrongestGuardUnitId, strongestGuard);
+  }
+  if (entry.mostFrequentReason !== null && entry.mostFrequentReasonSamples > 0) {
+    existing.reasonSamplesByReason.set(
+      entry.mostFrequentReason,
+      (existing.reasonSamplesByReason.get(entry.mostFrequentReason) ?? 0) + entry.mostFrequentReasonSamples,
+    );
+  }
+}
+
 function recordOkinaHeroSubDecisionSnapshot(
   snapshot: BotOnlyBaselineOkinaHeroSubDecisionSnapshot,
   decisionsByRound: Map<number, OkinaHeroSubDecisionRoundAccumulator>,
@@ -3494,6 +5994,376 @@ function recordOkinaHeroSubDecisionSnapshot(
   decisionsByRound.set(snapshot.roundIndex, entry);
 }
 
+function isBossLateCarryUnit(unitId: string): boolean {
+  const cost = resolveBoardUnitCost(unitId);
+  return cost !== null
+    && cost >= HIGH_COST_THRESHOLD
+    && !BOSS_EXCLUSIVE_UNIT_IDS.has(unitId)
+    && !SPECIAL_BATTLE_UNIT_IDS.has(unitId)
+    && !CHARACTER_BODY_UNIT_IDS.has(unitId);
+}
+
+function calculateRemiliaMissingUpgradeCost(remiliaLevel: number): number {
+  const currentLevel = Math.max(1, Math.min(7, Math.trunc(remiliaLevel || 1)));
+  if (currentLevel >= 7) {
+    return 0;
+  }
+
+  return calculateSpecialUnitUpgradeCost(currentLevel, 7 - currentLevel, "remilia") ?? 0;
+}
+
+function calculateNormalUnitMissingCopyCost(
+  unitId: string,
+  currentLevel: number,
+  targetLevel: number,
+): number {
+  const unitCost = resolveBoardUnitCost(unitId);
+  if (unitCost === null) {
+    return 0;
+  }
+
+  return Math.max(0, targetLevel - Math.max(0, Math.trunc(currentLevel))) * unitCost;
+}
+
+function calculateScarletCoreMissingCopyCost(maxLevelById: Map<string, number>): number {
+  return SCARLET_CORE_UNIT_IDS.reduce(
+    (total, unitId) =>
+      total
+      + calculateNormalUnitMissingCopyCost(
+        unitId,
+        maxLevelById.get(unitId) ?? 0,
+        SCARLET_CORE_TARGET_LEVEL_BY_ID[unitId],
+      ),
+    0,
+  );
+}
+
+function calculateLateCarryMissingCopyCost(bossUnits: BotOnlyBaselineBattleUnitOutcome[]): number {
+  const existingCandidateMissingCosts = bossUnits
+    .filter((unit) => isBossLateCarryUnit(unit.unitId))
+    .map((unit) => {
+      const cost = resolveBoardUnitCost(unit.unitId) ?? HIGH_COST_THRESHOLD;
+      const level = Number.isFinite(unit.unitLevel) ? Math.max(1, Math.trunc(unit.unitLevel)) : 1;
+      return Math.max(0, 4 - level) * cost;
+    });
+  const newMinimumLateCarryCost = HIGH_COST_THRESHOLD * 4;
+  const candidates = [
+    ...existingCandidateMissingCosts,
+    newMinimumLateCarryCost,
+    newMinimumLateCarryCost,
+  ].sort((left, right) => left - right);
+
+  return (candidates[0] ?? 0) + (candidates[1] ?? 0);
+}
+
+function calculateBossR12NetEstimatedMissingGold(sample: BotOnlyBaselineBossR12CeilingSample): number {
+  return Math.max(0, sample.targetEstimatedMissingGold - sample.bossFinalGold);
+}
+
+function buildBossR12VirtualIncomeBreakpoints(
+  samples: BotOnlyBaselineBossR12CeilingSample[],
+): BotOnlyBaselineBossR12VirtualIncomeBreakpoint[] {
+  const netGaps = samples.map(calculateBossR12NetEstimatedMissingGold);
+  return [10, 20, 30, 40, 50].map((extraGold) => ({
+    extraGold,
+    targetReachableRate: divideOrZero(netGaps.filter((gap) => gap <= extraGold).length, samples.length),
+    averageRemainingNetGap: divideOrZero(
+      netGaps.reduce((total, gap) => total + Math.max(0, gap - extraGold), 0),
+      samples.length,
+    ),
+  }));
+}
+
+function buildBossR12CeilingSamplesForMatch(
+  report: BotOnlyBaselineMatchSummary,
+  matchIndex: number,
+): BotOnlyBaselineBossR12CeilingSample[] {
+  const finalRound = report.rounds?.find((round) => round.roundIndex === 12);
+  if (!finalRound) {
+    return [];
+  }
+
+  const matchWinnerRole = report.ranking[0] === report.bossPlayerId ? "boss" : "raid";
+  const finalBattleWinner = finalRound.phaseResult === "success" ? "raid" : "boss";
+  const bossPlayer = report.finalPlayers.find((player) => player.playerId === report.bossPlayerId)
+    ?? report.finalPlayers.find((player) => player.role === "boss")
+    ?? null;
+  const bossEconomy = bossPlayer
+    ? buildPlayerEconomyBreakdownForMatch(report, bossPlayer)
+    : createEmptyPlayerEconomyBreakdown();
+
+  return finalRound.battles
+    .map((battle): BotOnlyBaselineBossR12CeilingSample | null => {
+      const bossUnits = battle.unitOutcomes.filter((outcome) => outcome.side === "boss");
+      if (bossUnits.length === 0) {
+        return null;
+      }
+
+      const maxLevelById = new Map<string, number>();
+      for (const unit of bossUnits) {
+        const level = Number.isFinite(unit.unitLevel) ? Math.max(1, Math.trunc(unit.unitLevel)) : 1;
+        maxLevelById.set(unit.unitId, Math.max(maxLevelById.get(unit.unitId) ?? 0, level));
+      }
+
+      const remiliaLevel = maxLevelById.get("remilia") ?? 0;
+      const meilingLevel = maxLevelById.get("meiling") ?? 0;
+      const sakuyaLevel = maxLevelById.get("sakuya") ?? 0;
+      const patchouliLevel = maxLevelById.get("patchouli") ?? 0;
+      const scarletCorePresentCount = SCARLET_CORE_UNIT_IDS.filter(
+        (unitId) => (maxLevelById.get(unitId) ?? 0) > 0,
+      ).length;
+      const scarletCoreLevelSum = SCARLET_CORE_UNIT_IDS.reduce(
+        (total, unitId) => total + (maxLevelById.get(unitId) ?? 0),
+        0,
+      );
+      const scarletCoreTargetReached = SCARLET_CORE_UNIT_IDS.every(
+        (unitId) => (maxLevelById.get(unitId) ?? 0) >= SCARLET_CORE_TARGET_LEVEL_BY_ID[unitId],
+      );
+
+      const lateCarryLevels = bossUnits
+        .filter((unit) => isBossLateCarryUnit(unit.unitId))
+        .map((unit) => Number.isFinite(unit.unitLevel) ? Math.max(1, Math.trunc(unit.unitLevel)) : 1);
+      const lateCarryLevel4PlusCount = lateCarryLevels.filter((level) => level >= 4).length;
+      const lateCarryLevel6PlusCount = lateCarryLevels.filter((level) => level >= 6).length;
+      const maxLateCarryLevel = Math.max(0, ...lateCarryLevels);
+      const targetComponentsMet = [
+        remiliaLevel >= 7,
+        meilingLevel >= 7,
+        sakuyaLevel >= 7,
+        patchouliLevel >= 4,
+        lateCarryLevel4PlusCount >= 1,
+        lateCarryLevel4PlusCount >= 2,
+      ].filter(Boolean).length;
+      const targetBoardReached =
+        remiliaLevel >= 7
+        && scarletCoreTargetReached
+        && lateCarryLevel4PlusCount >= 2;
+      const remiliaMissingUpgradeCost = calculateRemiliaMissingUpgradeCost(remiliaLevel);
+      const scarletCoreMissingCopyCost = calculateScarletCoreMissingCopyCost(maxLevelById);
+      const lateCarryMissingCopyCost = calculateLateCarryMissingCopyCost(bossUnits);
+      const targetEstimatedMissingGold =
+        remiliaMissingUpgradeCost + scarletCoreMissingCopyCost + lateCarryMissingCopyCost;
+      const bossFinalGold = bossPlayer?.gold ?? 0;
+
+      const boardSignature = bossUnits
+        .map((unit) => ({
+          unitName: resolveBaselineUnitName(unit.unitId, unit.unitName),
+          level: Number.isFinite(unit.unitLevel) ? Math.max(1, Math.trunc(unit.unitLevel)) : 1,
+        }))
+        .sort((left, right) => right.level - left.level || left.unitName.localeCompare(right.unitName))
+        .map((unit) => `${unit.unitName} Lv${unit.level}`)
+        .join(", ");
+
+      return {
+        matchIndex,
+        battleIndex: battle.battleIndex,
+        finalBattleWinner,
+        matchWinnerRole,
+        bossUnitCount: bossUnits.length,
+        assetValue: bossUnits.reduce((total, unit) => total + resolveBattleUnitInvestmentCost(unit), 0),
+        remiliaLevel,
+        meilingLevel,
+        sakuyaLevel,
+        patchouliLevel,
+        scarletCorePresentCount,
+        scarletCoreLevelSum,
+        scarletCoreTargetReached,
+        lateCarryCount: lateCarryLevels.length,
+        lateCarryLevel4PlusCount,
+        lateCarryLevel6PlusCount,
+        maxLateCarryLevel,
+        targetComponentsMet,
+        targetBoardReached,
+        remiliaMissingUpgradeCost,
+        scarletCoreMissingCopyCost,
+        lateCarryMissingCopyCost,
+        targetEstimatedMissingGold,
+        finalGoldCoversEstimatedGap: bossFinalGold >= targetEstimatedMissingGold,
+        bossGoldEarned: bossPlayer?.totalGoldEarned ?? 0,
+        bossGoldSpent: bossPlayer?.totalGoldSpent ?? 0,
+        bossFinalGold,
+        bossNormalShopSpend: bossEconomy.normalShopSpend,
+        bossShopSpend: bossEconomy.bossShopSpend,
+        bossRefreshSpend: bossEconomy.refreshSpend,
+        bossSpecialUnitUpgradeSpend: bossEconomy.specialUnitUpgradeSpend,
+        boardSignature,
+      };
+    })
+    .filter((sample): sample is BotOnlyBaselineBossR12CeilingSample => sample !== null);
+}
+
+function buildBossR12CeilingDiagnostics(
+  samples: BotOnlyBaselineBossR12CeilingSample[],
+): BotOnlyBaselineBossR12CeilingDiagnostics {
+  const sampleCount = samples.length;
+  const assetValues = samples.map((sample) => sample.assetValue);
+  const estimatedMissingGoldValues = samples.map((sample) => sample.targetEstimatedMissingGold);
+  const netEstimatedMissingGoldValues = samples.map(calculateBossR12NetEstimatedMissingGold);
+  const topAssetValueSamples = [...samples]
+    .sort((left, right) =>
+      right.assetValue - left.assetValue
+      || right.targetComponentsMet - left.targetComponentsMet
+      || left.matchIndex - right.matchIndex)
+    .slice(0, 5);
+  const nearestTargetSamples = [...samples]
+    .sort((left, right) =>
+      left.targetEstimatedMissingGold - right.targetEstimatedMissingGold
+      || right.targetComponentsMet - left.targetComponentsMet
+      || right.assetValue - left.assetValue
+      || left.matchIndex - right.matchIndex)
+    .slice(0, 5);
+
+  return {
+    sampleCount,
+    averageBossUnitCount: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossUnitCount, 0),
+      sampleCount,
+    ),
+    averageAssetValue: divideOrZero(
+      samples.reduce((total, sample) => total + sample.assetValue, 0),
+      sampleCount,
+    ),
+    p50AssetValue: percentile(assetValues, 0.5),
+    p75AssetValue: percentile(assetValues, 0.75),
+    p90AssetValue: percentile(assetValues, 0.9),
+    maxAssetValue: Math.max(0, ...assetValues),
+    averageRemiliaLevel: divideOrZero(
+      samples.reduce((total, sample) => total + sample.remiliaLevel, 0),
+      sampleCount,
+    ),
+    remiliaLevel7Rate: divideOrZero(samples.filter((sample) => sample.remiliaLevel >= 7).length, sampleCount),
+    averageScarletCorePresentCount: divideOrZero(
+      samples.reduce((total, sample) => total + sample.scarletCorePresentCount, 0),
+      sampleCount,
+    ),
+    averageScarletCoreLevelSum: divideOrZero(
+      samples.reduce((total, sample) => total + sample.scarletCoreLevelSum, 0),
+      sampleCount,
+    ),
+    scarletCoreTargetReachedRate: divideOrZero(
+      samples.filter((sample) => sample.scarletCoreTargetReached).length,
+      sampleCount,
+    ),
+    averageLateCarryCount: divideOrZero(
+      samples.reduce((total, sample) => total + sample.lateCarryCount, 0),
+      sampleCount,
+    ),
+    averageLateCarryLevel4PlusCount: divideOrZero(
+      samples.reduce((total, sample) => total + sample.lateCarryLevel4PlusCount, 0),
+      sampleCount,
+    ),
+    maxLateCarryLevel4PlusCount: Math.max(0, ...samples.map((sample) => sample.lateCarryLevel4PlusCount)),
+    twoLateCarryLevel4PlusRate: divideOrZero(
+      samples.filter((sample) => sample.lateCarryLevel4PlusCount >= 2).length,
+      sampleCount,
+    ),
+    oneLateCarryLevel6PlusRate: divideOrZero(
+      samples.filter((sample) => sample.lateCarryLevel6PlusCount >= 1).length,
+      sampleCount,
+    ),
+    maxLateCarryLevel: Math.max(0, ...samples.map((sample) => sample.maxLateCarryLevel)),
+    averageTargetComponentsMet: divideOrZero(
+      samples.reduce((total, sample) => total + sample.targetComponentsMet, 0),
+      sampleCount,
+    ),
+    maxTargetComponentsMet: Math.max(0, ...samples.map((sample) => sample.targetComponentsMet)),
+    targetBoardReachedRate: divideOrZero(samples.filter((sample) => sample.targetBoardReached).length, sampleCount),
+    averageEstimatedMissingGold: divideOrZero(
+      samples.reduce((total, sample) => total + sample.targetEstimatedMissingGold, 0),
+      sampleCount,
+    ),
+    p50EstimatedMissingGold: percentile(estimatedMissingGoldValues, 0.5),
+    p75EstimatedMissingGold: percentile(estimatedMissingGoldValues, 0.75),
+    p90EstimatedMissingGold: percentile(estimatedMissingGoldValues, 0.9),
+    minEstimatedMissingGold: estimatedMissingGoldValues.length > 0
+      ? Math.min(...estimatedMissingGoldValues)
+      : 0,
+    averageNetEstimatedMissingGold: divideOrZero(
+      netEstimatedMissingGoldValues.reduce((total, gap) => total + gap, 0),
+      sampleCount,
+    ),
+    p50NetEstimatedMissingGold: percentile(netEstimatedMissingGoldValues, 0.5),
+    p75NetEstimatedMissingGold: percentile(netEstimatedMissingGoldValues, 0.75),
+    p90NetEstimatedMissingGold: percentile(netEstimatedMissingGoldValues, 0.9),
+    minNetEstimatedMissingGold: netEstimatedMissingGoldValues.length > 0
+      ? Math.min(...netEstimatedMissingGoldValues)
+      : 0,
+    finalGoldCoversEstimatedGapRate: divideOrZero(
+      samples.filter((sample) => sample.finalGoldCoversEstimatedGap).length,
+      sampleCount,
+    ),
+    virtualIncomeBreakpoints: buildBossR12VirtualIncomeBreakpoints(samples),
+    averageRemiliaMissingUpgradeCost: divideOrZero(
+      samples.reduce((total, sample) => total + sample.remiliaMissingUpgradeCost, 0),
+      sampleCount,
+    ),
+    averageScarletCoreMissingCopyCost: divideOrZero(
+      samples.reduce((total, sample) => total + sample.scarletCoreMissingCopyCost, 0),
+      sampleCount,
+    ),
+    averageLateCarryMissingCopyCost: divideOrZero(
+      samples.reduce((total, sample) => total + sample.lateCarryMissingCopyCost, 0),
+      sampleCount,
+    ),
+    averageBossGoldEarned: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossGoldEarned, 0),
+      sampleCount,
+    ),
+    averageBossGoldSpent: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossGoldSpent, 0),
+      sampleCount,
+    ),
+    averageBossFinalGold: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossFinalGold, 0),
+      sampleCount,
+    ),
+    averageBossNormalShopSpend: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossNormalShopSpend, 0),
+      sampleCount,
+    ),
+    averageBossShopSpend: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossShopSpend, 0),
+      sampleCount,
+    ),
+    averageBossRefreshSpend: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossRefreshSpend, 0),
+      sampleCount,
+    ),
+    averageBossSpecialUnitUpgradeSpend: divideOrZero(
+      samples.reduce((total, sample) => total + sample.bossSpecialUnitUpgradeSpend, 0),
+      sampleCount,
+    ),
+    topAssetValueSamples,
+    nearestTargetSamples,
+    samples: [...samples],
+  };
+}
+
+function cloneBattleDiagnosticScenario(
+  record: BotBattleOnlyScenarioRecord,
+): BotBattleOnlyScenarioRecord {
+  return {
+    ...record,
+    scenario: {
+      ...record.scenario,
+      leftPlacements: record.scenario.leftPlacements.map((placement) => ({
+        ...placement,
+        ...(placement.subUnit ? { subUnit: { ...placement.subUnit } } : {}),
+      })),
+      rightPlacements: record.scenario.rightPlacements.map((placement) => ({
+        ...placement,
+        ...(placement.subUnit ? { subUnit: { ...placement.subUnit } } : {}),
+      })),
+      ...(record.scenario.leftBossUnitIds !== undefined
+        ? { leftBossUnitIds: [...record.scenario.leftBossUnitIds] }
+        : {}),
+      ...(record.scenario.rightBossUnitIds !== undefined
+        ? { rightBossUnitIds: [...record.scenario.rightBossUnitIds] }
+        : {}),
+    },
+  };
+}
+
 export function buildBotOnlyBaselineAggregateReport(
   reports: BotOnlyBaselineMatchSummary[],
   requestedMatchCount = reports.length,
@@ -3525,16 +6395,30 @@ export function buildBotOnlyBaselineAggregateReport(
       highCostSummary: buildEmptyHighCostSummary(),
       highCostOfferMetrics: [],
       shopOfferMetrics: [],
+      raidArchetypeConstructionMetrics: [],
+      raidArchetypeConstructionUnitMetrics: [],
+      raidArchetypeShopDecisionMetrics: [],
+      bossR12CeilingDiagnostics: buildBossR12CeilingDiagnostics([]),
       bossExclusiveRoundLevelMetrics: [],
       highCostRoundMetrics: [],
       roundDamageEfficiencyMetrics: [],
+      roundBoardStrengthMetrics: [],
+      roundBoardStrengthComparisonMetrics: [],
+      roundBoardStrengthOutcomeMetrics: [],
       unitDamageEfficiencyMetrics: [],
+      unitStrengthConversionMetrics: [],
+      unitLevelStrengthConversionMetrics: [],
+      unitArchetypeDependencyMetrics: [],
+      factionEffectValueMetrics: [],
       okinaSubHostMetrics: [],
       okinaSubHostRoundMetrics: [],
       okinaHeroSubDecisionRoundMetrics: [],
       boardRefitDecisionRoundMetrics: [],
       boardRefitDecisionRoleMetrics: [],
       boardRefitDecisionRoleRoundMetrics: [],
+      bossBodyGuardDecisionRoundMetrics: [],
+      boardMovementRoundMetrics: [],
+      boardMovementRouteMetrics: [],
       finalPlayerBoardMetrics: [],
       roundSurvivalDiagnostics: [],
       roundUnitSurvivalDiagnostics: [],
@@ -3544,6 +6428,7 @@ export function buildBotOnlyBaselineAggregateReport(
       raidMeleeCohortMetrics: [],
       raidSpecialMeleeUnitDiagnostics: [],
       roundDetails: [],
+      battleDiagnosticScenarios: [],
     };
   }
 
@@ -3584,6 +6469,9 @@ export function buildBotOnlyBaselineAggregateReport(
   const boardRefitDecisionsByRound = new Map<number, BoardRefitDecisionRoundAccumulator>();
   const boardRefitDecisionsByRole = new Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>();
   const boardRefitDecisionsByRoleRound = new Map<string, BoardRefitDecisionRoleRoundAccumulator>();
+  const bossBodyGuardDecisionsByRound = new Map<number, BossBodyGuardDecisionRoundAccumulator>();
+  const boardMovementsByRoleRound = new Map<string, BoardMovementRoundAccumulator>();
+  const boardMovementRoutesByKey = new Map<string, BoardMovementRouteAccumulator>();
   const finalPlayerBoardMetricsByLabel = new Map<string, FinalPlayerBoardAccumulator>();
   const finalBoardUnitsById = new Map<string, {
     unitId: string;
@@ -3626,7 +6514,23 @@ export function buildBotOnlyBaselineAggregateReport(
     purchaseCount: number;
     purchaseMatchCount: number;
   }>();
+  const raidArchetypeConstructionByPlanId: Map<string, RaidArchetypeConstructionAccumulator> = new Map(
+    RAID_ARCHETYPE_CONSTRUCTION_PLANS.map((plan) => [
+      plan.planId,
+      createRaidArchetypeConstructionAccumulator(plan),
+    ] as const),
+  );
+  const raidArchetypeConstructionUnitByKey = new Map<string, RaidArchetypeConstructionUnitAccumulator>();
+  const raidArchetypeRoundProgressByKey = new Map<string, RaidArchetypeRoundProgressAccumulator>();
+  const raidArchetypeShopDecisionByKey = new Map<string, RaidArchetypeShopDecisionAccumulator>();
   const roundDamageEfficiencyByKey = new Map<string, RoundDamageEfficiencyAccumulator>();
+  const roundBoardStrengthByKey = new Map<string, RoundBoardStrengthAccumulator>();
+  const roundBoardStrengthComparisonByRound = new Map<number, RoundBoardStrengthComparisonAccumulator>();
+  const roundBoardStrengthOutcomeByKey = new Map<string, RoundBoardStrengthComparisonAccumulator>();
+  const unitStrengthConversionByKey = new Map<string, UnitStrengthConversionAccumulator>();
+  const unitLevelStrengthConversionByKey = new Map<string, UnitStrengthConversionAccumulator>();
+  const unitArchetypeDependencyByKey = new Map<string, UnitArchetypeDependencyAccumulator>();
+  const factionEffectValueByKey = new Map<string, FactionEffectValueAccumulator>();
   const roundSurvivalDiagnosticsByRound = new Map<number, RoundSurvivalDiagnosticAccumulator>();
   const roundUnitSurvivalDiagnosticsByKey = new Map<string, RoundUnitSurvivalDiagnosticAccumulator>();
   const bossExclusiveRoundLevelByKey = new Map<string, BossExclusiveRoundLevelAccumulator>();
@@ -3637,6 +6541,8 @@ export function buildBotOnlyBaselineAggregateReport(
   const raidMeleeCohortMetricsByKey = new Map<string, RaidMeleeCohortAccumulator>();
   const raidSpecialMeleeUnitDiagnosticsById = new Map<string, RaidSpecialMeleeUnitDiagnosticAccumulator>();
   const roundDetails: BotOnlyBaselineMatchRoundDetail[] = [];
+  const battleDiagnosticScenarios: BotBattleOnlyScenarioRecord[] = [];
+  const bossR12CeilingSamples: BotOnlyBaselineBossR12CeilingSample[] = [];
   let highCostOfferObservationCount = 0;
   let highCostOfferMatchCount = 0;
   let highCostPurchaseCount = 0;
@@ -3653,6 +6559,9 @@ export function buildBotOnlyBaselineAggregateReport(
     );
     recordHeroMatchMetrics(report, heroTeamMetricsById, heroCompositionMetricsByKey);
     roundDetails.push(...buildRoundDetailsForMatch(report, matchIndex));
+    recordRaidArchetypeRoundProgressForMatch(report, raidArchetypeRoundProgressByKey);
+    battleDiagnosticScenarios.push(...(report.battleDiagnosticScenarios ?? []).map(cloneBattleDiagnosticScenario));
+    bossR12CeilingSamples.push(...buildBossR12CeilingSamplesForMatch(report, matchIndex));
     for (const snapshot of report.okinaHeroSubDecisionSnapshots ?? []) {
       recordOkinaHeroSubDecisionSnapshot(snapshot, okinaHeroSubDecisionsByRound);
     }
@@ -3664,7 +6573,36 @@ export function buildBotOnlyBaselineAggregateReport(
         boardRefitDecisionsByRoleRound,
       );
     }
+    const acceptedBoardMovementKeys = new Set(
+      (report.boardMovementActions ?? []).map((movement) =>
+        buildAcceptedBoardMovementKey(
+          movement.roundIndex,
+          movement.playerId,
+          movement.fromCell,
+          movement.toCell,
+        )),
+    );
+    for (const snapshot of report.bossBodyGuardDecisionSnapshots ?? []) {
+      recordBossBodyGuardDecisionSnapshot(
+        snapshot,
+        bossBodyGuardDecisionsByRound,
+        acceptedBoardMovementKeys,
+      );
+    }
+    for (const movement of report.boardMovementActions ?? []) {
+      const movementKey = `${movement.role}::${movement.roundIndex}`;
+      const movementEntry = boardMovementsByRoleRound.get(movementKey)
+        ?? createBoardMovementRoundAccumulator(movement.roundIndex, movement.role);
+      movementEntry.samples += 1;
+      movementEntry.moveSamples += movement.actionType === "board_move" ? 1 : 0;
+      movementEntry.swapSamples += movement.actionType === "board_swap" ? 1 : 0;
+      boardMovementsByRoleRound.set(movementKey, movementEntry);
+      recordBoardMovementRoute(movement, boardMovementRoutesByKey);
+    }
     const seenOkinaSubHostsByRoundInMatch = new Set<string>();
+    const seenUnitStrengthUnitsInMatch = new Set<string>();
+    const seenUnitLevelStrengthUnitsInMatch = new Set<string>();
+    const seenUnitArchetypeUnitsInMatch = new Set<string>();
     for (const round of report.rounds ?? []) {
       const seenRoundDamageEfficiencyUnits = new Set<string>();
       const seenRoundUnitSurvivalUnits = new Set<string>();
@@ -3672,8 +6610,34 @@ export function buildBotOnlyBaselineAggregateReport(
         const winnerRole = resolveBattleWinnerRole(battle, playerById, report.bossPlayerId);
         const bossOutcomes = battle.unitOutcomes.filter((outcome) => outcome.side === "boss");
         const raidOutcomes = battle.unitOutcomes.filter((outcome) => outcome.side === "raid");
+        const alliedOutcomesBySide = new Map<"boss" | "raid", BotOnlyBaselineBattleUnitOutcome[]>([
+          ["boss", bossOutcomes],
+          ["raid", raidOutcomes],
+        ]);
+        recordFactionEffectValue("boss", bossOutcomes, factionEffectValueByKey);
+        recordFactionEffectValue("raid", raidOutcomes, factionEffectValueByKey);
         const bossSurvivors = bossOutcomes.filter((outcome) => outcome.alive && outcome.finalHp > 0).length;
         const raidSurvivors = raidOutcomes.filter((outcome) => outcome.alive && outcome.finalHp > 0).length;
+        const bossBoardStrengthSample = recordRoundBoardStrength(
+          round.roundIndex,
+          "boss",
+          bossOutcomes,
+          roundBoardStrengthByKey,
+        );
+        const raidBoardStrengthSample = recordRoundBoardStrength(
+          round.roundIndex,
+          "raid",
+          raidOutcomes,
+          roundBoardStrengthByKey,
+        );
+        recordRoundBoardStrengthComparison(
+          round.roundIndex,
+          bossBoardStrengthSample,
+          raidBoardStrengthSample,
+          winnerRole,
+          roundBoardStrengthComparisonByRound,
+          roundBoardStrengthOutcomeByKey,
+        );
         const phaseSucceeded = round.phaseResult === "success"
           || (round.phaseHpTarget > 0 && round.phaseDamageDealt >= round.phaseHpTarget);
         const survivalDiagnostic = roundSurvivalDiagnosticsByRound.get(round.roundIndex)
@@ -3735,6 +6699,39 @@ export function buildBotOnlyBaselineAggregateReport(
             seenRoundUnitSurvivalUnits.add(matchRoundSurvivalUnitKey);
           }
           roundUnitSurvivalDiagnosticsByKey.set(key, survivalUnit);
+
+          recordUnitStrengthConversion(
+            outcome,
+            resolvedUnitName,
+            resolvedUnitType,
+            `${outcome.side}::${outcome.unitId}::${matchIndex}`,
+            seenUnitStrengthUnitsInMatch,
+            unitStrengthConversionByKey,
+          );
+          const normalizedUnitLevel = Math.max(1, Math.floor(outcome.unitLevel));
+          recordUnitStrengthConversion(
+            outcome,
+            resolvedUnitName,
+            resolvedUnitType,
+            `${outcome.side}::${outcome.unitId}::${normalizedUnitLevel}::${matchIndex}`,
+            seenUnitLevelStrengthUnitsInMatch,
+            unitLevelStrengthConversionByKey,
+            `${outcome.side}::${outcome.unitId}::${normalizedUnitLevel}`,
+          );
+          const archetypeContext = resolveUnitArchetypeContext(
+            outcome,
+            alliedOutcomesBySide.get(outcome.side) ?? [],
+          );
+          recordUnitArchetypeDependency(
+            round.roundIndex,
+            outcome,
+            alliedOutcomesBySide.get(outcome.side) ?? [],
+            resolvedUnitName,
+            resolvedUnitType,
+            `${outcome.side}::${outcome.unitId}::${archetypeContext.primaryArchetypeTag}::${matchIndex}`,
+            seenUnitArchetypeUnitsInMatch,
+            unitArchetypeDependencyByKey,
+          );
 
           if (outcome.side === "raid" && outcome.attachedSubUnitId === "okina") {
             const okinaRoundKey = `${round.roundIndex}::${outcome.unitId}`;
@@ -3908,6 +6905,23 @@ export function buildBotOnlyBaselineAggregateReport(
         ?? createFinalPlayerBoardAccumulator(player.label, player.role);
       playerBoardMetric.matchesPresent += 1;
       playerBoardMetric.totalDeployedUnitCount += player.boardUnits.length;
+      if (player.role === "raid") {
+        const finalUnitIds = getFinalBoardUnitIdsIncludingAttachedSubUnits(player.boardUnits);
+        for (const plan of RAID_ARCHETYPE_CONSTRUCTION_PLANS) {
+          const entry = raidArchetypeConstructionByPlanId.get(plan.planId);
+          if (entry === undefined) {
+            continue;
+          }
+          const finalPlanUnitCount = plan.unitIds
+            .filter((unitId) => finalUnitIds.has(unitId))
+            .length;
+          const hasAnchor = finalUnitIds.has(plan.anchorUnitId);
+          entry.finalPlayerSamples += 1;
+          entry.totalFinalPlanUnitCount += finalPlanUnitCount;
+          entry.finalAnchorPlayerCount += hasAnchor ? 1 : 0;
+          entry.finalPlanHitPlayerCount += hasAnchor && finalPlanUnitCount >= plan.finalPlanHitUnitThreshold ? 1 : 0;
+        }
+      }
       for (const boardUnit of player.boardUnits) {
         const finalUnitLevel = Number.isFinite(boardUnit.unitLevel)
           ? Math.max(1, Math.trunc(boardUnit.unitLevel))
@@ -4033,6 +7047,118 @@ export function buildBotOnlyBaselineAggregateReport(
           purchasedShopMetricKeysInMatch.add(key);
         }
         shopOfferMetricsByKey.set(key, existing);
+      }
+      if (purchaseRole === "raid" && purchaseUnitId.length > 0) {
+        for (const plan of RAID_ARCHETYPE_CONSTRUCTION_PLANS) {
+          if (!(plan.unitIds as readonly string[]).includes(purchaseUnitId)) {
+            continue;
+          }
+          const entry = raidArchetypeConstructionByPlanId.get(plan.planId);
+          if (entry === undefined) {
+            continue;
+          }
+          entry.purchaseCount += 1;
+          if (
+            purchase.botPurchaseReason === "raid_archetype_construction"
+            && purchase.botPurchasePlanId === plan.planId
+          ) {
+            entry.constructionPurchaseCount += 1;
+            const unitKey = `${plan.planId}::${purchaseUnitId}`;
+            const unitEntry = raidArchetypeConstructionUnitByKey.get(unitKey)
+              ?? createRaidArchetypeConstructionUnitAccumulator(
+                plan,
+                purchaseUnitId,
+                purchase.unitName ?? resolveBaselineUnitName(purchaseUnitId, purchase.unitType),
+              );
+            unitEntry.constructionPurchaseCount += 1;
+            const finalPlayer = playerById.get(purchase.playerId);
+            const finalLocations = getFinalBoardUnitLocationSets(finalPlayer?.boardUnits ?? []);
+            const finalBenchUnitIds = getFinalBenchUnitIds(finalPlayer?.benchUnitIds);
+            if (finalLocations.mainUnitIds.has(purchaseUnitId)) {
+              entry.constructionFinalMainUnitCount += 1;
+              unitEntry.constructionFinalMainUnitCount += 1;
+            } else if (finalLocations.subUnitIds.has(purchaseUnitId)) {
+              entry.constructionFinalSubUnitCount += 1;
+              unitEntry.constructionFinalSubUnitCount += 1;
+            } else if (finalBenchUnitIds.has(purchaseUnitId)) {
+              entry.constructionFinalBenchUnitCount += 1;
+              entry.constructionFinalMissingUnitCount += 1;
+              unitEntry.constructionFinalBenchUnitCount += 1;
+              unitEntry.constructionFinalMissingUnitCount += 1;
+            } else {
+              entry.constructionFinalMissingUnitCount += 1;
+              entry.constructionFinalAbsentUnitCount += 1;
+              unitEntry.constructionFinalMissingUnitCount += 1;
+              unitEntry.constructionFinalAbsentUnitCount += 1;
+            }
+            if (
+              didPurchasedUnitAppearInBattle(
+                report,
+                purchase.playerId,
+                purchaseUnitId,
+                purchase.roundIndex,
+              )
+            ) {
+              entry.constructionEverBattleUnitCount += 1;
+              unitEntry.constructionEverBattleUnitCount += 1;
+            } else {
+              entry.constructionNeverBattleUnitCount += 1;
+              unitEntry.constructionNeverBattleUnitCount += 1;
+            }
+            raidArchetypeConstructionUnitByKey.set(unitKey, unitEntry);
+          }
+        }
+      }
+
+      if (
+        purchaseRole === "raid"
+        && typeof purchase.botArchetypeDecision === "string"
+        && typeof purchase.botArchetypeDecisionPlanId === "string"
+        && typeof purchase.botArchetypeDecisionCandidateUnitId === "string"
+        && typeof purchase.botArchetypeDecisionCandidateCost === "number"
+      ) {
+        const plan = RAID_ARCHETYPE_CONSTRUCTION_PLANS.find((candidate) =>
+          candidate.planId === purchase.botArchetypeDecisionPlanId);
+        const roundIndex = purchase.roundIndex ?? 0;
+        const blocker = purchase.botArchetypeDecisionBlocker ?? "";
+        const decisionKey = [
+          roundIndex,
+          purchase.botArchetypeDecisionPlanId,
+          purchase.botArchetypeDecision,
+          purchase.botArchetypeDecisionCandidateUnitId,
+          purchase.botArchetypeDecisionCandidateCost,
+          blocker,
+        ].join("::");
+        const decisionEntry = raidArchetypeShopDecisionByKey.get(decisionKey)
+          ?? createRaidArchetypeShopDecisionAccumulator(
+            roundIndex,
+            purchase.botArchetypeDecisionPlanId,
+            purchase.botArchetypeDecision,
+            purchase.botArchetypeDecisionCandidateUnitId,
+            purchase.botArchetypeDecisionCandidateCost,
+            blocker,
+          );
+        decisionEntry.samples += 1;
+        decisionEntry.totalPurchasedCost += purchase.cost;
+        if (
+          typeof purchase.botArchetypeDecisionCombatPlanUnitCount === "number"
+          && typeof purchase.botArchetypeDecisionReservePlanUnitCount === "number"
+          && typeof purchase.botArchetypeDecisionAvailableMainSlots === "number"
+          && typeof purchase.botArchetypeDecisionAvailableSubSlots === "number"
+        ) {
+          decisionEntry.fieldingDiagnosticSamples += 1;
+          decisionEntry.totalCombatPlanUnitCount += purchase.botArchetypeDecisionCombatPlanUnitCount;
+          decisionEntry.totalReservePlanUnitCount += purchase.botArchetypeDecisionReservePlanUnitCount;
+          decisionEntry.totalAvailableMainSlots += purchase.botArchetypeDecisionAvailableMainSlots;
+          decisionEntry.totalAvailableSubSlots += purchase.botArchetypeDecisionAvailableSubSlots;
+        }
+        if (plan !== undefined && (plan.unitIds as readonly string[]).includes(purchaseUnitId)) {
+          decisionEntry.planUnitPurchaseCount += 1;
+        }
+        if (purchase.cost >= HIGH_COST_THRESHOLD) {
+          decisionEntry.highCostPurchaseCount += 1;
+        }
+        raidArchetypeShopDecisionByKey.set(decisionKey, decisionEntry);
       }
 
       if (purchase.cost < HIGH_COST_THRESHOLD) {
@@ -4742,6 +7868,27 @@ export function buildBotOnlyBaselineAggregateReport(
           .map((entry) => buildBoardRefitDecisionRoleRoundMetric(entry)),
       }
       : {}),
+    ...(bossBodyGuardDecisionsByRound.size > 0
+      ? {
+        bossBodyGuardDecisionRoundMetrics: Array.from(bossBodyGuardDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildBossBodyGuardDecisionRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardMovementsByRoleRound.size > 0
+      ? {
+        boardMovementRoundMetrics: Array.from(boardMovementsByRoleRound.values())
+          .sort((left, right) =>
+            left.role.localeCompare(right.role)
+            || left.roundIndex - right.roundIndex)
+          .map((entry) => buildBoardMovementRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardMovementRoutesByKey.size > 0
+      ? {
+        boardMovementRouteMetrics: buildBoardMovementRouteMetrics(Array.from(boardMovementRoutesByKey.values())),
+      }
+      : {}),
     finalPlayerBoardMetrics: Array.from(finalPlayerBoardMetricsByLabel.values())
       .sort((left, right) => left.label.localeCompare(right.label))
       .map((entry) => buildFinalPlayerBoardMetric(entry)),
@@ -4796,6 +7943,7 @@ export function buildBotOnlyBaselineAggregateReport(
       .sort((left, right) =>
         left.roundIndex - right.roundIndex
         || left.unitId.localeCompare(right.unitId)),
+    bossR12CeilingDiagnostics: buildBossR12CeilingDiagnostics(bossR12CeilingSamples),
     highCostRoundMetrics: Array.from(highCostRoundMetricsByKey.values())
       .map((entry) => buildHighCostRoundMetric(entry, completedMatches))
       .sort((left, right) =>
@@ -4811,7 +7959,26 @@ export function buildBotOnlyBaselineAggregateReport(
         || ((right.damagePerInvestmentCost ?? -1) - (left.damagePerInvestmentCost ?? -1))
         || right.totalDamage - left.totalDamage
         || left.unitId.localeCompare(right.unitId)),
+    roundBoardStrengthMetrics: Array.from(roundBoardStrengthByKey.values())
+      .map((entry) => buildRoundBoardStrengthMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.side.localeCompare(right.side)),
+    roundBoardStrengthComparisonMetrics: Array.from(roundBoardStrengthComparisonByRound.values())
+      .map((entry) => buildRoundBoardStrengthComparisonMetric(entry))
+      .sort((left, right) => left.roundIndex - right.roundIndex),
+    roundBoardStrengthOutcomeMetrics: Array.from(roundBoardStrengthOutcomeByKey.values())
+      .map((entry) => buildRoundBoardStrengthOutcomeMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.winnerRole.localeCompare(right.winnerRole)),
     unitDamageEfficiencyMetrics: buildUnitDamageEfficiencyMetrics(roundDamageEfficiencyByKey.values()),
+    unitStrengthConversionMetrics: buildUnitStrengthConversionMetrics(unitStrengthConversionByKey.values()),
+    unitLevelStrengthConversionMetrics: buildUnitLevelStrengthConversionMetrics(
+      unitLevelStrengthConversionByKey.values(),
+    ),
+    unitArchetypeDependencyMetrics: buildUnitArchetypeDependencyMetrics(unitArchetypeDependencyByKey.values()),
+    factionEffectValueMetrics: buildFactionEffectValueMetrics(factionEffectValueByKey.values()),
     roundSurvivalDiagnostics: Array.from(roundSurvivalDiagnosticsByRound.values())
       .map((entry) => buildRoundSurvivalDiagnosticMetric(entry))
       .sort((left, right) => left.roundIndex - right.roundIndex),
@@ -4838,6 +8005,32 @@ export function buildBotOnlyBaselineAggregateReport(
           finalBoardAdoptionRate: completedMatches > 0 ? (finalBoard?.matchesPresent ?? 0) / completedMatches : 0,
         };
       }),
+    raidArchetypeConstructionMetrics: Array.from(raidArchetypeConstructionByPlanId.values())
+      .map((entry) => buildRaidArchetypeConstructionMetric(entry))
+      .sort((left, right) =>
+        right.constructionPurchaseCount - left.constructionPurchaseCount
+        || right.finalPlanHitPlayerCount - left.finalPlanHitPlayerCount
+        || left.planId.localeCompare(right.planId)),
+    raidArchetypeConstructionUnitMetrics: Array.from(raidArchetypeConstructionUnitByKey.values())
+      .map((entry) => buildRaidArchetypeConstructionUnitMetric(entry))
+      .sort((left, right) =>
+        right.constructionPurchaseCount - left.constructionPurchaseCount
+        || left.planId.localeCompare(right.planId)
+        || left.unitId.localeCompare(right.unitId)),
+    raidArchetypeShopDecisionMetrics: Array.from(raidArchetypeShopDecisionByKey.values())
+      .map((entry) => buildRaidArchetypeShopDecisionMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.planId.localeCompare(right.planId)
+        || left.decision.localeCompare(right.decision)
+        || (left.blocker ?? "").localeCompare(right.blocker ?? "")
+        || left.candidateUnitId.localeCompare(right.candidateUnitId)),
+    raidArchetypeRoundProgressMetrics: Array.from(raidArchetypeRoundProgressByKey.values())
+      .map((entry) => buildRaidArchetypeRoundProgressMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || right.planHitPlayerCount - left.planHitPlayerCount
+        || left.planId.localeCompare(right.planId)),
     rangeDamageEfficiencyMetrics: Array.from(rangeDamageEfficiencyByKey.values())
       .sort((left, right) =>
         left.side.localeCompare(right.side)
@@ -4860,6 +8053,7 @@ export function buildBotOnlyBaselineAggregateReport(
       .sort((left, right) => left.unitId.localeCompare(right.unitId))
       .map((entry) => buildRaidSpecialMeleeUnitDiagnostic(entry)),
     roundDetails,
+    battleDiagnosticScenarios,
   };
 
   aggregate.bossNormalHighCostMaturationMetrics = buildBossNormalHighCostMaturationMetrics(
@@ -4932,16 +8126,30 @@ export function mergeBotOnlyBaselineAggregateReports(
       highCostSummary: buildEmptyHighCostSummary(),
       highCostOfferMetrics: [],
       shopOfferMetrics: [],
+      raidArchetypeConstructionMetrics: [],
+      raidArchetypeConstructionUnitMetrics: [],
+      raidArchetypeShopDecisionMetrics: [],
+      bossR12CeilingDiagnostics: buildBossR12CeilingDiagnostics([]),
       bossExclusiveRoundLevelMetrics: [],
       highCostRoundMetrics: [],
       roundDamageEfficiencyMetrics: [],
+      roundBoardStrengthMetrics: [],
+      roundBoardStrengthComparisonMetrics: [],
+      roundBoardStrengthOutcomeMetrics: [],
       unitDamageEfficiencyMetrics: [],
+      unitStrengthConversionMetrics: [],
+      unitLevelStrengthConversionMetrics: [],
+      unitArchetypeDependencyMetrics: [],
+      factionEffectValueMetrics: [],
       okinaSubHostMetrics: [],
       okinaSubHostRoundMetrics: [],
       okinaHeroSubDecisionRoundMetrics: [],
       boardRefitDecisionRoundMetrics: [],
       boardRefitDecisionRoleMetrics: [],
       boardRefitDecisionRoleRoundMetrics: [],
+      bossBodyGuardDecisionRoundMetrics: [],
+      boardMovementRoundMetrics: [],
+      boardMovementRouteMetrics: [],
       finalPlayerBoardMetrics: [],
       roundSurvivalDiagnostics: [],
       roundUnitSurvivalDiagnostics: [],
@@ -4951,6 +8159,7 @@ export function mergeBotOnlyBaselineAggregateReports(
       raidMeleeCohortMetrics: [],
       raidSpecialMeleeUnitDiagnostics: [],
       roundDetails: [],
+      battleDiagnosticScenarios: [],
     };
   }
 
@@ -4991,6 +8200,9 @@ export function mergeBotOnlyBaselineAggregateReports(
   const boardRefitDecisionsByRound = new Map<number, BoardRefitDecisionRoundAccumulator>();
   const boardRefitDecisionsByRole = new Map<"boss" | "raid", BoardRefitDecisionRoleAccumulator>();
   const boardRefitDecisionsByRoleRound = new Map<string, BoardRefitDecisionRoleRoundAccumulator>();
+  const bossBodyGuardDecisionsByRound = new Map<number, BossBodyGuardDecisionRoundAccumulator>();
+  const boardMovementsByRoleRound = new Map<string, BoardMovementRoundAccumulator>();
+  const boardMovementRoutesByKey = new Map<string, BoardMovementRouteAccumulator>();
   const finalPlayerBoardMetricsByLabel = new Map<string, FinalPlayerBoardAccumulator>();
   const finalBoardUnitsById = new Map<string, {
     unitId: string;
@@ -5034,8 +8246,24 @@ export function mergeBotOnlyBaselineAggregateReports(
     finalBoardCopies: number;
     finalBoardMatchCount: number;
   }>();
+  const raidArchetypeConstructionByPlanId: Map<string, RaidArchetypeConstructionAccumulator> = new Map(
+    RAID_ARCHETYPE_CONSTRUCTION_PLANS.map((plan) => [
+      plan.planId,
+      createRaidArchetypeConstructionAccumulator(plan),
+    ] as const),
+  );
+  const raidArchetypeConstructionUnitByKey = new Map<string, RaidArchetypeConstructionUnitAccumulator>();
+  const raidArchetypeRoundProgressByKey = new Map<string, RaidArchetypeRoundProgressAccumulator>();
+  const raidArchetypeShopDecisionByKey = new Map<string, RaidArchetypeShopDecisionAccumulator>();
   const bossNormalHighCostMaturationById = new Map<string, BossNormalHighCostMaturationAccumulator>();
   const roundDamageEfficiencyByKey = new Map<string, RoundDamageEfficiencyAccumulator>();
+  const roundBoardStrengthByKey = new Map<string, RoundBoardStrengthAccumulator>();
+  const roundBoardStrengthComparisonByRound = new Map<number, RoundBoardStrengthComparisonAccumulator>();
+  const roundBoardStrengthOutcomeByKey = new Map<string, RoundBoardStrengthComparisonAccumulator>();
+  const unitStrengthConversionByKey = new Map<string, UnitStrengthConversionAccumulator>();
+  const unitLevelStrengthConversionByKey = new Map<string, UnitStrengthConversionAccumulator>();
+  const unitArchetypeDependencyByKey = new Map<string, UnitArchetypeDependencyAccumulator>();
+  const factionEffectValueByKey = new Map<string, FactionEffectValueAccumulator>();
   const roundSurvivalDiagnosticsByRound = new Map<number, RoundSurvivalDiagnosticAccumulator>();
   const roundUnitSurvivalDiagnosticsByKey = new Map<string, RoundUnitSurvivalDiagnosticAccumulator>();
   const bossExclusiveRoundLevelByKey = new Map<string, BossExclusiveRoundLevelAccumulator>();
@@ -5046,6 +8274,8 @@ export function mergeBotOnlyBaselineAggregateReports(
   const raidMeleeCohortMetricsByKey = new Map<string, RaidMeleeCohortAccumulator>();
   const raidSpecialMeleeUnitDiagnosticsById = new Map<string, RaidSpecialMeleeUnitDiagnosticAccumulator>();
   const roundDetails: BotOnlyBaselineMatchRoundDetail[] = [];
+  const battleDiagnosticScenarios: BotBattleOnlyScenarioRecord[] = [];
+  const bossR12CeilingSamples: BotOnlyBaselineBossR12CeilingSample[] = [];
   let roundDetailMatchOffset = 0;
   let highCostOfferObservationCount = 0;
   let highCostOfferMatchCount = 0;
@@ -5054,7 +8284,7 @@ export function mergeBotOnlyBaselineAggregateReports(
   let highCostFinalBoardCopies = 0;
   let highCostFinalBoardMatchCount = 0;
 
-  for (const aggregate of aggregates) {
+    for (const aggregate of aggregates) {
     if (!areBotOnlyReportMetadataEqual(sharedMetadata, aggregate.metadata)) {
       sharedMetadata = undefined;
     }
@@ -5072,8 +8302,27 @@ export function mergeBotOnlyBaselineAggregateReports(
         ...(detail.bossBodyFocus !== undefined
           ? { bossBodyFocus: detail.bossBodyFocus ? { ...detail.bossBodyFocus } : null }
           : {}),
+        ...(detail.bossBodyDirectGuardOutcome !== undefined
+          ? {
+            bossBodyDirectGuardOutcome: detail.bossBodyDirectGuardOutcome
+              ? { ...detail.bossBodyDirectGuardOutcome }
+              : null,
+          }
+          : {}),
+        ...(detail.bossBodyGuardDecision !== undefined
+          ? { bossBodyGuardDecision: detail.bossBodyGuardDecision ? { ...detail.bossBodyGuardDecision } : null }
+          : {}),
         battleEndReasons: [...detail.battleEndReasons],
         battleWinnerRoles: [...detail.battleWinnerRoles],
+      });
+    }
+    battleDiagnosticScenarios.push(
+      ...(aggregate.battleDiagnosticScenarios ?? []).map(cloneBattleDiagnosticScenario),
+    );
+    for (const sample of aggregate.bossR12CeilingDiagnostics?.samples ?? []) {
+      bossR12CeilingSamples.push({
+        ...sample,
+        matchIndex: sample.matchIndex + roundDetailMatchOffset,
       });
     }
     roundDetailMatchOffset += aggregate.completedMatches;
@@ -5152,6 +8401,210 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.totalRaidFinalHp += entry.averageRaidFinalHp * entry.battleSamples;
       existing.totalRaidEstimatedMaxHp += entry.averageRaidEstimatedMaxHp * entry.battleSamples;
       roundSurvivalDiagnosticsByRound.set(entry.roundIndex, existing);
+    }
+
+    for (const entry of aggregate.roundBoardStrengthMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.side}`;
+      const existing = roundBoardStrengthByKey.get(key)
+        ?? createRoundBoardStrengthAccumulator(entry.roundIndex, entry.side);
+      existing.battleSamples += entry.battleSamples;
+      existing.totalUnitCount += entry.averageUnitCount * entry.battleSamples;
+      existing.totalSurvivorCount += entry.averageSurvivorCount * entry.battleSamples;
+      existing.totalInvestmentScore += entry.averageInvestmentScore * entry.battleSamples;
+      existing.totalEstimatedDurabilityScore += entry.averageEstimatedDurabilityScore * entry.battleSamples;
+      existing.totalEstimatedDamageScore += entry.averageEstimatedDamageScore * entry.battleSamples;
+      existing.totalBoardStrengthScore += entry.averageBoardStrengthScore * entry.battleSamples;
+      existing.totalRealizedDamage += entry.averageRealizedDamage * entry.battleSamples;
+      existing.totalAbsorbedDamage += entry.averageAbsorbedDamage * entry.battleSamples;
+      existing.totalRemainingHp += entry.averageRemainingHp * entry.battleSamples;
+      existing.totalRealizedBattleScore += entry.averageRealizedBattleScore * entry.battleSamples;
+      roundBoardStrengthByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.roundBoardStrengthComparisonMetrics ?? []) {
+      const existing = roundBoardStrengthComparisonByRound.get(entry.roundIndex)
+        ?? createRoundBoardStrengthComparisonAccumulator(entry.roundIndex);
+      existing.battleSamples += entry.battleSamples;
+      existing.totalBossBoardStrengthScore += entry.averageBossBoardStrengthScore * entry.battleSamples;
+      existing.totalRaidBoardStrengthScore += entry.averageRaidBoardStrengthScore * entry.battleSamples;
+      if (entry.averageBossToRaidBoardStrengthRatio !== null) {
+        existing.totalBossToRaidBoardStrengthRatio += entry.averageBossToRaidBoardStrengthRatio * entry.battleSamples;
+        existing.boardStrengthRatioSamples += entry.battleSamples;
+      }
+      existing.totalBossRealizedBattleScore += entry.averageBossRealizedBattleScore * entry.battleSamples;
+      existing.totalRaidRealizedBattleScore += entry.averageRaidRealizedBattleScore * entry.battleSamples;
+      if (entry.averageBossToRaidRealizedBattleRatio !== null) {
+        existing.totalBossToRaidRealizedBattleRatio += entry.averageBossToRaidRealizedBattleRatio * entry.battleSamples;
+        existing.realizedBattleRatioSamples += entry.battleSamples;
+      }
+      existing.bossEstimatedAdvantageBattles += entry.bossEstimatedAdvantageRate * entry.battleSamples;
+      existing.bossRealizedAdvantageBattles += entry.bossRealizedAdvantageRate * entry.battleSamples;
+      existing.bossBattleWins += entry.bossBattleWinRate * entry.battleSamples;
+      existing.raidBattleWins += entry.raidBattleWinRate * entry.battleSamples;
+      existing.bossEstimatedAdvantageButBattleLosses += (
+        entry.bossEstimatedAdvantageButBattleLossRate * entry.battleSamples
+      );
+      existing.bossEstimatedAdvantageButRealizedDisadvantages += (
+        entry.bossEstimatedAdvantageButRealizedDisadvantageRate * entry.battleSamples
+      );
+      roundBoardStrengthComparisonByRound.set(entry.roundIndex, existing);
+    }
+
+    for (const entry of aggregate.roundBoardStrengthOutcomeMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.winnerRole}`;
+      const existing = roundBoardStrengthOutcomeByKey.get(key)
+        ?? createRoundBoardStrengthComparisonAccumulator(entry.roundIndex, entry.winnerRole);
+      existing.battleSamples += entry.battleSamples;
+      existing.totalBossBoardStrengthScore += entry.averageBossBoardStrengthScore * entry.battleSamples;
+      existing.totalRaidBoardStrengthScore += entry.averageRaidBoardStrengthScore * entry.battleSamples;
+      if (entry.averageBossToRaidBoardStrengthRatio !== null) {
+        existing.totalBossToRaidBoardStrengthRatio += entry.averageBossToRaidBoardStrengthRatio * entry.battleSamples;
+        existing.boardStrengthRatioSamples += entry.battleSamples;
+      }
+      existing.totalBossRealizedBattleScore += entry.averageBossRealizedBattleScore * entry.battleSamples;
+      existing.totalRaidRealizedBattleScore += entry.averageRaidRealizedBattleScore * entry.battleSamples;
+      if (entry.averageBossToRaidRealizedBattleRatio !== null) {
+        existing.totalBossToRaidRealizedBattleRatio += entry.averageBossToRaidRealizedBattleRatio * entry.battleSamples;
+        existing.realizedBattleRatioSamples += entry.battleSamples;
+      }
+      existing.bossEstimatedAdvantageBattles += entry.bossEstimatedAdvantageRate * entry.battleSamples;
+      existing.bossRealizedAdvantageBattles += entry.bossRealizedAdvantageRate * entry.battleSamples;
+      existing.bossBattleWins += entry.bossBattleWinRate * entry.battleSamples;
+      existing.raidBattleWins += entry.raidBattleWinRate * entry.battleSamples;
+      existing.bossEstimatedAdvantageButBattleLosses += (
+        entry.bossEstimatedAdvantageButBattleLossRate * entry.battleSamples
+      );
+      existing.bossEstimatedAdvantageButRealizedDisadvantages += (
+        entry.bossEstimatedAdvantageButRealizedDisadvantageRate * entry.battleSamples
+      );
+      roundBoardStrengthOutcomeByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.unitStrengthConversionMetrics ?? []) {
+      const key = `${entry.side}::${entry.unitId}`;
+      const existing = unitStrengthConversionByKey.get(key)
+        ?? createUnitStrengthConversionAccumulator(entry.side, entry.unitId, entry.unitType, entry.unitName);
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalUnitLevel += entry.averageUnitLevel * entry.battleAppearances;
+      existing.totalInvestmentScore += entry.averageInvestmentScore * entry.battleAppearances;
+      existing.totalEstimatedDurabilityScore += entry.averageEstimatedDurabilityScore * entry.battleAppearances;
+      existing.totalEstimatedDamageScore += entry.averageEstimatedDamageScore * entry.battleAppearances;
+      existing.totalEstimatedStrengthScore += entry.averageEstimatedStrengthScore * entry.battleAppearances;
+      existing.totalRealizedDamage += entry.averageRealizedDamage * entry.battleAppearances;
+      existing.totalAbsorbedDamage += entry.averageAbsorbedDamage * entry.battleAppearances;
+      existing.totalRemainingHp += entry.averageRemainingHp * entry.battleAppearances;
+      existing.totalEffectiveStrengthScore += entry.averageEffectiveStrengthScore * entry.battleAppearances;
+      existing.totalStrengthScoreDelta += entry.averageStrengthScoreDelta * entry.battleAppearances;
+      if (entry.averageEffectiveToEstimatedRatio !== null) {
+        existing.totalEffectiveToEstimatedRatio += entry.averageEffectiveToEstimatedRatio * entry.battleAppearances;
+        existing.effectiveToEstimatedRatioSamples += entry.battleAppearances;
+      }
+      existing.underperformedBattles += entry.underperformedBattleRate * entry.battleAppearances;
+      existing.zeroDamageBattles += entry.zeroDamageBattleRate * entry.battleAppearances;
+      existing.survivedBattles += entry.survivedBattleRate * entry.battleAppearances;
+      unitStrengthConversionByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.unitLevelStrengthConversionMetrics ?? []) {
+      const key = `${entry.side}::${entry.unitId}::${entry.unitLevel}`;
+      const existing = unitLevelStrengthConversionByKey.get(key)
+        ?? createUnitStrengthConversionAccumulator(entry.side, entry.unitId, entry.unitType, entry.unitName);
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalUnitLevel += entry.unitLevel * entry.battleAppearances;
+      existing.totalInvestmentScore += entry.averageInvestmentScore * entry.battleAppearances;
+      existing.totalEstimatedDurabilityScore += entry.averageEstimatedDurabilityScore * entry.battleAppearances;
+      existing.totalEstimatedDamageScore += entry.averageEstimatedDamageScore * entry.battleAppearances;
+      existing.totalEstimatedStrengthScore += entry.averageEstimatedStrengthScore * entry.battleAppearances;
+      existing.totalRealizedDamage += entry.averageRealizedDamage * entry.battleAppearances;
+      existing.totalAbsorbedDamage += entry.averageAbsorbedDamage * entry.battleAppearances;
+      existing.totalRemainingHp += entry.averageRemainingHp * entry.battleAppearances;
+      existing.totalEffectiveStrengthScore += entry.averageEffectiveStrengthScore * entry.battleAppearances;
+      existing.totalStrengthScoreDelta += entry.averageStrengthScoreDelta * entry.battleAppearances;
+      if (entry.averageEffectiveToEstimatedRatio !== null) {
+        existing.totalEffectiveToEstimatedRatio += entry.averageEffectiveToEstimatedRatio * entry.battleAppearances;
+        existing.effectiveToEstimatedRatioSamples += entry.battleAppearances;
+      }
+      existing.underperformedBattles += entry.underperformedBattleRate * entry.battleAppearances;
+      existing.zeroDamageBattles += entry.zeroDamageBattleRate * entry.battleAppearances;
+      existing.survivedBattles += entry.survivedBattleRate * entry.battleAppearances;
+      unitLevelStrengthConversionByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.unitArchetypeDependencyMetrics ?? []) {
+      const key = `${entry.side}::${entry.unitId}::${entry.primaryArchetypeTag}`;
+      const existing = unitArchetypeDependencyByKey.get(key)
+        ?? createUnitArchetypeDependencyAccumulator(
+          entry.side,
+          entry.unitId,
+          entry.unitType,
+          entry.unitName,
+          entry.primaryArchetypeTag,
+        );
+      existing.battleAppearances += entry.battleAppearances;
+      existing.matchesPresent += entry.matchesPresent;
+      existing.totalUnitLevel += entry.averageUnitLevel * entry.battleAppearances;
+      existing.totalRoundIndex += entry.averageRoundIndex * entry.battleAppearances;
+      existing.totalEffectiveStrengthScore += entry.averageEffectiveStrengthScore * entry.battleAppearances;
+      existing.archetypeFitBattleAppearances += entry.archetypeFitBattleAppearances;
+      existing.nonArchetypeBattleAppearances += entry.nonArchetypeBattleAppearances;
+      existing.totalUniqueFactionCount += entry.averageUniqueFactionCount * entry.battleAppearances;
+      existing.totalSameFactionCount += entry.averageSameFactionCount * entry.battleAppearances;
+      existing.pairLinkedBattleAppearances += entry.pairLinkedBattleRate * entry.battleAppearances;
+      if (entry.averageArchetypeUnitLevel !== null) {
+        existing.totalArchetypeUnitLevel += entry.averageArchetypeUnitLevel * entry.archetypeFitBattleAppearances;
+      }
+      if (entry.averageNonArchetypeUnitLevel !== null) {
+        existing.totalNonArchetypeUnitLevel +=
+          entry.averageNonArchetypeUnitLevel * entry.nonArchetypeBattleAppearances;
+      }
+      if (entry.averageArchetypeRoundIndex !== null) {
+        existing.totalArchetypeRoundIndex += entry.averageArchetypeRoundIndex * entry.archetypeFitBattleAppearances;
+      }
+      if (entry.averageNonArchetypeRoundIndex !== null) {
+        existing.totalNonArchetypeRoundIndex +=
+          entry.averageNonArchetypeRoundIndex * entry.nonArchetypeBattleAppearances;
+      }
+      if (entry.averageArchetypeEffectiveStrengthScore !== null) {
+        existing.totalArchetypeEffectiveStrengthScore +=
+          entry.averageArchetypeEffectiveStrengthScore * entry.archetypeFitBattleAppearances;
+      }
+      if (entry.averageNonArchetypeEffectiveStrengthScore !== null) {
+        existing.totalNonArchetypeEffectiveStrengthScore +=
+          entry.averageNonArchetypeEffectiveStrengthScore * entry.nonArchetypeBattleAppearances;
+      }
+      for (const bucket of entry.roundLevelFitComparisonBuckets ?? []) {
+        const existingBucket = getOrCreateRoundLevelBucket(existing, bucket.roundIndex, bucket.unitLevel);
+        existingBucket.archetypeFitBattleAppearances += bucket.archetypeFitBattleAppearances;
+        existingBucket.nonArchetypeBattleAppearances += bucket.nonArchetypeBattleAppearances;
+        existingBucket.totalArchetypeEffectiveStrengthScore += bucket.totalArchetypeEffectiveStrengthScore;
+        existingBucket.totalNonArchetypeEffectiveStrengthScore += bucket.totalNonArchetypeEffectiveStrengthScore;
+      }
+      unitArchetypeDependencyByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.factionEffectValueMetrics ?? []) {
+      const key = `${entry.side}::${entry.factionId}`;
+      const existing = factionEffectValueByKey.get(key)
+        ?? createFactionEffectValueAccumulator(entry.side, entry.factionId);
+      existing.battleSamples += entry.battleSamples;
+      existing.totalFactionUnitCount += entry.averageFactionUnitCount * entry.battleSamples;
+      existing.totalTier += entry.averageTier * entry.battleSamples;
+      existing.totalBaseEstimatedStrengthScore += entry.averageBaseEstimatedStrengthScore * entry.battleSamples;
+      existing.totalFactionAdjustedEstimatedStrengthScore +=
+        entry.averageFactionAdjustedEstimatedStrengthScore * entry.battleSamples;
+      existing.totalEstimatedStrengthLift += entry.averageEstimatedStrengthLift * entry.battleSamples;
+      if (entry.averageEstimatedStrengthLiftRate !== null) {
+        existing.totalEstimatedStrengthLiftRate += entry.averageEstimatedStrengthLiftRate * entry.battleSamples;
+        existing.estimatedStrengthLiftRateSamples += entry.battleSamples;
+      }
+      if (entry.averageTeamEstimatedStrengthLiftShare !== null) {
+        existing.totalTeamEstimatedStrengthLiftShare +=
+          entry.averageTeamEstimatedStrengthLiftShare * entry.battleSamples;
+        existing.teamEstimatedStrengthLiftShareSamples += entry.battleSamples;
+      }
+      factionEffectValueByKey.set(key, existing);
     }
 
     for (const entry of aggregate.roundUnitSurvivalDiagnostics ?? []) {
@@ -5432,6 +8885,43 @@ export function mergeBotOnlyBaselineAggregateReports(
       boardRefitDecisionsByRoleRound.set(key, existing);
     }
 
+    for (const entry of aggregate.bossBodyGuardDecisionRoundMetrics ?? []) {
+      const existing = bossBodyGuardDecisionsByRound.get(entry.roundIndex)
+        ?? createBossBodyGuardDecisionRoundAccumulator(entry.roundIndex);
+      mergeBossBodyGuardDecisionMetricIntoAccumulator(entry, existing);
+      bossBodyGuardDecisionsByRound.set(entry.roundIndex, existing);
+    }
+
+    for (const entry of aggregate.boardMovementRoundMetrics ?? []) {
+      const key = `${entry.role}:${entry.roundIndex}`;
+      const existing = boardMovementsByRoleRound.get(key)
+        ?? createBoardMovementRoundAccumulator(entry.roundIndex, entry.role);
+      existing.samples += entry.samples;
+      existing.moveSamples += entry.moveSamples;
+      existing.swapSamples += entry.swapSamples;
+      boardMovementsByRoleRound.set(key, existing);
+    }
+
+    for (const entry of aggregate.boardMovementRouteMetrics ?? []) {
+      const key = buildBoardMovementRouteKey(
+        entry.role,
+        entry.roundIndex,
+        entry.actionType,
+        entry.fromCell,
+        entry.toCell,
+      );
+      const existing = boardMovementRoutesByKey.get(key) ?? {
+        roundIndex: entry.roundIndex,
+        role: entry.role,
+        actionType: entry.actionType,
+        fromCell: entry.fromCell,
+        toCell: entry.toCell,
+        samples: 0,
+      };
+      existing.samples += entry.samples;
+      boardMovementRoutesByKey.set(key, existing);
+    }
+
     for (const entry of aggregate.finalPlayerBoardMetrics ?? []) {
       const existing = finalPlayerBoardMetricsByLabel.get(entry.label)
         ?? createFinalPlayerBoardAccumulator(entry.label, entry.role);
@@ -5525,6 +9015,134 @@ export function mergeBotOnlyBaselineAggregateReports(
       existing.finalBoardCopies += entry.finalBoardCopies;
       existing.finalBoardMatchCount += entry.finalBoardMatchCount;
       shopOfferMetricsByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.raidArchetypeConstructionMetrics ?? []) {
+      const existing = raidArchetypeConstructionByPlanId.get(entry.planId) ?? {
+        planId: entry.planId,
+        anchorUnitId: entry.anchorUnitId,
+        unitIds: [...entry.unitIds],
+        finalPlanHitUnitThreshold: 3,
+        purchaseCount: 0,
+        constructionPurchaseCount: 0,
+        constructionFinalMainUnitCount: 0,
+        constructionFinalSubUnitCount: 0,
+        constructionFinalMissingUnitCount: 0,
+        constructionFinalBenchUnitCount: 0,
+        constructionFinalAbsentUnitCount: 0,
+        constructionEverBattleUnitCount: 0,
+        constructionNeverBattleUnitCount: 0,
+        finalPlayerSamples: 0,
+        finalAnchorPlayerCount: 0,
+        finalPlanHitPlayerCount: 0,
+        totalFinalPlanUnitCount: 0,
+      };
+      existing.purchaseCount += entry.purchaseCount;
+      existing.constructionPurchaseCount += entry.constructionPurchaseCount;
+      existing.constructionFinalMainUnitCount += entry.constructionFinalMainUnitCount;
+      existing.constructionFinalSubUnitCount += entry.constructionFinalSubUnitCount;
+      existing.constructionFinalMissingUnitCount += entry.constructionFinalMissingUnitCount;
+      existing.constructionFinalBenchUnitCount += entry.constructionFinalBenchUnitCount ?? 0;
+      existing.constructionFinalAbsentUnitCount += entry.constructionFinalAbsentUnitCount ?? 0;
+      existing.constructionEverBattleUnitCount += entry.constructionEverBattleUnitCount ?? 0;
+      existing.constructionNeverBattleUnitCount += entry.constructionNeverBattleUnitCount ?? 0;
+      existing.finalPlayerSamples += entry.finalPlayerSamples;
+      existing.finalAnchorPlayerCount += entry.finalAnchorPlayerCount;
+      existing.finalPlanHitPlayerCount += entry.finalPlanHitPlayerCount;
+      existing.totalFinalPlanUnitCount += entry.averageFinalPlanUnitCount * entry.finalPlayerSamples;
+      raidArchetypeConstructionByPlanId.set(entry.planId, existing);
+    }
+
+    for (const entry of aggregate.raidArchetypeConstructionUnitMetrics ?? []) {
+      const key = `${entry.planId}::${entry.unitId}`;
+      const existing = raidArchetypeConstructionUnitByKey.get(key) ?? {
+        planId: entry.planId,
+        anchorUnitId: entry.anchorUnitId,
+        unitId: entry.unitId,
+        unitName: entry.unitName,
+        constructionPurchaseCount: 0,
+        constructionFinalMainUnitCount: 0,
+        constructionFinalSubUnitCount: 0,
+        constructionFinalBenchUnitCount: 0,
+        constructionFinalMissingUnitCount: 0,
+        constructionFinalAbsentUnitCount: 0,
+        constructionEverBattleUnitCount: 0,
+        constructionNeverBattleUnitCount: 0,
+      };
+      existing.constructionPurchaseCount += entry.constructionPurchaseCount;
+      existing.constructionFinalMainUnitCount += entry.constructionFinalMainUnitCount;
+      existing.constructionFinalSubUnitCount += entry.constructionFinalSubUnitCount;
+      existing.constructionFinalBenchUnitCount += entry.constructionFinalBenchUnitCount;
+      existing.constructionFinalMissingUnitCount += entry.constructionFinalMissingUnitCount;
+      existing.constructionFinalAbsentUnitCount += entry.constructionFinalAbsentUnitCount;
+      existing.constructionEverBattleUnitCount += entry.constructionEverBattleUnitCount ?? 0;
+      existing.constructionNeverBattleUnitCount += entry.constructionNeverBattleUnitCount ?? 0;
+      raidArchetypeConstructionUnitByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.raidArchetypeShopDecisionMetrics ?? []) {
+      const key = [
+        entry.roundIndex,
+        entry.planId,
+        entry.decision,
+        entry.candidateUnitId,
+        entry.candidateCost,
+        entry.blocker ?? "",
+      ].join("::");
+      const existing = raidArchetypeShopDecisionByKey.get(key)
+        ?? createRaidArchetypeShopDecisionAccumulator(
+          entry.roundIndex,
+          entry.planId,
+          entry.decision,
+          entry.candidateUnitId,
+          entry.candidateCost,
+          entry.blocker ?? "",
+        );
+      existing.samples += entry.samples;
+      existing.planUnitPurchaseCount += entry.planUnitPurchaseCount;
+      existing.highCostPurchaseCount += entry.highCostPurchaseCount;
+      existing.totalPurchasedCost += entry.averagePurchasedCost * entry.samples;
+      if (
+        typeof entry.averageCombatPlanUnitCount === "number"
+        && typeof entry.averageReservePlanUnitCount === "number"
+        && typeof entry.averageAvailableMainSlots === "number"
+        && typeof entry.averageAvailableSubSlots === "number"
+      ) {
+        existing.fieldingDiagnosticSamples += entry.samples;
+        existing.totalCombatPlanUnitCount += entry.averageCombatPlanUnitCount * entry.samples;
+        existing.totalReservePlanUnitCount += entry.averageReservePlanUnitCount * entry.samples;
+        existing.totalAvailableMainSlots += entry.averageAvailableMainSlots * entry.samples;
+        existing.totalAvailableSubSlots += entry.averageAvailableSubSlots * entry.samples;
+      }
+      raidArchetypeShopDecisionByKey.set(key, existing);
+    }
+
+    for (const entry of aggregate.raidArchetypeRoundProgressMetrics ?? []) {
+      const key = `${entry.roundIndex}::${entry.planId}`;
+      const existing = raidArchetypeRoundProgressByKey.get(key) ?? {
+        planId: entry.planId,
+        anchorUnitId: entry.anchorUnitId,
+        unitIds: [...entry.unitIds],
+        finalPlanHitUnitThreshold: 3,
+        roundIndex: entry.roundIndex,
+        playerSamples: 0,
+        anchorPlayerCount: 0,
+        planHitPlayerCount: 0,
+        unitCount0PlayerCount: 0,
+        unitCount1PlayerCount: 0,
+        unitCount2PlayerCount: 0,
+        unitCount3PlusPlayerCount: 0,
+        totalPlanUnitCount: 0,
+      };
+      existing.playerSamples += entry.playerSamples;
+      existing.anchorPlayerCount += entry.anchorPlayerCount;
+      existing.planHitPlayerCount += entry.planHitPlayerCount;
+      existing.unitCount0PlayerCount += entry.unitCount0PlayerCount;
+      existing.unitCount1PlayerCount += entry.unitCount1PlayerCount;
+      existing.unitCount2PlayerCount += entry.unitCount2PlayerCount;
+      existing.unitCount3PlusPlayerCount += entry.unitCount3PlusPlayerCount;
+      existing.totalPlanUnitCount += entry.averagePlanUnitCount * entry.playerSamples;
+      raidArchetypeRoundProgressByKey.set(key, existing);
     }
 
     for (const entry of aggregate.bossNormalHighCostMaturationMetrics ?? []) {
@@ -6065,6 +9683,27 @@ export function mergeBotOnlyBaselineAggregateReports(
           .map((entry) => buildBoardRefitDecisionRoleRoundMetric(entry)),
       }
       : {}),
+    ...(bossBodyGuardDecisionsByRound.size > 0
+      ? {
+        bossBodyGuardDecisionRoundMetrics: Array.from(bossBodyGuardDecisionsByRound.values())
+          .sort((left, right) => left.roundIndex - right.roundIndex)
+          .map((entry) => buildBossBodyGuardDecisionRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardMovementsByRoleRound.size > 0
+      ? {
+        boardMovementRoundMetrics: Array.from(boardMovementsByRoleRound.values())
+          .sort((left, right) =>
+            left.role.localeCompare(right.role)
+            || left.roundIndex - right.roundIndex)
+          .map((entry) => buildBoardMovementRoundMetric(entry)),
+      }
+      : {}),
+    ...(boardMovementRoutesByKey.size > 0
+      ? {
+        boardMovementRouteMetrics: buildBoardMovementRouteMetrics(Array.from(boardMovementRoutesByKey.values())),
+      }
+      : {}),
     finalPlayerBoardMetrics: Array.from(finalPlayerBoardMetricsByLabel.values())
       .sort((left, right) => left.label.localeCompare(right.label))
       .map((entry) => buildFinalPlayerBoardMetric(entry)),
@@ -6123,6 +9762,7 @@ export function mergeBotOnlyBaselineAggregateReports(
       .sort((left, right) =>
         left.roundIndex - right.roundIndex
         || left.unitId.localeCompare(right.unitId)),
+    bossR12CeilingDiagnostics: buildBossR12CeilingDiagnostics(bossR12CeilingSamples),
     highCostRoundMetrics: Array.from(highCostRoundMetricsByKey.values())
       .map((entry) => buildHighCostRoundMetric(entry, completedMatches))
       .sort((left, right) =>
@@ -6138,7 +9778,26 @@ export function mergeBotOnlyBaselineAggregateReports(
         || ((right.damagePerInvestmentCost ?? -1) - (left.damagePerInvestmentCost ?? -1))
         || right.totalDamage - left.totalDamage
         || left.unitId.localeCompare(right.unitId)),
+    roundBoardStrengthMetrics: Array.from(roundBoardStrengthByKey.values())
+      .map((entry) => buildRoundBoardStrengthMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.side.localeCompare(right.side)),
+    roundBoardStrengthComparisonMetrics: Array.from(roundBoardStrengthComparisonByRound.values())
+      .map((entry) => buildRoundBoardStrengthComparisonMetric(entry))
+      .sort((left, right) => left.roundIndex - right.roundIndex),
+    roundBoardStrengthOutcomeMetrics: Array.from(roundBoardStrengthOutcomeByKey.values())
+      .map((entry) => buildRoundBoardStrengthOutcomeMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.winnerRole.localeCompare(right.winnerRole)),
     unitDamageEfficiencyMetrics: buildUnitDamageEfficiencyMetrics(roundDamageEfficiencyByKey.values()),
+    unitStrengthConversionMetrics: buildUnitStrengthConversionMetrics(unitStrengthConversionByKey.values()),
+    unitLevelStrengthConversionMetrics: buildUnitLevelStrengthConversionMetrics(
+      unitLevelStrengthConversionByKey.values(),
+    ),
+    unitArchetypeDependencyMetrics: buildUnitArchetypeDependencyMetrics(unitArchetypeDependencyByKey.values()),
+    factionEffectValueMetrics: buildFactionEffectValueMetrics(factionEffectValueByKey.values()),
     roundSurvivalDiagnostics: Array.from(roundSurvivalDiagnosticsByRound.values())
       .map((entry) => buildRoundSurvivalDiagnosticMetric(entry))
       .sort((left, right) => left.roundIndex - right.roundIndex),
@@ -6160,6 +9819,32 @@ export function mergeBotOnlyBaselineAggregateReports(
         purchaseRate: entry.observationCount > 0 ? entry.purchaseCount / entry.observationCount : 0,
         finalBoardAdoptionRate: completedMatches > 0 ? entry.finalBoardMatchCount / completedMatches : 0,
       })),
+    raidArchetypeConstructionMetrics: Array.from(raidArchetypeConstructionByPlanId.values())
+      .map((entry) => buildRaidArchetypeConstructionMetric(entry))
+      .sort((left, right) =>
+        right.constructionPurchaseCount - left.constructionPurchaseCount
+        || right.finalPlanHitPlayerCount - left.finalPlanHitPlayerCount
+        || left.planId.localeCompare(right.planId)),
+    raidArchetypeConstructionUnitMetrics: Array.from(raidArchetypeConstructionUnitByKey.values())
+      .map((entry) => buildRaidArchetypeConstructionUnitMetric(entry))
+      .sort((left, right) =>
+        right.constructionPurchaseCount - left.constructionPurchaseCount
+        || left.planId.localeCompare(right.planId)
+        || left.unitId.localeCompare(right.unitId)),
+    raidArchetypeShopDecisionMetrics: Array.from(raidArchetypeShopDecisionByKey.values())
+      .map((entry) => buildRaidArchetypeShopDecisionMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || left.planId.localeCompare(right.planId)
+        || left.decision.localeCompare(right.decision)
+        || (left.blocker ?? "").localeCompare(right.blocker ?? "")
+        || left.candidateUnitId.localeCompare(right.candidateUnitId)),
+    raidArchetypeRoundProgressMetrics: Array.from(raidArchetypeRoundProgressByKey.values())
+      .map((entry) => buildRaidArchetypeRoundProgressMetric(entry))
+      .sort((left, right) =>
+        left.roundIndex - right.roundIndex
+        || right.planHitPlayerCount - left.planHitPlayerCount
+        || left.planId.localeCompare(right.planId)),
     bossNormalHighCostMaturationMetrics: Array.from(bossNormalHighCostMaturationById.values())
       .sort((left, right) =>
         right.purchaseCount - left.purchaseCount
@@ -6188,6 +9873,7 @@ export function mergeBotOnlyBaselineAggregateReports(
       .sort((left, right) => left.unitId.localeCompare(right.unitId))
       .map((entry) => buildRaidSpecialMeleeUnitDiagnostic(entry)),
     roundDetails,
+    battleDiagnosticScenarios,
   };
 
   return sharedMetadata == null
